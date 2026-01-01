@@ -156,9 +156,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
   tokenize = 'unicode61'
 );
 
-CREATE INDEX IF NOT EXISTS idx_cards_fts_project
-  ON cards_fts(project_id);
-
 -- AI messages: index content
 -- We include project_id for easy scoping without extra joins.
 CREATE VIRTUAL TABLE IF NOT EXISTS ai_fts USING fts5(
@@ -169,8 +166,33 @@ CREATE VIRTUAL TABLE IF NOT EXISTS ai_fts USING fts5(
   tokenize = 'unicode61'
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_fts_project
-  ON ai_fts(project_id);
+
+
+-- ----------------------------
+-- Alerts
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS alerts (
+  alert_id     TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL,
+  card_id      TEXT NULL,
+  title        TEXT NOT NULL,
+  due_at       INTEGER NOT NULL,         -- epoch seconds (UTC)
+  repeat_rule  TEXT NULL,               -- optional RRULE later
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  fired_at     INTEGER NULL,
+  dismissed_at INTEGER NULL,
+
+  FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+  FOREIGN KEY(card_id)    REFERENCES cards(card_id)       ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_due
+  ON alerts(due_at);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_project_due
+  ON alerts(project_id, due_at);
+
 
 -- ----------------------------
 -- A tiny schema version table (handy for migrations)
@@ -183,3 +205,5 @@ CREATE TABLE IF NOT EXISTS schema_version (
 INSERT INTO schema_version(version)
 SELECT 1
 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
+
+
