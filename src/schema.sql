@@ -1,5 +1,5 @@
 -- schema.sql (v0.1)
--- Local-first card-server schema: projects, notes, links, resources, AI threads/messages, and FTS5.
+-- Local-first card-server schema: projects, cards, links, resources, AI threads/messages, and FTS5.
 -- The app/server is responsible for keeping FTS tables in sync (no triggers in v0.1).
 
 PRAGMA foreign_keys = ON;
@@ -19,63 +19,63 @@ CREATE INDEX IF NOT EXISTS idx_projects_updated
   ON projects(updated_at);
 
 -- ----------------------------
--- Notes
+-- cards
 -- ----------------------------
-CREATE TABLE IF NOT EXISTS notes (
-  note_id        TEXT PRIMARY KEY,       -- UUID
+CREATE TABLE IF NOT EXISTS cards (
+  card_id        TEXT PRIMARY KEY,       -- UUID
   project_id     TEXT NOT NULL,
   title          TEXT NOT NULL,
-  rel_path       TEXT NOT NULL,          -- path relative to project root (e.g. notes/ab/cd/<uuid>.md)
-  parent_note_id TEXT NULL,              -- folder-like nesting (optional)
+  rel_path       TEXT NOT NULL,          -- path relative to project root (e.g. cards/ab/cd/<uuid>.md)
+  parent_card_id TEXT NULL,              -- folder-like nesting (optional)
   sort_key       REAL NOT NULL DEFAULT 0.0, -- manual ordering within a parent scope
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
   deleted_at     INTEGER NULL,
 
   FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-  FOREIGN KEY(parent_note_id) REFERENCES notes(note_id) ON DELETE SET NULL
+  FOREIGN KEY(parent_card_id) REFERENCES cards(card_id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_notes_project_updated
-  ON notes(project_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_cards_project_updated
+  ON cards(project_id, updated_at);
 
-CREATE INDEX IF NOT EXISTS idx_notes_project_parent_sort
-  ON notes(project_id, parent_note_id, sort_key);
+CREATE INDEX IF NOT EXISTS idx_cards_project_parent_sort
+  ON cards(project_id, parent_card_id, sort_key);
 
-CREATE INDEX IF NOT EXISTS idx_notes_project_title
-  ON notes(project_id, title);
+CREATE INDEX IF NOT EXISTS idx_cards_project_title
+  ON cards(project_id, title);
 
 -- Ensure rel_path uniqueness within a project (so file mapping stays sane)
-CREATE UNIQUE INDEX IF NOT EXISTS uq_notes_project_relpath
-  ON notes(project_id, rel_path);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cards_project_relpath
+  ON cards(project_id, rel_path);
 
 -- ----------------------------
--- Note links
+-- card links
 -- ----------------------------
--- Stores explicit directed edges between notes. Used for:
+-- Stores explicit directed edges between cards. Used for:
 -- - wiki-style links
 -- - backlinks
 -- - arbitrary relationships
-CREATE TABLE IF NOT EXISTS note_links (
+CREATE TABLE IF NOT EXISTS card_links (
   project_id    TEXT NOT NULL,
-  from_note_id  TEXT NOT NULL,
-  to_note_id    TEXT NOT NULL,
+  from_card_id  TEXT NOT NULL,
+  to_card_id    TEXT NOT NULL,
   kind          TEXT NOT NULL,           -- e.g. 'wiki', 'ref', 'tag', 'related'
   label         TEXT NULL,
   created_at    INTEGER NOT NULL,
 
   FOREIGN KEY(project_id)   REFERENCES projects(project_id) ON DELETE CASCADE,
-  FOREIGN KEY(from_note_id) REFERENCES notes(note_id)       ON DELETE CASCADE,
-  FOREIGN KEY(to_note_id)   REFERENCES notes(note_id)       ON DELETE CASCADE,
+  FOREIGN KEY(from_card_id) REFERENCES cards(card_id)       ON DELETE CASCADE,
+  FOREIGN KEY(to_card_id)   REFERENCES cards(card_id)       ON DELETE CASCADE,
 
-  PRIMARY KEY(project_id, from_note_id, to_note_id, kind)
+  PRIMARY KEY(project_id, from_card_id, to_card_id, kind)
 );
 
-CREATE INDEX IF NOT EXISTS idx_note_links_from
-  ON note_links(project_id, from_note_id);
+CREATE INDEX IF NOT EXISTS idx_card_links_from
+  ON card_links(project_id, from_card_id);
 
-CREATE INDEX IF NOT EXISTS idx_note_links_to
-  ON note_links(project_id, to_note_id);
+CREATE INDEX IF NOT EXISTS idx_card_links_to
+  ON card_links(project_id, to_card_id);
 
 -- ----------------------------
 -- Project resources (pointers only in v0.1)
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS resources (
   kind         TEXT NOT NULL,            -- 'dir', 'file', 'repo', 'url'
   uri          TEXT NOT NULL,            -- store as URI: file:///..., https://..., git+ssh://...
   label        TEXT NOT NULL,
-  note         TEXT NULL,                -- human description (why it matters)
+  desc         TEXT NULL,                -- human description (why it matters)
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
 
@@ -105,20 +105,20 @@ CREATE INDEX IF NOT EXISTS idx_resources_project_kind
 CREATE TABLE IF NOT EXISTS ai_threads (
   thread_id   TEXT PRIMARY KEY,          -- UUID
   project_id  TEXT NOT NULL,
-  note_id     TEXT NULL,                 -- optional attachment to a note/card
+  card_id     TEXT NULL,                 -- optional attachment to a card/card
   title       TEXT NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
 
   FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-  FOREIGN KEY(note_id)    REFERENCES notes(note_id)       ON DELETE SET NULL
+  FOREIGN KEY(card_id)    REFERENCES cards(card_id)       ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_threads_project_updated
   ON ai_threads(project_id, updated_at);
 
-CREATE INDEX IF NOT EXISTS idx_ai_threads_note
-  ON ai_threads(note_id);
+CREATE INDEX IF NOT EXISTS idx_ai_threads_card
+  ON ai_threads(card_id);
 
 CREATE TABLE IF NOT EXISTS ai_messages (
   message_id  TEXT PRIMARY KEY,          -- UUID
@@ -147,17 +147,17 @@ CREATE INDEX IF NOT EXISTS idx_ai_messages_prompt_hash
 -- Contentless FTS: server maintains rows explicitly.
 -- Store IDs as UNINDEXED columns for join-back.
 --
--- Notes: index title + body
-CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
-  note_id    UNINDEXED,
+-- cards: index title + body
+CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
+  card_id    UNINDEXED,
   project_id UNINDEXED,
   title,
   body,
   tokenize = 'unicode61'
 );
 
-CREATE INDEX IF NOT EXISTS idx_notes_fts_project
-  ON notes_fts(project_id);
+CREATE INDEX IF NOT EXISTS idx_cards_fts_project
+  ON cards_fts(project_id);
 
 -- AI messages: index content
 -- We include project_id for easy scoping without extra joins.
