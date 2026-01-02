@@ -51,9 +51,12 @@ endif()
 # ----------------------------
 # Target
 # ----------------------------
-add_executable(card-server
+add_executable(holder
   src/main.cpp
   src/core/Paths.cpp
+  src/store/Db.cpp
+  src/store/Tx.cpp
+  src/store/Migrations.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp
@@ -62,17 +65,17 @@ add_executable(card-server
   # src/markdown/parse_links.cpp
 )
 
-target_include_directories(card-server PRIVATE
+target_include_directories(holder PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_compile_definitions(card-server PRIVATE
+target_compile_definitions(holder PRIVATE
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
 )
 
 # Warnings (GNU/Clang)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(card-server PRIVATE
+  target_compile_options(holder PRIVATE
     -Wall -Wextra -Wpedantic
     -Wshadow -Wconversion -Wsign-conversion
     -Wno-unknown-pragmas
@@ -80,7 +83,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # Link libs
-target_link_libraries(card-server PRIVATE
+target_link_libraries(holder PRIVATE
   Boost::system
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
@@ -90,20 +93,20 @@ target_link_libraries(card-server PRIVATE
 
 # Feature-linked deps
 if(CARD_SERVER_ENABLE_LIBGIT2)
-  target_link_libraries(card-server PRIVATE PkgConfig::LIBGIT2)
-  target_compile_definitions(card-server PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
+  target_link_libraries(holder PRIVATE PkgConfig::LIBGIT2)
+  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
 else()
-  target_compile_definitions(card-server PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
+  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
 endif()
 
 if(CARD_SERVER_ENABLE_MD4C)
-  target_link_libraries(card-server PRIVATE PkgConfig::MD4C)
-  target_compile_definitions(card-server PRIVATE CARD_SERVER_HAVE_MD4C=1)
+  target_link_libraries(holder PRIVATE PkgConfig::MD4C)
+  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=1)
 else()
-  target_compile_definitions(card-server PRIVATE CARD_SERVER_HAVE_MD4C=0)
+  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=0)
 endif()
 
 # ----------------------------
 # Install (optional for later packaging)
 # ----------------------------
-install(TARGETS card-server RUNTIME DESTINATION bin)
+install(TARGETS holder RUNTIME DESTINATION bin)

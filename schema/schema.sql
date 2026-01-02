@@ -1,5 +1,5 @@
 -- schema.sql (v0.1)
--- Local-first card-server schema: projects, cards, links, resources, AI threads/messages, and FTS5.
+-- Local-first holder schema: projects, cards, links, resources, AI threads/messages, and FTS5.
 -- The app/server is responsible for keeping FTS tables in sync (no triggers in v0.1).
 
 PRAGMA foreign_keys = ON;
