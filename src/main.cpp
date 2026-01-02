@@ -3,6 +3,7 @@
 #include "core/Paths.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
+#include "git/GitRepo.h"
 
 #include <filesystem>
 
@@ -34,6 +35,18 @@ int main() {
 
   const auto schema_path = find_schema_sql();
   holder::store::Migrations::ensure_schema(db, schema_path);
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(paths.data_dir / "repo");
+
+  // v0.1: write a placeholder export file
+  repo.write_file("README.md",
+    "# Holder\n\n"
+    "This repository is managed by Holder.\n"
+    "It contains exported cards and metadata for backup/sync.\n");
+
+  repo.stage_path("README.md");
+  repo.commit("Bootstrap holder repository");
 
   spdlog::info("holder boot complete.");
   return 0;

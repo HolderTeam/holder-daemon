@@ -1,0 +1,41 @@
+#pragma once
+#include <filesystem>
+#include <string>
+
+namespace holder::git {
+
+class GitRepo {
+public:
+  GitRepo();
+  ~GitRepo();
+
+  GitRepo(const GitRepo&) = delete;
+  GitRepo& operator=(const GitRepo&) = delete;
+
+  // Open existing or init a new repo at repo_dir (non-bare, has working tree).
+  void open_or_init(const std::filesystem::path& repo_dir);
+
+  // Write a file under the repo working tree (creates directories).
+  void write_file(const std::filesystem::path& relative_path, const std::string& content);
+
+  // Stage (add) a path (relative to repo root).
+  void stage_path(const std::filesystem::path& relative_path);
+
+  // Create a commit from current index (tree).
+  // If it's the first commit, parent list is empty.
+  void commit(const std::string& message);
+
+  std::filesystem::path repo_dir() const { return repo_dir_; }
+
+private:
+  void ensure_open() const;
+
+  // Create author/committer signature.
+  // Uses git config if present, otherwise falls back to placeholders.
+  void make_signature(void** out_sig) const; // out_sig is git_signature*
+
+  void* repo_ = nullptr; // git_repository*
+  std::filesystem::path repo_dir_;
+};
+
+} // namespace holder::git
