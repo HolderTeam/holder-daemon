@@ -53,6 +53,7 @@ endif()
 # ----------------------------
 add_executable(card-server
   src/main.cpp
+  src/core/Paths.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp
