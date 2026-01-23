@@ -55,7 +55,7 @@ A project may contain:
 * references to external resources
 * AI interaction history
 
-Projects may optionally be backed by a **git repository** for:
+Projects are backed by a **git repository** for:
 
 * history
 * syncing
@@ -65,9 +65,9 @@ The server is responsible for keeping git and internal indexes consistent.
 
 ---
 
-### 3. Notes / Cards
+### 3. Cards
 
-Notes (cards, slips, ideas) are **atomic text units**.
+Cards (notes, slips, ideas) are **atomic text units**.
 
 Characteristics:
 
@@ -204,7 +204,7 @@ The API must remain:
 * **Single source of truth**: no client-side shadow logic
 * **Explicit over implicit**: no “magic”
 * **Composable**: works with many frontends
-* **Auditable**: data is inspectable, git-backed where possible
+* **Auditable**: data is inspectable, git-backed
 * **Boring tech**: reliability over novelty
 
 ---
