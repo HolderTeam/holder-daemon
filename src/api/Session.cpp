@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <cstdlib>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -67,6 +68,10 @@ http::response<http::string_body> text_response(http::status status,
 
 std::optional<std::filesystem::path> find_openapi_path() {
   namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_OPENAPI_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
   fs::path p1 = fs::current_path() / "openapi.yaml";
   if (fs::exists(p1)) return p1;
   fs::path p2 = fs::current_path().parent_path() / "openapi.yaml";
@@ -76,6 +81,10 @@ std::optional<std::filesystem::path> find_openapi_path() {
 
 std::optional<std::filesystem::path> find_docs_root() {
   namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_DOCS_ROOT")) {
+    fs::path p(env);
+    if (fs::exists(p) && fs::is_directory(p)) return p;
+  }
   fs::path p1 = fs::current_path() / "assets" / "swagger-ui";
   if (fs::exists(p1) && fs::is_directory(p1)) return p1;
   fs::path p2 = fs::current_path().parent_path() / "assets" / "swagger-ui";

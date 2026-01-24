@@ -25,6 +25,7 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -137,6 +138,91 @@ nlohmann::json http_json_request(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
+struct HttpResult {
+  boost::beast::http::status status;
+  std::string body;
+  std::string content_type;
+};
+
+class EnvGuard {
+ public:
+  EnvGuard(const char* key, std::string value) : key_(key) {
+    const char* current = std::getenv(key_);
+    if (current) {
+      old_ = current;
+    }
+    set_env(value);
+  }
+
+  ~EnvGuard() {
+    if (old_.has_value()) {
+      set_env(old_.value());
+    } else {
+      unset_env();
+    }
+  }
+
+ private:
+  void set_env(const std::string& value) {
+#ifdef _WIN32
+    _putenv_s(key_, value.c_str());
+#else
+    setenv(key_, value.c_str(), 1);
+#endif
+  }
+
+  void unset_env() {
+#ifdef _WIN32
+    _putenv_s(key_, "");
+#else
+    unsetenv(key_);
+#endif
+  }
+
+  const char* key_;
+  std::optional<std::string> old_;
+};
+
+HttpResult http_request_raw(const std::string& bind,
+                            unsigned short port,
+                            const std::string& token,
+                            boost::beast::http::verb method,
+                            const std::string& target) {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{method, target, 11};
+  req.set(http::field::host, bind);
+  req.set(http::field::user_agent, "holder-tests");
+  if (!token.empty()) {
+    req.set(http::field::authorization, "Bearer " + token);
+  }
+
+  http::write(socket, req);
+
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  HttpResult result;
+  result.status = res.result();
+  result.body = res.body();
+  const auto type_it = res.find(http::field::content_type);
+  if (type_it != res.end()) {
+    result.content_type = std::string(type_it->value());
+  }
+  return result;
+}
+
 } // namespace
 
 TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
@@ -164,6 +250,54 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["db_ok"] == true);
   REQUIRE(payload["data"]["api_version"] == "0.1");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP docs and openapi are served without auth", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+
+  namespace fs = std::filesystem;
+  const auto docs_root = dir / "assets" / "swagger-ui";
+  fs::create_directories(docs_root);
+  std::ofstream(docs_root / "index.html") << "<!doctype html><title>Docs</title>";
+  const auto openapi_path = dir / "openapi.yaml";
+  std::ofstream(openapi_path) << "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 0.1\n";
+
+  EnvGuard docs_env("HOLDER_DOCS_ROOT", docs_root.string());
+  EnvGuard openapi_env("HOLDER_OPENAPI_PATH", openapi_path.string());
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto docs = http_request_raw(bound.bind, bound.port, "",
+                                     boost::beast::http::verb::get,
+                                     "/docs");
+  REQUIRE(docs.status == boost::beast::http::status::ok);
+  REQUIRE(docs.content_type.find("text/html") != std::string::npos);
+
+  const auto openapi = http_request_raw(bound.bind, bound.port, "",
+                                        boost::beast::http::verb::get,
+                                        "/openapi.yaml");
+  REQUIRE(openapi.status == boost::beast::http::status::ok);
+  REQUIRE(openapi.content_type.find("application/yaml") != std::string::npos);
+  REQUIRE(openapi.body.find("openapi:") != std::string::npos);
 
   std::raise(SIGTERM);
   server_thread.join();
