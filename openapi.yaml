@@ -195,6 +195,110 @@ components:
         rank:
           type: number
           format: double
+    Project:
+      type: object
+      required: [project_id, name, root_path, created_at, updated_at]
+      properties:
+        project_id:
+          type: string
+        name:
+          type: string
+        root_path:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    ProjectCreateRequest:
+      type: object
+      required: [project_id, name, root_path, created_at, updated_at]
+      properties:
+        project_id:
+          type: string
+        name:
+          type: string
+        root_path:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    ProjectCreateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id]
+          properties:
+            project_id:
+              type: string
+    ProjectListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+    ProjectGetResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/Project"
+    ProjectUpdateRequest:
+      type: object
+      required: [updated_at]
+      properties:
+        name:
+          type: string
+          nullable: true
+        root_path:
+          type: string
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+    ProjectUpdateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id]
+          properties:
+            project_id:
+              type: string
+    ProjectDeleteResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id]
+          properties:
+            project_id:
+              type: string
     SearchCardsResponse:
       type: object
       required: [ok, data]
@@ -230,6 +334,189 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects:
+    get:
+      summary: List projects
+      parameters:
+        - in: query
+          name: name
+          required: false
+          schema:
+            type: string
+          description: Substring match on project name.
+        - in: query
+          name: updated_after
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Return projects with updated_at >= updated_after.
+        - in: query
+          name: updated_before
+          required: false
+          schema:
+            type: integer
+            format: int64
+          description: Return projects with updated_at <= updated_before.
+        - in: query
+          name: order
+          required: false
+          schema:
+            type: string
+            enum:
+              [updated_at_desc, updated_at_asc, created_at_desc, created_at_asc, name_desc, name_asc]
+          description: Order by updated_at (default), created_at, or name.
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 1000
+          description: Max results (default 100, capped at 1000).
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+          description: Offset into ordered results (default 0).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCreateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}:
+    get:
+      summary: Get a project
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGetResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update a project
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectUpdateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a project
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDeleteResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
