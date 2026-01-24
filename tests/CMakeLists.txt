@@ -27,6 +27,7 @@ add_executable(lockfile_tests
   HttpCards_test.cpp
   HttpSearch_test.cpp
   HttpSearchFlow_test.cpp
+  HttpSearchAiFlow_test.cpp
   Router_test.cpp
   ProjectRepo_test.cpp
   CardRepo_test.cpp
