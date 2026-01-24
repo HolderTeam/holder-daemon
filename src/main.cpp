@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
   info.api_version = "0.1";
   info.server_version = CARD_SERVER_VERSION;
   info.auth_token = holder::core::generate_auth_token();
+  spdlog::info("auth token: {}", info.auth_token);
 
   std::string bind = "127.0.0.1";
   unsigned short port = 11499;
@@ -137,6 +138,7 @@ int main(int argc, char* argv[]) {
   info.port = bound.port;
   holder::core::write_server_info(paths.info_path(), info);
   spdlog::info("listening on {}:{}", info.bind, info.port);
+  spdlog::info("docs available at http://{}:{}/docs", info.bind, info.port);
 
   server.run(signals);
 

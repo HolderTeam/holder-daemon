@@ -29,7 +29,7 @@ find_package(Boost 1.74 REQUIRED COMPONENTS system)
 # Ubuntu packages:
 #   nlohmann-json3-dev
 #   libspdlog-dev (often brings libfmt-dev)
-find_package(nlohmann_json 3.2.0 REQUIRED)
+find_package(nlohmann_json 3.6.0 REQUIRED)
 find_package(spdlog REQUIRED)
 
 # XDG base dirs helper (apt: xdg-utils-cxx-dev)
