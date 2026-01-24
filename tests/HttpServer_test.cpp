@@ -558,3 +558,53 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP search endpoints reject missing params", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto missing_project = http_json_request(bound.bind, bound.port, token,
+                                                 boost::beast::http::verb::get,
+                                                 "/search/cards?q=term",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::bad_request);
+  REQUIRE(missing_project["ok"] == false);
+  REQUIRE(missing_project["error"]["code"] == "bad_request");
+  REQUIRE(missing_project["error"]["message"].is_string());
+
+  const auto missing_q = http_json_request(bound.bind, bound.port, token,
+                                           boost::beast::http::verb::get,
+                                           "/search/ai?project_id=proj-1",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(missing_q["ok"] == false);
+  REQUIRE(missing_q["error"]["code"] == "bad_request");
+  REQUIRE(missing_q["error"]["message"].is_string());
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
