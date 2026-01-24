@@ -526,6 +526,9 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   REQUIRE(cards["ok"] == true);
   REQUIRE(cards["data"].is_array());
   REQUIRE(cards["data"].size() >= 1);
+  REQUIRE(cards["data"][0]["title"].is_string());
+  REQUIRE(cards["data"][0]["updated_at"].is_number());
+  REQUIRE(cards["data"][0]["created_at"].is_number());
 
   holder::model::AiThread thread;
   thread.thread_id = "thread-1";
@@ -554,6 +557,7 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   REQUIRE(messages["ok"] == true);
   REQUIRE(messages["data"].is_array());
   REQUIRE(messages["data"].size() >= 1);
+  REQUIRE(messages["data"][0]["created_at"].is_number());
 
   std::raise(SIGTERM);
   server_thread.join();

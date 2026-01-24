@@ -25,6 +25,9 @@ public:
 
   struct SearchRow {
     std::string id;
+    std::string title;
+    long long updated_at = 0;
+    long long created_at = 0;
     std::string snippet;
   };
 

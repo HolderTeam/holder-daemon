@@ -130,7 +130,13 @@ void Session::run() {
             const auto rows = fts_->search_cards(project_id, q, limit, offset);
             nlohmann::json data = nlohmann::json::array();
             for (const auto& row : rows) {
-              data.push_back({{"card_id", row.id}, {"snippet", row.snippet}});
+              data.push_back({
+                {"card_id", row.id},
+                {"title", row.title},
+                {"updated_at", row.updated_at},
+                {"created_at", row.created_at},
+                {"snippet", row.snippet}
+              });
             }
             nlohmann::json payload;
             payload["ok"] = true;
@@ -159,7 +165,11 @@ void Session::run() {
             const auto rows = fts_->search_messages(project_id, q, limit, offset);
             nlohmann::json data = nlohmann::json::array();
             for (const auto& row : rows) {
-              data.push_back({{"message_id", row.id}, {"snippet", row.snippet}});
+              data.push_back({
+                {"message_id", row.id},
+                {"created_at", row.created_at},
+                {"snippet", row.snippet}
+              });
             }
             nlohmann::json payload;
             payload["ok"] = true;

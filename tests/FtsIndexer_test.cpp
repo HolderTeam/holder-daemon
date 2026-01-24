@@ -123,9 +123,22 @@ TEST_CASE("FtsIndexer search returns snippets", "[fts]") {
   apply_schema(db);
 
   holder::index::FtsIndexer fts(db);
+  {
+    static constexpr const char* SQL_PROJECT =
+        "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+        "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);";
+    db.exec(SQL_PROJECT);
+    static constexpr const char* SQL_CARD =
+        "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+        "VALUES('card-1', 'proj-1', 'Title', 'cards/xx/yy/card-1.md', 0.0, 1, 2);";
+    db.exec(SQL_CARD);
+  }
   fts.upsert_card("card-1", "proj-1", "Title", "The quick brown fox");
   const auto rows = fts.search_cards("proj-1", "brown", 10, 0);
   REQUIRE(rows.size() == 1);
   REQUIRE(rows[0].id == "card-1");
+  REQUIRE(rows[0].title == "Title");
+  REQUIRE(rows[0].created_at == 1);
+  REQUIRE(rows[0].updated_at == 2);
   REQUIRE(rows[0].snippet.find('[') != std::string::npos);
 }

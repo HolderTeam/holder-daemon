@@ -133,8 +133,11 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& p
                                                             int limit,
                                                             int offset) {
   static constexpr const char* SQL =
-      "SELECT card_id, snippet(cards_fts, 2, '[', ']', '...', 10) "
-      "FROM cards_fts WHERE project_id = ? AND cards_fts MATCH ? "
+      "SELECT c.card_id, c.title, c.updated_at, c.created_at, "
+      "snippet(cards_fts, 2, '[', ']', '...', 10) "
+      "FROM cards_fts "
+      "JOIN cards c ON c.card_id = cards_fts.card_id "
+      "WHERE cards_fts.project_id = ? AND cards_fts MATCH ? "
       "ORDER BY rank "
       "LIMIT ? OFFSET ?;";
 
@@ -157,7 +160,10 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& p
     if (rc == SQLITE_ROW) {
       SearchRow row;
       row.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-      const auto* text = sqlite3_column_text(stmt, 1);
+      row.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+      row.updated_at = sqlite3_column_int64(stmt, 2);
+      row.created_at = sqlite3_column_int64(stmt, 3);
+      const auto* text = sqlite3_column_text(stmt, 4);
       const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
       if (raw.empty()) {
         row.snippet = "";
@@ -183,8 +189,11 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string
                                                                int limit,
                                                                int offset) {
   static constexpr const char* SQL =
-      "SELECT message_id, snippet(ai_fts, 3, '[', ']', '...', 10) "
-      "FROM ai_fts WHERE project_id = ? AND ai_fts MATCH ? "
+      "SELECT m.message_id, m.created_at, "
+      "snippet(ai_fts, 3, '[', ']', '...', 10) "
+      "FROM ai_fts "
+      "JOIN ai_messages m ON m.message_id = ai_fts.message_id "
+      "WHERE ai_fts.project_id = ? AND ai_fts MATCH ? "
       "ORDER BY rank "
       "LIMIT ? OFFSET ?;";
 
@@ -207,7 +216,8 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string
     if (rc == SQLITE_ROW) {
       SearchRow row;
       row.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-      const auto* text = sqlite3_column_text(stmt, 1);
+      row.created_at = sqlite3_column_int64(stmt, 1);
+      const auto* text = sqlite3_column_text(stmt, 2);
       const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
       if (raw.empty()) {
         row.snippet = "";
