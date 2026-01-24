@@ -9,6 +9,7 @@
 #include "api/HttpServer.h"
 #include "store/CardStore.h"
 #include "index/FtsIndexer.h"
+#include "index/Reindexer.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
@@ -76,6 +77,7 @@ int main(int argc, char* argv[]) {
 
   std::string bind = "127.0.0.1";
   unsigned short port = 11499;
+  bool reindex_only = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--bind" && i + 1 < argc) {
@@ -93,8 +95,10 @@ int main(int argc, char* argv[]) {
         return 2;
       }
     } else if (arg == "--help" || arg == "-h") {
-      spdlog::info("Usage: holder [--bind <addr>] [--port <port>]");
+      spdlog::info("Usage: holder [--bind <addr>] [--port <port>] [--reindex]");
       return 0;
+    } else if (arg == "--reindex") {
+      reindex_only = true;
     } else {
       spdlog::error("Unknown argument: {}", arg);
       return 2;
@@ -116,6 +120,14 @@ int main(int argc, char* argv[]) {
   spdlog::info("holder boot complete.");
 
   holder::index::FtsIndexer fts(db);
+  if (reindex_only) {
+    spdlog::info("Running full reindex...");
+    holder::index::Reindexer reindexer(db);
+    reindexer.run();
+    spdlog::info("Reindex complete.");
+    spdlog::shutdown();
+    return 0;
+  }
   holder::store::CardStore card_store(db, repo, &fts);
   holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts);
   const auto bound = server.start();
