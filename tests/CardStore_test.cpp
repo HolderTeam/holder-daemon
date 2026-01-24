@@ -196,3 +196,33 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
 
   REQUIRE(before == after);
 }
+
+TEST_CASE("CardStore update creates commit when content changes", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore store(db, repo);
+  holder::model::Card card;
+  card.card_id = "abcf0000";
+  card.project_id = "proj-1";
+  card.title = "First";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  store.create(card, "one");
+  const int before = count_commits(repo_dir);
+
+  store.update_content(card.card_id, "two", std::nullopt, 20);
+  const int after = count_commits(repo_dir);
+
+  REQUIRE(after == before + 1);
+}
