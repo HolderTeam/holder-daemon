@@ -28,6 +28,7 @@ add_executable(lockfile_tests
   AiThreadRepo_test.cpp
   AiMessageRepo_test.cpp
   Migrations_test.cpp
+  Cascade_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
