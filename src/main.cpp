@@ -8,6 +8,7 @@
 #include "core/Signal.h"
 #include "api/HttpServer.h"
 #include "store/CardStore.h"
+#include "index/FtsIndexer.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
@@ -114,7 +115,8 @@ int main(int argc, char* argv[]) {
 
   spdlog::info("holder boot complete.");
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
   holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store);
   const auto bound = server.start();
 

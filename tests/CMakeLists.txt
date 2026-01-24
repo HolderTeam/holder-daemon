@@ -31,10 +31,12 @@ add_executable(lockfile_tests
   Cascade_test.cpp
   CardPaths_test.cpp
   CardStore_test.cpp
+  FtsIndexer_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/core/CardPaths.cpp
+  ../src/index/FtsIndexer.cpp
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
   ../src/api/Session.cpp

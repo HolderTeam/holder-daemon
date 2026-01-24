@@ -1,0 +1,131 @@
+#include "index/FtsIndexer.h"
+
+#include <sqlite3.h>
+
+#include <stdexcept>
+
+namespace holder::index {
+namespace {
+
+void throw_sqlite(sqlite3* db, const std::string& what) {
+  const char* msg = db ? sqlite3_errmsg(db) : "unknown sqlite error";
+  throw std::runtime_error(what + ": " + msg);
+}
+
+void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
+  if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+    throw std::runtime_error("sqlite bind_text failed");
+  }
+}
+
+} // namespace
+
+FtsIndexer::FtsIndexer(holder::store::Db& db) : db_(db) {}
+
+void FtsIndexer::upsert_card(const std::string& card_id,
+                             const std::string& project_id,
+                             const std::string& title,
+                             const std::string& body) {
+  static constexpr const char* SQL_DELETE =
+      "DELETE FROM cards_fts WHERE card_id = ?;";
+  static constexpr const char* SQL_INSERT =
+      "INSERT INTO cards_fts(card_id, project_id, title, body) "
+      "VALUES(?, ?, ?, ?);";
+
+  sqlite3_stmt* del = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL_DELETE, -1, &del, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete cards_fts failed");
+  }
+  bind_text(del, 1, card_id);
+  const int rc_del = sqlite3_step(del);
+  sqlite3_finalize(del);
+  if (rc_del != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete cards_fts failed");
+  }
+
+  sqlite3_stmt* ins = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL_INSERT, -1, &ins, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare insert cards_fts failed");
+  }
+  bind_text(ins, 1, card_id);
+  bind_text(ins, 2, project_id);
+  bind_text(ins, 3, title);
+  bind_text(ins, 4, body);
+  const int rc_ins = sqlite3_step(ins);
+  sqlite3_finalize(ins);
+  if (rc_ins != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "insert cards_fts failed");
+  }
+}
+
+void FtsIndexer::delete_card(const std::string& card_id) {
+  static constexpr const char* SQL = "DELETE FROM cards_fts WHERE card_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete cards_fts failed");
+  }
+
+  bind_text(stmt, 1, card_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete cards_fts failed");
+  }
+}
+
+void FtsIndexer::upsert_message(const std::string& message_id,
+                                const std::string& thread_id,
+                                const std::string& project_id,
+                                const std::string& content) {
+  static constexpr const char* SQL_DELETE =
+      "DELETE FROM ai_fts WHERE message_id = ?;";
+  static constexpr const char* SQL_INSERT =
+      "INSERT INTO ai_fts(message_id, thread_id, project_id, content) "
+      "VALUES(?, ?, ?, ?);";
+
+  sqlite3_stmt* del = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL_DELETE, -1, &del, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete ai_fts failed");
+  }
+  bind_text(del, 1, message_id);
+  const int rc_del = sqlite3_step(del);
+  sqlite3_finalize(del);
+  if (rc_del != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete ai_fts failed");
+  }
+
+  sqlite3_stmt* ins = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL_INSERT, -1, &ins, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare insert ai_fts failed");
+  }
+  bind_text(ins, 1, message_id);
+  bind_text(ins, 2, thread_id);
+  bind_text(ins, 3, project_id);
+  bind_text(ins, 4, content);
+  const int rc_ins = sqlite3_step(ins);
+  sqlite3_finalize(ins);
+  if (rc_ins != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "insert ai_fts failed");
+  }
+}
+
+void FtsIndexer::delete_message(const std::string& message_id) {
+  static constexpr const char* SQL = "DELETE FROM ai_fts WHERE message_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete ai_fts failed");
+  }
+
+  bind_text(stmt, 1, message_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete ai_fts failed");
+  }
+}
+
+} // namespace holder::index

@@ -58,6 +58,7 @@ add_executable(holder
   src/core/ServerInfo.cpp
   src/core/Signal.cpp
   src/core/CardPaths.cpp
+  src/index/FtsIndexer.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
   src/api/Session.cpp

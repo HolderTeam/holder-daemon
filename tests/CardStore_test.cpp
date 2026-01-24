@@ -12,6 +12,7 @@
 #include "store/CardStore.h"
 #include "store/Db.h"
 #include "store/ProjectRepo.h"
+#include "index/FtsIndexer.h"
 
 #include <git2.h>
 
@@ -110,7 +111,8 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abcd1234";
   card.project_id = "proj-1";
@@ -144,7 +146,8 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abcd5678";
   card.project_id = "proj-1";
@@ -180,7 +183,8 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abcd9999";
   card.project_id = "proj-1";
@@ -210,7 +214,8 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abcf0000";
   card.project_id = "proj-1";
@@ -240,7 +245,8 @@ TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abcd1111";
   card.project_id = "proj-1";
@@ -265,7 +271,8 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, repo, &fts);
   holder::model::Card card;
   card.card_id = "abca2222";
   card.project_id = "proj-1";

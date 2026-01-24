@@ -7,6 +7,7 @@
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
 #include "model/Project.h"
+#include "index/FtsIndexer.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
 #include "store/Db.h"
@@ -83,7 +84,8 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   create_project(db, "proj-1");
   create_thread(db, "thread-1", "proj-1");
 
-  holder::store::AiMessageRepo repo(db);
+  holder::index::FtsIndexer fts(db);
+  holder::store::AiMessageRepo repo(db, &fts);
 
   holder::model::AiMessage msg1;
   msg1.message_id = "msg-1";

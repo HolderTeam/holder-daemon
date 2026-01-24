@@ -66,7 +66,7 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(Db& db) : db_(db) {}
+AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts) : db_(db), fts_(fts) {}
 
 void AiMessageRepo::append(const holder::model::AiMessage& message) {
   static constexpr const char* SQL =
@@ -94,6 +94,26 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
     throw_sqlite(db_.handle(), "insert ai message failed");
+  }
+
+  if (fts_) {
+    static constexpr const char* SQL_PROJECT =
+        "SELECT project_id FROM ai_threads WHERE thread_id = ? LIMIT 1;";
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db_.handle(), SQL_PROJECT, -1, &s, nullptr) != SQLITE_OK) {
+      throw_sqlite(db_.handle(), "prepare fetch thread project_id failed");
+    }
+    bind_text(s, 1, message.thread_id);
+    const int rc2 = sqlite3_step(s);
+    if (rc2 == SQLITE_ROW) {
+      const auto* text = sqlite3_column_text(s, 0);
+      const std::string project_id = text ? reinterpret_cast<const char*>(text) : "";
+      sqlite3_finalize(s);
+      fts_->upsert_message(message.message_id, message.thread_id, project_id, message.content);
+    } else {
+      sqlite3_finalize(s);
+      throw std::runtime_error("thread not found for ai message");
+    }
   }
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "git/GitRepo.h"
+#include "index/FtsIndexer.h"
 #include "model/Card.h"
 #include "store/CardRepo.h"
 #include "store/Db.h"
@@ -12,7 +13,7 @@ namespace holder::store {
 
 class CardStore {
 public:
-  CardStore(Db& db, holder::git::GitRepo& repo);
+  CardStore(Db& db, holder::git::GitRepo& repo, holder::index::FtsIndexer* fts);
 
   void create(holder::model::Card card, const std::string& content);
   void update_content(const std::string& card_id,
@@ -26,6 +27,7 @@ private:
   Db& db_;
   holder::git::GitRepo& repo_;
   CardRepo card_repo_;
+  holder::index::FtsIndexer* fts_ = nullptr;
 };
 
 } // namespace holder::store

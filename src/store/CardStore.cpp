@@ -18,8 +18,8 @@ std::string read_file(const std::filesystem::path& path) {
 
 } // namespace
 
-CardStore::CardStore(Db& db, holder::git::GitRepo& repo)
-    : db_(db), repo_(repo), card_repo_(db) {}
+CardStore::CardStore(Db& db, holder::git::GitRepo& repo, holder::index::FtsIndexer* fts)
+    : db_(db), repo_(repo), card_repo_(db), fts_(fts) {}
 
 void CardStore::create(holder::model::Card card, const std::string& content) {
   const std::string expected = holder::core::card_rel_path(card.card_id);
@@ -45,6 +45,10 @@ void CardStore::create(holder::model::Card card, const std::string& content) {
   } catch (...) {
     std::filesystem::remove(repo_.repo_dir() / card.rel_path);
     throw;
+  }
+
+  if (fts_) {
+    fts_->upsert_card(card.card_id, card.project_id, card.title, content);
   }
 
   repo_.stage_path(card.rel_path);
@@ -77,6 +81,11 @@ void CardStore::update_content(const std::string& card_id,
     card_repo_.update_title(card_id, title.value(), updated_at);
   } else {
     card_repo_.touch_updated(card_id, updated_at);
+  }
+
+  const std::string fts_title = title.has_value() ? title.value() : card.title;
+  if (fts_) {
+    fts_->upsert_card(card.card_id, card.project_id, fts_title, content);
   }
 
   if (!unchanged) {

@@ -7,6 +7,7 @@
 #include "api/HttpServer.h"
 #include "core/Signal.h"
 #include "git/GitRepo.h"
+#include "index/FtsIndexer.h"
 #include "store/CardStore.h"
 #include "store/Db.h"
 #include "store/ProjectRepo.h"
@@ -175,7 +176,8 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
@@ -250,7 +252,8 @@ TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
@@ -306,7 +309,8 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
@@ -365,7 +369,8 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
@@ -414,7 +419,8 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   const auto repo_dir = dir / "repo";
   repo.open_or_init(repo_dir);
 
-  holder::store::CardStore card_store(db, repo);
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
