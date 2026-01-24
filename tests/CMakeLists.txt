@@ -25,6 +25,8 @@ add_executable(lockfile_tests
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/api/HttpServer.cpp
+  ../src/api/Listener.cpp
+  ../src/api/Session.cpp
   ../src/api/Router.cpp
   ../src/store/Db.cpp
 )

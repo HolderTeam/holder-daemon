@@ -4,38 +4,41 @@
 #include "core/Signal.h"
 #include "store/Db.h"
 
+#include <boost/asio.hpp>
+
 #include <chrono>
-#include <memory>
 #include <string>
 
 namespace holder::api {
 
-class Listener;
-
-class HttpServer {
+class Listener {
 public:
   struct BoundInfo {
     std::string bind;
     unsigned short port = 0;
   };
 
-  HttpServer(std::string bind,
-             unsigned short port,
-             holder::store::Db& db,
-             std::string auth_token);
-  ~HttpServer();
+  Listener(std::string bind,
+           unsigned short port,
+           holder::store::Db& db,
+           const std::string& auth_token,
+           const Router& router,
+           std::chrono::steady_clock::time_point started_at);
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
 
 private:
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc_;
+  tcp::acceptor acceptor_;
   std::string bind_;
   unsigned short port_;
   holder::store::Db& db_;
-  std::string auth_token_;
+  const std::string& auth_token_;
+  const Router& router_;
   std::chrono::steady_clock::time_point started_at_;
-  Router router_;
-  std::unique_ptr<Listener> listener_;
 };
 
 } // namespace holder::api
