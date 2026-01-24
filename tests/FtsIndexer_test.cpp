@@ -8,6 +8,7 @@
 #include "store/Db.h"
 
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -140,5 +141,6 @@ TEST_CASE("FtsIndexer search returns snippets", "[fts]") {
   REQUIRE(rows[0].title == "Title");
   REQUIRE(rows[0].created_at == 1);
   REQUIRE(rows[0].updated_at == 2);
+  REQUIRE(std::isfinite(rows[0].rank));
   REQUIRE(rows[0].snippet.find('[') != std::string::npos);
 }

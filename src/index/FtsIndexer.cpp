@@ -134,11 +134,12 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& p
                                                             int offset) {
   static constexpr const char* SQL =
       "SELECT c.card_id, c.title, c.updated_at, c.created_at, "
+      "bm25(cards_fts) AS score, "
       "snippet(cards_fts, 2, '[', ']', '...', 10) "
       "FROM cards_fts "
       "JOIN cards c ON c.card_id = cards_fts.card_id "
       "WHERE cards_fts.project_id = ? AND cards_fts MATCH ? "
-      "ORDER BY rank "
+      "ORDER BY score "
       "LIMIT ? OFFSET ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -163,7 +164,8 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& p
       row.title = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
       row.updated_at = sqlite3_column_int64(stmt, 2);
       row.created_at = sqlite3_column_int64(stmt, 3);
-      const auto* text = sqlite3_column_text(stmt, 4);
+      row.rank = sqlite3_column_double(stmt, 4);
+      const auto* text = sqlite3_column_text(stmt, 5);
       const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
       if (raw.empty()) {
         row.snippet = "";
@@ -190,11 +192,12 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string
                                                                int offset) {
   static constexpr const char* SQL =
       "SELECT m.message_id, m.created_at, "
+      "bm25(ai_fts) AS score, "
       "snippet(ai_fts, 3, '[', ']', '...', 10) "
       "FROM ai_fts "
       "JOIN ai_messages m ON m.message_id = ai_fts.message_id "
       "WHERE ai_fts.project_id = ? AND ai_fts MATCH ? "
-      "ORDER BY rank "
+      "ORDER BY score "
       "LIMIT ? OFFSET ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -217,7 +220,8 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string
       SearchRow row;
       row.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
       row.created_at = sqlite3_column_int64(stmt, 1);
-      const auto* text = sqlite3_column_text(stmt, 2);
+      row.rank = sqlite3_column_double(stmt, 2);
+      const auto* text = sqlite3_column_text(stmt, 3);
       const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
       if (raw.empty()) {
         row.snippet = "";

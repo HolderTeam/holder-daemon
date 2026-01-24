@@ -135,7 +135,8 @@ void Session::run() {
                 {"title", row.title},
                 {"updated_at", row.updated_at},
                 {"created_at", row.created_at},
-                {"snippet", row.snippet}
+                {"snippet", row.snippet},
+                {"rank", row.rank}
               });
             }
             nlohmann::json payload;
@@ -168,7 +169,8 @@ void Session::run() {
               data.push_back({
                 {"message_id", row.id},
                 {"created_at", row.created_at},
-                {"snippet", row.snippet}
+                {"snippet", row.snippet},
+                {"rank", row.rank}
               });
             }
             nlohmann::json payload;

@@ -29,6 +29,7 @@ public:
     long long updated_at = 0;
     long long created_at = 0;
     std::string snippet;
+    double rank = 0.0;
   };
 
   std::vector<SearchRow> search_cards(const std::string& project_id,
