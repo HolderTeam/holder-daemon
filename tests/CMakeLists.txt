@@ -14,8 +14,10 @@ target_include_directories(lock_helper PRIVATE
 add_executable(lockfile_tests
   LockFile_test.cpp
   ServerInfo_test.cpp
+  Signal_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
+  ../src/core/Signal.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src

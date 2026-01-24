@@ -1,14 +1,18 @@
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include "core/LockFile.h"
 #include "core/Paths.h"
 #include "core/ServerInfo.h"
+#include "core/Signal.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
 
 #include <filesystem>
 #include <chrono>
+#include <memory>
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -25,13 +29,23 @@ static std::filesystem::path find_schema_sql() {
 }
 
 int main() {
-  spdlog::info("holder starting…");
-
   auto paths = holder::core::Paths::resolve("holder");
   paths.ensure_dirs();
 
+  const auto log_path = paths.log_dir() / "server.log";
+  auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+  auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
+  auto logger = std::make_shared<spdlog::logger>("holder", spdlog::sinks_init_list{stdout_sink, file_sink});
+  spdlog::set_default_logger(logger);
+  spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+  spdlog::flush_on(spdlog::level::info);
+
+  spdlog::info("holder starting…");
   spdlog::info("data_dir:   {}", paths.data_dir.string());
   spdlog::info("db_path:    {}", paths.db_path().string());
+  spdlog::info("log_path:   {}", log_path.string());
+
+  holder::core::SignalHandler signals;
 
   holder::core::LockFile lock(paths.lock_path());
   if (!lock.try_acquire()) {
@@ -71,5 +85,6 @@ int main() {
   repo.commit("Bootstrap holder repository");
 
   spdlog::info("holder boot complete.");
+  spdlog::shutdown();
   return 0;
 }

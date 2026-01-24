@@ -56,6 +56,7 @@ add_executable(holder
   src/core/Paths.cpp
   src/core/LockFile.cpp
   src/core/ServerInfo.cpp
+  src/core/Signal.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
