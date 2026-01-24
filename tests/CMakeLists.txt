@@ -38,13 +38,16 @@ add_executable(lockfile_tests
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
+  ProjectPaths_test.cpp
   CardStore_test.cpp
   FtsIndexer_test.cpp
   Reindexer_test.cpp
   ../src/core/LockFile.cpp
+  ../src/core/Paths.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/core/CardPaths.cpp
+  ../src/core/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp
   ../src/api/HttpServer.cpp
@@ -85,6 +88,7 @@ target_link_libraries(lockfile_tests PRIVATE
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
   spdlog::spdlog
+  XdgUtils::BaseDir
 )
 
 if(TARGET PkgConfig::LIBGIT2)

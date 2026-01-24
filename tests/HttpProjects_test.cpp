@@ -4,6 +4,7 @@ using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
 using holder::test::ensure_uuid_seeded;
+using holder::test::EnvGuard;
 
 TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   const auto dir = make_temp_dir();
@@ -11,6 +12,10 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   auto db = open_db_with_schema(db_path);
   ensure_uuid_seeded();
+
+  const auto projects_root = dir / "projects_root";
+  std::filesystem::create_directories(projects_root);
+  EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -42,8 +47,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(created["ok"] == true);
 
   nlohmann::json create_auto = {
-      {"name", "Auto Project"},
-      {"root_path", "/tmp/auto"}
+      {"name", "Auto Project"}
   };
 
   const auto created_auto = http_json_request(bound.bind, bound.port, token,
@@ -63,6 +67,10 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                               boost::beast::http::status::ok);
   REQUIRE(fetched_auto["data"]["created_at"].get<long long>() > 0);
   REQUIRE(fetched_auto["data"]["updated_at"].get<long long>() > 0);
+  REQUIRE(fetched_auto["data"]["root_path"].is_string());
+  REQUIRE(fetched_auto["data"]["root_path"].get<std::string>().size() > 0);
+  const std::string auto_root = fetched_auto["data"]["root_path"].get<std::string>();
+  REQUIRE(auto_root.rfind(projects_root.string(), 0) == 0);
 
   const auto listed = http_json_request(bound.bind, bound.port, token,
                                         boost::beast::http::verb::get,

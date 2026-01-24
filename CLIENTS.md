@@ -82,11 +82,12 @@ This is the expected client flow for a brand new user:
 1. `GET /projects` to list existing projects.
 2. If empty, `POST /projects` with minimal fields:
 ```json
-{ "name": "My Project", "root_path": "/home/me/notes" }
+{ "name": "My Project" }
 ```
 The server generates:
 - `project_id`
 - `created_at` / `updated_at` if omitted or 0.
+- `root_path` if omitted.
 
 3. Create the first card:
 ```json

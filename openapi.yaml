@@ -256,7 +256,7 @@ components:
           format: int64
     ProjectCreateRequest:
       type: object
-      required: [name, root_path]
+      required: [name]
       properties:
         project_id:
           type: string
@@ -265,6 +265,7 @@ components:
           type: string
         root_path:
           type: string
+          description: Optional; server chooses a default if omitted.
         created_at:
           type: integer
           format: int64

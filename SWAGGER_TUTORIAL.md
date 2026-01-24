@@ -20,15 +20,15 @@ Open Swagger UI:
 
 In Swagger UI, open `POST /projects` and click "Try it out".
 
-Request body:
+Request body (minimal):
 ```json
 {
-  "name": "My First Project",
-  "root_path": "/home/me/notes"
+  "name": "My First Project"
 }
 ```
 
-Execute. Copy the `project_id` from the response for the next steps.
+Execute. The server will pick a default `root_path`. Copy the `project_id` from
+the response for the next steps.
 
 ## 2) Create two cards
 

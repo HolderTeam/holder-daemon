@@ -4,6 +4,7 @@ using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
 using holder::test::ensure_uuid_seeded;
+using holder::test::EnvGuard;
 
 TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   const auto dir = make_temp_dir();
@@ -11,6 +12,10 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
 
   auto db = open_db_with_schema(db_path);
   ensure_uuid_seeded();
+
+  const auto projects_root = dir / "projects_root";
+  std::filesystem::create_directories(projects_root);
+  EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
   holder::git::GitRepo repo;
   const auto repo_dir = dir / "repo";
@@ -42,8 +47,7 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   REQUIRE(initial_projects["data"].is_array());
 
   nlohmann::json project_body = {
-      {"name", "First Project"},
-      {"root_path", "/tmp/first"}
+      {"name", "First Project"}
   };
 
   const auto created_project = http_json_request(bound.bind, bound.port, token,

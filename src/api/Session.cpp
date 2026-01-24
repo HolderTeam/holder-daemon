@@ -1,6 +1,7 @@
 #include "api/Session.h"
 
 #include "core/CardPaths.h"
+#include "core/ProjectPaths.h"
 #include "core/ServerInfo.h"
 #include "store/CardRepo.h"
 #include "store/ProjectRepo.h"
@@ -411,7 +412,7 @@ void Session::run() {
     } else if (path == "/projects" && req.method() == http::verb::post) {
       try {
         const auto body = nlohmann::json::parse(req.body());
-        if (!body.contains("name") || !body.contains("root_path")) {
+        if (!body.contains("name")) {
           res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
         } else {
           holder::model::Project project;
@@ -422,7 +423,9 @@ void Session::run() {
             project.project_id = generate_uuid_v4();
           }
           project.name = body.at("name").get<std::string>();
-          project.root_path = body.at("root_path").get<std::string>();
+          if (body.contains("root_path") && !body.at("root_path").is_null()) {
+            project.root_path = body.at("root_path").get<std::string>();
+          }
           if (body.contains("created_at") && !body.at("created_at").is_null()) {
             project.created_at = body.at("created_at").get<long long>();
           }
@@ -437,6 +440,11 @@ void Session::run() {
           }
 
           holder::store::ProjectRepo repo(db_);
+          if (project.root_path.empty()) {
+            const auto base_root = holder::core::default_projects_root();
+            const auto slug = holder::core::slugify(project.name);
+            project.root_path = holder::core::unique_project_root(base_root, slug, repo.list());
+          }
           repo.create(project);
 
           nlohmann::json data;
