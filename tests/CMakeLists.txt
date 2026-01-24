@@ -21,6 +21,7 @@ add_executable(lockfile_tests
   Signal_test.cpp
   HttpHealth_test.cpp
   HttpFirstRun_test.cpp
+  HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
   HttpDocs_test.cpp
   HttpCards_test.cpp
