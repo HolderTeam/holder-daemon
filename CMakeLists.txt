@@ -55,6 +55,7 @@ add_executable(holder
   src/main.cpp
   src/core/Paths.cpp
   src/core/LockFile.cpp
+  src/core/ServerInfo.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
@@ -135,7 +136,9 @@ if(BUILD_TESTING)
 
   add_executable(lockfile_tests
     tests/LockFile_test.cpp
+    tests/ServerInfo_test.cpp
     src/core/LockFile.cpp
+    src/core/ServerInfo.cpp
   )
   target_include_directories(lockfile_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

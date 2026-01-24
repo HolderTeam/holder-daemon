@@ -2,11 +2,13 @@
 
 #include "core/LockFile.h"
 #include "core/Paths.h"
+#include "core/ServerInfo.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
 
 #include <filesystem>
+#include <chrono>
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -43,6 +45,18 @@ int main() {
 
   const auto schema_path = find_schema_sql();
   holder::store::Migrations::ensure_schema(db, schema_path);
+
+  holder::core::ServerInfo info;
+  info.pid = holder::core::current_pid();
+  info.bind = "127.0.0.1";
+  info.port = 0;
+  info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+  info.api_version = "0.1";
+  info.server_version = CARD_SERVER_VERSION;
+  info.auth_token = holder::core::generate_auth_token();
+  holder::core::write_server_info(paths.info_path(), info);
 
   holder::git::GitRepo repo;
   repo.open_or_init(paths.data_dir / "repo");
