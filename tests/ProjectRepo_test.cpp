@@ -11,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 
 namespace {
@@ -86,6 +87,22 @@ TEST_CASE("ProjectRepo CRUD", "[projectrepo]") {
   REQUIRE(updated_root.has_value());
   REQUIRE(updated_root->root_path == "/tmp/beta");
   REQUIRE(updated_root->updated_at == 30);
+
+  repo.update_git_remote("proj-1", std::optional<std::string>("git@github.com:me/repo.git"), 35);
+  repo.update_git_provider("proj-1", std::optional<std::string>("github"), 36);
+  const auto updated_git = repo.get("proj-1");
+  REQUIRE(updated_git.has_value());
+  REQUIRE(updated_git->git_remote_url.has_value());
+  REQUIRE(updated_git->git_remote_url.value() == "git@github.com:me/repo.git");
+  REQUIRE(updated_git->git_provider.has_value());
+  REQUIRE(updated_git->git_provider.value() == "github");
+
+  repo.update_git_remote("proj-1", std::nullopt, 37);
+  repo.update_git_provider("proj-1", std::nullopt, 38);
+  const auto cleared_git = repo.get("proj-1");
+  REQUIRE(cleared_git.has_value());
+  REQUIRE_FALSE(cleared_git->git_remote_url.has_value());
+  REQUIRE_FALSE(cleared_git->git_provider.has_value());
 
   repo.touch_updated("proj-1", 40);
   const auto touched = repo.get("proj-1");

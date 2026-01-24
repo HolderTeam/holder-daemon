@@ -91,6 +91,8 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   nlohmann::json update_body = {
       {"name", "Project Uno"},
+      {"git_remote_url", "git@github.com:me/demo.git"},
+      {"git_provider", "github"},
       {"updated_at", 20}
   };
 
@@ -107,6 +109,28 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                                nlohmann::json::object(),
                                                boost::beast::http::status::ok);
   REQUIRE(fetched_after["data"]["name"] == "Project Uno");
+  REQUIRE(fetched_after["data"]["git_remote_url"] == "git@github.com:me/demo.git");
+  REQUIRE(fetched_after["data"]["git_provider"] == "github");
+
+  nlohmann::json clear_git = {
+      {"git_remote_url", nullptr},
+      {"git_provider", nullptr},
+      {"updated_at", 21}
+  };
+
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::patch,
+                    "/projects/proj-1",
+                    clear_git,
+                    boost::beast::http::status::ok);
+
+  const auto fetched_cleared = http_json_request(bound.bind, bound.port, token,
+                                                 boost::beast::http::verb::get,
+                                                 "/projects/proj-1",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::ok);
+  REQUIRE(fetched_cleared["data"]["git_remote_url"].is_null());
+  REQUIRE(fetched_cleared["data"]["git_provider"].is_null());
 
   nlohmann::json create_body2 = {
       {"project_id", "proj-2"},
@@ -132,7 +156,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   const auto filtered_by_updated = http_json_request(bound.bind, bound.port, token,
                                                      boost::beast::http::verb::get,
-                                                     "/projects?updated_after=21&updated_before=40",
+                                                     "/projects?updated_after=22&updated_before=35",
                                                      nlohmann::json::object(),
                                                      boost::beast::http::status::ok);
   REQUIRE(filtered_by_updated["data"].size() == 1);
