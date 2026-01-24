@@ -143,7 +143,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   db.open(db_path);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -180,7 +180,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -256,7 +256,7 @@ TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -313,7 +313,7 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
   holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -373,7 +373,7 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
   holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -423,7 +423,7 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   holder::store::CardStore card_store(db, repo, &fts);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();

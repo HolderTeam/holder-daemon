@@ -56,13 +56,15 @@ Session::Session(tcp::socket socket,
                  const std::string& auth_token,
                  const Router& router,
                  std::chrono::steady_clock::time_point started_at,
-                 holder::store::CardStore* card_store)
+                 holder::store::CardStore* card_store,
+                 holder::index::FtsIndexer* fts)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
       router_(router),
       started_at_(started_at),
-      card_store_(card_store) {}
+      card_store_(card_store),
+      fts_(fts) {}
 
 void Session::run() {
   namespace beast = boost::beast;
@@ -94,7 +96,81 @@ void Session::run() {
     const auto target = req.target();
     const std::string target_str(target.data(), target.size());
 
-    if (target_str == "/cards" && req.method() == http::verb::post) {
+    const auto query_pos = target_str.find('?');
+    const std::string path = (query_pos == std::string::npos)
+                                 ? target_str
+                                 : target_str.substr(0, query_pos);
+    const std::string query_string =
+        (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
+
+    auto param = [&](const std::string& key) -> std::string {
+      const std::string needle = key + "=";
+      const auto pos = query_string.find(needle);
+      if (pos == std::string::npos) return {};
+      const auto start = pos + needle.size();
+      const auto end = query_string.find('&', start);
+      return query_string.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    };
+
+    if (path == "/search/cards" && req.method() == http::verb::get) {
+      if (!fts_) {
+        res = error_response(http::status::not_implemented, "not_implemented", "Search unavailable.");
+      } else {
+        const std::string project_id = param("project_id");
+        const std::string q = param("q");
+        int limit = 20;
+        int offset = 0;
+        if (!param("limit").empty()) limit = std::stoi(param("limit"));
+        if (!param("offset").empty()) offset = std::stoi(param("offset"));
+
+        if (project_id.empty() || q.empty()) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
+        } else {
+          try {
+            const auto rows = fts_->search_cards(project_id, q, limit, offset);
+            nlohmann::json data = nlohmann::json::array();
+            for (const auto& row : rows) {
+              data.push_back({{"card_id", row.id}, {"snippet", row.snippet}});
+            }
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+            res = json_response(http::status::ok, payload);
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        }
+      }
+    } else if (path == "/search/ai" && req.method() == http::verb::get) {
+      if (!fts_) {
+        res = error_response(http::status::not_implemented, "not_implemented", "Search unavailable.");
+      } else {
+        const std::string project_id = param("project_id");
+        const std::string q = param("q");
+        int limit = 20;
+        int offset = 0;
+        if (!param("limit").empty()) limit = std::stoi(param("limit"));
+        if (!param("offset").empty()) offset = std::stoi(param("offset"));
+
+        if (project_id.empty() || q.empty()) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
+        } else {
+          try {
+            const auto rows = fts_->search_messages(project_id, q, limit, offset);
+            nlohmann::json data = nlohmann::json::array();
+            for (const auto& row : rows) {
+              data.push_back({{"message_id", row.id}, {"snippet", row.snippet}});
+            }
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+            res = json_response(http::status::ok, payload);
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        }
+      }
+    } else if (path == "/cards" && req.method() == http::verb::post) {
       if (!card_store_) {
         res = error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");
       } else {
@@ -145,8 +221,8 @@ void Session::run() {
           }
         }
       }
-    } else if (target_str.rfind("/cards/", 0) == 0) {
-      const std::string card_id = target_str.substr(std::string("/cards/").size());
+    } else if (path.rfind("/cards/", 0) == 0) {
+      const std::string card_id = path.substr(std::string("/cards/").size());
       if (card_id.empty()) {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (!card_store_) {

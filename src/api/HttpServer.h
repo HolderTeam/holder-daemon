@@ -2,6 +2,7 @@
 
 #include "api/Router.h"
 #include "core/Signal.h"
+#include "index/FtsIndexer.h"
 #include "store/Db.h"
 
 #include <chrono>
@@ -27,7 +28,8 @@ public:
              unsigned short port,
              holder::store::Db& db,
              std::string auth_token,
-             holder::store::CardStore* card_store);
+             holder::store::CardStore* card_store,
+             holder::index::FtsIndexer* fts);
   ~HttpServer();
 
   BoundInfo start();
@@ -42,6 +44,7 @@ private:
   Router router_;
   std::unique_ptr<Listener> listener_;
   holder::store::CardStore* card_store_ = nullptr;
+  holder::index::FtsIndexer* fts_ = nullptr;
 };
 
 } // namespace holder::api

@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
 
   holder::index::FtsIndexer fts(db);
   holder::store::CardStore card_store(db, repo, &fts);
-  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store);
+  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts);
   const auto bound = server.start();
 
   info.pid = holder::core::current_pid();

@@ -113,3 +113,19 @@ TEST_CASE("FtsIndexer message upsert/delete", "[fts]") {
   fts.delete_message("msg-1");
   REQUIRE(count_ai_fts(db, "gamma") == 0);
 }
+
+TEST_CASE("FtsIndexer search returns snippets", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  fts.upsert_card("card-1", "proj-1", "Title", "The quick brown fox");
+  const auto rows = fts.search_cards("proj-1", "brown", 10, 0);
+  REQUIRE(rows.size() == 1);
+  REQUIRE(rows[0].id == "card-1");
+  REQUIRE(rows[0].snippet.find('[') != std::string::npos);
+}

@@ -3,6 +3,7 @@
 #include "store/Db.h"
 
 #include <string>
+#include <vector>
 
 namespace holder::index {
 
@@ -21,6 +22,20 @@ public:
                       const std::string& project_id,
                       const std::string& content);
   void delete_message(const std::string& message_id);
+
+  struct SearchRow {
+    std::string id;
+    std::string snippet;
+  };
+
+  std::vector<SearchRow> search_cards(const std::string& project_id,
+                                      const std::string& query,
+                                      int limit,
+                                      int offset);
+  std::vector<SearchRow> search_messages(const std::string& project_id,
+                                         const std::string& query,
+                                         int limit,
+                                         int offset);
 
 private:
   holder::store::Db& db_;

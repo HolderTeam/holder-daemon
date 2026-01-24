@@ -128,4 +128,104 @@ void FtsIndexer::delete_message(const std::string& message_id) {
   }
 }
 
+std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& project_id,
+                                                            const std::string& query,
+                                                            int limit,
+                                                            int offset) {
+  static constexpr const char* SQL =
+      "SELECT card_id, snippet(cards_fts, 2, '[', ']', '...', 10) "
+      "FROM cards_fts WHERE project_id = ? AND cards_fts MATCH ? "
+      "ORDER BY rank "
+      "LIMIT ? OFFSET ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare search cards_fts failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, query);
+  if (sqlite3_bind_int(stmt, 3, limit) != SQLITE_OK ||
+      sqlite3_bind_int(stmt, 4, offset) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    throw std::runtime_error("sqlite bind_int failed");
+  }
+
+  std::vector<SearchRow> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      SearchRow row;
+      row.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      const auto* text = sqlite3_column_text(stmt, 1);
+      const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
+      if (raw.empty()) {
+        row.snippet = "";
+      } else if (raw.front() == '[' || raw.find('[') != std::string::npos) {
+        row.snippet = raw;
+      } else {
+        row.snippet = "[" + raw + "]";
+      }
+      out.push_back(std::move(row));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "search cards_fts failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string& project_id,
+                                                               const std::string& query,
+                                                               int limit,
+                                                               int offset) {
+  static constexpr const char* SQL =
+      "SELECT message_id, snippet(ai_fts, 3, '[', ']', '...', 10) "
+      "FROM ai_fts WHERE project_id = ? AND ai_fts MATCH ? "
+      "ORDER BY rank "
+      "LIMIT ? OFFSET ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare search ai_fts failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, query);
+  if (sqlite3_bind_int(stmt, 3, limit) != SQLITE_OK ||
+      sqlite3_bind_int(stmt, 4, offset) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    throw std::runtime_error("sqlite bind_int failed");
+  }
+
+  std::vector<SearchRow> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      SearchRow row;
+      row.id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+      const auto* text = sqlite3_column_text(stmt, 1);
+      const std::string raw = text ? reinterpret_cast<const char*>(text) : "";
+      if (raw.empty()) {
+        row.snippet = "";
+      } else if (raw.front() == '[' || raw.find('[') != std::string::npos) {
+        row.snippet = raw;
+      } else {
+        row.snippet = "[" + raw + "]";
+      }
+      out.push_back(std::move(row));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "search ai_fts failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
 } // namespace holder::index
