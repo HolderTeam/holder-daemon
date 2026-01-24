@@ -22,6 +22,7 @@ add_executable(lockfile_tests
   HttpServer_test.cpp
   Router_test.cpp
   ProjectRepo_test.cpp
+  CardRepo_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
@@ -30,6 +31,7 @@ add_executable(lockfile_tests
   ../src/api/Session.cpp
   ../src/api/Router.cpp
   ../src/store/ProjectRepo.cpp
+  ../src/store/CardRepo.cpp
   ../src/store/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
