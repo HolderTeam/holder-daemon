@@ -552,6 +552,49 @@ void Session::run() {
           }
         }
       }
+    } else if (path == "/cards" && req.method() == http::verb::get) {
+      const std::string project_id = param("project_id");
+      const std::string parent_raw = param("parent_card_id");
+      if (project_id.empty()) {
+        res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      } else {
+        try {
+          holder::store::CardRepo repo(db_);
+          std::optional<std::string> parent;
+          if (!parent_raw.empty()) {
+            parent = parent_raw;
+          }
+          const auto cards = repo.list(project_id, parent);
+          nlohmann::json data = nlohmann::json::array();
+          for (const auto& card : cards) {
+            nlohmann::json item;
+            item["card_id"] = card.card_id;
+            item["project_id"] = card.project_id;
+            item["title"] = card.title;
+            item["rel_path"] = card.rel_path;
+            item["sort_key"] = card.sort_key;
+            item["created_at"] = card.created_at;
+            item["updated_at"] = card.updated_at;
+            if (card.parent_card_id.has_value()) {
+              item["parent_card_id"] = card.parent_card_id.value();
+            } else {
+              item["parent_card_id"] = nullptr;
+            }
+            if (card.deleted_at.has_value()) {
+              item["deleted_at"] = card.deleted_at.value();
+            } else {
+              item["deleted_at"] = nullptr;
+            }
+            data.push_back(std::move(item));
+          }
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = data;
+          res = json_response(http::status::ok, payload);
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::internal_server_error, "error", ex.what());
+        }
+      }
     } else if (path == "/cards" && req.method() == http::verb::post) {
       if (!card_store_) {
         res = error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");

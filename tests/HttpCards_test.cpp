@@ -57,6 +57,16 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(fetched["data"]["title"] == "First");
   REQUIRE(fetched["data"]["content"] == "hello");
 
+  const auto listed = http_json_request(bound.bind, bound.port, token,
+                                        boost::beast::http::verb::get,
+                                        "/cards?project_id=proj-1",
+                                        nlohmann::json::object(),
+                                        boost::beast::http::status::ok);
+  REQUIRE(listed["ok"] == true);
+  REQUIRE(listed["data"].is_array());
+  REQUIRE(listed["data"].size() == 1);
+  REQUIRE(listed["data"][0]["card_id"] == "abcd1234");
+
   nlohmann::json update_body = {
       {"title", "First Updated"},
       {"content", "hello world"},

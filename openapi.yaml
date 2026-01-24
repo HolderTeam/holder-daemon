@@ -149,6 +149,46 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/CardData"
+    CardListItem:
+      type: object
+      required:
+        [card_id, project_id, title, rel_path, sort_key, created_at, updated_at]
+      properties:
+        card_id:
+          type: string
+        project_id:
+          type: string
+        title:
+          type: string
+        rel_path:
+          type: string
+        sort_key:
+          type: number
+          format: double
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        parent_card_id:
+          type: string
+          nullable: true
+        deleted_at:
+          type: integer
+          format: int64
+          nullable: true
+    CardListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardListItem"
     CardPatchResponse:
       type: object
       required: [ok, data]
@@ -522,6 +562,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /cards:
+    get:
+      summary: List cards
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: parent_card_id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardListResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Create a card
       requestBody:
