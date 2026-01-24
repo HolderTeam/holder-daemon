@@ -19,7 +19,11 @@ add_executable(lockfile_tests
   LockFile_test.cpp
   ServerInfo_test.cpp
   Signal_test.cpp
-  HttpServer_test.cpp
+  HttpHealth_test.cpp
+  HttpProjects_test.cpp
+  HttpDocs_test.cpp
+  HttpCards_test.cpp
+  HttpSearch_test.cpp
   Router_test.cpp
   ProjectRepo_test.cpp
   CardRepo_test.cpp
