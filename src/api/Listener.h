@@ -2,6 +2,7 @@
 
 #include "api/Router.h"
 #include "core/Signal.h"
+#include "store/CardStore.h"
 #include "store/Db.h"
 
 #include <boost/asio.hpp>
@@ -23,7 +24,8 @@ public:
            holder::store::Db& db,
            const std::string& auth_token,
            const Router& router,
-           std::chrono::steady_clock::time_point started_at);
+           std::chrono::steady_clock::time_point started_at,
+           holder::store::CardStore* card_store);
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
@@ -39,6 +41,7 @@ private:
   const std::string& auth_token_;
   const Router& router_;
   std::chrono::steady_clock::time_point started_at_;
+  holder::store::CardStore* card_store_ = nullptr;
 };
 
 } // namespace holder::api

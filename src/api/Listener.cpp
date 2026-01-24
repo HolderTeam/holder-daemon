@@ -19,14 +19,16 @@ Listener::Listener(std::string bind,
                    holder::store::Db& db,
                    const std::string& auth_token,
                    const Router& router,
-                   std::chrono::steady_clock::time_point started_at)
+                   std::chrono::steady_clock::time_point started_at,
+                   holder::store::CardStore* card_store)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
       db_(db),
       auth_token_(auth_token),
       router_(router),
-      started_at_(started_at) {}
+      started_at_(started_at),
+      card_store_(card_store) {}
 
 Listener::BoundInfo Listener::start() {
   boost::system::error_code ec;
@@ -71,7 +73,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       continue;
     }
 
-    Session session(std::move(socket), db_, auth_token_, router_, started_at_);
+    Session session(std::move(socket), db_, auth_token_, router_, started_at_, card_store_);
     session.run();
   }
 }

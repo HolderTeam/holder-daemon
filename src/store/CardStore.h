@@ -19,6 +19,8 @@ public:
                       const std::string& content,
                       const std::optional<std::string>& title,
                       long long updated_at);
+  std::optional<holder::model::Card> get(const std::string& card_id) const;
+  std::optional<std::string> get_content(const holder::model::Card& card) const;
 
 private:
   Db& db_;

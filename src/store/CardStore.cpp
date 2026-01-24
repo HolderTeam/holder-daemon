@@ -77,4 +77,22 @@ void CardStore::update_content(const std::string& card_id,
   }
 }
 
+std::optional<holder::model::Card> CardStore::get(const std::string& card_id) const {
+  return card_repo_.get(card_id);
+}
+
+std::optional<std::string> CardStore::get_content(const holder::model::Card& card) const {
+  const std::string expected = holder::core::card_rel_path(card.card_id);
+  if (card.rel_path != expected) {
+    throw std::runtime_error("card rel_path does not match card_id");
+  }
+
+  const auto full_path = repo_.repo_dir() / card.rel_path;
+  if (!std::filesystem::exists(full_path)) {
+    return std::nullopt;
+  }
+
+  return read_file(full_path);
+}
+
 } // namespace holder::store

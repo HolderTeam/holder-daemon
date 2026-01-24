@@ -8,6 +8,10 @@
 #include <memory>
 #include <string>
 
+namespace holder::store {
+class CardStore;
+}
+
 namespace holder::api {
 
 class Listener;
@@ -22,7 +26,8 @@ public:
   HttpServer(std::string bind,
              unsigned short port,
              holder::store::Db& db,
-             std::string auth_token);
+             std::string auth_token,
+             holder::store::CardStore* card_store);
   ~HttpServer();
 
   BoundInfo start();
@@ -36,6 +41,7 @@ private:
   std::chrono::steady_clock::time_point started_at_;
   Router router_;
   std::unique_ptr<Listener> listener_;
+  holder::store::CardStore* card_store_ = nullptr;
 };
 
 } // namespace holder::api

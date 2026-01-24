@@ -72,7 +72,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   db.open(db_path);
 
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();

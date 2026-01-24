@@ -1,5 +1,6 @@
 #include "api/Session.h"
 
+#include "core/CardPaths.h"
 #include "core/ServerInfo.h"
 
 #include <boost/beast/core.hpp>
@@ -54,12 +55,14 @@ Session::Session(tcp::socket socket,
                  holder::store::Db& db,
                  const std::string& auth_token,
                  const Router& router,
-                 std::chrono::steady_clock::time_point started_at)
+                 std::chrono::steady_clock::time_point started_at,
+                 holder::store::CardStore* card_store)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
       router_(router),
-      started_at_(started_at) {}
+      started_at_(started_at),
+      card_store_(card_store) {}
 
 void Session::run() {
   namespace beast = boost::beast;
@@ -85,8 +88,135 @@ void Session::run() {
 
   if (!is_authorized(req, auth_token_)) {
     res = error_response(http::status::unauthorized, "unauthorized", "Missing or invalid token.");
-  } else if (!router_.dispatch(req, res)) {
-    res = error_response(http::status::not_found, "not_found", "Route not found.");
+  } else if (router_.dispatch(req, res)) {
+    // handled
+  } else {
+    const auto target = req.target();
+    const std::string target_str(target.data(), target.size());
+
+    if (target_str == "/cards" && req.method() == http::verb::post) {
+      if (!card_store_) {
+        res = error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");
+      } else {
+        try {
+          const auto body = nlohmann::json::parse(req.body());
+          if (!body.contains("card_id") || !body.contains("project_id") ||
+              !body.contains("title") || !body.contains("content") ||
+              !body.contains("created_at") || !body.contains("updated_at")) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+          } else {
+            holder::model::Card card;
+            card.card_id = body.at("card_id").get<std::string>();
+            card.project_id = body.at("project_id").get<std::string>();
+            card.title = body.at("title").get<std::string>();
+            card.created_at = body.at("created_at").get<long long>();
+            card.updated_at = body.at("updated_at").get<long long>();
+            if (body.contains("parent_card_id") && !body.at("parent_card_id").is_null()) {
+              card.parent_card_id = body.at("parent_card_id").get<std::string>();
+            }
+            if (body.contains("sort_key")) {
+              card.sort_key = body.at("sort_key").get<double>();
+            }
+            if (body.contains("rel_path") && !body.at("rel_path").is_null()) {
+              card.rel_path = body.at("rel_path").get<std::string>();
+            }
+
+            const std::string content = body.at("content").get<std::string>();
+            if (card.rel_path.empty()) {
+              card.rel_path = holder::core::card_rel_path(card.card_id);
+            }
+            card_store_->create(card, content);
+
+            nlohmann::json data;
+            data["card_id"] = card.card_id;
+            data["rel_path"] = card.rel_path;
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+
+            res = json_response(http::status::created, payload);
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (target_str.rfind("/cards/", 0) == 0) {
+      const std::string card_id = target_str.substr(std::string("/cards/").size());
+      if (card_id.empty()) {
+        res = error_response(http::status::not_found, "not_found", "Route not found.");
+      } else if (!card_store_) {
+        res = error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");
+      } else if (req.method() == http::verb::get) {
+        try {
+          const auto card_opt = card_store_->get(card_id);
+          if (!card_opt.has_value()) {
+            res = error_response(http::status::not_found, "not_found", "Card not found.");
+          } else {
+            const auto& card = card_opt.value();
+            const auto content_opt = card_store_->get_content(card);
+            if (!content_opt.has_value()) {
+              res = error_response(http::status::not_found, "not_found", "Card content missing.");
+            } else {
+              nlohmann::json data;
+              data["card_id"] = card.card_id;
+              data["project_id"] = card.project_id;
+              data["title"] = card.title;
+              data["rel_path"] = card.rel_path;
+              data["sort_key"] = card.sort_key;
+              data["created_at"] = card.created_at;
+              data["updated_at"] = card.updated_at;
+              if (card.parent_card_id.has_value()) {
+                data["parent_card_id"] = card.parent_card_id.value();
+              } else {
+                data["parent_card_id"] = nullptr;
+              }
+              if (card.deleted_at.has_value()) {
+                data["deleted_at"] = card.deleted_at.value();
+              } else {
+                data["deleted_at"] = nullptr;
+              }
+              data["content"] = content_opt.value();
+
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = data;
+
+              res = json_response(http::status::ok, payload);
+            }
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::internal_server_error, "error", ex.what());
+        }
+      } else if (req.method() == http::verb::patch) {
+        try {
+          const auto body = nlohmann::json::parse(req.body());
+          if (!body.contains("content") || !body.contains("updated_at")) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+          } else {
+            std::optional<std::string> title;
+            if (body.contains("title") && !body.at("title").is_null()) {
+              title = body.at("title").get<std::string>();
+            }
+            const std::string content = body.at("content").get<std::string>();
+            const long long updated_at = body.at("updated_at").get<long long>();
+
+            card_store_->update_content(card_id, content, title, updated_at);
+
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = {{"card_id", card_id}};
+
+            res = json_response(http::status::ok, payload);
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      } else {
+        res = error_response(http::status::not_found, "not_found", "Route not found.");
+      }
+    } else {
+      res = error_response(http::status::not_found, "not_found", "Route not found.");
+    }
   }
 
   http::write(socket_, res, ec);

@@ -7,6 +7,7 @@
 #include "core/ServerInfo.h"
 #include "core/Signal.h"
 #include "api/HttpServer.h"
+#include "store/CardStore.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
@@ -99,15 +100,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  holder::api::HttpServer server(bind, port, db, info.auth_token);
-  const auto bound = server.start();
-
-  info.pid = holder::core::current_pid();
-  info.bind = bound.bind;
-  info.port = bound.port;
-  holder::core::write_server_info(paths.info_path(), info);
-  spdlog::info("listening on {}:{}", info.bind, info.port);
-
   holder::git::GitRepo repo;
   repo.open_or_init(paths.data_dir / "repo");
 
@@ -121,6 +113,16 @@ int main(int argc, char* argv[]) {
   repo.commit("Bootstrap holder repository");
 
   spdlog::info("holder boot complete.");
+
+  holder::store::CardStore card_store(db, repo);
+  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store);
+  const auto bound = server.start();
+
+  info.pid = holder::core::current_pid();
+  info.bind = bound.bind;
+  info.port = bound.port;
+  holder::core::write_server_info(paths.info_path(), info);
+  spdlog::info("listening on {}:{}", info.bind, info.port);
 
   server.run(signals);
 
