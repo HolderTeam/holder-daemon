@@ -25,6 +25,7 @@ add_executable(lockfile_tests
   CardRepo_test.cpp
   LinkRepo_test.cpp
   ResourceRepo_test.cpp
+  AiThreadRepo_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
@@ -36,6 +37,7 @@ add_executable(lockfile_tests
   ../src/store/CardRepo.cpp
   ../src/store/LinkRepo.cpp
   ../src/store/ResourceRepo.cpp
+  ../src/store/AiThreadRepo.cpp
   ../src/store/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
