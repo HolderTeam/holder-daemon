@@ -30,6 +30,7 @@ add_executable(lockfile_tests
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
+  CardStore_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
@@ -38,6 +39,7 @@ add_executable(lockfile_tests
   ../src/api/Listener.cpp
   ../src/api/Session.cpp
   ../src/api/Router.cpp
+  ../src/git/GitRepo.cpp
   ../src/store/ProjectRepo.cpp
   ../src/store/CardRepo.cpp
   ../src/store/LinkRepo.cpp
@@ -45,6 +47,7 @@ add_executable(lockfile_tests
   ../src/store/AiThreadRepo.cpp
   ../src/store/AiMessageRepo.cpp
   ../src/store/Migrations.cpp
+  ../src/store/CardStore.cpp
   ../src/store/Tx.cpp
   ../src/store/Db.cpp
 )
@@ -71,6 +74,10 @@ target_link_libraries(lockfile_tests PRIVATE
   nlohmann_json::nlohmann_json
   spdlog::spdlog
 )
+
+if(TARGET PkgConfig::LIBGIT2)
+  target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBGIT2)
+endif()
 
 if(COMMAND catch_discover_tests)
   catch_discover_tests(lockfile_tests)

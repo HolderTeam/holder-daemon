@@ -68,6 +68,7 @@ add_executable(holder
   src/store/ResourceRepo.cpp
   src/store/AiThreadRepo.cpp
   src/store/AiMessageRepo.cpp
+  src/store/CardStore.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
