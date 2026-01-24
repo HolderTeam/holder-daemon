@@ -75,18 +75,40 @@ All JSON responses are standardized:
 { "ok": false, "error": { "code": "...", "message": "..." } }
 ```
 
-## 5) Typical request flow (future-facing)
+## 5) First-run flow (create project + first card)
 
-Once project and card endpoints are implemented, a client flow should look
-like:
+This is the expected client flow for a brand new user:
+
+1. `GET /projects` to list existing projects.
+2. If empty, `POST /projects` with minimal fields:
+```json
+{ "name": "My Project", "root_path": "/home/me/notes" }
+```
+The server generates:
+- `project_id`
+- `created_at` / `updated_at` if omitted or 0.
+
+3. Create the first card:
+```json
+{ "project_id": "<returned id>", "title": "First note", "content": "..." }
+```
+The server generates:
+- `card_id`
+- `created_at` / `updated_at` if omitted or 0.
+
+4. `GET /cards?project_id=<id>` to list cards for the sidebar.
+5. `GET /cards/<card_id>` to load full content.
+6. `PATCH /cards/<card_id>` to autosave edits.
+
+## 6) Typical request flow (ongoing usage)
 
 1. `GET /projects` to list projects.
-2. `POST /projects` to create a new project if needed.
-3. `GET /cards?project_id=...` or `GET /cards/{id}` to load content.
+2. `GET /cards?project_id=...` for the project list.
+3. `GET /cards/{id}` to load content.
 4. `PATCH /cards/{id}` for updates (auto-save style).
 5. `GET /search/cards?project_id=...&q=...` for search.
 
-## 6) Search endpoints
+## 7) Search endpoints
 
 Search endpoints require `project_id` and `q`:
 
@@ -109,7 +131,7 @@ Results include metadata so clients can render a list immediately:
 - `snippet`
 - `rank`
 
-## 7) Notes on local-first behavior
+## 8) Notes on local-first behavior
 
 Clients should never touch the project repo or database directly. The server
 owns all persistence and indexing.
@@ -117,7 +139,7 @@ owns all persistence and indexing.
 If the server is not running, the client can prompt the user to start it or
 attempt to launch it as a separate process.
 
-## 8) Swagger docs
+## 9) Swagger docs
 
 The server exposes Swagger UI at:
 
