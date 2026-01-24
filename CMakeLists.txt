@@ -57,6 +57,7 @@ add_executable(holder
   src/core/LockFile.cpp
   src/core/ServerInfo.cpp
   src/core/Signal.cpp
+  src/core/CardPaths.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
   src/api/Session.cpp
