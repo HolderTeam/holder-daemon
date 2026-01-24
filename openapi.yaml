@@ -1,0 +1,422 @@
+openapi: 3.0.3
+info:
+  title: Holder API
+  version: 0.1.0
+servers:
+  - url: http://127.0.0.1:11499
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          $ref: "#/components/schemas/Error"
+    HealthData:
+      type: object
+      required: [db_ok, uptime_ms, api_version, server_version, pid]
+      properties:
+        db_ok:
+          type: boolean
+        uptime_ms:
+          type: integer
+          format: int64
+        api_version:
+          type: string
+        server_version:
+          type: string
+        pid:
+          type: integer
+    HealthResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/HealthData"
+    CardCreateRequest:
+      type: object
+      required: [card_id, project_id, title, content, created_at, updated_at]
+      properties:
+        card_id:
+          type: string
+        project_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        parent_card_id:
+          type: string
+          nullable: true
+        sort_key:
+          type: number
+          format: double
+        rel_path:
+          type: string
+          nullable: true
+    CardCreateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id, rel_path]
+          properties:
+            card_id:
+              type: string
+            rel_path:
+              type: string
+    CardUpdateRequest:
+      type: object
+      required: [content, updated_at]
+      properties:
+        content:
+          type: string
+        updated_at:
+          type: integer
+          format: int64
+        title:
+          type: string
+          nullable: true
+    CardData:
+      type: object
+      required:
+        [card_id, project_id, title, rel_path, sort_key, created_at, updated_at, content]
+      properties:
+        card_id:
+          type: string
+        project_id:
+          type: string
+        title:
+          type: string
+        rel_path:
+          type: string
+        sort_key:
+          type: number
+          format: double
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        parent_card_id:
+          type: string
+          nullable: true
+        deleted_at:
+          type: integer
+          format: int64
+          nullable: true
+        content:
+          type: string
+    CardGetResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardData"
+    CardPatchResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id]
+          properties:
+            card_id:
+              type: string
+    SearchCardItem:
+      type: object
+      required: [card_id, title, updated_at, created_at, snippet, rank]
+      properties:
+        card_id:
+          type: string
+        title:
+          type: string
+        updated_at:
+          type: integer
+          format: int64
+        created_at:
+          type: integer
+          format: int64
+        snippet:
+          type: string
+        rank:
+          type: number
+          format: double
+    SearchMessageItem:
+      type: object
+      required: [message_id, created_at, snippet, rank]
+      properties:
+        message_id:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        snippet:
+          type: string
+        rank:
+          type: number
+          format: double
+    SearchCardsResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchCardItem"
+    SearchMessagesResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchMessageItem"
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards:
+    post:
+      summary: Create a card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardCreateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}:
+    get:
+      summary: Fetch a card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardGetResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update card content and/or title
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPatchResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/cards:
+    get:
+      summary: Search cards
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchCardsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/ai:
+    get:
+      summary: Search AI messages
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchMessagesResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
