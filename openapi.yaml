@@ -57,10 +57,11 @@ components:
           $ref: "#/components/schemas/HealthData"
     CardCreateRequest:
       type: object
-      required: [card_id, project_id, title, content, created_at, updated_at]
+      required: [project_id, title, content]
       properties:
         card_id:
           type: string
+          description: Optional; server generates if omitted.
         project_id:
           type: string
         title:
@@ -70,9 +71,11 @@ components:
         created_at:
           type: integer
           format: int64
+          description: Optional; server uses current time if omitted or 0.
         updated_at:
           type: integer
           format: int64
+          description: Optional; server uses created_at if omitted or 0.
         parent_card_id:
           type: string
           nullable: true
@@ -253,10 +256,11 @@ components:
           format: int64
     ProjectCreateRequest:
       type: object
-      required: [project_id, name, root_path, created_at, updated_at]
+      required: [name, root_path]
       properties:
         project_id:
           type: string
+          description: Optional; server generates if omitted.
         name:
           type: string
         root_path:
@@ -264,9 +268,11 @@ components:
         created_at:
           type: integer
           format: int64
+          description: Optional; server uses current time if omitted or 0.
         updated_at:
           type: integer
           format: int64
+          description: Optional; server uses created_at if omitted or 0.
     ProjectCreateResponse:
       type: object
       required: [ok, data]

@@ -39,6 +39,29 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                          boost::beast::http::status::created);
   REQUIRE(created["ok"] == true);
 
+  nlohmann::json create_auto = {
+      {"name", "Auto Project"},
+      {"root_path", "/tmp/auto"}
+  };
+
+  const auto created_auto = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::post,
+                                              "/projects",
+                                              create_auto,
+                                              boost::beast::http::status::created);
+  REQUIRE(created_auto["ok"] == true);
+  REQUIRE(created_auto["data"]["project_id"].is_string());
+  REQUIRE(created_auto["data"]["project_id"].get<std::string>().size() > 0);
+  const std::string auto_id = created_auto["data"]["project_id"].get<std::string>();
+
+  const auto fetched_auto = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::get,
+                                              "/projects/" + auto_id,
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::ok);
+  REQUIRE(fetched_auto["data"]["created_at"].get<long long>() > 0);
+  REQUIRE(fetched_auto["data"]["updated_at"].get<long long>() > 0);
+
   const auto listed = http_json_request(bound.bind, bound.port, token,
                                         boost::beast::http::verb::get,
                                         "/projects",
@@ -46,8 +69,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                         boost::beast::http::status::ok);
   REQUIRE(listed["ok"] == true);
   REQUIRE(listed["data"].is_array());
-  REQUIRE(listed["data"].size() == 1);
-  REQUIRE(listed["data"][0]["project_id"] == "proj-1");
+  REQUIRE(listed["data"].size() >= 2);
 
   const auto fetched = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::get,
@@ -100,7 +122,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   const auto filtered_by_updated = http_json_request(bound.bind, bound.port, token,
                                                      boost::beast::http::verb::get,
-                                                     "/projects?updated_after=21",
+                                                     "/projects?updated_after=21&updated_before=40",
                                                      nlohmann::json::object(),
                                                      boost::beast::http::status::ok);
   REQUIRE(filtered_by_updated["data"].size() == 1);

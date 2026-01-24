@@ -49,6 +49,30 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
                                          boost::beast::http::status::created);
   REQUIRE(created["ok"] == true);
 
+  nlohmann::json auto_body = {
+      {"project_id", "proj-1"},
+      {"title", "Auto Card"},
+      {"content", "auto"}
+  };
+
+  const auto created_auto = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::post,
+                                              "/cards",
+                                              auto_body,
+                                              boost::beast::http::status::created);
+  REQUIRE(created_auto["ok"] == true);
+  REQUIRE(created_auto["data"]["card_id"].is_string());
+  REQUIRE(created_auto["data"]["card_id"].get<std::string>().size() > 0);
+  const std::string auto_id = created_auto["data"]["card_id"].get<std::string>();
+
+  const auto fetched_auto = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::get,
+                                              "/cards/" + auto_id,
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::ok);
+  REQUIRE(fetched_auto["data"]["created_at"].get<long long>() > 0);
+  REQUIRE(fetched_auto["data"]["updated_at"].get<long long>() > 0);
+
   const auto fetched = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::get,
                                          "/cards/abcd1234",
@@ -64,8 +88,19 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
                                         boost::beast::http::status::ok);
   REQUIRE(listed["ok"] == true);
   REQUIRE(listed["data"].is_array());
-  REQUIRE(listed["data"].size() == 1);
-  REQUIRE(listed["data"][0]["card_id"] == "abcd1234");
+  REQUIRE(listed["data"].size() >= 2);
+  bool found_first = false;
+  bool found_auto = false;
+  for (const auto& item : listed["data"]) {
+    if (item["card_id"] == "abcd1234") {
+      found_first = true;
+    }
+    if (item["card_id"] == auto_id) {
+      found_auto = true;
+    }
+  }
+  REQUIRE(found_first);
+  REQUIRE(found_auto);
 
   nlohmann::json update_body = {
       {"title", "First Updated"},

@@ -2,6 +2,7 @@
 
 #include "core/CardPaths.h"
 #include "core/ServerInfo.h"
+#include "store/CardRepo.h"
 #include "store/ProjectRepo.h"
 
 #include <boost/beast/core.hpp>
@@ -10,11 +11,14 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <array>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -125,6 +129,35 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
   std::ostringstream out;
   out << file.rdbuf();
   return out.str();
+}
+
+long long now_epoch_seconds() {
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+std::string generate_uuid_v4() {
+  std::array<unsigned char, 16> bytes{};
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<int> dist(0, 255);
+  for (auto& b : bytes) {
+    b = static_cast<unsigned char>(dist(gen));
+  }
+
+  bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0F) | 0x40);
+  bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3F) | 0x80);
+
+  std::ostringstream oss;
+  oss << std::hex << std::setfill('0');
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    if (i == 4 || i == 6 || i == 8 || i == 10) {
+      oss << '-';
+    }
+    oss << std::setw(2) << static_cast<int>(bytes[i]);
+  }
+  return oss.str();
 }
 
 } // namespace
@@ -377,17 +410,30 @@ void Session::run() {
     } else if (path == "/projects" && req.method() == http::verb::post) {
       try {
         const auto body = nlohmann::json::parse(req.body());
-        if (!body.contains("project_id") || !body.contains("name") ||
-            !body.contains("root_path") || !body.contains("created_at") ||
-            !body.contains("updated_at")) {
+        if (!body.contains("name") || !body.contains("root_path")) {
           res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
         } else {
           holder::model::Project project;
-          project.project_id = body.at("project_id").get<std::string>();
+          if (body.contains("project_id") && !body.at("project_id").is_null()) {
+            project.project_id = body.at("project_id").get<std::string>();
+          }
+          if (project.project_id.empty()) {
+            project.project_id = generate_uuid_v4();
+          }
           project.name = body.at("name").get<std::string>();
           project.root_path = body.at("root_path").get<std::string>();
-          project.created_at = body.at("created_at").get<long long>();
-          project.updated_at = body.at("updated_at").get<long long>();
+          if (body.contains("created_at") && !body.at("created_at").is_null()) {
+            project.created_at = body.at("created_at").get<long long>();
+          }
+          if (body.contains("updated_at") && !body.at("updated_at").is_null()) {
+            project.updated_at = body.at("updated_at").get<long long>();
+          }
+          if (project.created_at <= 0) {
+            project.created_at = now_epoch_seconds();
+          }
+          if (project.updated_at <= 0) {
+            project.updated_at = project.created_at;
+          }
 
           holder::store::ProjectRepo repo(db_);
           repo.create(project);
@@ -601,17 +647,31 @@ void Session::run() {
       } else {
         try {
           const auto body = nlohmann::json::parse(req.body());
-          if (!body.contains("card_id") || !body.contains("project_id") ||
-              !body.contains("title") || !body.contains("content") ||
-              !body.contains("created_at") || !body.contains("updated_at")) {
+          if (!body.contains("project_id") || !body.contains("title") ||
+              !body.contains("content")) {
             res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
           } else {
             holder::model::Card card;
-            card.card_id = body.at("card_id").get<std::string>();
+            if (body.contains("card_id") && !body.at("card_id").is_null()) {
+              card.card_id = body.at("card_id").get<std::string>();
+            }
+            if (card.card_id.empty()) {
+              card.card_id = generate_uuid_v4();
+            }
             card.project_id = body.at("project_id").get<std::string>();
             card.title = body.at("title").get<std::string>();
-            card.created_at = body.at("created_at").get<long long>();
-            card.updated_at = body.at("updated_at").get<long long>();
+            if (body.contains("created_at") && !body.at("created_at").is_null()) {
+              card.created_at = body.at("created_at").get<long long>();
+            }
+            if (body.contains("updated_at") && !body.at("updated_at").is_null()) {
+              card.updated_at = body.at("updated_at").get<long long>();
+            }
+            if (card.created_at <= 0) {
+              card.created_at = now_epoch_seconds();
+            }
+            if (card.updated_at <= 0) {
+              card.updated_at = card.created_at;
+            }
             if (body.contains("parent_card_id") && !body.at("parent_card_id").is_null()) {
               card.parent_card_id = body.at("parent_card_id").get<std::string>();
             }
