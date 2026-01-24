@@ -9,6 +9,11 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -49,6 +54,69 @@ http::response<http::string_body> error_response(http::status status,
   return json_response(status, j);
 }
 
+http::response<http::string_body> text_response(http::status status,
+                                                std::string body,
+                                                std::string content_type) {
+  http::response<http::string_body> res{status, 11};
+  res.set(http::field::content_type, std::move(content_type));
+  res.keep_alive(false);
+  res.body() = std::move(body);
+  res.prepare_payload();
+  return res;
+}
+
+std::optional<std::filesystem::path> find_openapi_path() {
+  namespace fs = std::filesystem;
+  fs::path p1 = fs::current_path() / "openapi.yaml";
+  if (fs::exists(p1)) return p1;
+  fs::path p2 = fs::current_path().parent_path() / "openapi.yaml";
+  if (fs::exists(p2)) return p2;
+  return std::nullopt;
+}
+
+std::optional<std::filesystem::path> find_docs_root() {
+  namespace fs = std::filesystem;
+  fs::path p1 = fs::current_path() / "assets" / "swagger-ui";
+  if (fs::exists(p1) && fs::is_directory(p1)) return p1;
+  fs::path p2 = fs::current_path().parent_path() / "assets" / "swagger-ui";
+  if (fs::exists(p2) && fs::is_directory(p2)) return p2;
+  return std::nullopt;
+}
+
+bool is_safe_relpath(const std::filesystem::path& path) {
+  if (path.is_absolute()) return false;
+  for (const auto& part : path) {
+    if (part == "..") return false;
+  }
+  return true;
+}
+
+std::string content_type_for_extension(const std::string& ext) {
+  std::string lower;
+  lower.reserve(ext.size());
+  for (const char ch : ext) {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+  }
+  if (lower == ".html") return "text/html; charset=utf-8";
+  if (lower == ".css") return "text/css; charset=utf-8";
+  if (lower == ".js") return "application/javascript";
+  if (lower == ".json") return "application/json";
+  if (lower == ".yaml" || lower == ".yml") return "application/yaml";
+  if (lower == ".svg") return "image/svg+xml";
+  if (lower == ".png") return "image/png";
+  if (lower == ".ico") return "image/x-icon";
+  if (lower == ".txt") return "text/plain; charset=utf-8";
+  return "application/octet-stream";
+}
+
+std::optional<std::string> read_file(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) return std::nullopt;
+  std::ostringstream out;
+  out << file.rdbuf();
+  return out.str();
+}
+
 } // namespace
 
 Session::Session(tcp::socket socket,
@@ -86,23 +154,78 @@ void Session::run() {
     return;
   }
 
+  const auto target = req.target();
+  const std::string target_str(target.data(), target.size());
+
+  const auto query_pos = target_str.find('?');
+  const std::string path = (query_pos == std::string::npos)
+                               ? target_str
+                               : target_str.substr(0, query_pos);
+  const std::string query_string =
+      (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
+
   http::response<http::string_body> res;
 
-  if (!is_authorized(req, auth_token_)) {
+  if (path == "/openapi.yaml" || path == "/docs" || path.rfind("/docs/", 0) == 0) {
+    if (req.method() != http::verb::get) {
+      res = text_response(http::status::method_not_allowed,
+                          "Method not allowed.",
+                          "text/plain; charset=utf-8");
+    } else if (path == "/openapi.yaml") {
+      const auto openapi_path = find_openapi_path();
+      if (!openapi_path.has_value()) {
+        res = text_response(http::status::not_found,
+                            "openapi.yaml not found.",
+                            "text/plain; charset=utf-8");
+      } else {
+        const auto content = read_file(openapi_path.value());
+        if (!content.has_value()) {
+          res = text_response(http::status::not_found,
+                              "openapi.yaml not found.",
+                              "text/plain; charset=utf-8");
+        } else {
+          res = text_response(http::status::ok,
+                              content.value(),
+                              content_type_for_extension(openapi_path->extension().string()));
+        }
+      }
+    } else {
+      const auto docs_root = find_docs_root();
+      if (!docs_root.has_value()) {
+        res = text_response(http::status::not_found,
+                            "Docs assets not found.",
+                            "text/plain; charset=utf-8");
+      } else {
+        std::string rel = "index.html";
+        if (path.rfind("/docs/", 0) == 0) {
+          rel = path.substr(std::string("/docs/").size());
+          if (rel.empty()) rel = "index.html";
+        }
+        std::filesystem::path rel_path(rel);
+        if (!is_safe_relpath(rel_path)) {
+          res = text_response(http::status::not_found,
+                              "Not found.",
+                              "text/plain; charset=utf-8");
+        } else {
+          const auto full_path = docs_root.value() / rel_path;
+          const auto content = read_file(full_path);
+          if (!content.has_value()) {
+            res = text_response(http::status::not_found,
+                                "Not found.",
+                                "text/plain; charset=utf-8");
+          } else {
+            res = text_response(http::status::ok,
+                                content.value(),
+                                content_type_for_extension(full_path.extension().string()));
+          }
+        }
+      }
+    }
+  } else if (!is_authorized(req, auth_token_)) {
     res = error_response(http::status::unauthorized, "unauthorized", "Missing or invalid token.");
   } else if (router_.dispatch(req, res)) {
     // handled
   } else {
-    const auto target = req.target();
-    const std::string target_str(target.data(), target.size());
-
-    const auto query_pos = target_str.find('?');
-    const std::string path = (query_pos == std::string::npos)
-                                 ? target_str
-                                 : target_str.substr(0, query_pos);
-    const std::string query_string =
-        (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
-
     auto param = [&](const std::string& key) -> std::string {
       const std::string needle = key + "=";
       const auto pos = query_string.find(needle);
