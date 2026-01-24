@@ -137,7 +137,12 @@ void Session::run() {
             res = json_response(http::status::created, payload);
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          const std::string msg = ex.what();
+          if (msg.rfind("conflict:", 0) == 0) {
+            res = error_response(http::status::conflict, "conflict", msg);
+          } else {
+            res = error_response(http::status::bad_request, "bad_request", msg);
+          }
         }
       }
     } else if (target_str.rfind("/cards/", 0) == 0) {

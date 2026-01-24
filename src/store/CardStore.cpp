@@ -29,6 +29,15 @@ void CardStore::create(holder::model::Card card, const std::string& content) {
     throw std::runtime_error("card rel_path does not match card_id");
   }
 
+  if (card_repo_.get(card.card_id).has_value()) {
+    throw std::runtime_error("conflict: card_id already exists");
+  }
+
+  const auto full_path = repo_.repo_dir() / card.rel_path;
+  if (std::filesystem::exists(full_path)) {
+    throw std::runtime_error("conflict: card file already exists");
+  }
+
   repo_.write_file(card.rel_path, content);
 
   try {

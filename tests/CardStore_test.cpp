@@ -226,3 +226,28 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
 
   REQUIRE(after == before + 1);
 }
+
+TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore store(db, repo);
+  holder::model::Card card;
+  card.card_id = "abcd1111";
+  card.project_id = "proj-1";
+  card.title = "First";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  store.create(card, "one");
+  REQUIRE_THROWS(store.create(card, "two"));
+}

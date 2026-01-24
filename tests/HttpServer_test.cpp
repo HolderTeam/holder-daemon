@@ -239,6 +239,62 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   server_thread.join();
 }
 
+TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore card_store(db, repo);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  nlohmann::json create_body = {
+      {"card_id", "dup1234"},
+      {"project_id", "proj-1"},
+      {"title", "First"},
+      {"content", "hello"},
+      {"created_at", 10},
+      {"updated_at", 10}
+  };
+
+  const auto created = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::post,
+                                         "/cards",
+                                         create_body,
+                                         boost::beast::http::status::created);
+  REQUIRE(created["ok"] == true);
+
+  const auto conflict = http_json_request(bound.bind, bound.port, token,
+                                          boost::beast::http::verb::post,
+                                          "/cards",
+                                          create_body,
+                                          boost::beast::http::status::conflict);
+  REQUIRE(conflict["ok"] == false);
+  REQUIRE(conflict["error"]["code"] == "conflict");
+  REQUIRE(conflict["error"]["message"].is_string());
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
