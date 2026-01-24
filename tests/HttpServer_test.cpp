@@ -111,7 +111,9 @@ nlohmann::json http_json_request(const std::string& bind,
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, bind);
   req.set(http::field::user_agent, "holder-tests");
-  req.set(http::field::authorization, "Bearer " + token);
+  if (!token.empty()) {
+    req.set(http::field::authorization, "Bearer " + token);
+  }
   if (!body.is_null() && !body.empty()) {
     req.set(http::field::content_type, "application/json");
     req.body() = body.dump();
@@ -232,6 +234,106 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
                                                boost::beast::http::status::ok);
   REQUIRE(fetched_again["data"]["title"] == "Renamed");
   REQUIRE(fetched_again["data"]["content"] == "updated");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore card_store(db, repo);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  nlohmann::json bad_create = {
+      {"card_id", "abcd1234"},
+      {"project_id", "proj-1"},
+      {"title", "First"}
+  };
+
+  const auto created = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::post,
+                                         "/cards",
+                                         bad_create,
+                                         boost::beast::http::status::bad_request);
+  REQUIRE(created["ok"] == false);
+
+  nlohmann::json bad_patch = {
+      {"updated_at", 20}
+  };
+
+  const auto patched = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::patch,
+                                         "/cards/abcd1234",
+                                         bad_patch,
+                                         boost::beast::http::status::bad_request);
+  REQUIRE(patched["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore card_store(db, repo);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto unauthorized = http_json_request(bound.bind, bound.port, "badtoken",
+                                              boost::beast::http::verb::get,
+                                              "/cards/abcd1234",
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::unauthorized);
+  REQUIRE(unauthorized["ok"] == false);
+
+  const auto missing = http_json_request(bound.bind, bound.port, "",
+                                         boost::beast::http::verb::get,
+                                         "/cards/abcd1234",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::unauthorized);
+  REQUIRE(missing["ok"] == false);
 
   std::raise(SIGTERM);
   server_thread.join();
