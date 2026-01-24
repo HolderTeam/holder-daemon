@@ -6,7 +6,11 @@
 
 #include "api/HttpServer.h"
 #include "core/Signal.h"
+#include "git/GitRepo.h"
+#include "store/CardStore.h"
 #include "store/Db.h"
+#include "store/ProjectRepo.h"
+#include "model/Project.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -18,6 +22,7 @@
 #include <csignal>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
@@ -62,6 +67,69 @@ nlohmann::json get_health(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
+holder::store::Db open_db_with_schema(const std::filesystem::path& db_path) {
+  holder::store::Db db;
+  db.open(db_path);
+
+  std::filesystem::path schema_path = SCHEMA_SQL_PATH;
+  std::ifstream in(schema_path);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  return db;
+}
+
+void create_project(holder::store::Db& db, const std::string& project_id) {
+  holder::store::ProjectRepo repo(db);
+  holder::model::Project project;
+  project.project_id = project_id;
+  project.name = "Project";
+  project.root_path = "/tmp/project";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+}
+
+nlohmann::json http_json_request(const std::string& bind,
+                                 unsigned short port,
+                                 const std::string& token,
+                                 boost::beast::http::verb method,
+                                 const std::string& target,
+                                 const nlohmann::json& body,
+                                 boost::beast::http::status expected) {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{method, target, 11};
+  req.set(http::field::host, bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  if (!body.is_null() && !body.empty()) {
+    req.set(http::field::content_type, "application/json");
+    req.body() = body.dump();
+    req.prepare_payload();
+  }
+
+  http::write(socket, req);
+
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  REQUIRE(res.result() == expected);
+  return nlohmann::json::parse(res.body());
+}
+
 } // namespace
 
 TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
@@ -89,6 +157,81 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["db_ok"] == true);
   REQUIRE(payload["data"]["api_version"] == "0.1");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP card create/get/patch", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore card_store(db, repo);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  nlohmann::json create_body = {
+      {"card_id", "abcd1234"},
+      {"project_id", "proj-1"},
+      {"title", "First"},
+      {"content", "hello"},
+      {"created_at", 10},
+      {"updated_at", 10}
+  };
+
+  const auto created = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::post,
+                                         "/cards",
+                                         create_body,
+                                         boost::beast::http::status::created);
+  REQUIRE(created["ok"] == true);
+
+  const auto fetched = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::get,
+                                         "/cards/abcd1234",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(fetched["data"]["content"] == "hello");
+
+  nlohmann::json patch_body = {
+      {"content", "updated"},
+      {"updated_at", 20},
+      {"title", "Renamed"}
+  };
+
+  const auto patched = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::patch,
+                                         "/cards/abcd1234",
+                                         patch_body,
+                                         boost::beast::http::status::ok);
+  REQUIRE(patched["ok"] == true);
+
+  const auto fetched_again = http_json_request(bound.bind, bound.port, token,
+                                               boost::beast::http::verb::get,
+                                               "/cards/abcd1234",
+                                               nlohmann::json::object(),
+                                               boost::beast::http::status::ok);
+  REQUIRE(fetched_again["data"]["title"] == "Renamed");
+  REQUIRE(fetched_again["data"]["content"] == "updated");
 
   std::raise(SIGTERM);
   server_thread.join();
