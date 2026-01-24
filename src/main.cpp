@@ -43,7 +43,12 @@ int main(int argc, char* argv[]) {
   auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
   auto logger = std::make_shared<spdlog::logger>("holder", spdlog::sinks_init_list{stdout_sink, file_sink});
   spdlog::set_default_logger(logger);
-  spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] %v");
+  const char* log_pattern = "[%Y-%m-%d %H:%M:%S.%e] [%l] %v";
+  spdlog::set_pattern(log_pattern);
+
+  auto console_logger = std::make_shared<spdlog::logger>("holder_console",
+                                                         spdlog::sinks_init_list{stdout_sink});
+  console_logger->set_pattern(log_pattern);
   spdlog::flush_on(spdlog::level::info);
 
   spdlog::info("holder starting…");
@@ -74,7 +79,6 @@ int main(int argc, char* argv[]) {
   info.api_version = "0.1";
   info.server_version = CARD_SERVER_VERSION;
   info.auth_token = holder::core::generate_auth_token();
-  spdlog::info("auth token: {}", info.auth_token);
 
   std::string bind = "127.0.0.1";
   unsigned short port = 11499;
@@ -139,6 +143,10 @@ int main(int argc, char* argv[]) {
   holder::core::write_server_info(paths.info_path(), info);
   spdlog::info("listening on {}:{}", info.bind, info.port);
   spdlog::info("docs available at http://{}:{}/docs", info.bind, info.port);
+  console_logger->info("docs available at http://{}:{}/docs (auth token: {})",
+                       info.bind,
+                       info.port,
+                       info.auth_token);
 
   server.run(signals);
 
