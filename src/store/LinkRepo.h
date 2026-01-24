@@ -1,0 +1,31 @@
+#pragma once
+
+#include "model/CardLink.h"
+#include "store/Db.h"
+
+#include <string>
+#include <vector>
+
+namespace holder::store {
+
+class LinkRepo {
+public:
+  explicit LinkRepo(Db& db);
+
+  void upsert_links(const std::string& project_id,
+                    const std::string& from_card_id,
+                    const std::vector<holder::model::CardLink>& links);
+
+  std::vector<holder::model::CardLink> list_outgoing(const std::string& project_id,
+                                                     const std::string& from_card_id) const;
+
+  std::vector<holder::model::CardLink> list_backlinks(const std::string& project_id,
+                                                      const std::string& to_card_id) const;
+
+  void delete_links_from(const std::string& project_id, const std::string& from_card_id);
+
+private:
+  Db& db_;
+};
+
+} // namespace holder::store

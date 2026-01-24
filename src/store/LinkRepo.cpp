@@ -1,0 +1,178 @@
+#include "store/LinkRepo.h"
+
+#include <sqlite3.h>
+
+#include <stdexcept>
+#include <utility>
+
+namespace holder::store {
+namespace {
+
+void throw_sqlite(sqlite3* db, const std::string& what) {
+  const char* msg = db ? sqlite3_errmsg(db) : "unknown sqlite error";
+  throw std::runtime_error(what + ": " + msg);
+}
+
+void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
+  if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
+    throw std::runtime_error("sqlite bind_text failed");
+  }
+}
+
+void bind_text_optional(sqlite3_stmt* stmt, int idx, const std::optional<std::string>& value) {
+  if (value.has_value()) {
+    bind_text(stmt, idx, value.value());
+  } else if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
+    throw std::runtime_error("sqlite bind_null failed");
+  }
+}
+
+void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
+  if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
+    throw std::runtime_error("sqlite bind_int64 failed");
+  }
+}
+
+holder::model::CardLink read_link(sqlite3_stmt* stmt) {
+  holder::model::CardLink link;
+  link.project_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+  link.from_card_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+  link.to_card_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+  link.kind = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+  if (sqlite3_column_type(stmt, 4) == SQLITE_NULL) {
+    link.label.reset();
+  } else {
+    link.label = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+  }
+  link.created_at = sqlite3_column_int64(stmt, 5);
+  return link;
+}
+
+} // namespace
+
+LinkRepo::LinkRepo(Db& db) : db_(db) {}
+
+void LinkRepo::upsert_links(const std::string& project_id,
+                            const std::string& from_card_id,
+                            const std::vector<holder::model::CardLink>& links) {
+  static constexpr const char* SQL =
+      "INSERT INTO card_links(project_id, from_card_id, to_card_id, kind, label, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?) "
+      "ON CONFLICT(project_id, from_card_id, to_card_id, kind) DO UPDATE SET "
+      "label=excluded.label, created_at=excluded.created_at;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare upsert links failed");
+  }
+
+  for (const auto& link : links) {
+    if (link.project_id != project_id || link.from_card_id != from_card_id) {
+      sqlite3_finalize(stmt);
+      throw std::runtime_error("link project_id/from_card_id mismatch");
+    }
+
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
+
+    bind_text(stmt, 1, link.project_id);
+    bind_text(stmt, 2, link.from_card_id);
+    bind_text(stmt, 3, link.to_card_id);
+    bind_text(stmt, 4, link.kind);
+    bind_text_optional(stmt, 5, link.label);
+    bind_int64(stmt, 6, link.created_at);
+
+    const int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+      sqlite3_finalize(stmt);
+      throw_sqlite(db_.handle(), "upsert link failed");
+    }
+  }
+
+  sqlite3_finalize(stmt);
+}
+
+std::vector<holder::model::CardLink> LinkRepo::list_outgoing(
+    const std::string& project_id,
+    const std::string& from_card_id) const {
+  static constexpr const char* SQL =
+      "SELECT project_id, from_card_id, to_card_id, kind, label, created_at "
+      "FROM card_links WHERE project_id = ? AND from_card_id = ? "
+      "ORDER BY created_at DESC;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list outgoing links failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, from_card_id);
+
+  std::vector<holder::model::CardLink> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_link(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list outgoing links failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
+    const std::string& project_id,
+    const std::string& to_card_id) const {
+  static constexpr const char* SQL =
+      "SELECT project_id, from_card_id, to_card_id, kind, label, created_at "
+      "FROM card_links WHERE project_id = ? AND to_card_id = ? "
+      "ORDER BY created_at DESC;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list backlinks failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, to_card_id);
+
+  std::vector<holder::model::CardLink> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_link(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list backlinks failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+void LinkRepo::delete_links_from(const std::string& project_id, const std::string& from_card_id) {
+  static constexpr const char* SQL =
+      "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete links failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, from_card_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete links failed");
+  }
+}
+
+} // namespace holder::store

@@ -63,6 +63,7 @@ add_executable(holder
   src/api/Router.cpp
   src/store/ProjectRepo.cpp
   src/store/CardRepo.cpp
+  src/store/LinkRepo.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
