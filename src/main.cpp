@@ -6,6 +6,7 @@
 #include "core/Paths.h"
 #include "core/ServerInfo.h"
 #include "core/Signal.h"
+#include "api/HttpServer.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 #include "git/GitRepo.h"
@@ -13,6 +14,8 @@
 #include <filesystem>
 #include <chrono>
 #include <memory>
+#include <exception>
+#include <string>
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -28,7 +31,7 @@ static std::filesystem::path find_schema_sql() {
   throw std::runtime_error("Cannot find schema/schema.sql from current directory.");
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   auto paths = holder::core::Paths::resolve("holder");
   paths.ensure_dirs();
 
@@ -61,16 +64,48 @@ int main() {
   holder::store::Migrations::ensure_schema(db, schema_path);
 
   holder::core::ServerInfo info;
-  info.pid = holder::core::current_pid();
-  info.bind = "127.0.0.1";
-  info.port = 0;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::system_clock::now().time_since_epoch())
                         .count();
   info.api_version = "0.1";
   info.server_version = CARD_SERVER_VERSION;
   info.auth_token = holder::core::generate_auth_token();
+
+  std::string bind = "127.0.0.1";
+  unsigned short port = 11499;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--bind" && i + 1 < argc) {
+      bind = argv[++i];
+    } else if (arg == "--port" && i + 1 < argc) {
+      try {
+        const int parsed = std::stoi(argv[++i]);
+        if (parsed < 0 || parsed > 65535) {
+          spdlog::error("Invalid --port value: {}", parsed);
+          return 2;
+        }
+        port = static_cast<unsigned short>(parsed);
+      } catch (const std::exception& ex) {
+        spdlog::error("Invalid --port value: {} ({})", argv[i], ex.what());
+        return 2;
+      }
+    } else if (arg == "--help" || arg == "-h") {
+      spdlog::info("Usage: holder [--bind <addr>] [--port <port>]");
+      return 0;
+    } else {
+      spdlog::error("Unknown argument: {}", arg);
+      return 2;
+    }
+  }
+
+  holder::api::HttpServer server(bind, port, db, info.auth_token);
+  const auto bound = server.start();
+
+  info.pid = holder::core::current_pid();
+  info.bind = bound.bind;
+  info.port = bound.port;
   holder::core::write_server_info(paths.info_path(), info);
+  spdlog::info("listening on {}:{}", info.bind, info.port);
 
   holder::git::GitRepo repo;
   repo.open_or_init(paths.data_dir / "repo");
@@ -85,6 +120,9 @@ int main() {
   repo.commit("Bootstrap holder repository");
 
   spdlog::info("holder boot complete.");
+
+  server.run(signals);
+
   spdlog::shutdown();
   return 0;
 }
