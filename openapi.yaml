@@ -248,6 +248,12 @@ components:
           type: string
         root_path:
           type: string
+        git_remote_url:
+          type: string
+          nullable: true
+        git_provider:
+          type: string
+          nullable: true
         created_at:
           type: integer
           format: int64
@@ -266,6 +272,12 @@ components:
         root_path:
           type: string
           description: Optional; server chooses a default if omitted.
+        git_remote_url:
+          type: string
+          nullable: true
+        git_provider:
+          type: string
+          nullable: true
         created_at:
           type: integer
           format: int64
@@ -315,6 +327,12 @@ components:
           type: string
           nullable: true
         root_path:
+          type: string
+          nullable: true
+        git_remote_url:
+          type: string
+          nullable: true
+        git_provider:
           type: string
           nullable: true
         updated_at:

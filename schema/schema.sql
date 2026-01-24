@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS projects (
   project_id  TEXT PRIMARY KEY,          -- UUID
   name        TEXT NOT NULL,
   root_path   TEXT NOT NULL,             -- absolute path on disk
+  git_remote_url TEXT NULL,              -- optional git remote (origin)
+  git_provider   TEXT NULL,              -- optional provider label
   created_at  INTEGER NOT NULL,          -- unix epoch seconds (or ms, but be consistent)
   updated_at  INTEGER NOT NULL
 );
@@ -205,5 +207,4 @@ CREATE TABLE IF NOT EXISTS schema_version (
 INSERT INTO schema_version(version)
 SELECT 1
 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
-
 

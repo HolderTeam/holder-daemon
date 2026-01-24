@@ -19,6 +19,12 @@ public:
 
   void update_name(const std::string& project_id, const std::string& name, long long updated_at);
   void update_root_path(const std::string& project_id, const std::string& root_path, long long updated_at);
+  void update_git_remote(const std::string& project_id,
+                         const std::optional<std::string>& git_remote_url,
+                         long long updated_at);
+  void update_git_provider(const std::string& project_id,
+                           const std::optional<std::string>& git_provider,
+                           long long updated_at);
   void touch_updated(const std::string& project_id, long long updated_at);
   void remove(const std::string& project_id);
 

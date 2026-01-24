@@ -394,6 +394,10 @@ void Session::run() {
             {"project_id", project.project_id},
             {"name", project.name},
             {"root_path", project.root_path},
+            {"git_remote_url", project.git_remote_url.has_value() ? nlohmann::json(project.git_remote_url.value())
+                                                                  : nlohmann::json(nullptr)},
+            {"git_provider", project.git_provider.has_value() ? nlohmann::json(project.git_provider.value())
+                                                              : nlohmann::json(nullptr)},
             {"created_at", project.created_at},
             {"updated_at", project.updated_at}
           });
@@ -431,6 +435,16 @@ void Session::run() {
           }
           if (body.contains("updated_at") && !body.at("updated_at").is_null()) {
             project.updated_at = body.at("updated_at").get<long long>();
+          }
+          if (body.contains("git_remote_url")) {
+            if (!body.at("git_remote_url").is_null()) {
+              project.git_remote_url = body.at("git_remote_url").get<std::string>();
+            }
+          }
+          if (body.contains("git_provider")) {
+            if (!body.at("git_provider").is_null()) {
+              project.git_provider = body.at("git_provider").get<std::string>();
+            }
           }
           if (project.created_at <= 0) {
             project.created_at = now_epoch_seconds();
@@ -474,6 +488,16 @@ void Session::run() {
             data["project_id"] = project.project_id;
             data["name"] = project.name;
             data["root_path"] = project.root_path;
+            if (project.git_remote_url.has_value()) {
+              data["git_remote_url"] = project.git_remote_url.value();
+            } else {
+              data["git_remote_url"] = nullptr;
+            }
+            if (project.git_provider.has_value()) {
+              data["git_provider"] = project.git_provider.value();
+            } else {
+              data["git_provider"] = nullptr;
+            }
             data["created_at"] = project.created_at;
             data["updated_at"] = project.updated_at;
 
@@ -494,7 +518,9 @@ void Session::run() {
             const long long updated_at = body.at("updated_at").get<long long>();
             const bool has_name = body.contains("name") && !body.at("name").is_null();
             const bool has_root = body.contains("root_path") && !body.at("root_path").is_null();
-            if (!has_name && !has_root) {
+            const bool has_git_remote = body.contains("git_remote_url");
+            const bool has_git_provider = body.contains("git_provider");
+            if (!has_name && !has_root && !has_git_remote && !has_git_provider) {
               res = error_response(http::status::bad_request, "bad_request", "No fields to update.");
             } else {
               holder::store::ProjectRepo repo(db_);
@@ -507,6 +533,26 @@ void Session::run() {
                 }
                 if (has_root) {
                   repo.update_root_path(project_id, body.at("root_path").get<std::string>(), updated_at);
+                }
+                if (has_git_remote) {
+                  if (body.at("git_remote_url").is_null()) {
+                    repo.update_git_remote(project_id, std::nullopt, updated_at);
+                  } else {
+                    repo.update_git_remote(
+                        project_id,
+                        std::optional<std::string>(body.at("git_remote_url").get<std::string>()),
+                        updated_at);
+                  }
+                }
+                if (has_git_provider) {
+                  if (body.at("git_provider").is_null()) {
+                    repo.update_git_provider(project_id, std::nullopt, updated_at);
+                  } else {
+                    repo.update_git_provider(
+                        project_id,
+                        std::optional<std::string>(body.at("git_provider").get<std::string>()),
+                        updated_at);
+                  }
                 }
                 nlohmann::json payload;
                 payload["ok"] = true;
