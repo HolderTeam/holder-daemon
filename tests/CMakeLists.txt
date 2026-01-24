@@ -21,6 +21,7 @@ add_executable(lockfile_tests
   Signal_test.cpp
   HttpServer_test.cpp
   Router_test.cpp
+  ProjectRepo_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
@@ -28,6 +29,7 @@ add_executable(lockfile_tests
   ../src/api/Listener.cpp
   ../src/api/Session.cpp
   ../src/api/Router.cpp
+  ../src/store/ProjectRepo.cpp
   ../src/store/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
@@ -44,6 +46,7 @@ endif()
 target_compile_definitions(lockfile_tests PRIVATE
   LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
+  SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
 )
 
 target_link_libraries(lockfile_tests PRIVATE

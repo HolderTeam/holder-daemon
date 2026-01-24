@@ -61,6 +61,7 @@ add_executable(holder
   src/api/Listener.cpp
   src/api/Session.cpp
   src/api/Router.cpp
+  src/store/ProjectRepo.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
