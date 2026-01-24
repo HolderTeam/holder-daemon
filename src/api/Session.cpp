@@ -7,18 +7,18 @@
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
-#include <array>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <optional>
-#include <random>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -138,26 +138,8 @@ long long now_epoch_seconds() {
 }
 
 std::string generate_uuid_v4() {
-  std::array<unsigned char, 16> bytes{};
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<int> dist(0, 255);
-  for (auto& b : bytes) {
-    b = static_cast<unsigned char>(dist(gen));
-  }
-
-  bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0F) | 0x40);
-  bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3F) | 0x80);
-
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0');
-  for (size_t i = 0; i < bytes.size(); ++i) {
-    if (i == 4 || i == 6 || i == 8 || i == 10) {
-      oss << '-';
-    }
-    oss << std::setw(2) << static_cast<int>(bytes[i]);
-  }
-  return oss.str();
+  boost::uuids::random_generator gen;
+  return boost::uuids::to_string(gen());
 }
 
 } // namespace
