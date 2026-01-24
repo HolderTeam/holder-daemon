@@ -63,7 +63,35 @@ HttpServer::HttpServer(std::string bind,
       bind_(std::move(bind)),
       port_(port),
       db_(db),
-      auth_token_(std::move(auth_token)) {}
+      auth_token_(std::move(auth_token)),
+      router_() {
+  router_.add(http::verb::get, "/health",
+              [this](const Router::Request&, Router::Response& res) {
+                bool db_ok = true;
+                try {
+                  db_.exec("SELECT 1;");
+                } catch (...) {
+                  db_ok = false;
+                }
+
+                const auto uptime_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() - started_at_)
+                                           .count();
+
+                nlohmann::json data;
+                data["db_ok"] = db_ok;
+                data["uptime_ms"] = uptime_ms;
+                data["api_version"] = "0.1";
+                data["server_version"] = CARD_SERVER_VERSION;
+                data["pid"] = holder::core::current_pid();
+
+                nlohmann::json payload;
+                payload["ok"] = true;
+                payload["data"] = data;
+
+                res = json_response(http::status::ok, payload);
+              });
+}
 
 HttpServer::BoundInfo HttpServer::start() {
   boost::system::error_code ec;
@@ -122,6 +150,7 @@ void HttpServer::handle_session(tcp::socket& socket) {
   beast::flat_buffer buffer;
   http::request<http::string_body> req;
   boost::system::error_code ec;
+  const auto request_started = std::chrono::steady_clock::now();
 
   http::read(socket, buffer, req, ec);
   if (ec == http::error::end_of_stream) {
@@ -138,31 +167,7 @@ void HttpServer::handle_session(tcp::socket& socket) {
 
   if (!is_authorized(req, auth_token_)) {
     res = error_response(http::status::unauthorized, "unauthorized", "Missing or invalid token.");
-  } else if (req.method() == http::verb::get && req.target() == "/health") {
-    bool db_ok = true;
-    try {
-      db_.exec("SELECT 1;");
-    } catch (...) {
-      db_ok = false;
-    }
-
-    const auto uptime_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - started_at_)
-                               .count();
-
-    nlohmann::json data;
-    data["db_ok"] = db_ok;
-    data["uptime_ms"] = uptime_ms;
-    data["api_version"] = "0.1";
-    data["server_version"] = CARD_SERVER_VERSION;
-    data["pid"] = holder::core::current_pid();
-
-    nlohmann::json payload;
-    payload["ok"] = true;
-    payload["data"] = data;
-
-    res = json_response(http::status::ok, payload);
-  } else {
+  } else if (!router_.dispatch(req, res)) {
     res = error_response(http::status::not_found, "not_found", "Route not found.");
   }
 
@@ -171,7 +176,14 @@ void HttpServer::handle_session(tcp::socket& socket) {
     spdlog::warn("write failed: {}", ec.message());
   }
 
-  spdlog::info("HTTP {} {} -> {}", req.method_string(), req.target(), res.result_int());
+  const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - request_started)
+                               .count();
+  spdlog::info("HTTP {} {} -> {} ({}ms)",
+               req.method_string(),
+               req.target(),
+               res.result_int(),
+               duration_ms);
 
   socket.shutdown(tcp::socket::shutdown_send, ec);
 }

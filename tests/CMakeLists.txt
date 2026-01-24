@@ -20,10 +20,12 @@ add_executable(lockfile_tests
   ServerInfo_test.cpp
   Signal_test.cpp
   HttpServer_test.cpp
+  Router_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/api/HttpServer.cpp
+  ../src/api/Router.cpp
   ../src/store/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE

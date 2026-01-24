@@ -58,6 +58,7 @@ add_executable(holder
   src/core/ServerInfo.cpp
   src/core/Signal.cpp
   src/api/HttpServer.cpp
+  src/api/Router.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
