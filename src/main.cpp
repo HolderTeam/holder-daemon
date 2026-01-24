@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include "core/LockFile.h"
 #include "core/Paths.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
@@ -29,6 +30,13 @@ int main() {
 
   spdlog::info("data_dir:   {}", paths.data_dir.string());
   spdlog::info("db_path:    {}", paths.db_path().string());
+
+  holder::core::LockFile lock(paths.lock_path());
+  if (!lock.try_acquire()) {
+    spdlog::error("Another holder instance appears to be running (lock busy: {}).",
+                  paths.lock_path().string());
+    return 2;
+  }
 
   holder::store::Db db;
   db.open(paths.db_path());

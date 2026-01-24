@@ -54,6 +54,7 @@ endif()
 add_executable(holder
   src/main.cpp
   src/core/Paths.cpp
+  src/core/LockFile.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp
@@ -111,3 +112,45 @@ endif()
 # Install (optional for later packaging)
 # ----------------------------
 install(TARGETS holder RUNTIME DESTINATION bin)
+
+# ----------------------------
+# Tests
+# ----------------------------
+include(CTest)
+if(BUILD_TESTING)
+  enable_testing()
+
+  find_package(Catch2 3 QUIET)
+  if(NOT Catch2_FOUND)
+    find_package(Catch2 REQUIRED)
+  endif()
+
+  add_executable(lock_helper
+    tests/lock_helper.cpp
+    src/core/LockFile.cpp
+  )
+  target_include_directories(lock_helper PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+
+  add_executable(lockfile_tests
+    tests/LockFile_test.cpp
+    src/core/LockFile.cpp
+  )
+  target_include_directories(lockfile_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+
+  if(TARGET Catch2::Catch2WithMain)
+    target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
+  else()
+    target_sources(lockfile_tests PRIVATE tests/catch_main.cpp)
+    target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2)
+  endif()
+
+  target_compile_definitions(lockfile_tests PRIVATE
+    LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
+  )
+
+  add_test(NAME lockfile_tests COMMAND lockfile_tests)
+endif()
