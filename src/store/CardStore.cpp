@@ -3,9 +3,20 @@
 #include "core/CardPaths.h"
 
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 
 namespace holder::store {
+namespace {
+
+std::string read_file(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open()) return {};
+  std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  return data;
+}
+
+} // namespace
 
 CardStore::CardStore(Db& db, holder::git::GitRepo& repo)
     : db_(db), repo_(repo), card_repo_(db) {}
@@ -46,7 +57,12 @@ void CardStore::update_content(const std::string& card_id,
     throw std::runtime_error("card rel_path does not match card_id");
   }
 
-  repo_.write_file(card.rel_path, content);
+  const auto full_path = repo_.repo_dir() / card.rel_path;
+  const bool unchanged = (read_file(full_path) == content);
+
+  if (!unchanged) {
+    repo_.write_file(card.rel_path, content);
+  }
 
   if (title.has_value()) {
     card_repo_.update_title(card_id, title.value(), updated_at);
@@ -54,9 +70,11 @@ void CardStore::update_content(const std::string& card_id,
     card_repo_.touch_updated(card_id, updated_at);
   }
 
-  repo_.stage_path(card.rel_path);
-  const std::string commit_title = title.has_value() ? title.value() : card.title;
-  repo_.commit("Update card " + commit_title);
+  if (!unchanged) {
+    repo_.stage_path(card.rel_path);
+    const std::string commit_title = title.has_value() ? title.value() : card.title;
+    repo_.commit("Update card " + commit_title);
+  }
 }
 
 } // namespace holder::store

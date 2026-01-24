@@ -13,6 +13,8 @@
 #include "store/Db.h"
 #include "store/ProjectRepo.h"
 
+#include <git2.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -66,6 +68,31 @@ std::string read_file(const std::filesystem::path& path) {
   REQUIRE(in.is_open());
   std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   return data;
+}
+
+int count_commits(const std::filesystem::path& repo_dir) {
+  git_repository* repo = nullptr;
+  if (git_repository_open(&repo, repo_dir.string().c_str()) != 0) {
+    return -1;
+  }
+
+  git_revwalk* walk = nullptr;
+  if (git_revwalk_new(&walk, repo) != 0) {
+    git_repository_free(repo);
+    return -1;
+  }
+
+  int count = 0;
+  if (git_revwalk_push_head(walk) == 0) {
+    git_oid oid{};
+    while (git_revwalk_next(&oid, walk) == 0) {
+      ++count;
+    }
+  }
+
+  git_revwalk_free(walk);
+  git_repository_free(repo);
+  return count;
 }
 
 } // namespace
@@ -138,4 +165,34 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->title == "Renamed");
   REQUIRE(fetched->updated_at == 20);
+}
+
+TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::git::GitRepo repo;
+  const auto repo_dir = dir / "repo";
+  repo.open_or_init(repo_dir);
+
+  holder::store::CardStore store(db, repo);
+  holder::model::Card card;
+  card.card_id = "abcd9999";
+  card.project_id = "proj-1";
+  card.title = "First";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  store.create(card, "same");
+  const int before = count_commits(repo_dir);
+
+  store.update_content(card.card_id, "same", std::nullopt, 20);
+  const int after = count_commits(repo_dir);
+
+  REQUIRE(before == after);
 }
