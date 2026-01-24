@@ -42,6 +42,10 @@ inline std::filesystem::path make_temp_dir() {
   return dir;
 }
 
+inline void ensure_uuid_seeded() {
+  static EnvGuard guard("HOLDER_UUID_SEED", "1337");
+}
+
 inline nlohmann::json get_health(const std::string& bind,
                                  unsigned short port,
                                  const std::string& token) {

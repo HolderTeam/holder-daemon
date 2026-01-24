@@ -18,7 +18,9 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -138,6 +140,23 @@ long long now_epoch_seconds() {
 }
 
 std::string generate_uuid_v4() {
+  if (const char* seed_env = std::getenv("HOLDER_UUID_SEED")) {
+    try {
+      const auto seed = static_cast<unsigned int>(std::stoul(seed_env));
+      static std::mutex mutex;
+      static std::mt19937 rng;
+      static bool seeded = false;
+      std::lock_guard<std::mutex> lock(mutex);
+      if (!seeded) {
+        rng.seed(seed);
+        seeded = true;
+      }
+      boost::uuids::basic_random_generator<std::mt19937> gen(&rng);
+      return boost::uuids::to_string(gen());
+    } catch (const std::exception&) {
+      // Fall through to random generator.
+    }
+  }
   boost::uuids::random_generator gen;
   return boost::uuids::to_string(gen());
 }

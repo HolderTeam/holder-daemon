@@ -3,12 +3,14 @@
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
+using holder::test::ensure_uuid_seeded;
 
 TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
+  ensure_uuid_seeded();
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);

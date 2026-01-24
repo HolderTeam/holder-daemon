@@ -4,6 +4,7 @@ using holder::test::create_project;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
+using holder::test::ensure_uuid_seeded;
 
 TEST_CASE("HTTP card create/get/patch", "[http]") {
   const auto dir = make_temp_dir();
@@ -11,6 +12,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
 
   auto db = open_db_with_schema(db_path);
   create_project(db, "proj-1");
+  ensure_uuid_seeded();
 
   holder::git::GitRepo repo;
   const auto repo_dir = dir / "repo";
