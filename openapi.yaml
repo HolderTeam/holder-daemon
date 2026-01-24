@@ -3,6 +3,7 @@ info:
   title: Holder API
   version: 0.1.0
 servers:
+  - url: /
   - url: http://127.0.0.1:11499
 security:
   - bearerAuth: []
