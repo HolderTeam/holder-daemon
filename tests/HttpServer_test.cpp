@@ -278,6 +278,8 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
                                          bad_create,
                                          boost::beast::http::status::bad_request);
   REQUIRE(created["ok"] == false);
+  REQUIRE(created["error"]["code"] == "bad_request");
+  REQUIRE(created["error"]["message"].is_string());
 
   nlohmann::json bad_patch = {
       {"updated_at", 20}
@@ -289,6 +291,8 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
                                          bad_patch,
                                          boost::beast::http::status::bad_request);
   REQUIRE(patched["ok"] == false);
+  REQUIRE(patched["error"]["code"] == "bad_request");
+  REQUIRE(patched["error"]["message"].is_string());
 
   std::raise(SIGTERM);
   server_thread.join();
@@ -327,6 +331,8 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
                                               nlohmann::json::object(),
                                               boost::beast::http::status::unauthorized);
   REQUIRE(unauthorized["ok"] == false);
+  REQUIRE(unauthorized["error"]["code"] == "unauthorized");
+  REQUIRE(unauthorized["error"]["message"].is_string());
 
   const auto missing = http_json_request(bound.bind, bound.port, "",
                                          boost::beast::http::verb::get,
@@ -334,6 +340,8 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
                                          nlohmann::json::object(),
                                          boost::beast::http::status::unauthorized);
   REQUIRE(missing["ok"] == false);
+  REQUIRE(missing["error"]["code"] == "unauthorized");
+  REQUIRE(missing["error"]["message"].is_string());
 
   std::raise(SIGTERM);
   server_thread.join();
@@ -372,6 +380,8 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
                                          nlohmann::json::object(),
                                          boost::beast::http::status::not_found);
   REQUIRE(missing["ok"] == false);
+  REQUIRE(missing["error"]["code"] == "not_found");
+  REQUIRE(missing["error"]["message"].is_string());
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -397,6 +407,10 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   socket.shutdown(tcp::socket::shutdown_both);
 
   REQUIRE(res.result() == http::status::bad_request);
+  const auto parsed = nlohmann::json::parse(res.body());
+  REQUIRE(parsed["ok"] == false);
+  REQUIRE(parsed["error"]["code"] == "bad_request");
+  REQUIRE(parsed["error"]["message"].is_string());
 
   std::raise(SIGTERM);
   server_thread.join();
