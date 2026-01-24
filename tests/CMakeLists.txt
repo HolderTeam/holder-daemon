@@ -27,6 +27,7 @@ add_executable(lockfile_tests
   ResourceRepo_test.cpp
   AiThreadRepo_test.cpp
   AiMessageRepo_test.cpp
+  Migrations_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
@@ -40,6 +41,8 @@ add_executable(lockfile_tests
   ../src/store/ResourceRepo.cpp
   ../src/store/AiThreadRepo.cpp
   ../src/store/AiMessageRepo.cpp
+  ../src/store/Migrations.cpp
+  ../src/store/Tx.cpp
   ../src/store/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE

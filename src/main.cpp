@@ -62,6 +62,7 @@ int main(int argc, char* argv[]) {
 
   const auto schema_path = find_schema_sql();
   holder::store::Migrations::ensure_schema(db, schema_path);
+  holder::store::Migrations::ensure_schema_version(db, 1);
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(

@@ -2,6 +2,7 @@
 #include "store/Tx.h"
 
 #include <spdlog/spdlog.h>
+#include <sqlite3.h>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -56,6 +57,35 @@ void Migrations::ensure_schema(Db& db, const std::filesystem::path& schema_sql_p
   tx.commit();
 
   spdlog::info("Schema applied successfully.");
+}
+
+void Migrations::ensure_schema_version(Db& db, int expected_version) {
+  static constexpr const char* SQL = "SELECT version FROM schema_version LIMIT 1;";
+
+  sqlite3_stmt* stmt = nullptr;
+  int rc = sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr);
+  if (rc != SQLITE_OK) {
+    throw std::runtime_error(std::string("sqlite prepare failed: ") + sqlite3_errmsg(db.handle()));
+  }
+
+  rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    const int version = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    if (version != expected_version) {
+      throw std::runtime_error("Schema version mismatch. Expected " +
+                               std::to_string(expected_version) + ", got " +
+                               std::to_string(version));
+    }
+    return;
+  }
+
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw std::runtime_error(std::string("sqlite step failed: ") + sqlite3_errmsg(db.handle()));
+  }
+
+  throw std::runtime_error("schema_version row missing");
 }
 
 } // namespace holder::store
