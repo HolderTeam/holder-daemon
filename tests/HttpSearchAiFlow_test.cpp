@@ -16,15 +16,12 @@ TEST_CASE("HTTP search AI flow finds message", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
   ensure_uuid_seeded();
 
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
-
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

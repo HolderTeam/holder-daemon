@@ -2,6 +2,7 @@
 
 #include "core/CardPaths.h"
 #include "core/ProjectPaths.h"
+#include "git/GitRepo.h"
 #include "core/ServerInfo.h"
 #include "store/CardRepo.h"
 #include "store/ProjectRepo.h"
@@ -461,6 +462,12 @@ void Session::run() {
           }
           repo.create(project);
 
+          if (project.git_remote_url.has_value()) {
+            holder::git::GitRepo git_repo;
+            git_repo.open_or_init(project.root_path);
+            git_repo.set_remote("origin", project.git_remote_url.value());
+          }
+
           nlohmann::json data;
           data["project_id"] = project.project_id;
           nlohmann::json payload;
@@ -552,6 +559,19 @@ void Session::run() {
                         project_id,
                         std::optional<std::string>(body.at("git_provider").get<std::string>()),
                         updated_at);
+                  }
+                }
+                if (has_git_remote) {
+                  const std::string repo_root =
+                      has_root ? body.at("root_path").get<std::string>()
+                               : project_opt->root_path;
+                  holder::git::GitRepo git_repo;
+                  git_repo.open_or_init(repo_root);
+                  if (body.at("git_remote_url").is_null()) {
+                    git_repo.remove_remote("origin");
+                  } else {
+                    git_repo.set_remote("origin",
+                                        body.at("git_remote_url").get<std::string>());
                   }
                 }
                 nlohmann::json payload;

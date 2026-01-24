@@ -85,12 +85,14 @@ inline holder::store::Db open_db_with_schema(const std::filesystem::path& db_pat
   return db;
 }
 
-inline void create_project(holder::store::Db& db, const std::string& project_id) {
+inline void create_project(holder::store::Db& db,
+                           const std::string& project_id,
+                           const std::string& root_path = "/tmp/project") {
   holder::store::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
-  project.root_path = "/tmp/project";
+  project.root_path = root_path;
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);

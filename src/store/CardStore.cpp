@@ -18,10 +18,24 @@ std::string read_file(const std::filesystem::path& path) {
 
 } // namespace
 
-CardStore::CardStore(Db& db, holder::git::GitRepo& repo, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(repo), card_repo_(db), fts_(fts) {}
+CardStore::CardStore(Db& db, holder::index::FtsIndexer* fts)
+    : db_(db), repo_(), card_repo_(db), project_repo_(db), fts_(fts) {}
+
+holder::model::Project CardStore::require_project(const std::string& project_id) {
+  const auto project_opt = project_repo_.get(project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found: " + project_id);
+  }
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+  return project_opt.value();
+}
 
 void CardStore::create(holder::model::Card card, const std::string& content) {
+  require_project(card.project_id);
+
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path.empty()) {
     card.rel_path = expected;
@@ -65,6 +79,7 @@ void CardStore::update_content(const std::string& card_id,
   }
 
   const auto& card = card_opt.value();
+  require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -99,7 +114,13 @@ std::optional<holder::model::Card> CardStore::get(const std::string& card_id) co
   return card_repo_.get(card_id);
 }
 
-std::optional<std::string> CardStore::get_content(const holder::model::Card& card) const {
+std::optional<std::string> CardStore::get_content(const holder::model::Card& card) {
+  const auto project_opt = project_repo_.get(card.project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found: " + card.project_id);
+  }
+  repo_.open_or_init(project_opt->root_path);
+
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");

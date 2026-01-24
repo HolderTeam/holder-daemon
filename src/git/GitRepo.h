@@ -25,6 +25,12 @@ public:
   // If it's the first commit, parent list is empty.
   void commit(const std::string& message);
 
+  // Ensure a remote exists with the given URL (create or update).
+  void set_remote(const std::string& name, const std::string& url);
+
+  // Remove a remote if it exists.
+  void remove_remote(const std::string& name);
+
   std::filesystem::path repo_dir() const { return repo_dir_; }
 
 private:

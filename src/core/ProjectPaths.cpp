@@ -53,7 +53,7 @@ std::filesystem::path default_projects_root() {
     return std::filesystem::path(env);
   }
   const auto paths = holder::core::Paths::resolve("holder");
-  return paths.data_dir / "repo" / "projects";
+  return paths.data_dir / "projects";
 }
 
 std::string unique_project_root(const std::filesystem::path& base_root,

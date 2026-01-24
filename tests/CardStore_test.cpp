@@ -53,12 +53,14 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db, const std::string& project_id) {
+void create_project(holder::store::Db& db,
+                    const std::string& project_id,
+                    const std::string& root_path) {
   holder::store::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
-  project.root_path = "/tmp/project";
+  project.root_path = root_path;
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
@@ -105,14 +107,11 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd1234";
   card.project_id = "proj-1";
@@ -123,7 +122,7 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   store.create(card, "hello");
 
   const auto rel_path = holder::core::card_rel_path(card.card_id);
-  const auto full_path = repo_dir / rel_path;
+  const auto full_path = project_root / rel_path;
   REQUIRE(std::filesystem::exists(full_path));
   REQUIRE(read_file(full_path) == "hello");
 
@@ -140,14 +139,11 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd5678";
   card.project_id = "proj-1";
@@ -159,7 +155,7 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   store.update_content(card.card_id, "updated", std::optional<std::string>("Renamed"), 20);
 
   const auto rel_path = holder::core::card_rel_path(card.card_id);
-  const auto full_path = repo_dir / rel_path;
+  const auto full_path = project_root / rel_path;
   REQUIRE(std::filesystem::exists(full_path));
   REQUIRE(read_file(full_path) == "updated");
 
@@ -177,14 +173,11 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd9999";
   card.project_id = "proj-1";
@@ -193,10 +186,10 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   card.updated_at = 10;
 
   store.create(card, "same");
-  const int before = count_commits(repo_dir);
+  const int before = count_commits(project_root);
 
   store.update_content(card.card_id, "same", std::nullopt, 20);
-  const int after = count_commits(repo_dir);
+  const int after = count_commits(project_root);
 
   REQUIRE(before == after);
 }
@@ -208,14 +201,11 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcf0000";
   card.project_id = "proj-1";
@@ -224,10 +214,10 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   card.updated_at = 10;
 
   store.create(card, "one");
-  const int before = count_commits(repo_dir);
+  const int before = count_commits(project_root);
 
   store.update_content(card.card_id, "two", std::nullopt, 20);
-  const int after = count_commits(repo_dir);
+  const int after = count_commits(project_root);
 
   REQUIRE(after == before + 1);
 }
@@ -239,14 +229,11 @@ TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd1111";
   card.project_id = "proj-1";
@@ -265,14 +252,11 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, repo, &fts);
+  holder::store::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abca2222";
   card.project_id = "proj-1";
@@ -281,6 +265,8 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
   card.updated_at = 10;
 
   const auto rel_path = holder::core::card_rel_path(card.card_id);
+  holder::git::GitRepo repo;
+  repo.open_or_init(project_root);
   repo.write_file(rel_path, "manual");
 
   REQUIRE_THROWS(store.create(card, "one"));

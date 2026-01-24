@@ -17,12 +17,8 @@ TEST_CASE("HTTP open flow lists projects then cards", "[http]") {
   std::filesystem::create_directories(projects_root);
   EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
-
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

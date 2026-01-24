@@ -12,7 +12,6 @@
 #include "index/Reindexer.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
-#include "git/GitRepo.h"
 
 #include <filesystem>
 #include <chrono>
@@ -110,18 +109,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  holder::git::GitRepo repo;
-  repo.open_or_init(paths.data_dir / "repo");
-
-  // v0.1: write a placeholder export file
-  repo.write_file("README.md",
-    "# Holder\n\n"
-    "This repository is managed by Holder.\n"
-    "It contains exported cards and metadata for backup/sync.\n");
-
-  repo.stage_path("README.md");
-  repo.commit("Bootstrap holder repository");
-
   spdlog::info("holder boot complete.");
 
   holder::index::FtsIndexer fts(db);
@@ -133,7 +120,7 @@ int main(int argc, char* argv[]) {
     spdlog::shutdown();
     return 0;
   }
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
   holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts);
   const auto bound = server.start();
 

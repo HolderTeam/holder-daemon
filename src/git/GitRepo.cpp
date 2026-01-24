@@ -230,4 +230,40 @@ void GitRepo::commit(const std::string& message) {
   spdlog::info("Created commit: {}", message);
 }
 
+void GitRepo::set_remote(const std::string& name, const std::string& url) {
+  ensure_open();
+
+  git_remote* remote = nullptr;
+  const int lookup = git_remote_lookup(&remote, reinterpret_cast<git_repository*>(repo_), name.c_str());
+  if (lookup == 0) {
+    git_remote_free(remote);
+    const int rc = git_remote_set_url(reinterpret_cast<git_repository*>(repo_), name.c_str(), url.c_str());
+    if (rc != 0) throw git_err("git_remote_set_url failed", rc);
+    spdlog::info("Updated git remote {} -> {}", name, url);
+    return;
+  }
+  if (lookup != GIT_ENOTFOUND) {
+    throw git_err("git_remote_lookup failed", lookup);
+  }
+
+  const int rc = git_remote_create(&remote,
+                                   reinterpret_cast<git_repository*>(repo_),
+                                   name.c_str(),
+                                   url.c_str());
+  if (rc != 0) throw git_err("git_remote_create failed", rc);
+  git_remote_free(remote);
+  spdlog::info("Created git remote {} -> {}", name, url);
+}
+
+void GitRepo::remove_remote(const std::string& name) {
+  ensure_open();
+
+  const int rc = git_remote_delete(reinterpret_cast<git_repository*>(repo_), name.c_str());
+  if (rc == GIT_ENOTFOUND) {
+    return;
+  }
+  if (rc != 0) throw git_err("git_remote_delete failed", rc);
+  spdlog::info("Removed git remote {}", name);
+}
+
 } // namespace holder::git

@@ -84,7 +84,7 @@ TEST_CASE("default_projects_root falls back to data dir", "[project_paths]") {
 #endif
   }
   const auto paths = holder::core::Paths::resolve("holder");
-  const auto expected = paths.data_dir / "repo" / "projects";
+  const auto expected = paths.data_dir / "projects";
 
   REQUIRE(holder::core::default_projects_root() == expected);
 }

@@ -11,15 +11,12 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
   ensure_uuid_seeded();
 
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
-
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -134,14 +131,11 @@ TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -190,14 +184,11 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -238,14 +229,11 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -278,14 +266,11 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  create_project(db, "proj-1");
-
-  holder::git::GitRepo repo;
-  const auto repo_dir = dir / "repo";
-  repo.open_or_init(repo_dir);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, repo, &fts);
+  holder::store::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
