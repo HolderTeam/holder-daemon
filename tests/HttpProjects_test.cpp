@@ -1,10 +1,41 @@
 #include "http_test_helpers.h"
 
+#include <git2.h>
+
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
 using holder::test::ensure_uuid_seeded;
 using holder::test::EnvGuard;
+
+namespace {
+
+std::optional<std::string> get_remote_url(const std::filesystem::path& repo_dir,
+                                          const std::string& name) {
+  git_repository* repo = nullptr;
+  if (git_repository_open(&repo, repo_dir.string().c_str()) != 0) {
+    return std::nullopt;
+  }
+
+  git_remote* remote = nullptr;
+  const int rc = git_remote_lookup(&remote, repo, name.c_str());
+  if (rc != 0) {
+    git_repository_free(repo);
+    return std::nullopt;
+  }
+
+  const char* url = git_remote_url(remote);
+  std::optional<std::string> result;
+  if (url) {
+    result = std::string(url);
+  }
+
+  git_remote_free(remote);
+  git_repository_free(repo);
+  return result;
+}
+
+} // namespace
 
 TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   const auto dir = make_temp_dir();
@@ -31,10 +62,12 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+  const auto project_root = dir / "project_repo";
+
   nlohmann::json create_body = {
       {"project_id", "proj-1"},
       {"name", "Project One"},
-      {"root_path", "/tmp/project"},
+      {"root_path", project_root.string()},
       {"created_at", 10},
       {"updated_at", 10}
   };
@@ -111,6 +144,13 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(fetched_after["data"]["name"] == "Project Uno");
   REQUIRE(fetched_after["data"]["git_remote_url"] == "git@github.com:me/demo.git");
   REQUIRE(fetched_after["data"]["git_provider"] == "github");
+  const auto remote_set = get_remote_url(project_root, "origin");
+  REQUIRE(remote_set.has_value());
+  REQUIRE(remote_set.value() == "git@github.com:me/demo.git");
+
+  holder::git::GitRepo git_repo;
+  git_repo.open_or_init("/tmp/project");
+  git_repo.set_remote("origin", "git@github.com:me/demo.git");
 
   nlohmann::json clear_git = {
       {"git_remote_url", nullptr},
@@ -131,6 +171,11 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                                  boost::beast::http::status::ok);
   REQUIRE(fetched_cleared["data"]["git_remote_url"].is_null());
   REQUIRE(fetched_cleared["data"]["git_provider"].is_null());
+  const auto remote_cleared = get_remote_url(project_root, "origin");
+  REQUIRE_FALSE(remote_cleared.has_value());
+
+  git_repo.open_or_init("/tmp/project");
+  git_repo.remove_remote("origin");
 
   nlohmann::json create_body2 = {
       {"project_id", "proj-2"},
