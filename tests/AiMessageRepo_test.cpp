@@ -8,6 +8,7 @@
 #include "model/AiThread.h"
 #include "model/Project.h"
 #include "index/FtsIndexer.h"
+#include "core/AiMessagePaths.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
 #include "store/Db.h"
@@ -50,15 +51,23 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db, const std::string& project_id) {
+void create_project(holder::store::Db& db,
+                    const std::string& project_id,
+                    const std::string& root_path) {
   holder::store::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
-  project.root_path = "/tmp/project";
+  project.root_path = root_path;
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
+}
+
+std::string read_file(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  REQUIRE(in.is_open());
+  return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
 void create_thread(holder::store::Db& db, const std::string& thread_id, const std::string& project_id) {
@@ -81,7 +90,8 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   holder::store::Db db;
   db.open(db_path);
   apply_schema(db);
-  create_project(db, "proj-1");
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
   create_thread(db, "thread-1", "proj-1");
 
   holder::index::FtsIndexer fts(db);
@@ -109,6 +119,15 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
 
   repo.append(msg1);
   repo.append(msg2);
+
+  const auto rel_path = holder::core::ai_message_rel_path("msg-2");
+  const auto file_path = project_root / rel_path;
+  const auto raw = read_file(file_path);
+  REQUIRE(raw.find("---\n") == 0);
+  REQUIRE(raw.find("message_id: msg-2") != std::string::npos);
+  REQUIRE(raw.find("thread_id: thread-1") != std::string::npos);
+  REQUIRE(raw.find("project_id: proj-1") != std::string::npos);
+  REQUIRE(raw.rfind("Hi") != std::string::npos);
 
   const auto list = repo.list_by_thread("thread-1");
   REQUIRE(list.size() == 2);

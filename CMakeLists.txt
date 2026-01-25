@@ -60,6 +60,8 @@ add_executable(holder
   src/core/Signal.cpp
   src/core/CardPaths.cpp
   src/core/CardFrontMatter.cpp
+  src/core/AiMessagePaths.cpp
+  src/core/AiMessageFrontMatter.cpp
   src/core/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp

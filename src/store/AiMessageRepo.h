@@ -1,8 +1,11 @@
 #pragma once
 
 #include "index/FtsIndexer.h"
+#include "git/GitRepo.h"
 #include "model/AiMessage.h"
+#include "store/AiThreadRepo.h"
 #include "store/Db.h"
+#include "store/ProjectRepo.h"
 
 #include <string>
 #include <vector>
@@ -18,6 +21,9 @@ public:
 
 private:
   Db& db_;
+  holder::git::GitRepo repo_;
+  holder::store::AiThreadRepo thread_repo_;
+  holder::store::ProjectRepo project_repo_;
   holder::index::FtsIndexer* fts_ = nullptr;
 };
 

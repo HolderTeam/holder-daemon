@@ -41,6 +41,7 @@ add_executable(lockfile_tests
   CardPaths_test.cpp
   CardFrontMatter_test.cpp
   AiMessagePaths_test.cpp
+  AiMessageFrontMatter_test.cpp
   ProjectPaths_test.cpp
   CardStore_test.cpp
   FtsIndexer_test.cpp
@@ -52,6 +53,7 @@ add_executable(lockfile_tests
   ../src/core/CardPaths.cpp
   ../src/core/AiMessagePaths.cpp
   ../src/core/CardFrontMatter.cpp
+  ../src/core/AiMessageFrontMatter.cpp
   ../src/core/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp

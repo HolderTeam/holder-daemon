@@ -1,7 +1,11 @@
 #include "store/AiMessageRepo.h"
 
+#include "core/AiMessageFrontMatter.h"
+#include "core/AiMessagePaths.h"
+
 #include <sqlite3.h>
 
+#include <filesystem>
 #include <stdexcept>
 #include <utility>
 
@@ -66,9 +70,33 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts) : db_(db), fts_(fts) {}
+AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts)
+    : db_(db), repo_(), thread_repo_(db), project_repo_(db), fts_(fts) {}
 
 void AiMessageRepo::append(const holder::model::AiMessage& message) {
+  const auto thread_opt = thread_repo_.get(message.thread_id);
+  if (!thread_opt.has_value()) {
+    throw std::runtime_error("thread not found for ai message");
+  }
+  const auto project_opt = project_repo_.get(thread_opt->project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found for ai message thread");
+  }
+
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+
+  const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
+  const auto full_path = repo_.repo_dir() / rel_path;
+  if (std::filesystem::exists(full_path)) {
+    throw std::runtime_error("conflict: ai message file already exists");
+  }
+
+  const auto front_matter = holder::core::render_ai_message_front_matter(message, project_opt->project_id);
+  repo_.write_file(rel_path, front_matter + message.content);
+
   static constexpr const char* SQL =
       "INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
       "created_at, prompt_hash, meta_json) "
@@ -93,28 +121,19 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
+    std::filesystem::remove(full_path);
     throw_sqlite(db_.handle(), "insert ai message failed");
   }
 
   if (fts_) {
-    static constexpr const char* SQL_PROJECT =
-        "SELECT project_id FROM ai_threads WHERE thread_id = ? LIMIT 1;";
-    sqlite3_stmt* s = nullptr;
-    if (sqlite3_prepare_v2(db_.handle(), SQL_PROJECT, -1, &s, nullptr) != SQLITE_OK) {
-      throw_sqlite(db_.handle(), "prepare fetch thread project_id failed");
-    }
-    bind_text(s, 1, message.thread_id);
-    const int rc2 = sqlite3_step(s);
-    if (rc2 == SQLITE_ROW) {
-      const auto* text = sqlite3_column_text(s, 0);
-      const std::string project_id = text ? reinterpret_cast<const char*>(text) : "";
-      sqlite3_finalize(s);
-      fts_->upsert_message(message.message_id, message.thread_id, project_id, message.content);
-    } else {
-      sqlite3_finalize(s);
-      throw std::runtime_error("thread not found for ai message");
-    }
+    fts_->upsert_message(message.message_id,
+                         message.thread_id,
+                         project_opt->project_id,
+                         message.content);
   }
+
+  repo_.stage_path(rel_path);
+  repo_.commit("Add ai message " + message.message_id);
 }
 
 std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
