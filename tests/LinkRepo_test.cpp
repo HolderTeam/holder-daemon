@@ -103,8 +103,8 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   holder::model::CardLink link2;
   link2.project_id = "proj-1";
   link2.from_card_id = "card-a";
-  link2.to_card_id = "card-c";
-  link2.to_type = "card";
+  link2.to_card_id = "res-1";
+  link2.to_type = "resource";
   link2.kind = "ref";
   link2.created_at = 11;
 

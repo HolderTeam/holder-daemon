@@ -215,7 +215,7 @@ components:
           type: string
         to_type:
           type: string
-          description: Target type (card, ai_message, ai_thread).
+          description: Target type (card, ai_message, ai_thread, resource).
         kind:
           type: string
         label:

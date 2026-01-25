@@ -54,7 +54,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cards_project_relpath
 -- ----------------------------
 -- card links
 -- ----------------------------
--- Stores explicit directed edges between cards. Used for:
+-- Stores explicit directed edges between items. Used for:
 -- - wiki-style links
 -- - backlinks
 -- - arbitrary relationships
@@ -62,14 +62,13 @@ CREATE TABLE IF NOT EXISTS card_links (
   project_id    TEXT NOT NULL,
   from_card_id  TEXT NOT NULL,
   to_card_id    TEXT NOT NULL,
-  to_type       TEXT NOT NULL,           -- 'card' | 'ai_message' | 'ai_thread'
+  to_type       TEXT NOT NULL,           -- 'card' | 'ai_message' | 'ai_thread' | 'resource'
   kind          TEXT NOT NULL,           -- e.g. 'wiki', 'ref', 'tag', 'related'
   label         TEXT NULL,
   created_at    INTEGER NOT NULL,
 
   FOREIGN KEY(project_id)   REFERENCES projects(project_id) ON DELETE CASCADE,
   FOREIGN KEY(from_card_id) REFERENCES cards(card_id)       ON DELETE CASCADE,
-  FOREIGN KEY(to_card_id)   REFERENCES cards(card_id)       ON DELETE CASCADE,
 
   PRIMARY KEY(project_id, from_card_id, to_card_id, to_type, kind)
 );
