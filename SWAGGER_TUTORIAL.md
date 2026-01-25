@@ -3,6 +3,7 @@
 This walkthrough uses Swagger UI to:
 - Create a project
 - Create two cards
+- Link the cards
 - List cards in the project
 - Search for a keyword in card content
 
@@ -52,7 +53,29 @@ Execute. Repeat with Card 2:
 }
 ```
 
-## 3) List cards in the project
+Copy the `card_id` values from both responses (call them `<card_id_a>` and
+`<card_id_b>`).
+
+## 3) Link the cards
+
+Open `POST /cards/{card_id}/links` and click "Try it out".
+
+Path param:
+- `card_id`: `<card_id_a>`
+
+Request body:
+```json
+{
+  "to_card_id": "<card_id_b>",
+  "kind": "ref",
+  "label": "See also"
+}
+```
+
+Execute. Then check backlinks with `GET /cards/{card_id}/backlinks`:
+- `card_id`: `<card_id_b>`
+
+## 4) List cards in the project
 
 Open `GET /cards` and click "Try it out".
 
@@ -61,7 +84,7 @@ Query params:
 
 Execute. You should see both cards in the response list.
 
-## 4) Search for a keyword
+## 5) Search for a keyword
 
 Open `GET /search/cards` and click "Try it out".
 

@@ -30,7 +30,7 @@ void write_card_file(holder::git::GitRepo& repo,
 } // namespace
 
 CardStore::CardStore(Db& db, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(), card_repo_(db), project_repo_(db), link_repo_(db), fts_(fts) {}
+    : db_(db), repo_(), card_repo_(db), link_repo_(db), project_repo_(db), fts_(fts) {}
 
 holder::model::Project CardStore::require_project(const std::string& project_id) {
   const auto project_opt = project_repo_.get(project_id);
@@ -126,6 +126,41 @@ void CardStore::update_content(const std::string& card_id,
     const std::string commit_title = title.has_value() ? title.value() : card.title;
     repo_.commit("Update card " + commit_title);
   }
+}
+
+void CardStore::update_links(const std::string& card_id, long long updated_at) {
+  const auto card_opt = card_repo_.get(card_id);
+  if (!card_opt.has_value()) {
+    throw std::runtime_error("card not found: " + card_id);
+  }
+
+  auto card = card_opt.value();
+  require_project(card.project_id);
+  const std::string expected = holder::core::card_rel_path(card.card_id);
+  if (card.rel_path != expected) {
+    throw std::runtime_error("card rel_path does not match card_id");
+  }
+
+  const auto full_path = repo_.repo_dir() / card.rel_path;
+  if (!std::filesystem::exists(full_path)) {
+    throw std::runtime_error("card content missing");
+  }
+
+  const auto raw = read_file(full_path);
+  const auto parsed = holder::core::parse_card_file(raw);
+  const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+
+  card.updated_at = updated_at;
+  const auto updated_raw = holder::core::render_card_front_matter(card, links) + parsed.body;
+
+  if (updated_raw == raw) {
+    return;
+  }
+
+  repo_.write_file(card.rel_path, updated_raw);
+  card_repo_.touch_updated(card_id, updated_at);
+  repo_.stage_path(card.rel_path);
+  repo_.commit("Update links for " + card.title);
 }
 
 std::optional<holder::model::Card> CardStore::get(const std::string& card_id) const {

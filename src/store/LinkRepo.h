@@ -3,6 +3,7 @@
 #include "model/CardLink.h"
 #include "store/Db.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,11 @@ public:
 
   std::vector<holder::model::CardLink> list_backlinks(const std::string& project_id,
                                                       const std::string& to_card_id) const;
+
+  void delete_link(const std::string& project_id,
+                   const std::string& from_card_id,
+                   const std::string& to_card_id,
+                   const std::optional<std::string>& kind);
 
   void delete_links_from(const std::string& project_id, const std::string& from_card_id);
 

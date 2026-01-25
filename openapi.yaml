@@ -205,6 +205,65 @@ components:
           properties:
             card_id:
               type: string
+    CardLink:
+      type: object
+      required: [from_card_id, to_card_id, kind, created_at]
+      properties:
+        from_card_id:
+          type: string
+        to_card_id:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+    CardLinkCreateRequest:
+      type: object
+      required: [to_card_id]
+      properties:
+        to_card_id:
+          type: string
+        kind:
+          type: string
+          description: Optional; defaults to "ref".
+        label:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+          description: Optional; server uses current time if omitted or 0.
+    CardLinkCreateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardLink"
+    CardLinkListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardLink"
+    CardLinkDeleteRequest:
+      type: object
+      properties:
+        to_card_id:
+          type: string
+        kind:
+          type: string
     SearchCardItem:
       type: object
       required: [card_id, title, updated_at, created_at, snippet, rank]
@@ -668,6 +727,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardGetResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/links:
+    get:
+      summary: List outgoing links for a card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardLinkListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create or update a link from a card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardLinkCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardLinkCreateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete links from a card
+      description: Provide to_card_id (and optional kind) to delete a specific link. If omitted, deletes all outgoing links.
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardLinkDeleteRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPatchResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/backlinks:
+    get:
+      summary: List backlinks to a card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardLinkListResponse"
         "401":
           description: Unauthorized
           content:
