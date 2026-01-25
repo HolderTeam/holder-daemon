@@ -807,6 +807,7 @@ void Session::run() {
                   nlohmann::json item;
                   item["from_card_id"] = link.from_card_id;
                   item["to_card_id"] = link.to_card_id;
+                  item["to_type"] = link.to_type;
                   item["kind"] = link.kind;
                   item["created_at"] = link.created_at;
                   if (link.label.has_value()) {
@@ -829,8 +830,14 @@ void Session::run() {
                   link.project_id = card.project_id;
                   link.from_card_id = card.card_id;
                   link.to_card_id = body.at("to_card_id").get<std::string>();
+                  if (body.contains("to_type") && !body.at("to_type").is_null()) {
+                    link.to_type = body.at("to_type").get<std::string>();
+                  }
                   if (body.contains("kind") && !body.at("kind").is_null()) {
                     link.kind = body.at("kind").get<std::string>();
+                  }
+                  if (link.to_type.empty()) {
+                    link.to_type = "card";
                   }
                   if (link.kind.empty()) {
                     link.kind = "ref";
@@ -851,6 +858,7 @@ void Session::run() {
                   payload["data"] = {
                       {"from_card_id", link.from_card_id},
                       {"to_card_id", link.to_card_id},
+                      {"to_type", link.to_type},
                       {"kind", link.kind},
                       {"created_at", link.created_at}
                   };
@@ -863,18 +871,22 @@ void Session::run() {
                 }
               } else if (req.method() == http::verb::delete_) {
                 std::optional<std::string> to_card_id;
+                std::optional<std::string> to_type;
                 std::optional<std::string> kind;
                 if (!req.body().empty()) {
                   const auto body = nlohmann::json::parse(req.body());
                   if (body.contains("to_card_id") && !body.at("to_card_id").is_null()) {
                     to_card_id = body.at("to_card_id").get<std::string>();
                   }
+                  if (body.contains("to_type") && !body.at("to_type").is_null()) {
+                    to_type = body.at("to_type").get<std::string>();
+                  }
                   if (body.contains("kind") && !body.at("kind").is_null()) {
                     kind = body.at("kind").get<std::string>();
                   }
                 }
                 if (to_card_id.has_value()) {
-                  repo.delete_link(card.project_id, card.card_id, to_card_id.value(), kind);
+                  repo.delete_link(card.project_id, card.card_id, to_card_id.value(), to_type, kind);
                 } else {
                   repo.delete_links_from(card.project_id, card.card_id);
                 }
@@ -911,6 +923,7 @@ void Session::run() {
                 nlohmann::json item;
                 item["from_card_id"] = link.from_card_id;
                 item["to_card_id"] = link.to_card_id;
+                item["to_type"] = link.to_type;
                 item["kind"] = link.kind;
                 item["created_at"] = link.created_at;
                 if (link.label.has_value()) {

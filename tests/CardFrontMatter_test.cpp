@@ -22,10 +22,12 @@ TEST_CASE("parse_card_file reads front matter and body", "[card_front_matter]") 
       "deleted_at: null\n"
       "links:\n"
       "  - to: efgh5678\n"
+      "    to_type: card\n"
       "    kind: ref\n"
       "    created_at: 15\n"
       "    label: \"See also\"\n"
       "  - to: wxyz9999\n"
+      "    to_type: ai_message\n"
       "    kind: parent\n"
       "    created_at: 16\n"
       "---\n"
@@ -46,10 +48,12 @@ TEST_CASE("parse_card_file reads front matter and body", "[card_front_matter]") 
   REQUIRE(parsed.links.size() == 2);
   REQUIRE(parsed.links[0].from_card_id == "abcd1234");
   REQUIRE(parsed.links[0].to_card_id == "efgh5678");
+  REQUIRE(parsed.links[0].to_type == "card");
   REQUIRE(parsed.links[0].kind == "ref");
   REQUIRE(parsed.links[0].label.has_value());
   REQUIRE(parsed.links[0].label.value() == "See also");
   REQUIRE(parsed.links[1].to_card_id == "wxyz9999");
+  REQUIRE(parsed.links[1].to_type == "ai_message");
   REQUIRE(parsed.links[1].kind == "parent");
 }
 
@@ -74,6 +78,7 @@ TEST_CASE("render_card_front_matter includes links", "[card_front_matter]") {
   link.project_id = "proj-1";
   link.from_card_id = "abcd1234";
   link.to_card_id = "efgh5678";
+  link.to_type = "card";
   link.kind = "ref";
   link.created_at = 15;
   link.label = "See also";
@@ -81,6 +86,7 @@ TEST_CASE("render_card_front_matter includes links", "[card_front_matter]") {
   const auto front_matter = holder::core::render_card_front_matter(card, {link});
   REQUIRE(front_matter.find("links:") != std::string::npos);
   REQUIRE(front_matter.find("to: efgh5678") != std::string::npos);
+  REQUIRE(front_matter.find("to_type: card") != std::string::npos);
   REQUIRE(front_matter.find("kind: ref") != std::string::npos);
   REQUIRE(front_matter.find("label: See also") != std::string::npos);
 }

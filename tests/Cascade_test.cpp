@@ -102,6 +102,7 @@ TEST_CASE("Deleting project cascades to dependent rows", "[cascade]") {
   link.project_id = "proj-1";
   link.from_card_id = "card-a";
   link.to_card_id = "card-b";
+  link.to_type = "card";
   link.kind = "wiki";
   link.created_at = 3;
   link_repo.upsert_links("proj-1", "card-a", {link});

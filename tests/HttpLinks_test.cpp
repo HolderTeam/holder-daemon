@@ -62,6 +62,7 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
 
   nlohmann::json link_body = {
       {"to_card_id", "card-b"},
+      {"to_type", "card"},
       {"kind", "ref"},
       {"label", "See"},
       {"created_at", 123}
@@ -73,6 +74,7 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
                                          boost::beast::http::status::created);
   REQUIRE(created["ok"] == true);
   REQUIRE(created["data"]["to_card_id"] == "card-b");
+  REQUIRE(created["data"]["to_type"] == "card");
   REQUIRE(created["data"]["kind"] == "ref");
   REQUIRE(created["data"]["label"] == "See");
 
@@ -85,6 +87,7 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
   REQUIRE(listed["data"].is_array());
   REQUIRE(listed["data"].size() == 1);
   REQUIRE(listed["data"][0]["to_card_id"] == "card-b");
+  REQUIRE(listed["data"][0]["to_type"] == "card");
   REQUIRE(listed["data"][0]["kind"] == "ref");
   REQUIRE(listed["data"][0]["label"] == "See");
 

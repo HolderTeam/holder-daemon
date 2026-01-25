@@ -95,6 +95,7 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   link1.project_id = "proj-1";
   link1.from_card_id = "card-a";
   link1.to_card_id = "card-b";
+  link1.to_type = "card";
   link1.kind = "wiki";
   link1.label = "Label";
   link1.created_at = 10;
@@ -103,6 +104,7 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   link2.project_id = "proj-1";
   link2.from_card_id = "card-a";
   link2.to_card_id = "card-c";
+  link2.to_type = "card";
   link2.kind = "ref";
   link2.created_at = 11;
 

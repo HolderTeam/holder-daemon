@@ -26,6 +26,7 @@ public:
   void delete_link(const std::string& project_id,
                    const std::string& from_card_id,
                    const std::string& to_card_id,
+                   const std::optional<std::string>& to_type,
                    const std::optional<std::string>& kind);
 
   void delete_links_from(const std::string& project_id, const std::string& from_card_id);

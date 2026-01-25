@@ -207,12 +207,15 @@ components:
               type: string
     CardLink:
       type: object
-      required: [from_card_id, to_card_id, kind, created_at]
+      required: [from_card_id, to_card_id, to_type, kind, created_at]
       properties:
         from_card_id:
           type: string
         to_card_id:
           type: string
+        to_type:
+          type: string
+          description: Target type (card, ai_message, ai_thread).
         kind:
           type: string
         label:
@@ -227,6 +230,9 @@ components:
       properties:
         to_card_id:
           type: string
+        to_type:
+          type: string
+          description: Optional; defaults to "card".
         kind:
           type: string
           description: Optional; defaults to "ref".

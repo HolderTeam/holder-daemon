@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS card_links (
   project_id    TEXT NOT NULL,
   from_card_id  TEXT NOT NULL,
   to_card_id    TEXT NOT NULL,
+  to_type       TEXT NOT NULL,           -- 'card' | 'ai_message' | 'ai_thread'
   kind          TEXT NOT NULL,           -- e.g. 'wiki', 'ref', 'tag', 'related'
   label         TEXT NULL,
   created_at    INTEGER NOT NULL,
@@ -70,7 +71,7 @@ CREATE TABLE IF NOT EXISTS card_links (
   FOREIGN KEY(from_card_id) REFERENCES cards(card_id)       ON DELETE CASCADE,
   FOREIGN KEY(to_card_id)   REFERENCES cards(card_id)       ON DELETE CASCADE,
 
-  PRIMARY KEY(project_id, from_card_id, to_card_id, kind)
+  PRIMARY KEY(project_id, from_card_id, to_card_id, to_type, kind)
 );
 
 CREATE INDEX IF NOT EXISTS idx_card_links_from
@@ -207,4 +208,3 @@ CREATE TABLE IF NOT EXISTS schema_version (
 INSERT INTO schema_version(version)
 SELECT 1
 WHERE NOT EXISTS (SELECT 1 FROM schema_version);
-

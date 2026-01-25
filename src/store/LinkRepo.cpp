@@ -38,13 +38,14 @@ holder::model::CardLink read_link(sqlite3_stmt* stmt) {
   link.project_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
   link.from_card_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
   link.to_card_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
-  link.kind = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
-  if (sqlite3_column_type(stmt, 4) == SQLITE_NULL) {
+  link.to_type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+  link.kind = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+  if (sqlite3_column_type(stmt, 5) == SQLITE_NULL) {
     link.label.reset();
   } else {
-    link.label = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+    link.label = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
   }
-  link.created_at = sqlite3_column_int64(stmt, 5);
+  link.created_at = sqlite3_column_int64(stmt, 6);
   return link;
 }
 
@@ -56,9 +57,9 @@ void LinkRepo::upsert_links(const std::string& project_id,
                             const std::string& from_card_id,
                             const std::vector<holder::model::CardLink>& links) {
   static constexpr const char* SQL =
-      "INSERT INTO card_links(project_id, from_card_id, to_card_id, kind, label, created_at) "
-      "VALUES(?, ?, ?, ?, ?, ?) "
-      "ON CONFLICT(project_id, from_card_id, to_card_id, kind) DO UPDATE SET "
+      "INSERT INTO card_links(project_id, from_card_id, to_card_id, to_type, kind, label, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?) "
+      "ON CONFLICT(project_id, from_card_id, to_card_id, to_type, kind) DO UPDATE SET "
       "label=excluded.label, created_at=excluded.created_at;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -72,15 +73,17 @@ void LinkRepo::upsert_links(const std::string& project_id,
       throw std::runtime_error("link project_id/from_card_id mismatch");
     }
 
+    const std::string to_type = link.to_type.empty() ? "card" : link.to_type;
     sqlite3_reset(stmt);
     sqlite3_clear_bindings(stmt);
 
     bind_text(stmt, 1, link.project_id);
     bind_text(stmt, 2, link.from_card_id);
     bind_text(stmt, 3, link.to_card_id);
-    bind_text(stmt, 4, link.kind);
-    bind_text_optional(stmt, 5, link.label);
-    bind_int64(stmt, 6, link.created_at);
+    bind_text(stmt, 4, to_type);
+    bind_text(stmt, 5, link.kind);
+    bind_text_optional(stmt, 6, link.label);
+    bind_int64(stmt, 7, link.created_at);
 
     const int rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -96,7 +99,7 @@ std::vector<holder::model::CardLink> LinkRepo::list_outgoing(
     const std::string& project_id,
     const std::string& from_card_id) const {
   static constexpr const char* SQL =
-      "SELECT project_id, from_card_id, to_card_id, kind, label, created_at "
+      "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
       "FROM card_links WHERE project_id = ? AND from_card_id = ? "
       "ORDER BY created_at DESC;";
 
@@ -128,7 +131,7 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
     const std::string& project_id,
     const std::string& to_card_id) const {
   static constexpr const char* SQL =
-      "SELECT project_id, from_card_id, to_card_id, kind, label, created_at "
+      "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
       "FROM card_links WHERE project_id = ? AND to_card_id = ? "
       "ORDER BY created_at DESC;";
 
@@ -159,24 +162,45 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
 void LinkRepo::delete_link(const std::string& project_id,
                            const std::string& from_card_id,
                            const std::string& to_card_id,
+                           const std::optional<std::string>& to_type,
                            const std::optional<std::string>& kind) {
+  const char* sql_with_kind_type =
+      "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
+      "AND to_card_id = ? AND to_type = ? AND kind = ?;";
   const char* sql_with_kind =
       "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
       "AND to_card_id = ? AND kind = ?;";
+  const char* sql_without_kind_type =
+      "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
+      "AND to_card_id = ? AND to_type = ?;";
   const char* sql_without_kind =
       "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? AND to_card_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db_.handle(), kind.has_value() ? sql_with_kind : sql_without_kind, -1,
-                         &stmt, nullptr) != SQLITE_OK) {
+  const bool has_kind = kind.has_value();
+  const bool has_type = to_type.has_value();
+  const char* sql = sql_without_kind;
+  if (has_kind && has_type) {
+    sql = sql_with_kind_type;
+  } else if (has_kind) {
+    sql = sql_with_kind;
+  } else if (has_type) {
+    sql = sql_without_kind_type;
+  }
+  if (sqlite3_prepare_v2(db_.handle(), sql, -1, &stmt, nullptr) != SQLITE_OK) {
     throw_sqlite(db_.handle(), "prepare delete link failed");
   }
 
   bind_text(stmt, 1, project_id);
   bind_text(stmt, 2, from_card_id);
   bind_text(stmt, 3, to_card_id);
-  if (kind.has_value()) {
+  if (has_kind && has_type) {
+    bind_text(stmt, 4, to_type.value());
+    bind_text(stmt, 5, kind.value());
+  } else if (has_kind) {
     bind_text(stmt, 4, kind.value());
+  } else if (has_type) {
+    bind_text(stmt, 4, to_type.value());
   }
 
   const int rc = sqlite3_step(stmt);

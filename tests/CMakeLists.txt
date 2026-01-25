@@ -40,6 +40,7 @@ add_executable(lockfile_tests
   Cascade_test.cpp
   CardPaths_test.cpp
   CardFrontMatter_test.cpp
+  AiMessagePaths_test.cpp
   ProjectPaths_test.cpp
   CardStore_test.cpp
   FtsIndexer_test.cpp
@@ -49,6 +50,7 @@ add_executable(lockfile_tests
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/core/CardPaths.cpp
+  ../src/core/AiMessagePaths.cpp
   ../src/core/CardFrontMatter.cpp
   ../src/core/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp

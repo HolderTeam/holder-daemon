@@ -38,6 +38,8 @@ std::string render_card_front_matter(const holder::model::Card& card,
   for (const auto& link : links) {
     out << YAML::BeginMap;
     out << YAML::Key << "to" << YAML::Value << link.to_card_id;
+    out << YAML::Key << "to_type" << YAML::Value
+        << (link.to_type.empty() ? std::string("card") : link.to_type);
     out << YAML::Key << "kind" << YAML::Value << link.kind;
     out << YAML::Key << "created_at" << YAML::Value << link.created_at;
     if (link.label.has_value()) {
@@ -98,7 +100,9 @@ ParsedCardFile parse_card_file(const std::string& raw) {
         link.project_id = card.project_id;
         link.from_card_id = card.card_id;
         if (item["to"]) link.to_card_id = item["to"].as<std::string>();
+        if (item["to_type"]) link.to_type = item["to_type"].as<std::string>();
         if (item["kind"]) link.kind = item["kind"].as<std::string>();
+        if (link.to_type.empty()) link.to_type = "card";
         if (link.kind.empty()) link.kind = "ref";
         if (item["label"] && !item["label"].IsNull()) {
           link.label = item["label"].as<std::string>();
