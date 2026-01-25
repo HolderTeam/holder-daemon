@@ -376,6 +376,106 @@ components:
           properties:
             message_id:
               type: string
+    AiThread:
+      type: object
+      required: [thread_id, project_id, title, created_at, updated_at]
+      properties:
+        thread_id:
+          type: string
+        project_id:
+          type: string
+        card_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    AiThreadCreateRequest:
+      type: object
+      required: [project_id, title]
+      properties:
+        thread_id:
+          type: string
+          description: Optional; server generates if omitted.
+        project_id:
+          type: string
+        title:
+          type: string
+        card_id:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+          description: Optional; server uses current time if omitted or 0.
+        updated_at:
+          type: integer
+          format: int64
+          description: Optional; server uses created_at if omitted or 0.
+    AiThreadCreateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [thread_id]
+          properties:
+            thread_id:
+              type: string
+    AiThreadUpdateRequest:
+      type: object
+      required: [updated_at]
+      properties:
+        title:
+          type: string
+          nullable: true
+        card_id:
+          type: string
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+    AiThreadListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiThread"
+    AiThreadGetResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AiThread"
+    AiThreadPatchResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [thread_id]
+          properties:
+            thread_id:
+              type: string
     AiMessageListResponse:
       type: object
       required: [ok, data]
@@ -1030,6 +1130,134 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/threads:
+    get:
+      summary: List AI threads by project
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiThreadListResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create an AI thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiThreadCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiThreadCreateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/threads/{thread_id}:
+    get:
+      summary: Fetch an AI thread
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiThreadGetResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update AI thread metadata
+      parameters:
+        - name: thread_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiThreadUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiThreadPatchResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:

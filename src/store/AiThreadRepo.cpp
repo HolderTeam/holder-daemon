@@ -152,6 +152,26 @@ void AiThreadRepo::update_title(const std::string& thread_id,
   }
 }
 
+void AiThreadRepo::update_card_id(const std::string& thread_id,
+                                  const std::optional<std::string>& card_id) {
+  static constexpr const char* SQL =
+      "UPDATE ai_threads SET card_id = ? WHERE thread_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare update ai thread card_id failed");
+  }
+
+  bind_text_optional(stmt, 1, card_id);
+  bind_text(stmt, 2, thread_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "update ai thread card_id failed");
+  }
+}
+
 void AiThreadRepo::touch_updated(const std::string& thread_id, long long updated_at) {
   static constexpr const char* SQL =
       "UPDATE ai_threads SET updated_at = ? WHERE thread_id = ?;";
