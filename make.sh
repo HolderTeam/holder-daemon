@@ -10,6 +10,6 @@ else
   JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
 fi
 cmake --build build -- -j "${JOBS}"
-ctest --test-dir build
+ctest --test-dir build --output-on-failure
 
 ./build/holder

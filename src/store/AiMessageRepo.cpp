@@ -165,4 +165,32 @@ std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
   return out;
 }
 
+std::optional<holder::model::AiMessage> AiMessageRepo::get(
+    const std::string& message_id) const {
+  static constexpr const char* SQL =
+      "SELECT message_id, thread_id, role, source, provider, model, content, created_at, prompt_hash, meta_json "
+      "FROM ai_messages WHERE message_id = ? LIMIT 1;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare get ai message failed");
+  }
+
+  bind_text(stmt, 1, message_id);
+
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    auto message = read_message(stmt);
+    sqlite3_finalize(stmt);
+    return message;
+  }
+  sqlite3_finalize(stmt);
+  if (rc == SQLITE_DONE) {
+    return std::nullopt;
+  }
+
+  throw_sqlite(db_.handle(), "get ai message failed");
+  return std::nullopt;
+}
+
 } // namespace holder::store

@@ -303,6 +303,99 @@ components:
         rank:
           type: number
           format: double
+    AiMessage:
+      type: object
+      required: [message_id, thread_id, role, source, content, created_at]
+      properties:
+        message_id:
+          type: string
+        thread_id:
+          type: string
+        role:
+          type: string
+        source:
+          type: string
+        provider:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        content:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        prompt_hash:
+          type: string
+          nullable: true
+        meta_json:
+          type: string
+          nullable: true
+    AiMessageCreateRequest:
+      type: object
+      required: [thread_id, role, source, content]
+      properties:
+        message_id:
+          type: string
+          description: Optional; server generates if omitted.
+        thread_id:
+          type: string
+        role:
+          type: string
+        source:
+          type: string
+        provider:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        content:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+          description: Optional; server uses current time if omitted or 0.
+        prompt_hash:
+          type: string
+          nullable: true
+        meta_json:
+          type: string
+          nullable: true
+    AiMessageCreateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [message_id]
+          properties:
+            message_id:
+              type: string
+    AiMessageListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiMessage"
+    AiMessageGetResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AiMessage"
     Project:
       type: object
       required: [project_id, name, root_path, created_at, updated_at]
@@ -868,6 +961,95 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CardLinkListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/messages:
+    get:
+      summary: List AI messages by thread
+      parameters:
+        - in: query
+          name: thread_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageListResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create an AI message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiMessageCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageCreateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/messages/{message_id}:
+    get:
+      summary: Fetch an AI message
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageGetResponse"
         "401":
           description: Unauthorized
           content:

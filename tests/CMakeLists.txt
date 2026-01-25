@@ -20,6 +20,7 @@ add_executable(lockfile_tests
   ServerInfo_test.cpp
   Signal_test.cpp
   HttpHealth_test.cpp
+  HttpAiMessages_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp

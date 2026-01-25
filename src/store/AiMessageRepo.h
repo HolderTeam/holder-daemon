@@ -7,6 +7,7 @@
 #include "store/Db.h"
 #include "store/ProjectRepo.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@ public:
   AiMessageRepo(Db& db, holder::index::FtsIndexer* fts);
 
   void append(const holder::model::AiMessage& message);
+  std::optional<holder::model::AiMessage> get(const std::string& message_id) const;
   std::vector<holder::model::AiMessage> list_by_thread(const std::string& thread_id) const;
 
 private:

@@ -5,6 +5,7 @@
 #include "git/GitRepo.h"
 #include "core/ServerInfo.h"
 #include "store/CardRepo.h"
+#include "store/AiMessageRepo.h"
 #include "store/LinkRepo.h"
 #include "store/ProjectRepo.h"
 
@@ -672,6 +673,155 @@ void Session::run() {
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
+        }
+      }
+    } else if (path == "/ai/messages" && req.method() == http::verb::get) {
+      const std::string thread_id = param("thread_id");
+      if (thread_id.empty()) {
+        res = error_response(http::status::bad_request, "bad_request", "Missing thread_id.");
+      } else {
+        try {
+          holder::store::AiMessageRepo repo(db_, fts_);
+          const auto messages = repo.list_by_thread(thread_id);
+          nlohmann::json data = nlohmann::json::array();
+          for (const auto& msg : messages) {
+            nlohmann::json item;
+            item["message_id"] = msg.message_id;
+            item["thread_id"] = msg.thread_id;
+            item["role"] = msg.role;
+            item["source"] = msg.source;
+            if (msg.provider.has_value()) {
+              item["provider"] = msg.provider.value();
+            } else {
+              item["provider"] = nullptr;
+            }
+            if (msg.model.has_value()) {
+              item["model"] = msg.model.value();
+            } else {
+              item["model"] = nullptr;
+            }
+            item["content"] = msg.content;
+            item["created_at"] = msg.created_at;
+            if (msg.prompt_hash.has_value()) {
+              item["prompt_hash"] = msg.prompt_hash.value();
+            } else {
+              item["prompt_hash"] = nullptr;
+            }
+            if (msg.meta_json.has_value()) {
+              item["meta_json"] = msg.meta_json.value();
+            } else {
+              item["meta_json"] = nullptr;
+            }
+            data.push_back(std::move(item));
+          }
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = data;
+          res = json_response(http::status::ok, payload);
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (path == "/ai/messages" && req.method() == http::verb::post) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("thread_id") || !body.contains("role") || !body.contains("source") ||
+            !body.contains("content")) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        } else {
+          holder::model::AiMessage msg;
+          if (body.contains("message_id") && !body.at("message_id").is_null()) {
+            msg.message_id = body.at("message_id").get<std::string>();
+          }
+          if (msg.message_id.empty()) {
+            msg.message_id = generate_uuid_v4();
+          }
+          msg.thread_id = body.at("thread_id").get<std::string>();
+          msg.role = body.at("role").get<std::string>();
+          msg.source = body.at("source").get<std::string>();
+          msg.content = body.at("content").get<std::string>();
+          if (body.contains("provider") && !body.at("provider").is_null()) {
+            msg.provider = body.at("provider").get<std::string>();
+          }
+          if (body.contains("model") && !body.at("model").is_null()) {
+            msg.model = body.at("model").get<std::string>();
+          }
+          if (body.contains("prompt_hash") && !body.at("prompt_hash").is_null()) {
+            msg.prompt_hash = body.at("prompt_hash").get<std::string>();
+          }
+          if (body.contains("meta_json") && !body.at("meta_json").is_null()) {
+            msg.meta_json = body.at("meta_json").get<std::string>();
+          }
+          if (body.contains("created_at") && !body.at("created_at").is_null()) {
+            msg.created_at = body.at("created_at").get<long long>();
+          }
+          if (msg.created_at <= 0) {
+            msg.created_at = now_epoch_seconds();
+          }
+
+          holder::store::AiMessageRepo repo(db_, fts_);
+          repo.append(msg);
+
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = {{"message_id", msg.message_id}};
+          res = json_response(http::status::created, payload);
+        }
+      } catch (const std::exception& ex) {
+        const std::string msg = ex.what();
+        if (msg.rfind("conflict:", 0) == 0) {
+          res = error_response(http::status::conflict, "conflict", msg);
+        } else {
+          res = error_response(http::status::bad_request, "bad_request", msg);
+        }
+      }
+    } else if (path.rfind("/ai/messages/", 0) == 0) {
+      const std::string message_id = path.substr(std::string("/ai/messages/").size());
+      if (message_id.empty()) {
+        res = error_response(http::status::not_found, "not_found", "Route not found.");
+      } else {
+        try {
+          holder::store::AiMessageRepo repo(db_, fts_);
+          const auto msg_opt = repo.get(message_id);
+          if (!msg_opt.has_value()) {
+            res = error_response(http::status::not_found, "not_found", "AI message not found.");
+          } else {
+            const auto& msg = msg_opt.value();
+            nlohmann::json data;
+            data["message_id"] = msg.message_id;
+            data["thread_id"] = msg.thread_id;
+            data["role"] = msg.role;
+            data["source"] = msg.source;
+            if (msg.provider.has_value()) {
+              data["provider"] = msg.provider.value();
+            } else {
+              data["provider"] = nullptr;
+            }
+            if (msg.model.has_value()) {
+              data["model"] = msg.model.value();
+            } else {
+              data["model"] = nullptr;
+            }
+            data["content"] = msg.content;
+            data["created_at"] = msg.created_at;
+            if (msg.prompt_hash.has_value()) {
+              data["prompt_hash"] = msg.prompt_hash.value();
+            } else {
+              data["prompt_hash"] = nullptr;
+            }
+            if (msg.meta_json.has_value()) {
+              data["meta_json"] = msg.meta_json.value();
+            } else {
+              data["meta_json"] = nullptr;
+            }
+
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+            res = json_response(http::status::ok, payload);
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
         }
       }
     } else if (path == "/cards" && req.method() == http::verb::get) {

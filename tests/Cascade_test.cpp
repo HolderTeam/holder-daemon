@@ -77,7 +77,7 @@ TEST_CASE("Deleting project cascades to dependent rows", "[cascade]") {
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
-  project.root_path = "/tmp/project";
+  project.root_path = (dir / "project_repo").string();
   project.created_at = 1;
   project.updated_at = 1;
   project_repo.create(project);
