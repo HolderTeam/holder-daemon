@@ -12,7 +12,8 @@ constexpr std::string_view kDelimiter = "---\n";
 } // namespace
 
 std::string render_ai_message_front_matter(const holder::model::AiMessage& message,
-                                           const std::string& project_id) {
+                                           const std::string& project_id,
+                                           const std::vector<holder::model::CardLink>& links) {
   YAML::Emitter out;
   out << YAML::BeginMap;
   out << YAML::Key << "message_id" << YAML::Value << message.message_id;
@@ -45,6 +46,22 @@ std::string render_ai_message_front_matter(const holder::model::AiMessage& messa
   } else {
     out << YAML::Null;
   }
+  out << YAML::Key << "links" << YAML::Value << YAML::BeginSeq;
+  for (const auto& link : links) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "to" << YAML::Value << link.to_card_id;
+    out << YAML::Key << "to_type" << YAML::Value
+        << (link.to_type.empty() ? std::string("card") : link.to_type);
+    out << YAML::Key << "kind" << YAML::Value << link.kind;
+    out << YAML::Key << "created_at" << YAML::Value << link.created_at;
+    if (link.label.has_value()) {
+      out << YAML::Key << "label" << YAML::Value << link.label.value();
+    } else {
+      out << YAML::Key << "label" << YAML::Value << YAML::Null;
+    }
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
   out << YAML::EndMap;
 
   return std::string("---\n") + out.c_str() + "\n---\n";
@@ -91,6 +108,29 @@ ParsedAiMessageFile parse_ai_message_file(const std::string& raw) {
     }
     if (node["meta_json"] && !node["meta_json"].IsNull()) {
       msg.meta_json = node["meta_json"].as<std::string>();
+    }
+
+    if (node["links"] && node["links"].IsSequence()) {
+      for (const auto& item : node["links"]) {
+        if (!item.IsMap()) continue;
+        holder::model::CardLink link;
+        link.project_id = parsed.project_id;
+        link.from_card_id = msg.message_id;
+        if (item["to"]) link.to_card_id = item["to"].as<std::string>();
+        if (item["to_type"]) link.to_type = item["to_type"].as<std::string>();
+        if (link.to_type.empty()) link.to_type = "card";
+        if (item["kind"]) link.kind = item["kind"].as<std::string>();
+        if (link.kind.empty()) link.kind = "ref";
+        if (item["label"] && !item["label"].IsNull()) {
+          link.label = item["label"].as<std::string>();
+        }
+        if (item["created_at"]) {
+          link.created_at = item["created_at"].as<long long>();
+        }
+        if (!link.to_card_id.empty()) {
+          parsed.links.push_back(std::move(link));
+        }
+      }
     }
 
     parsed.body = raw.substr(end + 5);

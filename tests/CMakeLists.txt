@@ -22,6 +22,7 @@ add_executable(lockfile_tests
   HttpHealth_test.cpp
   HttpAiMessages_test.cpp
   HttpAiThreads_test.cpp
+  HttpAiMessageLinks_test.cpp
   HttpResources_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp

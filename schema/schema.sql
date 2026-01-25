@@ -68,7 +68,6 @@ CREATE TABLE IF NOT EXISTS card_links (
   created_at    INTEGER NOT NULL,
 
   FOREIGN KEY(project_id)   REFERENCES projects(project_id) ON DELETE CASCADE,
-  FOREIGN KEY(from_card_id) REFERENCES cards(card_id)       ON DELETE CASCADE,
 
   PRIMARY KEY(project_id, from_card_id, to_card_id, to_type, kind)
 );

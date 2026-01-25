@@ -159,6 +159,40 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
   return out;
 }
 
+std::vector<holder::model::CardLink> LinkRepo::list_backlinks_typed(
+    const std::string& project_id,
+    const std::string& to_card_id,
+    const std::string& to_type) const {
+  static constexpr const char* SQL =
+      "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
+      "FROM card_links WHERE project_id = ? AND to_card_id = ? AND to_type = ? "
+      "ORDER BY created_at DESC;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list backlinks typed failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, to_card_id);
+  bind_text(stmt, 3, to_type);
+
+  std::vector<holder::model::CardLink> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_link(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list backlinks typed failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
 void LinkRepo::delete_link(const std::string& project_id,
                            const std::string& from_card_id,
                            const std::string& to_card_id,

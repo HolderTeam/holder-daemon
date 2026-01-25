@@ -71,7 +71,7 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 } // namespace
 
 AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(), thread_repo_(db), project_repo_(db), fts_(fts) {}
+    : db_(db), repo_(), link_repo_(db), thread_repo_(db), project_repo_(db), fts_(fts) {}
 
 void AiMessageRepo::append(const holder::model::AiMessage& message) {
   const auto thread_opt = thread_repo_.get(message.thread_id);
@@ -94,7 +94,9 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
     throw std::runtime_error("conflict: ai message file already exists");
   }
 
-  const auto front_matter = holder::core::render_ai_message_front_matter(message, project_opt->project_id);
+  const auto front_matter = holder::core::render_ai_message_front_matter(message,
+                                                                         project_opt->project_id,
+                                                                         {});
   repo_.write_file(rel_path, front_matter + message.content);
 
   static constexpr const char* SQL =
@@ -163,6 +165,42 @@ std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
 
   sqlite3_finalize(stmt);
   return out;
+}
+
+void AiMessageRepo::update_links(const std::string& message_id) {
+  const auto msg_opt = get(message_id);
+  if (!msg_opt.has_value()) {
+    throw std::runtime_error("ai message not found: " + message_id);
+  }
+
+  const auto thread_opt = thread_repo_.get(msg_opt->thread_id);
+  if (!thread_opt.has_value()) {
+    throw std::runtime_error("thread not found for ai message");
+  }
+
+  const auto project_opt = project_repo_.get(thread_opt->project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found for ai message thread");
+  }
+
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+
+  const std::string rel_path = holder::core::ai_message_rel_path(message_id);
+  const auto full_path = repo_.repo_dir() / rel_path;
+  if (!std::filesystem::exists(full_path)) {
+    throw std::runtime_error("ai message file missing");
+  }
+
+  const auto links = link_repo_.list_outgoing(project_opt->project_id, message_id);
+  const auto front_matter = holder::core::render_ai_message_front_matter(msg_opt.value(),
+                                                                         project_opt->project_id,
+                                                                         links);
+  repo_.write_file(rel_path, front_matter + msg_opt->content);
+  repo_.stage_path(rel_path);
+  repo_.commit("Update ai message links " + message_id);
 }
 
 std::optional<holder::model::AiMessage> AiMessageRepo::get(
