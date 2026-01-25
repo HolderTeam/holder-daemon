@@ -119,6 +119,18 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
                                               boost::beast::http::status::ok);
   REQUIRE(listed_after["data"].size() == 0);
 
+  nlohmann::json invalid_body = {
+      {"to_card_id", "missing-card"},
+      {"to_type", "card"},
+      {"kind", "ref"}
+  };
+  const auto invalid = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::post,
+                                         "/cards/card-a/links",
+                                         invalid_body,
+                                         boost::beast::http::status::bad_request);
+  REQUIRE(invalid["ok"] == false);
+
   std::raise(SIGTERM);
   server_thread.join();
 }

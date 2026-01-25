@@ -94,6 +94,18 @@ TEST_CASE("HTTP ai message links create/list/backlinks", "[http]") {
   REQUIRE(backlinks["data"].size() == 1);
   REQUIRE(backlinks["data"][0]["from_card_id"] == "msg-1");
 
+  nlohmann::json invalid_body = {
+      {"to_card_id", "msg-2"},
+      {"to_type", "unknown"},
+      {"kind", "ref"}
+  };
+  const auto invalid = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::post,
+                                         "/ai/messages/msg-1/links",
+                                         invalid_body,
+                                         boost::beast::http::status::bad_request);
+  REQUIRE(invalid["ok"] == false);
+
   std::raise(SIGTERM);
   server_thread.join();
 }

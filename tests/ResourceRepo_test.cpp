@@ -88,6 +88,10 @@ TEST_CASE("ResourceRepo add/list/remove", "[resourcerepo]") {
   REQUIRE(list[0].resource_id == "res-1");
   REQUIRE(list[0].desc.has_value());
 
+  const auto fetched = repo.get("res-1");
+  REQUIRE(fetched.has_value());
+  REQUIRE(fetched->uri == "https://example.com");
+
   repo.remove("res-1");
   list = repo.list("proj-1");
   REQUIRE(list.empty());

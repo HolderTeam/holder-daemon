@@ -108,6 +108,34 @@ std::vector<holder::model::Resource> ResourceRepo::list(const std::string& proje
   return out;
 }
 
+std::optional<holder::model::Resource> ResourceRepo::get(const std::string& resource_id) const {
+  static constexpr const char* SQL =
+      "SELECT resource_id, project_id, kind, uri, label, desc, created_at, updated_at "
+      "FROM resources WHERE resource_id = ? LIMIT 1;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare get resource failed");
+  }
+
+  bind_text(stmt, 1, resource_id);
+
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    auto resource = read_resource(stmt);
+    sqlite3_finalize(stmt);
+    return resource;
+  }
+
+  sqlite3_finalize(stmt);
+  if (rc == SQLITE_DONE) {
+    return std::nullopt;
+  }
+
+  throw_sqlite(db_.handle(), "get resource failed");
+  return std::nullopt;
+}
+
 void ResourceRepo::remove(const std::string& resource_id) {
   static constexpr const char* SQL = "DELETE FROM resources WHERE resource_id = ?;";
 
