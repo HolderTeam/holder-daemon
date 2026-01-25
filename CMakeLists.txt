@@ -30,6 +30,7 @@ find_package(Boost 1.74 REQUIRED COMPONENTS system)
 #   nlohmann-json3-dev
 #   libspdlog-dev (often brings libfmt-dev)
 find_package(nlohmann_json 3.6.0 REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 
 # XDG base dirs helper (apt: xdg-utils-cxx-dev)
@@ -58,6 +59,7 @@ add_executable(holder
   src/core/ServerInfo.cpp
   src/core/Signal.cpp
   src/core/CardPaths.cpp
+  src/core/CardFrontMatter.cpp
   src/core/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
@@ -108,6 +110,7 @@ target_link_libraries(holder PRIVATE
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   XdgUtils::BaseDir
+  yaml-cpp
 )
 
 # Feature-linked deps

@@ -38,6 +38,7 @@ add_executable(lockfile_tests
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
+  CardFrontMatter_test.cpp
   ProjectPaths_test.cpp
   CardStore_test.cpp
   FtsIndexer_test.cpp
@@ -47,6 +48,7 @@ add_executable(lockfile_tests
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
   ../src/core/CardPaths.cpp
+  ../src/core/CardFrontMatter.cpp
   ../src/core/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp
@@ -89,6 +91,7 @@ target_link_libraries(lockfile_tests PRIVATE
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   XdgUtils::BaseDir
+  yaml-cpp
 )
 
 if(TARGET PkgConfig::LIBGIT2)

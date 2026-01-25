@@ -17,5 +17,5 @@ sudo apt install \
   xdg-utils-cxx-dev \
   nlohmann-json3-dev \
   libspdlog-dev \
-  catch2
-
+  catch2 \
+  libyaml-cpp-dev

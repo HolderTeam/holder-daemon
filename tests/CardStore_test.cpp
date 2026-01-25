@@ -5,6 +5,7 @@
 #endif
 
 #include "core/CardPaths.h"
+#include "core/CardFrontMatter.h"
 #include "git/GitRepo.h"
 #include "model/Card.h"
 #include "model/Project.h"
@@ -124,7 +125,17 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   const auto rel_path = holder::core::card_rel_path(card.card_id);
   const auto full_path = project_root / rel_path;
   REQUIRE(std::filesystem::exists(full_path));
-  REQUIRE(read_file(full_path) == "hello");
+  const auto raw = read_file(full_path);
+  REQUIRE(raw.find("---\n") == 0);
+  REQUIRE(raw.find("card_id: abcd1234") != std::string::npos);
+  REQUIRE(raw.find("project_id: proj-1") != std::string::npos);
+  REQUIRE(raw.rfind("hello") != std::string::npos);
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE(parsed.has_front_matter);
+  REQUIRE(parsed.card.card_id == "abcd1234");
+  REQUIRE(parsed.card.project_id == "proj-1");
+  REQUIRE(parsed.card.title == "First");
+  REQUIRE(parsed.body == "hello");
 
   holder::store::CardRepo card_repo(db);
   const auto fetched = card_repo.get("abcd1234");
@@ -157,7 +168,15 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   const auto rel_path = holder::core::card_rel_path(card.card_id);
   const auto full_path = project_root / rel_path;
   REQUIRE(std::filesystem::exists(full_path));
-  REQUIRE(read_file(full_path) == "updated");
+  const auto raw = read_file(full_path);
+  REQUIRE(raw.find("---\n") == 0);
+  REQUIRE(raw.find("title: Renamed") != std::string::npos);
+  REQUIRE(raw.rfind("updated") != std::string::npos);
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE(parsed.has_front_matter);
+  REQUIRE(parsed.card.title == "Renamed");
+  REQUIRE(parsed.card.updated_at == 20);
+  REQUIRE(parsed.body == "updated");
 
   holder::store::CardRepo card_repo(db);
   const auto fetched = card_repo.get(card.card_id);
@@ -192,6 +211,15 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   const int after = count_commits(project_root);
 
   REQUIRE(before == after);
+
+  const auto rel_path = holder::core::card_rel_path(card.card_id);
+  const auto full_path = project_root / rel_path;
+  const auto raw = read_file(full_path);
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE(parsed.has_front_matter);
+  REQUIRE(parsed.card.title == "First");
+  REQUIRE(parsed.card.updated_at == 10);
+  REQUIRE(parsed.body == "same");
 }
 
 TEST_CASE("CardStore update creates commit when content changes", "[cardstore]") {
