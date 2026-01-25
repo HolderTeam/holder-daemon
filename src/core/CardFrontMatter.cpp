@@ -11,6 +11,48 @@ constexpr std::string_view kDelimiter = "---\n";
 
 } // namespace
 
+std::string render_card_front_matter(const holder::model::Card& card,
+                                     const std::vector<holder::model::CardLink>& links) {
+  YAML::Emitter out;
+  out << YAML::BeginMap;
+  out << YAML::Key << "card_id" << YAML::Value << card.card_id;
+  out << YAML::Key << "project_id" << YAML::Value << card.project_id;
+  out << YAML::Key << "title" << YAML::Value << card.title;
+  out << YAML::Key << "created_at" << YAML::Value << card.created_at;
+  out << YAML::Key << "updated_at" << YAML::Value << card.updated_at;
+  out << YAML::Key << "parent_card_id" << YAML::Value;
+  if (card.parent_card_id.has_value()) {
+    out << card.parent_card_id.value();
+  } else {
+    out << YAML::Null;
+  }
+  out << YAML::Key << "sort_key" << YAML::Value << card.sort_key;
+  out << YAML::Key << "rel_path" << YAML::Value << card.rel_path;
+  out << YAML::Key << "deleted_at" << YAML::Value;
+  if (card.deleted_at.has_value()) {
+    out << card.deleted_at.value();
+  } else {
+    out << YAML::Null;
+  }
+  out << YAML::Key << "links" << YAML::Value << YAML::BeginSeq;
+  for (const auto& link : links) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "to" << YAML::Value << link.to_card_id;
+    out << YAML::Key << "kind" << YAML::Value << link.kind;
+    out << YAML::Key << "created_at" << YAML::Value << link.created_at;
+    if (link.label.has_value()) {
+      out << YAML::Key << "label" << YAML::Value << link.label.value();
+    } else {
+      out << YAML::Key << "label" << YAML::Value << YAML::Null;
+    }
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+  out << YAML::EndMap;
+
+  return std::string("---\n") + out.c_str() + "\n---\n";
+}
+
 ParsedCardFile parse_card_file(const std::string& raw) {
   ParsedCardFile parsed;
   parsed.body = raw;
@@ -47,6 +89,27 @@ ParsedCardFile parse_card_file(const std::string& raw) {
     }
     if (node["deleted_at"] && !node["deleted_at"].IsNull()) {
       card.deleted_at = node["deleted_at"].as<long long>();
+    }
+
+    if (node["links"] && node["links"].IsSequence()) {
+      for (const auto& item : node["links"]) {
+        if (!item.IsMap()) continue;
+        holder::model::CardLink link;
+        link.project_id = card.project_id;
+        link.from_card_id = card.card_id;
+        if (item["to"]) link.to_card_id = item["to"].as<std::string>();
+        if (item["kind"]) link.kind = item["kind"].as<std::string>();
+        if (link.kind.empty()) link.kind = "ref";
+        if (item["label"] && !item["label"].IsNull()) {
+          link.label = item["label"].as<std::string>();
+        }
+        if (item["created_at"]) {
+          link.created_at = item["created_at"].as<long long>();
+        }
+        if (!link.to_card_id.empty()) {
+          parsed.links.push_back(std::move(link));
+        }
+      }
     }
 
     parsed.body = raw.substr(end + 5);

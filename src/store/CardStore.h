@@ -5,6 +5,7 @@
 #include "model/Card.h"
 #include "store/CardRepo.h"
 #include "store/Db.h"
+#include "store/LinkRepo.h"
 #include "store/ProjectRepo.h"
 
 #include <optional>
@@ -30,6 +31,7 @@ private:
   Db& db_;
   holder::git::GitRepo repo_;
   CardRepo card_repo_;
+  LinkRepo link_repo_;
   ProjectRepo project_repo_;
   holder::index::FtsIndexer* fts_ = nullptr;
 };

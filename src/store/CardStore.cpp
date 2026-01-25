@@ -2,6 +2,7 @@
 
 #include "core/CardFrontMatter.h"
 #include "core/CardPaths.h"
+#include "store/LinkRepo.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -18,44 +19,18 @@ std::string read_file(const std::filesystem::path& path) {
   return data;
 }
 
-std::string render_front_matter(const holder::model::Card& card) {
-  YAML::Emitter out;
-  out << YAML::BeginMap;
-  out << YAML::Key << "card_id" << YAML::Value << card.card_id;
-  out << YAML::Key << "project_id" << YAML::Value << card.project_id;
-  out << YAML::Key << "title" << YAML::Value << card.title;
-  out << YAML::Key << "created_at" << YAML::Value << card.created_at;
-  out << YAML::Key << "updated_at" << YAML::Value << card.updated_at;
-  out << YAML::Key << "parent_card_id" << YAML::Value;
-  if (card.parent_card_id.has_value()) {
-    out << card.parent_card_id.value();
-  } else {
-    out << YAML::Null;
-  }
-  out << YAML::Key << "sort_key" << YAML::Value << card.sort_key;
-  out << YAML::Key << "rel_path" << YAML::Value << card.rel_path;
-  out << YAML::Key << "deleted_at" << YAML::Value;
-  if (card.deleted_at.has_value()) {
-    out << card.deleted_at.value();
-  } else {
-    out << YAML::Null;
-  }
-  out << YAML::EndMap;
-
-  return std::string("---\n") + out.c_str() + "\n---\n";
-}
-
 void write_card_file(holder::git::GitRepo& repo,
                      const holder::model::Card& card,
+                     const std::vector<holder::model::CardLink>& links,
                      const std::string& content) {
-  const auto front_matter = render_front_matter(card);
+  const auto front_matter = holder::core::render_card_front_matter(card, links);
   repo.write_file(card.rel_path, front_matter + content);
 }
 
 } // namespace
 
 CardStore::CardStore(Db& db, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(), card_repo_(db), project_repo_(db), fts_(fts) {}
+    : db_(db), repo_(), card_repo_(db), project_repo_(db), link_repo_(db), fts_(fts) {}
 
 holder::model::Project CardStore::require_project(const std::string& project_id) {
   const auto project_opt = project_repo_.get(project_id);
@@ -88,7 +63,8 @@ void CardStore::create(holder::model::Card card, const std::string& content) {
     throw std::runtime_error("conflict: card file already exists");
   }
 
-  write_card_file(repo_, card, content);
+  const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+  write_card_file(repo_, card, links, content);
 
   try {
     card_repo_.create(card);
@@ -130,7 +106,8 @@ void CardStore::update_content(const std::string& card_id,
       updated_card.title = title.value();
     }
     updated_card.updated_at = updated_at;
-    write_card_file(repo_, updated_card, content);
+    const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+    write_card_file(repo_, updated_card, links, content);
   }
 
   if (title.has_value()) {
