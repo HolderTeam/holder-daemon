@@ -15,6 +15,7 @@ public:
 
   void add(const holder::model::Resource& resource);
   std::optional<holder::model::Resource> get(const std::string& resource_id) const;
+  void update(const holder::model::Resource& resource);
   std::vector<holder::model::Resource> list(const std::string& project_id) const;
   void remove(const std::string& resource_id);
 

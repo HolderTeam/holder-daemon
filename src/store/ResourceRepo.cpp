@@ -136,6 +136,30 @@ std::optional<holder::model::Resource> ResourceRepo::get(const std::string& reso
   return std::nullopt;
 }
 
+void ResourceRepo::update(const holder::model::Resource& resource) {
+  static constexpr const char* SQL =
+      "UPDATE resources SET kind = ?, uri = ?, label = ?, desc = ?, updated_at = ? "
+      "WHERE resource_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare update resource failed");
+  }
+
+  bind_text(stmt, 1, resource.kind);
+  bind_text(stmt, 2, resource.uri);
+  bind_text(stmt, 3, resource.label);
+  bind_text_optional(stmt, 4, resource.desc);
+  bind_int64(stmt, 5, resource.updated_at);
+  bind_text(stmt, 6, resource.resource_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "update resource failed");
+  }
+}
+
 void ResourceRepo::remove(const std::string& resource_id) {
   static constexpr const char* SQL = "DELETE FROM resources WHERE resource_id = ?;";
 

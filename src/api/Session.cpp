@@ -1334,6 +1334,46 @@ void Session::run() {
       const std::string resource_id = path.substr(std::string("/resources/").size());
       if (resource_id.empty()) {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
+      } else if (req.method() == http::verb::patch) {
+        try {
+          const auto body = nlohmann::json::parse(req.body());
+          if (!body.contains("updated_at")) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
+          } else {
+            holder::store::ResourceRepo repo(db_);
+            const auto existing = repo.get(resource_id);
+            if (!existing.has_value()) {
+              res = error_response(http::status::not_found, "not_found", "Resource not found.");
+            } else {
+              auto resource = existing.value();
+              if (body.contains("kind") && !body.at("kind").is_null()) {
+                resource.kind = body.at("kind").get<std::string>();
+              }
+              if (body.contains("uri") && !body.at("uri").is_null()) {
+                resource.uri = body.at("uri").get<std::string>();
+              }
+              if (body.contains("label") && !body.at("label").is_null()) {
+                resource.label = body.at("label").get<std::string>();
+              }
+              if (body.contains("desc")) {
+                if (body.at("desc").is_null()) {
+                  resource.desc.reset();
+                } else {
+                  resource.desc = body.at("desc").get<std::string>();
+                }
+              }
+              resource.updated_at = body.at("updated_at").get<long long>();
+              repo.update(resource);
+
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {{"resource_id", resource_id}};
+              res = json_response(http::status::ok, payload);
+            }
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
       } else if (req.method() == http::verb::delete_) {
         try {
           holder::store::ResourceRepo repo(db_);

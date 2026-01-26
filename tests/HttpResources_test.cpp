@@ -59,6 +59,26 @@ TEST_CASE("HTTP resources create/list/delete", "[http]") {
   REQUIRE(listed["data"][0]["kind"] == "url");
   REQUIRE(listed["data"][0]["uri"] == "https://example.com");
 
+  nlohmann::json patch_body = {
+      {"label", "Updated"},
+      {"desc", nullptr},
+      {"updated_at", 20}
+  };
+  const auto patched = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::patch,
+                                         "/resources/" + resource_id,
+                                         patch_body,
+                                         boost::beast::http::status::ok);
+  REQUIRE(patched["ok"] == true);
+
+  const auto listed_after_patch = http_json_request(bound.bind, bound.port, token,
+                                                    boost::beast::http::verb::get,
+                                                    "/resources?project_id=proj-1",
+                                                    nlohmann::json::object(),
+                                                    boost::beast::http::status::ok);
+  REQUIRE(listed_after_patch["data"][0]["label"] == "Updated");
+  REQUIRE(listed_after_patch["data"][0]["desc"].is_null());
+
   const auto deleted = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::delete_,
                                          "/resources/" + resource_id,
