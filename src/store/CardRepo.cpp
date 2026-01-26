@@ -233,6 +233,25 @@ void CardRepo::soft_delete(const std::string& card_id, long long deleted_at, lon
   }
 }
 
+void CardRepo::restore(const std::string& card_id, long long updated_at) {
+  static constexpr const char* SQL =
+      "UPDATE cards SET deleted_at = NULL, updated_at = ? WHERE card_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare restore card failed");
+  }
+
+  bind_int64(stmt, 1, updated_at);
+  bind_text(stmt, 2, card_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "restore card failed");
+  }
+}
+
 void CardRepo::move(const std::string& card_id,
                     const std::optional<std::string>& parent_card_id,
                     double sort_key,

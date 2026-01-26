@@ -1461,6 +1461,7 @@ void Session::run() {
     } else if (path == "/cards" && req.method() == http::verb::get) {
       const std::string project_id = param("project_id");
       const std::string parent_raw = param("parent_card_id");
+      const std::string include_deleted_raw = param("include_deleted");
       if (project_id.empty()) {
         res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       } else {
@@ -1473,6 +1474,11 @@ void Session::run() {
           const auto cards = repo.list(project_id, parent);
           nlohmann::json data = nlohmann::json::array();
           for (const auto& card : cards) {
+            if (!include_deleted_raw.empty() && include_deleted_raw != "0") {
+              // include deleted
+            } else if (card.deleted_at.has_value()) {
+              continue;
+            }
             nlohmann::json item;
             item["card_id"] = card.card_id;
             item["project_id"] = card.project_id;
@@ -1734,6 +1740,23 @@ void Session::run() {
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
+        } else if (tail == "/restore") {
+          if (req.method() != http::verb::post) {
+            res = error_response(http::status::method_not_allowed,
+                                 "method_not_allowed",
+                                 "Method not allowed.");
+          } else {
+            try {
+              const long long updated_at = now_epoch_seconds();
+              card_store_->restore(card_id, updated_at);
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {{"card_id", card_id}};
+              res = json_response(http::status::ok, payload);
+            } catch (const std::exception& ex) {
+              res = error_response(http::status::bad_request, "bad_request", ex.what());
+            }
+          }
         } else {
           res = error_response(http::status::not_found, "not_found", "Route not found.");
         }
@@ -1750,6 +1773,9 @@ void Session::run() {
               res = error_response(http::status::not_found, "not_found", "Card not found.");
             } else {
               const auto& card = card_opt.value();
+              if (card.deleted_at.has_value()) {
+                res = error_response(http::status::not_found, "not_found", "Card not found.");
+              } else {
               const auto content_opt = card_store_->get_content(card);
               if (!content_opt.has_value()) {
                 res = error_response(http::status::not_found, "not_found", "Card content missing.");
@@ -1780,6 +1806,7 @@ void Session::run() {
 
                 res = json_response(http::status::ok, payload);
               }
+              }
             }
           } catch (const std::exception& ex) {
             res = error_response(http::status::internal_server_error, "error", ex.what());
@@ -1808,6 +1835,19 @@ void Session::run() {
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
+        } else if (req.method() == http::verb::delete_) {
+          try {
+            const long long deleted_at = now_epoch_seconds();
+            card_store_->trash(card_id, deleted_at);
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = {{"card_id", card_id}};
+            res = json_response(http::status::ok, payload);
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        } else if (req.method() == http::verb::post && rest.size() > 0) {
+          res = error_response(http::status::not_found, "not_found", "Route not found.");
         } else {
           res = error_response(http::status::not_found, "not_found", "Route not found.");
         }

@@ -14,4 +14,8 @@ std::string card_rel_path(const std::string& card_id) {
   return "cards/" + first + "/" + second + "/" + card_id + ".md";
 }
 
+std::string card_trash_rel_path(const std::string& card_id) {
+  return "trash/" + card_rel_path(card_id);
+}
+
 } // namespace holder::core

@@ -122,6 +122,41 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(fetched_after["data"]["title"] == "First Updated");
   REQUIRE(fetched_after["data"]["content"] == "hello world");
 
+  const auto deleted = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::delete_,
+                                         "/cards/abcd1234",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(deleted["ok"] == true);
+
+  const auto listed_deleted = http_json_request(bound.bind, bound.port, token,
+                                                boost::beast::http::verb::get,
+                                                "/cards?project_id=proj-1&include_deleted=1",
+                                                nlohmann::json::object(),
+                                                boost::beast::http::status::ok);
+  bool found_deleted = false;
+  for (const auto& item : listed_deleted["data"]) {
+    if (item["card_id"] == "abcd1234") {
+      found_deleted = true;
+      REQUIRE(item["deleted_at"].is_number());
+    }
+  }
+  REQUIRE(found_deleted);
+
+  const auto restored = http_json_request(bound.bind, bound.port, token,
+                                          boost::beast::http::verb::post,
+                                          "/cards/abcd1234/restore",
+                                          nlohmann::json::object(),
+                                          boost::beast::http::status::ok);
+  REQUIRE(restored["ok"] == true);
+
+  const auto fetched_restored = http_json_request(bound.bind, bound.port, token,
+                                                  boost::beast::http::verb::get,
+                                                  "/cards/abcd1234",
+                                                  nlohmann::json::object(),
+                                                  boost::beast::http::status::ok);
+  REQUIRE(fetched_restored["data"]["title"] == "First Updated");
+
   std::raise(SIGTERM);
   server_thread.join();
 }

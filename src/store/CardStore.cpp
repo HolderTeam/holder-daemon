@@ -163,6 +163,78 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   repo_.commit("Update links for " + card.title);
 }
 
+void CardStore::trash(const std::string& card_id, long long deleted_at) {
+  const auto card_opt = card_repo_.get(card_id);
+  if (!card_opt.has_value()) {
+    throw std::runtime_error("card not found: " + card_id);
+  }
+  const auto& card = card_opt.value();
+  if (card.deleted_at.has_value()) {
+    throw std::runtime_error("card already deleted");
+  }
+
+  require_project(card.project_id);
+  const std::string expected = holder::core::card_rel_path(card.card_id);
+  if (card.rel_path != expected) {
+    throw std::runtime_error("card rel_path does not match card_id");
+  }
+
+  const auto src_path = repo_.repo_dir() / card.rel_path;
+  if (!std::filesystem::exists(src_path)) {
+    throw std::runtime_error("card content missing");
+  }
+
+  const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
+  const auto dst_path = repo_.repo_dir() / trash_rel;
+  std::filesystem::create_directories(dst_path.parent_path());
+  std::filesystem::rename(src_path, dst_path);
+
+  card_repo_.soft_delete(card_id, deleted_at, deleted_at);
+  if (fts_) {
+    fts_->delete_card(card_id);
+  }
+  repo_.remove_path(card.rel_path);
+  repo_.stage_path(trash_rel);
+  repo_.commit("Delete card " + card.title);
+}
+
+void CardStore::restore(const std::string& card_id, long long updated_at) {
+  const auto card_opt = card_repo_.get(card_id);
+  if (!card_opt.has_value()) {
+    throw std::runtime_error("card not found: " + card_id);
+  }
+  const auto& card = card_opt.value();
+  if (!card.deleted_at.has_value()) {
+    throw std::runtime_error("card is not deleted");
+  }
+
+  require_project(card.project_id);
+  const std::string expected = holder::core::card_rel_path(card.card_id);
+  if (card.rel_path != expected) {
+    throw std::runtime_error("card rel_path does not match card_id");
+  }
+
+  const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
+  const auto src_path = repo_.repo_dir() / trash_rel;
+  if (!std::filesystem::exists(src_path)) {
+    throw std::runtime_error("card content missing");
+  }
+
+  const auto dst_path = repo_.repo_dir() / card.rel_path;
+  std::filesystem::create_directories(dst_path.parent_path());
+  std::filesystem::rename(src_path, dst_path);
+
+  card_repo_.restore(card_id, updated_at);
+  if (fts_) {
+    const auto raw = read_file(dst_path);
+    const auto parsed = holder::core::parse_card_file(raw);
+    fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
+  }
+  repo_.remove_path(trash_rel);
+  repo_.stage_path(card.rel_path);
+  repo_.commit("Restore card " + card.title);
+}
+
 std::optional<holder::model::Card> CardStore::get(const std::string& card_id) const {
   return card_repo_.get(card_id);
 }

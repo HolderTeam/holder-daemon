@@ -1018,6 +1018,12 @@ paths:
           required: false
           schema:
             type: string
+        - in: query
+          name: include_deleted
+          required: false
+          schema:
+            type: integer
+          description: Set to 1 to include deleted cards.
       responses:
         "200":
           description: OK
@@ -1833,6 +1839,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Move card to trash
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPatchResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/restore:
+    post:
+      summary: Restore a card from trash
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardPatchResponse"
         "401":
           description: Unauthorized
           content:
