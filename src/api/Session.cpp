@@ -894,6 +894,17 @@ void Session::run() {
         } catch (const std::exception& ex) {
           res = error_response(http::status::bad_request, "bad_request", ex.what());
         }
+      } else if (req.method() == http::verb::delete_) {
+        try {
+          holder::store::AiThreadRepo repo(db_);
+          repo.remove(thread_id);
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = {{"thread_id", thread_id}};
+          res = json_response(http::status::ok, payload);
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
       } else {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
       }

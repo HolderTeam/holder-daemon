@@ -105,6 +105,13 @@ TEST_CASE("HTTP ai threads create/list/get/patch", "[http]") {
                                                 boost::beast::http::status::bad_request);
   REQUIRE(missing_project["ok"] == false);
 
+  const auto deleted = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::delete_,
+                                         "/ai/threads/thread-1",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(deleted["ok"] == true);
+
   std::raise(SIGTERM);
   server_thread.join();
 }
