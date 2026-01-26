@@ -1201,6 +1201,76 @@ void Session::run() {
         const std::string message_id = rest;
         if (message_id.empty()) {
           res = error_response(http::status::not_found, "not_found", "Route not found.");
+        } else if (req.method() == http::verb::delete_) {
+          try {
+            holder::store::AiMessageRepo repo(db_, fts_);
+            repo.remove(message_id);
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = {{"message_id", message_id}};
+            res = json_response(http::status::ok, payload);
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        } else if (req.method() == http::verb::patch) {
+          try {
+            const auto body = nlohmann::json::parse(req.body());
+            holder::store::AiMessageRepo repo(db_, fts_);
+            const auto msg_opt = repo.get(message_id);
+            if (!msg_opt.has_value()) {
+              res = error_response(http::status::not_found, "not_found", "AI message not found.");
+            } else {
+              auto msg = msg_opt.value();
+              if (body.contains("role") && !body.at("role").is_null()) {
+                msg.role = body.at("role").get<std::string>();
+              }
+              if (body.contains("source") && !body.at("source").is_null()) {
+                msg.source = body.at("source").get<std::string>();
+              }
+              if (body.contains("provider")) {
+                if (body.at("provider").is_null()) {
+                  msg.provider.reset();
+                } else {
+                  msg.provider = body.at("provider").get<std::string>();
+                }
+              }
+              if (body.contains("model")) {
+                if (body.at("model").is_null()) {
+                  msg.model.reset();
+                } else {
+                  msg.model = body.at("model").get<std::string>();
+                }
+              }
+              if (body.contains("content") && !body.at("content").is_null()) {
+                msg.content = body.at("content").get<std::string>();
+              }
+              if (body.contains("created_at") && !body.at("created_at").is_null()) {
+                msg.created_at = body.at("created_at").get<long long>();
+              }
+              if (body.contains("prompt_hash")) {
+                if (body.at("prompt_hash").is_null()) {
+                  msg.prompt_hash.reset();
+                } else {
+                  msg.prompt_hash = body.at("prompt_hash").get<std::string>();
+                }
+              }
+              if (body.contains("meta_json")) {
+                if (body.at("meta_json").is_null()) {
+                  msg.meta_json.reset();
+                } else {
+                  msg.meta_json = body.at("meta_json").get<std::string>();
+                }
+              }
+
+              repo.update(msg);
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {{"message_id", message_id}};
+              res = json_response(http::status::ok, payload);
+            }
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
         } else {
           try {
             holder::store::AiMessageRepo repo(db_, fts_);

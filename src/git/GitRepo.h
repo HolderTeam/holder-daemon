@@ -20,6 +20,8 @@ public:
 
   // Stage (add) a path (relative to repo root).
   void stage_path(const std::filesystem::path& relative_path);
+  // Stage a deletion (relative to repo root).
+  void remove_path(const std::filesystem::path& relative_path);
 
   // Create a commit from current index (tree).
   // If it's the first commit, parent list is empty.

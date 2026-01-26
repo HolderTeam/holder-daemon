@@ -114,6 +114,27 @@ void GitRepo::stage_path(const fs::path& relative_path) {
   spdlog::info("Staged path: {}", p);
 }
 
+void GitRepo::remove_path(const fs::path& relative_path) {
+  ensure_open();
+
+  git_index* index = nullptr;
+  int rc = git_repository_index(&index, reinterpret_cast<git_repository*>(repo_));
+  if (rc != 0) throw git_err("git_repository_index failed", rc);
+
+  std::string p = relative_path.generic_string();
+  rc = git_index_remove_bypath(index, p.c_str());
+  if (rc != 0) {
+    git_index_free(index);
+    throw git_err("git_index_remove_bypath failed for " + p, rc);
+  }
+
+  rc = git_index_write(index);
+  git_index_free(index);
+  if (rc != 0) throw git_err("git_index_write failed", rc);
+
+  spdlog::info("Removed path: {}", p);
+}
+
 void GitRepo::make_signature(void** out_sig) const {
   ensure_open();
   git_signature* sig = nullptr;

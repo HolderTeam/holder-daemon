@@ -167,6 +167,100 @@ std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
   return out;
 }
 
+void AiMessageRepo::update(const holder::model::AiMessage& message) {
+  static constexpr const char* SQL =
+      "UPDATE ai_messages SET role = ?, source = ?, provider = ?, model = ?, content = ?, "
+      "created_at = ?, prompt_hash = ?, meta_json = ? WHERE message_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare update ai message failed");
+  }
+
+  bind_text(stmt, 1, message.role);
+  bind_text(stmt, 2, message.source);
+  bind_text_optional(stmt, 3, message.provider);
+  bind_text_optional(stmt, 4, message.model);
+  bind_text(stmt, 5, message.content);
+  bind_int64(stmt, 6, message.created_at);
+  bind_text_optional(stmt, 7, message.prompt_hash);
+  bind_text_optional(stmt, 8, message.meta_json);
+  bind_text(stmt, 9, message.message_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "update ai message failed");
+  }
+
+  const auto thread_opt = thread_repo_.get(message.thread_id);
+  if (!thread_opt.has_value()) {
+    throw std::runtime_error("thread not found for ai message");
+  }
+  const auto project_opt = project_repo_.get(thread_opt->project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found for ai message thread");
+  }
+
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+
+  const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
+  const auto links = link_repo_.list_outgoing(project_opt->project_id, message.message_id);
+  const auto front_matter = holder::core::render_ai_message_front_matter(message,
+                                                                         project_opt->project_id,
+                                                                         links);
+  repo_.write_file(rel_path, front_matter + message.content);
+  repo_.stage_path(rel_path);
+  repo_.commit("Update ai message " + message.message_id);
+}
+
+void AiMessageRepo::remove(const std::string& message_id) {
+  static constexpr const char* SQL = "DELETE FROM ai_messages WHERE message_id = ?;";
+
+  const auto msg_opt = get(message_id);
+  std::string thread_id;
+  if (msg_opt.has_value()) {
+    thread_id = msg_opt->thread_id;
+  }
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete ai message failed");
+  }
+
+  bind_text(stmt, 1, message_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete ai message failed");
+  }
+
+  if (!thread_id.empty()) {
+    const auto thread_opt = thread_repo_.get(thread_id);
+    if (thread_opt.has_value()) {
+      const auto project_opt = project_repo_.get(thread_opt->project_id);
+      if (project_opt.has_value()) {
+        repo_.open_or_init(project_opt->root_path);
+        if (project_opt->git_remote_url.has_value()) {
+          repo_.set_remote("origin", project_opt->git_remote_url.value());
+        }
+        const std::string rel_path = holder::core::ai_message_rel_path(message_id);
+        const auto full_path = repo_.repo_dir() / rel_path;
+        std::error_code ec;
+        std::filesystem::remove(full_path, ec);
+        if (!ec) {
+          repo_.remove_path(rel_path);
+          repo_.commit("Remove ai message " + message_id);
+        }
+      }
+    }
+  }
+}
+
 void AiMessageRepo::update_links(const std::string& message_id) {
   const auto msg_opt = get(message_id);
   if (!msg_opt.has_value()) {

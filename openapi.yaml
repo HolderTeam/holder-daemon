@@ -378,6 +378,46 @@ components:
           properties:
             message_id:
               type: string
+    AiMessageUpdateRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        content:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        prompt_hash:
+          type: string
+          nullable: true
+        meta_json:
+          type: string
+          nullable: true
+    AiMessageUpdateResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [message_id]
+          properties:
+            message_id:
+              type: string
     AiThread:
       type: object
       required: [thread_id, project_id, title, created_at, updated_at]
@@ -1553,6 +1593,72 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiMessageGetResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      summary: Update an AI message
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiMessageUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageUpdateResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete an AI message
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageUpdateResponse"
         "401":
           description: Unauthorized
           content:

@@ -69,6 +69,26 @@ TEST_CASE("HTTP ai messages create/list/get", "[http]") {
   REQUIRE(fetched["data"]["thread_id"] == "thread-1");
   REQUIRE(fetched["data"]["content"] == "Hello");
 
+  nlohmann::json patch_body = {
+      {"content", "Updated"},
+      {"provider", "Ollama"},
+      {"created_at", 20}
+  };
+  const auto patched = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::patch,
+                                         "/ai/messages/" + msg_id,
+                                         patch_body,
+                                         boost::beast::http::status::ok);
+  REQUIRE(patched["ok"] == true);
+
+  const auto fetched_after = http_json_request(bound.bind, bound.port, token,
+                                               boost::beast::http::verb::get,
+                                               "/ai/messages/" + msg_id,
+                                               nlohmann::json::object(),
+                                               boost::beast::http::status::ok);
+  REQUIRE(fetched_after["data"]["content"] == "Updated");
+  REQUIRE(fetched_after["data"]["provider"] == "Ollama");
+
   const auto listed = http_json_request(bound.bind, bound.port, token,
                                         boost::beast::http::verb::get,
                                         "/ai/messages?thread_id=thread-1",
@@ -84,6 +104,13 @@ TEST_CASE("HTTP ai messages create/list/get", "[http]") {
                                                 nlohmann::json::object(),
                                                 boost::beast::http::status::bad_request);
   REQUIRE(missing_thread["ok"] == false);
+
+  const auto deleted = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::delete_,
+                                         "/ai/messages/" + msg_id,
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(deleted["ok"] == true);
 
   std::raise(SIGTERM);
   server_thread.join();
