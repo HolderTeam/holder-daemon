@@ -14,4 +14,8 @@ std::string ai_message_rel_path(const std::string& message_id) {
   return "ai_messages/" + first + "/" + second + "/" + message_id + ".md";
 }
 
+std::string ai_message_trash_rel_path(const std::string& message_id) {
+  return "trash/" + ai_message_rel_path(message_id);
+}
+
 } // namespace holder::core

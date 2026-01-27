@@ -25,6 +25,7 @@ public:
   void update_links(const std::string& card_id, long long updated_at);
   void trash(const std::string& card_id, long long deleted_at);
   void restore(const std::string& card_id, long long updated_at);
+  void hard_delete(const std::string& card_id);
   std::optional<holder::model::Card> get(const std::string& card_id) const;
   std::optional<std::string> get_content(const holder::model::Card& card);
 

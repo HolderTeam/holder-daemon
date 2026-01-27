@@ -252,6 +252,23 @@ void CardRepo::restore(const std::string& card_id, long long updated_at) {
   }
 }
 
+void CardRepo::remove(const std::string& card_id) {
+  static constexpr const char* SQL = "DELETE FROM cards WHERE card_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete card failed");
+  }
+
+  bind_text(stmt, 1, card_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete card failed");
+  }
+}
+
 void CardRepo::move(const std::string& card_id,
                     const std::optional<std::string>& parent_card_id,
                     double sort_key,

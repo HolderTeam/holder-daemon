@@ -328,6 +328,10 @@ components:
         created_at:
           type: integer
           format: int64
+        deleted_at:
+          type: integer
+          format: int64
+          nullable: true
         prompt_hash:
           type: string
           nullable: true
@@ -782,6 +786,58 @@ components:
           properties:
             resource_id:
               type: string
+    TrashItem:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        card_id:
+          type: string
+          nullable: true
+        message_id:
+          type: string
+          nullable: true
+        thread_id:
+          type: string
+          nullable: true
+        project_id:
+          type: string
+        title:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+        deleted_at:
+          type: integer
+          format: int64
+        created_at:
+          type: integer
+          format: int64
+        rel_path:
+          type: string
+          nullable: true
+    TrashListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrashItem"
+    TrashDeleteResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
     SearchCardsResponse:
       type: object
       required: [ok, data]
@@ -1248,6 +1304,12 @@ paths:
           required: true
           schema:
             type: string
+        - in: query
+          name: include_deleted
+          required: false
+          schema:
+            type: integer
+          description: Set to 1 to include deleted messages.
       responses:
         "200":
           description: OK
@@ -1583,6 +1645,88 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /trash:
+    get:
+      summary: List trashed items by project
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+          description: card | ai_message | all
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashListResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Empty trash by project
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+          description: card | ai_message | all
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashDeleteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /trash/{type}/{id}:
+    delete:
+      summary: Permanently delete a trashed item
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashDeleteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ai/messages/{message_id}:
     get:
       summary: Fetch an AI message
@@ -1651,7 +1795,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
-      summary: Delete an AI message
+      summary: Move an AI message to trash
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageUpdateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/messages/{message_id}/restore:
+    post:
+      summary: Restore an AI message from trash
       parameters:
         - name: message_id
           in: path

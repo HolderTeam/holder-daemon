@@ -244,6 +244,28 @@ void LinkRepo::delete_link(const std::string& project_id,
   }
 }
 
+void LinkRepo::delete_links_to_typed(const std::string& project_id,
+                                     const std::string& to_card_id,
+                                     const std::string& to_type) {
+  static constexpr const char* SQL =
+      "DELETE FROM card_links WHERE project_id = ? AND to_card_id = ? AND to_type = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare delete links to failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, to_card_id);
+  bind_text(stmt, 3, to_type);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "delete links to failed");
+  }
+}
+
 void LinkRepo::delete_links_from(const std::string& project_id, const std::string& from_card_id) {
   static constexpr const char* SQL =
       "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ?;";

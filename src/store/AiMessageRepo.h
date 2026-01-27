@@ -23,6 +23,9 @@ public:
   std::vector<holder::model::AiMessage> list_by_thread(const std::string& thread_id) const;
   void update_links(const std::string& message_id);
   void update(const holder::model::AiMessage& message);
+  std::vector<holder::model::AiMessage> list_deleted_by_project(const std::string& project_id) const;
+  void trash(const std::string& message_id, long long deleted_at);
+  void restore(const std::string& message_id);
   void remove(const std::string& message_id);
 
 private:

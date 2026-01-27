@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   model       TEXT NULL,                 -- free-text model id/name
   content     TEXT NOT NULL,             -- markdown
   created_at  INTEGER NOT NULL,
+  deleted_at  INTEGER NULL,
   prompt_hash TEXT NULL,                 -- used to correlate "export prompt" -> "paste response"
   meta_json   TEXT NULL,                 -- future-proof (citations, token counts, etc.)
 
@@ -138,6 +139,9 @@ CREATE TABLE IF NOT EXISTS ai_messages (
 
 CREATE INDEX IF NOT EXISTS idx_ai_messages_thread_time
   ON ai_messages(thread_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_deleted
+  ON ai_messages(deleted_at);
 
 CREATE INDEX IF NOT EXISTS idx_ai_messages_prompt_hash
   ON ai_messages(prompt_hash);

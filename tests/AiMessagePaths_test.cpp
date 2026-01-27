@@ -9,3 +9,8 @@
 TEST_CASE("ai_message_rel_path shards by message_id", "[ai_message_paths]") {
   REQUIRE(holder::core::ai_message_rel_path("abcd1234") == "ai_messages/ab/cd/abcd1234.md");
 }
+
+TEST_CASE("ai_message_trash_rel_path uses trash prefix", "[ai_message_paths]") {
+  REQUIRE(holder::core::ai_message_trash_rel_path("abcd1234") ==
+          "trash/ai_messages/ab/cd/abcd1234.md");
+}

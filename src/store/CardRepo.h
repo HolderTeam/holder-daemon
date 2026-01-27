@@ -23,6 +23,7 @@ public:
   void touch_updated(const std::string& card_id, long long updated_at);
   void soft_delete(const std::string& card_id, long long deleted_at, long long updated_at);
   void restore(const std::string& card_id, long long updated_at);
+  void remove(const std::string& card_id);
   void move(const std::string& card_id,
             const std::optional<std::string>& parent_card_id,
             double sort_key,

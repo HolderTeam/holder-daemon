@@ -56,14 +56,19 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
   m.content = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
   m.created_at = sqlite3_column_int64(stmt, 7);
   if (sqlite3_column_type(stmt, 8) == SQLITE_NULL) {
-    m.prompt_hash.reset();
+    m.deleted_at.reset();
   } else {
-    m.prompt_hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8));
+    m.deleted_at = sqlite3_column_int64(stmt, 8);
   }
   if (sqlite3_column_type(stmt, 9) == SQLITE_NULL) {
+    m.prompt_hash.reset();
+  } else {
+    m.prompt_hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
+  }
+  if (sqlite3_column_type(stmt, 10) == SQLITE_NULL) {
     m.meta_json.reset();
   } else {
-    m.meta_json = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 9));
+    m.meta_json = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
   }
   return m;
 }
@@ -101,8 +106,8 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
 
   static constexpr const char* SQL =
       "INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
-      "created_at, prompt_hash, meta_json) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      "created_at, deleted_at, prompt_hash, meta_json) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -117,8 +122,13 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   bind_text_optional(stmt, 6, message.model);
   bind_text(stmt, 7, message.content);
   bind_int64(stmt, 8, message.created_at);
-  bind_text_optional(stmt, 9, message.prompt_hash);
-  bind_text_optional(stmt, 10, message.meta_json);
+  if (message.deleted_at.has_value()) {
+    bind_int64(stmt, 9, message.deleted_at.value());
+  } else if (sqlite3_bind_null(stmt, 9) != SQLITE_OK) {
+    throw std::runtime_error("sqlite bind_null failed");
+  }
+  bind_text_optional(stmt, 10, message.prompt_hash);
+  bind_text_optional(stmt, 11, message.meta_json);
 
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -141,7 +151,7 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
 std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
     const std::string& thread_id) const {
   static constexpr const char* SQL =
-      "SELECT message_id, thread_id, role, source, provider, model, content, created_at, prompt_hash, meta_json "
+      "SELECT message_id, thread_id, role, source, provider, model, content, created_at, deleted_at, prompt_hash, meta_json "
       "FROM ai_messages WHERE thread_id = ? ORDER BY created_at ASC;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -217,6 +227,149 @@ void AiMessageRepo::update(const holder::model::AiMessage& message) {
   repo_.commit("Update ai message " + message.message_id);
 }
 
+std::vector<holder::model::AiMessage> AiMessageRepo::list_deleted_by_project(
+    const std::string& project_id) const {
+  static constexpr const char* SQL =
+      "SELECT m.message_id, m.thread_id, m.role, m.source, m.provider, m.model, "
+      "m.content, m.created_at, m.deleted_at, m.prompt_hash, m.meta_json "
+      "FROM ai_messages m JOIN ai_threads t ON m.thread_id = t.thread_id "
+      "WHERE t.project_id = ? AND m.deleted_at IS NOT NULL "
+      "ORDER BY m.deleted_at DESC;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list deleted ai messages failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+
+  std::vector<holder::model::AiMessage> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_message(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list deleted ai messages failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
+  const auto msg_opt = get(message_id);
+  if (!msg_opt.has_value()) {
+    throw std::runtime_error("ai message not found: " + message_id);
+  }
+  if (msg_opt->deleted_at.has_value()) {
+    throw std::runtime_error("ai message already deleted");
+  }
+
+  const auto thread_opt = thread_repo_.get(msg_opt->thread_id);
+  if (!thread_opt.has_value()) {
+    throw std::runtime_error("thread not found for ai message");
+  }
+  const auto project_opt = project_repo_.get(thread_opt->project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found for ai message thread");
+  }
+
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+
+  const std::string rel_path = holder::core::ai_message_rel_path(message_id);
+  const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
+  const auto src_path = repo_.repo_dir() / rel_path;
+  const auto dst_path = repo_.repo_dir() / trash_rel;
+  if (!std::filesystem::exists(src_path)) {
+    throw std::runtime_error("ai message content missing");
+  }
+  std::filesystem::create_directories(dst_path.parent_path());
+  std::filesystem::rename(src_path, dst_path);
+
+  static constexpr const char* SQL =
+      "UPDATE ai_messages SET deleted_at = ? WHERE message_id = ?;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare trash ai message failed");
+  }
+  bind_int64(stmt, 1, deleted_at);
+  bind_text(stmt, 2, message_id);
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "trash ai message failed");
+  }
+
+  if (fts_) {
+    fts_->delete_message(message_id);
+  }
+
+  repo_.remove_path(rel_path);
+  repo_.stage_path(trash_rel);
+  repo_.commit("Delete ai message " + message_id);
+}
+
+void AiMessageRepo::restore(const std::string& message_id) {
+  const auto msg_opt = get(message_id);
+  if (!msg_opt.has_value()) {
+    throw std::runtime_error("ai message not found: " + message_id);
+  }
+  if (!msg_opt->deleted_at.has_value()) {
+    throw std::runtime_error("ai message is not deleted");
+  }
+
+  const auto thread_opt = thread_repo_.get(msg_opt->thread_id);
+  if (!thread_opt.has_value()) {
+    throw std::runtime_error("thread not found for ai message");
+  }
+  const auto project_opt = project_repo_.get(thread_opt->project_id);
+  if (!project_opt.has_value()) {
+    throw std::runtime_error("project not found for ai message thread");
+  }
+
+  repo_.open_or_init(project_opt->root_path);
+  if (project_opt->git_remote_url.has_value()) {
+    repo_.set_remote("origin", project_opt->git_remote_url.value());
+  }
+
+  const std::string rel_path = holder::core::ai_message_rel_path(message_id);
+  const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
+  const auto src_path = repo_.repo_dir() / trash_rel;
+  const auto dst_path = repo_.repo_dir() / rel_path;
+  if (!std::filesystem::exists(src_path)) {
+    throw std::runtime_error("ai message content missing");
+  }
+  std::filesystem::create_directories(dst_path.parent_path());
+  std::filesystem::rename(src_path, dst_path);
+
+  static constexpr const char* SQL =
+      "UPDATE ai_messages SET deleted_at = NULL WHERE message_id = ?;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare restore ai message failed");
+  }
+  bind_text(stmt, 1, message_id);
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "restore ai message failed");
+  }
+
+  if (fts_) {
+    fts_->upsert_message(message_id, msg_opt->thread_id, project_opt->project_id, msg_opt->content);
+  }
+
+  repo_.remove_path(trash_rel);
+  repo_.stage_path(rel_path);
+  repo_.commit("Restore ai message " + message_id);
+}
+
 void AiMessageRepo::remove(const std::string& message_id) {
   static constexpr const char* SQL = "DELETE FROM ai_messages WHERE message_id = ?;";
 
@@ -244,16 +397,27 @@ void AiMessageRepo::remove(const std::string& message_id) {
     if (thread_opt.has_value()) {
       const auto project_opt = project_repo_.get(thread_opt->project_id);
       if (project_opt.has_value()) {
+        link_repo_.delete_links_from(project_opt->project_id, message_id);
+        link_repo_.delete_links_to_typed(project_opt->project_id, message_id, "ai_message");
         repo_.open_or_init(project_opt->root_path);
         if (project_opt->git_remote_url.has_value()) {
           repo_.set_remote("origin", project_opt->git_remote_url.value());
         }
         const std::string rel_path = holder::core::ai_message_rel_path(message_id);
-        const auto full_path = repo_.repo_dir() / rel_path;
+        const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
+        const auto full_path = repo_.repo_dir() / trash_rel;
         std::error_code ec;
+        const auto rel_full = repo_.repo_dir() / rel_path;
+        if (std::filesystem::exists(rel_full)) {
+          std::filesystem::remove(rel_full, ec);
+          if (!ec) {
+            repo_.remove_path(rel_path);
+          }
+        }
+        ec.clear();
         std::filesystem::remove(full_path, ec);
         if (!ec) {
-          repo_.remove_path(rel_path);
+          repo_.remove_path(trash_rel);
           repo_.commit("Remove ai message " + message_id);
         }
       }
@@ -300,7 +464,7 @@ void AiMessageRepo::update_links(const std::string& message_id) {
 std::optional<holder::model::AiMessage> AiMessageRepo::get(
     const std::string& message_id) const {
   static constexpr const char* SQL =
-      "SELECT message_id, thread_id, role, source, provider, model, content, created_at, prompt_hash, meta_json "
+      "SELECT message_id, thread_id, role, source, provider, model, content, created_at, deleted_at, prompt_hash, meta_json "
       "FROM ai_messages WHERE message_id = ? LIMIT 1;";
 
   sqlite3_stmt* stmt = nullptr;

@@ -112,6 +112,20 @@ TEST_CASE("HTTP ai messages create/list/get", "[http]") {
                                          boost::beast::http::status::ok);
   REQUIRE(deleted["ok"] == true);
 
+  const auto fetched_deleted = http_json_request(bound.bind, bound.port, token,
+                                                 boost::beast::http::verb::get,
+                                                 "/ai/messages/" + msg_id,
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::not_found);
+  REQUIRE(fetched_deleted["ok"] == false);
+
+  const auto restored = http_json_request(bound.bind, bound.port, token,
+                                          boost::beast::http::verb::post,
+                                          "/ai/messages/" + msg_id + "/restore",
+                                          nlohmann::json::object(),
+                                          boost::beast::http::status::ok);
+  REQUIRE(restored["ok"] == true);
+
   std::raise(SIGTERM);
   server_thread.join();
 }

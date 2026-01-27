@@ -235,6 +235,33 @@ void CardStore::restore(const std::string& card_id, long long updated_at) {
   repo_.commit("Restore card " + card.title);
 }
 
+void CardStore::hard_delete(const std::string& card_id) {
+  const auto card_opt = card_repo_.get(card_id);
+  if (!card_opt.has_value()) {
+    throw std::runtime_error("card not found: " + card_id);
+  }
+  const auto& card = card_opt.value();
+  if (!card.deleted_at.has_value()) {
+    throw std::runtime_error("card is not deleted");
+  }
+
+  require_project(card.project_id);
+  const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
+  const auto trash_path = repo_.repo_dir() / trash_rel;
+  if (std::filesystem::exists(trash_path)) {
+    std::error_code ec;
+    std::filesystem::remove(trash_path, ec);
+    if (!ec) {
+      repo_.remove_path(trash_rel);
+    }
+  }
+
+  link_repo_.delete_links_from(card.project_id, card.card_id);
+  link_repo_.delete_links_to_typed(card.project_id, card.card_id, "card");
+  card_repo_.remove(card.card_id);
+  repo_.commit("Permanently delete card " + card.title);
+}
+
 std::optional<holder::model::Card> CardStore::get(const std::string& card_id) const {
   return card_repo_.get(card_id);
 }

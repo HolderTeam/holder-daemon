@@ -910,6 +910,7 @@ void Session::run() {
       }
     } else if (path == "/ai/messages" && req.method() == http::verb::get) {
       const std::string thread_id = param("thread_id");
+      const std::string include_deleted_raw = param("include_deleted");
       if (thread_id.empty()) {
         res = error_response(http::status::bad_request, "bad_request", "Missing thread_id.");
       } else {
@@ -918,6 +919,11 @@ void Session::run() {
           const auto messages = repo.list_by_thread(thread_id);
           nlohmann::json data = nlohmann::json::array();
           for (const auto& msg : messages) {
+            if (include_deleted_raw.empty() || include_deleted_raw == "0") {
+              if (msg.deleted_at.has_value()) {
+                continue;
+              }
+            }
             nlohmann::json item;
             item["message_id"] = msg.message_id;
             item["thread_id"] = msg.thread_id;
@@ -935,6 +941,11 @@ void Session::run() {
             }
             item["content"] = msg.content;
             item["created_at"] = msg.created_at;
+            if (msg.deleted_at.has_value()) {
+              item["deleted_at"] = msg.deleted_at.value();
+            } else {
+              item["deleted_at"] = nullptr;
+            }
             if (msg.prompt_hash.has_value()) {
               item["prompt_hash"] = msg.prompt_hash.value();
             } else {
@@ -1194,6 +1205,23 @@ void Session::run() {
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
+        } else if (tail == "/restore") {
+          if (req.method() != http::verb::post) {
+            res = error_response(http::status::method_not_allowed,
+                                 "method_not_allowed",
+                                 "Method not allowed.");
+          } else {
+            try {
+              holder::store::AiMessageRepo repo(db_, fts_);
+              repo.restore(message_id);
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {{"message_id", message_id}};
+              res = json_response(http::status::ok, payload);
+            } catch (const std::exception& ex) {
+              res = error_response(http::status::bad_request, "bad_request", ex.what());
+            }
+          }
         } else {
           res = error_response(http::status::not_found, "not_found", "Route not found.");
         }
@@ -1204,7 +1232,8 @@ void Session::run() {
         } else if (req.method() == http::verb::delete_) {
           try {
             holder::store::AiMessageRepo repo(db_, fts_);
-            repo.remove(message_id);
+            const long long deleted_at = now_epoch_seconds();
+            repo.trash(message_id, deleted_at);
             nlohmann::json payload;
             payload["ok"] = true;
             payload["data"] = {{"message_id", message_id}};
@@ -1212,6 +1241,8 @@ void Session::run() {
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
+        } else if (req.method() == http::verb::post && rest.size() > 0) {
+          res = error_response(http::status::not_found, "not_found", "Route not found.");
         } else if (req.method() == http::verb::patch) {
           try {
             const auto body = nlohmann::json::parse(req.body());
@@ -1221,6 +1252,9 @@ void Session::run() {
               res = error_response(http::status::not_found, "not_found", "AI message not found.");
             } else {
               auto msg = msg_opt.value();
+              if (msg.deleted_at.has_value()) {
+                res = error_response(http::status::bad_request, "bad_request", "AI message is deleted.");
+              } else {
               if (body.contains("role") && !body.at("role").is_null()) {
                 msg.role = body.at("role").get<std::string>();
               }
@@ -1267,6 +1301,7 @@ void Session::run() {
               payload["ok"] = true;
               payload["data"] = {{"message_id", message_id}};
               res = json_response(http::status::ok, payload);
+              }
             }
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
@@ -1279,6 +1314,9 @@ void Session::run() {
               res = error_response(http::status::not_found, "not_found", "AI message not found.");
             } else {
               const auto& msg = msg_opt.value();
+              if (msg.deleted_at.has_value()) {
+                res = error_response(http::status::not_found, "not_found", "AI message not found.");
+              } else {
               nlohmann::json data;
               data["message_id"] = msg.message_id;
               data["thread_id"] = msg.thread_id;
@@ -1311,6 +1349,7 @@ void Session::run() {
               payload["ok"] = true;
               payload["data"] = data;
               res = json_response(http::status::ok, payload);
+              }
             }
           } catch (const std::exception& ex) {
             res = error_response(http::status::bad_request, "bad_request", ex.what());
@@ -1457,6 +1496,120 @@ void Session::run() {
         }
       } else {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
+      }
+    } else if (path == "/trash" && req.method() == http::verb::get) {
+      const std::string project_id = param("project_id");
+      const std::string type = param("type");
+      if (project_id.empty()) {
+        res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      } else {
+        try {
+          nlohmann::json data = nlohmann::json::array();
+          if (type.empty() || type == "card" || type == "all") {
+            holder::store::CardRepo card_repo(db_);
+            const auto cards = card_repo.list(project_id, std::nullopt);
+            for (const auto& card : cards) {
+              if (!card.deleted_at.has_value()) continue;
+              nlohmann::json item;
+              item["type"] = "card";
+              item["card_id"] = card.card_id;
+              item["project_id"] = card.project_id;
+              item["title"] = card.title;
+              item["deleted_at"] = card.deleted_at.value();
+              item["rel_path"] = card.rel_path;
+              data.push_back(std::move(item));
+            }
+          }
+          if (type.empty() || type == "ai_message" || type == "all") {
+            holder::store::AiMessageRepo msg_repo(db_, fts_);
+            const auto msgs = msg_repo.list_deleted_by_project(project_id);
+            for (const auto& msg : msgs) {
+              if (!msg.deleted_at.has_value()) continue;
+              nlohmann::json item;
+              item["type"] = "ai_message";
+              item["message_id"] = msg.message_id;
+              item["thread_id"] = msg.thread_id;
+              item["project_id"] = project_id;
+              item["role"] = msg.role;
+              item["deleted_at"] = msg.deleted_at.value();
+              item["created_at"] = msg.created_at;
+              data.push_back(std::move(item));
+            }
+          }
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = data;
+          res = json_response(http::status::ok, payload);
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (path == "/trash" && req.method() == http::verb::delete_) {
+      const std::string project_id = param("project_id");
+      const std::string type = param("type");
+      if (project_id.empty()) {
+        res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      } else {
+        try {
+          if ((type.empty() || type == "card" || type == "all") && card_store_) {
+            holder::store::CardRepo card_repo(db_);
+            const auto cards = card_repo.list(project_id, std::nullopt);
+            for (const auto& card : cards) {
+              if (!card.deleted_at.has_value()) continue;
+              card_store_->hard_delete(card.card_id);
+            }
+          }
+          if (type.empty() || type == "ai_message" || type == "all") {
+            holder::store::AiMessageRepo msg_repo(db_, fts_);
+            const auto msgs = msg_repo.list_deleted_by_project(project_id);
+            for (const auto& msg : msgs) {
+              msg_repo.remove(msg.message_id);
+            }
+          }
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = {{"project_id", project_id}};
+          res = json_response(http::status::ok, payload);
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (path.rfind("/trash/", 0) == 0 && req.method() == http::verb::delete_) {
+      const std::string rest = path.substr(std::string("/trash/").size());
+      const auto slash = rest.find('/');
+      if (slash == std::string::npos) {
+        res = error_response(http::status::not_found, "not_found", "Route not found.");
+      } else {
+        const std::string type = rest.substr(0, slash);
+        const std::string id = rest.substr(slash + 1);
+        if (id.empty()) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing id.");
+        } else {
+          try {
+            if (type == "card") {
+              if (!card_store_) {
+                res = error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");
+              } else {
+                card_store_->hard_delete(id);
+                nlohmann::json payload;
+                payload["ok"] = true;
+                payload["data"] = {{"card_id", id}};
+                res = json_response(http::status::ok, payload);
+              }
+            } else if (type == "ai_message") {
+              holder::store::AiMessageRepo msg_repo(db_, fts_);
+              msg_repo.remove(id);
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {{"message_id", id}};
+              res = json_response(http::status::ok, payload);
+            } else {
+              res = error_response(http::status::bad_request, "bad_request", "Unknown trash type.");
+            }
+          } catch (const std::exception& ex) {
+            res = error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        }
       }
     } else if (path == "/cards" && req.method() == http::verb::get) {
       const std::string project_id = param("project_id");
