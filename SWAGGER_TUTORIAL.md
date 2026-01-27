@@ -6,6 +6,7 @@ This walkthrough uses Swagger UI to:
 - Link the cards
 - List cards in the project
 - Search for a keyword in card content
+- Manage trash (delete/restore/empty)
 
 Open Swagger UI:
 `http://127.0.0.1:11499/docs`
@@ -93,3 +94,29 @@ Query params:
 - `q`: `espresso`
 
 Execute. You should see the first card returned with a snippet.
+
+## 6) Trash (delete/restore/empty)
+
+Delete a card (moves it to trash):
+Open `DELETE /cards/{card_id}` and click "Try it out".
+- `card_id`: `<card_id_a>`
+
+List trash for the project:
+Open `GET /trash` and click "Try it out".
+- `project_id`: `<project_id>`
+- `type`: `all`
+
+Restore the card:
+Open `POST /cards/{card_id}/restore`.
+- `card_id`: `<card_id_a>`
+
+Delete an AI message (moves it to trash):
+Open `DELETE /ai/messages/{message_id}` with a valid message id.
+
+Restore the AI message:
+Open `POST /ai/messages/{message_id}/restore`.
+
+Empty trash:
+Open `DELETE /trash`.
+- `project_id`: `<project_id>`
+- `type`: `all`
