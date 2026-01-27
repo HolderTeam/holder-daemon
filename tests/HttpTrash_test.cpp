@@ -89,6 +89,26 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
   REQUIRE(trash_list["data"].is_array());
   REQUIRE(trash_list["data"].size() == 2);
 
+  const auto trash_cards = http_json_request(bound.bind, bound.port, token,
+                                             boost::beast::http::verb::get,
+                                             "/trash?project_id=proj-1&type=card",
+                                             nlohmann::json::object(),
+                                             boost::beast::http::status::ok);
+  REQUIRE(trash_cards["ok"] == true);
+  REQUIRE(trash_cards["data"].is_array());
+  REQUIRE(trash_cards["data"].size() == 1);
+  REQUIRE(trash_cards["data"][0]["type"] == "card");
+
+  const auto trash_msgs = http_json_request(bound.bind, bound.port, token,
+                                            boost::beast::http::verb::get,
+                                            "/trash?project_id=proj-1&type=ai_message",
+                                            nlohmann::json::object(),
+                                            boost::beast::http::status::ok);
+  REQUIRE(trash_msgs["ok"] == true);
+  REQUIRE(trash_msgs["data"].is_array());
+  REQUIRE(trash_msgs["data"].size() == 1);
+  REQUIRE(trash_msgs["data"][0]["type"] == "ai_message");
+
   const auto hard_deleted = http_json_request(bound.bind, bound.port, token,
                                               boost::beast::http::verb::delete_,
                                               "/trash/card/card-1",
