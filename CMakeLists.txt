@@ -58,6 +58,7 @@ add_executable(holder
   src/core/LockFile.cpp
   src/core/ServerInfo.cpp
   src/core/Signal.cpp
+  src/core/Fs.cpp
   src/core/CardPaths.cpp
   src/core/CardFrontMatter.cpp
   src/core/AiMessagePaths.cpp

@@ -64,6 +64,7 @@ add_executable(lockfile_tests
   ../src/core/Paths.cpp
   ../src/core/ServerInfo.cpp
   ../src/core/Signal.cpp
+  ../src/core/Fs.cpp
   ../src/core/CardPaths.cpp
   ../src/core/AiMessagePaths.cpp
   ../src/core/CardFrontMatter.cpp
