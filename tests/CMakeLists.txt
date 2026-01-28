@@ -25,6 +25,7 @@ add_executable(lockfile_tests
   HttpAiMessageLinks_test.cpp
   HttpResources_test.cpp
   HttpTrash_test.cpp
+  HttpRebuild_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
@@ -73,6 +74,7 @@ add_executable(lockfile_tests
   ../src/store/ResourceRepo.cpp
   ../src/store/AiThreadRepo.cpp
   ../src/store/AiMessageRepo.cpp
+  ../src/store/Rebuilder.cpp
   ../src/store/Migrations.cpp
   ../src/store/CardStore.cpp
   ../src/store/Tx.cpp

@@ -9,6 +9,7 @@
 #include "store/AiMessageRepo.h"
 #include "store/LinkRepo.h"
 #include "store/ProjectRepo.h"
+#include "store/Rebuilder.h"
 #include "store/ResourceRepo.h"
 
 #include <boost/beast/core.hpp>
@@ -680,6 +681,35 @@ void Session::run() {
         }
       } else {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
+      }
+    } else if (path == "/rebuild" && req.method() == http::verb::post) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("project_id")) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+        } else {
+          const std::string project_id = body.at("project_id").get<std::string>();
+          holder::store::ProjectRepo repo(db_);
+          const auto project_opt = repo.get(project_id);
+          if (!project_opt.has_value()) {
+            res = error_response(http::status::not_found, "not_found", "Project not found.");
+          } else {
+            holder::store::Rebuilder rebuilder(db_, fts_);
+            const auto stats = rebuilder.rebuild_project(project_opt.value());
+            nlohmann::json data;
+            data["project_id"] = project_id;
+            data["cards"] = stats.cards;
+            data["ai_messages"] = stats.ai_messages;
+            data["ai_threads"] = stats.ai_threads;
+            data["links"] = stats.links;
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+            res = json_response(http::status::ok, payload);
+          }
+        }
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else if (path == "/search/cards" && req.method() == http::verb::get) {
       if (!fts_) {

@@ -55,6 +55,35 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/HealthData"
+    RebuildRequest:
+      type: object
+      required: [project_id]
+      properties:
+        project_id:
+          type: string
+    RebuildData:
+      type: object
+      required: [project_id, cards, ai_messages, ai_threads, links]
+      properties:
+        project_id:
+          type: string
+        cards:
+          type: integer
+        ai_messages:
+          type: integer
+        ai_threads:
+          type: integer
+        links:
+          type: integer
+    RebuildResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/RebuildData"
     CardCreateRequest:
       type: object
       required: [project_id, title, content]
@@ -873,6 +902,40 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /rebuild:
+    post:
+      summary: Rebuild database state from project files
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RebuildRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RebuildResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
           content:
             application/json:
               schema:
