@@ -34,6 +34,7 @@ add_executable(lockfile_tests
   HttpCards_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
+  HttpSearchDisabled_test.cpp
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
   Router_test.cpp

@@ -56,6 +56,13 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
                                      "/docs");
   REQUIRE(docs.status == boost::beast::http::status::ok);
 
+  const auto bad_auth = http_request_raw(bound.bind,
+                                         bound.port,
+                                         "Token nope",
+                                         boost::beast::http::verb::get,
+                                         "/health");
+  REQUIRE(bad_auth.status == boost::beast::http::status::unauthorized);
+
   std::raise(SIGTERM);
   server_thread.join();
 }
