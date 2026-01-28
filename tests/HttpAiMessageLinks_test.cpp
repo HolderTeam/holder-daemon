@@ -94,6 +94,26 @@ TEST_CASE("HTTP ai message links create/list/backlinks", "[http]") {
   REQUIRE(backlinks["data"].size() == 1);
   REQUIRE(backlinks["data"][0]["from_card_id"] == "msg-1");
 
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::delete_,
+                    "/ai/messages/msg-2",
+                    nlohmann::json::object(),
+                    boost::beast::http::status::ok);
+
+  const auto hidden = http_json_request(bound.bind, bound.port, token,
+                                        boost::beast::http::verb::get,
+                                        "/ai/messages/msg-1/links",
+                                        nlohmann::json::object(),
+                                        boost::beast::http::status::ok);
+  REQUIRE(hidden["data"].size() == 0);
+
+  const auto visible = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::get,
+                                         "/ai/messages/msg-1/links?include_deleted=1",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(visible["data"].size() == 1);
+
   nlohmann::json invalid_body = {
       {"to_card_id", "msg-2"},
       {"to_type", "unknown"},

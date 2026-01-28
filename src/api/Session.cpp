@@ -80,6 +80,38 @@ http::response<http::string_body> text_response(http::status status,
   return res;
 }
 
+bool should_include_link_target(holder::store::CardRepo& card_repo,
+                                holder::store::AiMessageRepo& msg_repo,
+                                const holder::model::CardLink& link,
+                                bool include_deleted) {
+  if (include_deleted) return true;
+  if (link.to_type == "card") {
+    const auto target = card_repo.get(link.to_card_id);
+    return target.has_value() && !target->deleted_at.has_value();
+  }
+  if (link.to_type == "ai_message") {
+    const auto target = msg_repo.get(link.to_card_id);
+    return target.has_value() && !target->deleted_at.has_value();
+  }
+  return true;
+}
+
+bool should_include_backlink_source(holder::store::CardRepo& card_repo,
+                                    holder::store::AiMessageRepo& msg_repo,
+                                    const holder::model::CardLink& link,
+                                    bool include_deleted) {
+  if (include_deleted) return true;
+  const auto as_card = card_repo.get(link.from_card_id);
+  if (as_card.has_value()) {
+    return !as_card->deleted_at.has_value();
+  }
+  const auto as_msg = msg_repo.get(link.from_card_id);
+  if (as_msg.has_value()) {
+    return !as_msg->deleted_at.has_value();
+  }
+  return false;
+}
+
 std::optional<std::filesystem::path> find_openapi_path() {
   namespace fs = std::filesystem;
   if (const char* env = std::getenv("HOLDER_OPENAPI_PATH")) {
@@ -1072,9 +1104,16 @@ void Session::run() {
                 const std::string project_id = thread_opt->project_id;
                 holder::store::LinkRepo link_repo(db_);
                 if (req.method() == http::verb::get) {
+                  holder::store::CardRepo card_repo(db_);
+                  holder::store::AiMessageRepo msg_repo(db_, fts_);
+                  const bool include_deleted = !param("include_deleted").empty() &&
+                                               param("include_deleted") != "0";
                   const auto links = link_repo.list_outgoing(project_id, message_id);
                   nlohmann::json data = nlohmann::json::array();
                   for (const auto& link : links) {
+                    if (!should_include_link_target(card_repo, msg_repo, link, include_deleted)) {
+                      continue;
+                    }
                     nlohmann::json item;
                     item["from_card_id"] = link.from_card_id;
                     item["to_card_id"] = link.to_card_id;
@@ -1208,11 +1247,18 @@ void Session::run() {
               } else {
                 const std::string project_id = thread_opt->project_id;
                 holder::store::LinkRepo link_repo(db_);
+                holder::store::CardRepo card_repo(db_);
+                holder::store::AiMessageRepo msg_repo(db_, fts_);
+                const bool include_deleted = !param("include_deleted").empty() &&
+                                             param("include_deleted") != "0";
                 const auto links = link_repo.list_backlinks_typed(project_id,
                                                                   message_id,
                                                                   "ai_message");
                 nlohmann::json data = nlohmann::json::array();
                 for (const auto& link : links) {
+                  if (!should_include_backlink_source(card_repo, msg_repo, link, include_deleted)) {
+                    continue;
+                  }
                   nlohmann::json item;
                   item["from_card_id"] = link.from_card_id;
                   item["to_card_id"] = link.to_card_id;
@@ -1774,9 +1820,16 @@ void Session::run() {
               const auto& card = card_opt.value();
               holder::store::LinkRepo repo(db_);
               if (req.method() == http::verb::get) {
+                holder::store::CardRepo card_repo(db_);
+                holder::store::AiMessageRepo msg_repo(db_, fts_);
+                const bool include_deleted = !param("include_deleted").empty() &&
+                                             param("include_deleted") != "0";
                 const auto links = repo.list_outgoing(card.project_id, card.card_id);
                 nlohmann::json data = nlohmann::json::array();
                 for (const auto& link : links) {
+                  if (!should_include_link_target(card_repo, msg_repo, link, include_deleted)) {
+                    continue;
+                  }
                   nlohmann::json item;
                   item["from_card_id"] = link.from_card_id;
                   item["to_card_id"] = link.to_card_id;
@@ -1899,9 +1952,16 @@ void Session::run() {
             } else {
               const auto& card = card_opt.value();
               holder::store::LinkRepo repo(db_);
+              holder::store::CardRepo card_repo(db_);
+              holder::store::AiMessageRepo msg_repo(db_, fts_);
+              const bool include_deleted = !param("include_deleted").empty() &&
+                                           param("include_deleted") != "0";
               const auto links = repo.list_backlinks_typed(card.project_id, card.card_id, "card");
               nlohmann::json data = nlohmann::json::array();
               for (const auto& link : links) {
+                if (!should_include_backlink_source(card_repo, msg_repo, link, include_deleted)) {
+                  continue;
+                }
                 nlohmann::json item;
                 item["from_card_id"] = link.from_card_id;
                 item["to_card_id"] = link.to_card_id;

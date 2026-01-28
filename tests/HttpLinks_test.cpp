@@ -101,6 +101,26 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
   REQUIRE(backlinks["data"].size() == 1);
   REQUIRE(backlinks["data"][0]["from_card_id"] == "card-a");
 
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::delete_,
+                    "/cards/card-b",
+                    nlohmann::json::object(),
+                    boost::beast::http::status::ok);
+
+  const auto hidden = http_json_request(bound.bind, bound.port, token,
+                                        boost::beast::http::verb::get,
+                                        "/cards/card-a/links",
+                                        nlohmann::json::object(),
+                                        boost::beast::http::status::ok);
+  REQUIRE(hidden["data"].size() == 0);
+
+  const auto visible = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::get,
+                                         "/cards/card-a/links?include_deleted=1",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(visible["data"].size() == 1);
+
   nlohmann::json delete_body = {
       {"to_card_id", "card-b"},
       {"kind", "ref"}

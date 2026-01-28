@@ -1232,6 +1232,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [0, 1]
+          description: Include links to deleted targets.
       responses:
         "200":
           description: OK
@@ -1339,6 +1346,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [0, 1]
+          description: Include backlinks from deleted sources.
       responses:
         "200":
           description: OK
@@ -1921,6 +1935,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [0, 1]
+          description: Include links to deleted targets.
       responses:
         "200":
           description: OK
@@ -2028,6 +2049,13 @@ paths:
           required: true
           schema:
             type: string
+        - name: include_deleted
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [0, 1]
+          description: Include backlinks from deleted sources.
       responses:
         "200":
           description: OK
