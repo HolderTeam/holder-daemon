@@ -30,12 +30,14 @@ add_executable(lockfile_tests
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
   HttpDocs_test.cpp
+  HttpAuth_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
   Router_test.cpp
+  Cli_test.cpp
   ProjectRepo_test.cpp
   CardRepo_test.cpp
   LinkRepo_test.cpp
@@ -95,6 +97,7 @@ target_compile_definitions(lockfile_tests PRIVATE
   LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
   SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
+  HOLDER_BIN_PATH="$<TARGET_FILE:holder>"
 )
 
 target_link_libraries(lockfile_tests PRIVATE
