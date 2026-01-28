@@ -81,4 +81,10 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   spdlog::info("listener shutdown requested");
 }
 
+void Listener::stop() {
+  boost::system::error_code ec;
+  acceptor_.close(ec);
+  ioc_.stop();
+}
+
 } // namespace holder::api

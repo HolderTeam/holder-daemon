@@ -21,6 +21,7 @@ add_executable(lockfile_tests
   Signal_test.cpp
   HttpHealth_test.cpp
   HttpListener_test.cpp
+  ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
   HttpAiThreads_test.cpp
   HttpAiMessageLinks_test.cpp
