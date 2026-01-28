@@ -51,7 +51,7 @@ void create_project(holder::store::Db& db,
 
 } // namespace
 
-TEST_CASE("CardStore update fails if card file missing", "[cardstore]") {
+TEST_CASE("CardStore update recreates file if missing", "[cardstore]") {
   const auto dir = make_temp_dir();
   holder::store::Db db;
   db.open(dir / "holder.db");
@@ -74,7 +74,8 @@ TEST_CASE("CardStore update fails if card file missing", "[cardstore]") {
   const auto rel_path = holder::core::card_rel_path(card.card_id);
   std::filesystem::remove(project_root / rel_path);
 
-  REQUIRE_THROWS(store.update_content(card.card_id, "new body", std::nullopt, 2));
+  store.update_content(card.card_id, "new body", std::nullopt, 2);
+  REQUIRE(std::filesystem::exists(project_root / rel_path));
 }
 
 TEST_CASE("CardStore update_links fails if card file missing", "[cardstore]") {
