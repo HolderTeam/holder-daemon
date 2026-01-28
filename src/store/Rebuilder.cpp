@@ -170,8 +170,14 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   auto rebuild_card_file = [&](const std::filesystem::path& path, bool is_trash) {
     const std::string raw = read_file(path);
     const auto parsed = holder::core::parse_card_file(raw);
+    if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
+      throw std::runtime_error("invalid card front matter");
+    }
     holder::model::Card card = parsed.card;
 
+    if (parsed.has_front_matter && card.card_id.empty()) {
+      throw std::runtime_error("card_id missing in front matter");
+    }
     if (card.card_id.empty()) {
       card.card_id = path.stem().string();
     }
@@ -244,9 +250,15 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   auto rebuild_message_file = [&](const std::filesystem::path& path, bool is_trash) {
     const std::string raw = read_file(path);
     const auto parsed = holder::core::parse_ai_message_file(raw);
+    if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
+      throw std::runtime_error("invalid ai message front matter");
+    }
     holder::model::AiMessage message = parsed.message;
     message.content = parsed.body;
 
+    if (parsed.has_front_matter && message.message_id.empty()) {
+      throw std::runtime_error("message_id missing in front matter");
+    }
     if (message.message_id.empty()) {
       message.message_id = path.stem().string();
     }
