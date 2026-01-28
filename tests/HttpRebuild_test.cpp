@@ -158,3 +158,92 @@ TEST_CASE("HTTP rebuild errors on missing project or root", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP rebuild errors on card path mismatch", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  const std::string project_id = "proj-1";
+  const auto root = dir / "repo";
+  std::filesystem::create_directories(root);
+  holder::test::create_project(db, project_id, root.string());
+
+  holder::model::Card card;
+  card.card_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  card.project_id = project_id;
+  card.title = "Mismatch";
+  card.rel_path = holder::core::card_rel_path(card.card_id);
+  card.created_at = 10;
+  card.updated_at = 10;
+  const std::string card_content = "Card body";
+  const auto card_raw = holder::core::render_card_front_matter(card, {}) + card_content;
+
+  const std::string wrong_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const auto wrong_path = holder::core::card_rel_path(wrong_id);
+  write_text(root / wrong_path, card_raw);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto mismatch = holder::test::http_json_request(bound.bind,
+                                                  bound.port,
+                                                  token,
+                                                  boost::beast::http::verb::post,
+                                                  "/rebuild",
+                                                  nlohmann::json{{"project_id", project_id}},
+                                                  boost::beast::http::status::bad_request);
+  REQUIRE(mismatch["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP rebuild errors on short ai message id", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  const std::string project_id = "proj-1";
+  const auto root = dir / "repo";
+  std::filesystem::create_directories(root);
+  holder::test::create_project(db, project_id, root.string());
+
+  const auto short_path = root / "ai_messages" / "ab" / "cd" / "abc.md";
+  write_text(short_path, "---\nmessage_id: abc\nthread_id: t\nrole: user\nsource: manual\ncreated_at: 1\n---\nbody");
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto invalid = holder::test::http_json_request(bound.bind,
+                                                 bound.port,
+                                                 token,
+                                                 boost::beast::http::verb::post,
+                                                 "/rebuild",
+                                                 nlohmann::json{{"project_id", project_id}},
+                                                 boost::beast::http::status::bad_request);
+  REQUIRE(invalid["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
