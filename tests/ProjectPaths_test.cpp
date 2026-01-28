@@ -118,3 +118,20 @@ TEST_CASE("unique_project_root skips existing filesystem paths", "[project_paths
   const auto unique = holder::core::unique_project_root(base, "demo", existing);
   REQUIRE(unique == (base / "demo-2").string());
 }
+
+TEST_CASE("unique_project_root handles collisions with existing dirs and DB entries", "[project_paths]") {
+  namespace fs = std::filesystem;
+  const auto base = fs::temp_directory_path() / "holder_unique_root_collision_test";
+  fs::create_directories(base);
+
+  fs::create_directories(base / "demo");
+  fs::create_directories(base / "demo-2");
+
+  std::vector<holder::model::Project> existing;
+  holder::model::Project p1;
+  p1.root_path = (base / "demo-3").string();
+  existing.push_back(p1);
+
+  const auto unique = holder::core::unique_project_root(base, "demo", existing);
+  REQUIRE(unique == (base / "demo-4").string());
+}
