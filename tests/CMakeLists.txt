@@ -55,6 +55,7 @@ add_executable(lockfile_tests
   AiMessageFrontMatter_test.cpp
   ProjectPaths_test.cpp
   CardStore_test.cpp
+  CardStoreFsFailure_test.cpp
   FtsIndexer_test.cpp
   GitRepo_test.cpp
   Reindexer_test.cpp
