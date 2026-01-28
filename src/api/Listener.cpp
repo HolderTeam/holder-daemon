@@ -78,6 +78,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     Session session(std::move(socket), db_, auth_token_, router_, started_at_, card_store_, fts_);
     session.run();
   }
+  spdlog::info("listener shutdown requested");
 }
 
 } // namespace holder::api

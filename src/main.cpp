@@ -137,6 +137,12 @@ int main(int argc, char* argv[]) {
 
   server.run(signals);
 
+  if (signals.is_requested()) {
+    const int sig = signals.last_signal();
+    const char* name = (sig == SIGINT) ? "SIGINT" : (sig == SIGTERM) ? "SIGTERM" : "unknown";
+    spdlog::info("shutdown signal received: {}", name);
+  }
+  spdlog::info("holder shutdown complete.");
   spdlog::shutdown();
   return 0;
 }

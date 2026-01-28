@@ -13,6 +13,7 @@ public:
   SignalHandler& operator=(const SignalHandler&) = delete;
 
   bool is_requested() const;
+  int last_signal() const;
 
 private:
   static void handle(int signum);
