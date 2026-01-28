@@ -56,12 +56,40 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
                                      "/docs");
   REQUIRE(docs.status == boost::beast::http::status::ok);
 
-  const auto bad_auth = http_request_raw(bound.bind,
-                                         bound.port,
-                                         "Token nope",
-                                         boost::beast::http::verb::get,
-                                         "/health");
-  REQUIRE(bad_auth.status == boost::beast::http::status::unauthorized);
+  auto raw_with_auth = [&](const std::string& auth_value) {
+    namespace http = boost::beast::http;
+    using tcp = boost::asio::ip::tcp;
+
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+
+    tcp::socket socket(ioc);
+    boost::asio::connect(socket, endpoints);
+
+    http::request<http::string_body> req{http::verb::get, "/health", 11};
+    req.set(http::field::host, bound.bind);
+    req.set(http::field::user_agent, "holder-tests");
+    req.set(http::field::authorization, auth_value);
+
+    http::write(socket, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(socket, buffer, res);
+    socket.shutdown(tcp::socket::shutdown_both);
+
+    return res.result();
+  };
+
+  const auto bad_auth = raw_with_auth("Token nope");
+  REQUIRE(bad_auth == boost::beast::http::status::unauthorized);
+
+  const auto missing_bearer = raw_with_auth("testtoken");
+  REQUIRE(missing_bearer == boost::beast::http::status::unauthorized);
+
+  const auto lower_bearer = raw_with_auth("bearer " + token);
+  REQUIRE(lower_bearer == boost::beast::http::status::unauthorized);
 
   std::raise(SIGTERM);
   server_thread.join();
