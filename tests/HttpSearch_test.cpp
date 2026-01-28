@@ -140,3 +140,47 @@ TEST_CASE("HTTP search endpoints reject missing params", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP search endpoints reject bad params", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+  create_project(db, "proj-1", (dir / "repo").string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto bad_limit = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/search/cards?project_id=proj-1&q=test&limit=abc",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_limit["ok"] == false);
+
+  const auto bad_offset = http_json_request(bound.bind,
+                                            bound.port,
+                                            token,
+                                            boost::beast::http::verb::get,
+                                            "/search/ai?project_id=proj-1&q=test&offset=oops",
+                                            nlohmann::json::object(),
+                                            boost::beast::http::status::bad_request);
+  REQUIRE(bad_offset["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
