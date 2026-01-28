@@ -56,6 +56,7 @@ add_executable(lockfile_tests
   ProjectPaths_test.cpp
   CardStore_test.cpp
   FtsIndexer_test.cpp
+  GitRepo_test.cpp
   Reindexer_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/Paths.cpp

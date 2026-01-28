@@ -751,31 +751,41 @@ void Session::run() {
         const std::string q = param("q");
         int limit = 20;
         int offset = 0;
-        if (!param("limit").empty()) limit = std::stoi(param("limit"));
-        if (!param("offset").empty()) offset = std::stoi(param("offset"));
+        bool bad_params = false;
+        try {
+          if (!param("limit").empty()) limit = std::stoi(param("limit"));
+          if (!param("offset").empty()) offset = std::stoi(param("offset"));
+        } catch (const std::exception&) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "Invalid limit/offset.");
+          bad_params = true;
+        }
 
-        if (project_id.empty() || q.empty()) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
-        } else {
-          try {
-            const auto rows = fts_->search_cards(project_id, q, limit, offset);
-            nlohmann::json data = nlohmann::json::array();
-            for (const auto& row : rows) {
-              data.push_back({
-                {"card_id", row.id},
-                {"title", row.title},
-                {"updated_at", row.updated_at},
-                {"created_at", row.created_at},
-                {"snippet", row.snippet},
-                {"rank", row.rank}
-              });
+        if (!bad_params) {
+          if (project_id.empty() || q.empty()) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
+          } else {
+            try {
+              const auto rows = fts_->search_cards(project_id, q, limit, offset);
+              nlohmann::json data = nlohmann::json::array();
+              for (const auto& row : rows) {
+                data.push_back({
+                  {"card_id", row.id},
+                  {"title", row.title},
+                  {"updated_at", row.updated_at},
+                  {"created_at", row.created_at},
+                  {"snippet", row.snippet},
+                  {"rank", row.rank}
+                });
+              }
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = data;
+              res = json_response(http::status::ok, payload);
+            } catch (const std::exception& ex) {
+              res = error_response(http::status::bad_request, "bad_request", ex.what());
             }
-            nlohmann::json payload;
-            payload["ok"] = true;
-            payload["data"] = data;
-            res = json_response(http::status::ok, payload);
-          } catch (const std::exception& ex) {
-            res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
         }
       }
@@ -787,29 +797,39 @@ void Session::run() {
         const std::string q = param("q");
         int limit = 20;
         int offset = 0;
-        if (!param("limit").empty()) limit = std::stoi(param("limit"));
-        if (!param("offset").empty()) offset = std::stoi(param("offset"));
+        bool bad_params = false;
+        try {
+          if (!param("limit").empty()) limit = std::stoi(param("limit"));
+          if (!param("offset").empty()) offset = std::stoi(param("offset"));
+        } catch (const std::exception&) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "Invalid limit/offset.");
+          bad_params = true;
+        }
 
-        if (project_id.empty() || q.empty()) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
-        } else {
-          try {
-            const auto rows = fts_->search_messages(project_id, q, limit, offset);
-            nlohmann::json data = nlohmann::json::array();
-            for (const auto& row : rows) {
-              data.push_back({
-                {"message_id", row.id},
-                {"created_at", row.created_at},
-                {"snippet", row.snippet},
-                {"rank", row.rank}
-              });
+        if (!bad_params) {
+          if (project_id.empty() || q.empty()) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
+          } else {
+            try {
+              const auto rows = fts_->search_messages(project_id, q, limit, offset);
+              nlohmann::json data = nlohmann::json::array();
+              for (const auto& row : rows) {
+                data.push_back({
+                  {"message_id", row.id},
+                  {"created_at", row.created_at},
+                  {"snippet", row.snippet},
+                  {"rank", row.rank}
+                });
+              }
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = data;
+              res = json_response(http::status::ok, payload);
+            } catch (const std::exception& ex) {
+              res = error_response(http::status::bad_request, "bad_request", ex.what());
             }
-            nlohmann::json payload;
-            payload["ok"] = true;
-            payload["data"] = data;
-            res = json_response(http::status::ok, payload);
-          } catch (const std::exception& ex) {
-            res = error_response(http::status::bad_request, "bad_request", ex.what());
           }
         }
       }
