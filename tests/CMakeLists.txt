@@ -60,6 +60,7 @@ add_executable(lockfile_tests
   FtsIndexer_test.cpp
   GitRepo_test.cpp
   FsAdapterFailure_test.cpp
+  GitAdapterFailure_test.cpp
   Reindexer_test.cpp
   ../src/core/LockFile.cpp
   ../src/core/Paths.cpp

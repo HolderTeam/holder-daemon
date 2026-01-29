@@ -37,8 +37,8 @@ private:
   holder::model::Project require_project(const std::string& project_id);
 
   Db& db_;
-  holder::git::GitOps* git_ = nullptr;
   holder::core::Fs* fs_ = nullptr;
+  holder::git::GitOps* git_ = nullptr;
   CardRepo card_repo_;
   LinkRepo link_repo_;
   ProjectRepo project_repo_;

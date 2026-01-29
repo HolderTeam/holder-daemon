@@ -34,8 +34,8 @@ public:
 
 private:
   Db& db_;
-  holder::git::GitOps* git_ = nullptr;
   holder::core::Fs* fs_ = nullptr;
+  holder::git::GitOps* git_ = nullptr;
   holder::store::LinkRepo link_repo_;
   holder::store::AiThreadRepo thread_repo_;
   holder::store::ProjectRepo project_repo_;
