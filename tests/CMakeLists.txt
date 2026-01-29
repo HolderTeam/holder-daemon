@@ -78,6 +78,7 @@ add_executable(lockfile_tests
   ../src/api/Session.cpp
   ../src/api/Router.cpp
   ../src/git/GitRepo.cpp
+  ../src/git/GitOps.cpp
   ../src/store/ProjectRepo.cpp
   ../src/store/CardRepo.cpp
   ../src/store/LinkRepo.cpp

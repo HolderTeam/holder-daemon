@@ -3,6 +3,7 @@
 #include "core/AiMessageFrontMatter.h"
 #include "core/AiMessagePaths.h"
 #include "core/Fs.h"
+#include "git/GitOps.h"
 
 #include <sqlite3.h>
 
@@ -16,6 +17,11 @@ namespace {
 holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
   static holder::core::RealFs real_fs;
   return fs ? *fs : real_fs;
+}
+
+holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
+  static holder::git::RealGitOps real_git;
+  return git ? *git : real_git;
 }
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -81,10 +87,13 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
+AiMessageRepo::AiMessageRepo(Db& db,
+                             holder::index::FtsIndexer* fts,
+                             holder::core::Fs* fs,
+                             holder::git::GitOps* git)
     : db_(db),
-      repo_(),
       fs_(&resolve_fs(fs)),
+      git_(&resolve_git(git)),
       link_repo_(db),
       thread_repo_(db),
       project_repo_(db),
@@ -100,13 +109,13 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
     throw std::runtime_error("project not found for ai message thread");
   }
 
-  repo_.open_or_init(project_opt->root_path);
+  git_->open_or_init(project_opt->root_path);
   if (project_opt->git_remote_url.has_value()) {
-    repo_.set_remote("origin", project_opt->git_remote_url.value());
+    git_->set_remote("origin", project_opt->git_remote_url.value());
   }
 
   const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
-  const auto full_path = repo_.repo_dir() / rel_path;
+  const auto full_path = git_->repo_dir() / rel_path;
   if (fs_->exists(full_path)) {
     throw std::runtime_error("conflict: ai message file already exists");
   }
@@ -114,7 +123,7 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   const auto front_matter = holder::core::render_ai_message_front_matter(message,
                                                                          project_opt->project_id,
                                                                          {});
-  repo_.write_file(rel_path, front_matter + message.content);
+  git_->write_file(rel_path, front_matter + message.content);
 
   static constexpr const char* SQL =
       "INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
@@ -156,8 +165,8 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
                          message.content);
   }
 
-  repo_.stage_path(rel_path);
-  repo_.commit("Add ai message " + message.message_id);
+  git_->stage_path(rel_path);
+  git_->commit("Add ai message " + message.message_id);
 }
 
 std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
@@ -224,9 +233,9 @@ void AiMessageRepo::update(const holder::model::AiMessage& message) {
     throw std::runtime_error("project not found for ai message thread");
   }
 
-  repo_.open_or_init(project_opt->root_path);
+  git_->open_or_init(project_opt->root_path);
   if (project_opt->git_remote_url.has_value()) {
-    repo_.set_remote("origin", project_opt->git_remote_url.value());
+    git_->set_remote("origin", project_opt->git_remote_url.value());
   }
 
   const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
@@ -234,9 +243,9 @@ void AiMessageRepo::update(const holder::model::AiMessage& message) {
   const auto front_matter = holder::core::render_ai_message_front_matter(message,
                                                                          project_opt->project_id,
                                                                          links);
-  repo_.write_file(rel_path, front_matter + message.content);
-  repo_.stage_path(rel_path);
-  repo_.commit("Update ai message " + message.message_id);
+  git_->write_file(rel_path, front_matter + message.content);
+  git_->stage_path(rel_path);
+  git_->commit("Update ai message " + message.message_id);
 }
 
 std::vector<holder::model::AiMessage> AiMessageRepo::list_deleted_by_project(
@@ -289,15 +298,15 @@ void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
     throw std::runtime_error("project not found for ai message thread");
   }
 
-  repo_.open_or_init(project_opt->root_path);
+  git_->open_or_init(project_opt->root_path);
   if (project_opt->git_remote_url.has_value()) {
-    repo_.set_remote("origin", project_opt->git_remote_url.value());
+    git_->set_remote("origin", project_opt->git_remote_url.value());
   }
 
   const std::string rel_path = holder::core::ai_message_rel_path(message_id);
   const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
-  const auto src_path = repo_.repo_dir() / rel_path;
-  const auto dst_path = repo_.repo_dir() / trash_rel;
+  const auto src_path = git_->repo_dir() / rel_path;
+  const auto dst_path = git_->repo_dir() / trash_rel;
   if (!fs_->exists(src_path)) {
     throw std::runtime_error("ai message content missing");
   }
@@ -322,9 +331,9 @@ void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
     fts_->delete_message(message_id);
   }
 
-  repo_.remove_path(rel_path);
-  repo_.stage_path(trash_rel);
-  repo_.commit("Delete ai message " + message_id);
+  git_->remove_path(rel_path);
+  git_->stage_path(trash_rel);
+  git_->commit("Delete ai message " + message_id);
 }
 
 void AiMessageRepo::restore(const std::string& message_id) {
@@ -345,15 +354,15 @@ void AiMessageRepo::restore(const std::string& message_id) {
     throw std::runtime_error("project not found for ai message thread");
   }
 
-  repo_.open_or_init(project_opt->root_path);
+  git_->open_or_init(project_opt->root_path);
   if (project_opt->git_remote_url.has_value()) {
-    repo_.set_remote("origin", project_opt->git_remote_url.value());
+    git_->set_remote("origin", project_opt->git_remote_url.value());
   }
 
   const std::string rel_path = holder::core::ai_message_rel_path(message_id);
   const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
-  const auto src_path = repo_.repo_dir() / trash_rel;
-  const auto dst_path = repo_.repo_dir() / rel_path;
+  const auto src_path = git_->repo_dir() / trash_rel;
+  const auto dst_path = git_->repo_dir() / rel_path;
   if (!fs_->exists(src_path)) {
     throw std::runtime_error("ai message content missing");
   }
@@ -377,9 +386,9 @@ void AiMessageRepo::restore(const std::string& message_id) {
     fts_->upsert_message(message_id, msg_opt->thread_id, project_opt->project_id, msg_opt->content);
   }
 
-  repo_.remove_path(trash_rel);
-  repo_.stage_path(rel_path);
-  repo_.commit("Restore ai message " + message_id);
+  git_->remove_path(trash_rel);
+  git_->stage_path(rel_path);
+  git_->commit("Restore ai message " + message_id);
 }
 
 void AiMessageRepo::remove(const std::string& message_id) {
@@ -411,22 +420,22 @@ void AiMessageRepo::remove(const std::string& message_id) {
       if (project_opt.has_value()) {
         link_repo_.delete_links_from(project_opt->project_id, message_id);
         link_repo_.delete_links_to_typed(project_opt->project_id, message_id, "ai_message");
-        repo_.open_or_init(project_opt->root_path);
+        git_->open_or_init(project_opt->root_path);
         if (project_opt->git_remote_url.has_value()) {
-          repo_.set_remote("origin", project_opt->git_remote_url.value());
+          git_->set_remote("origin", project_opt->git_remote_url.value());
         }
         const std::string rel_path = holder::core::ai_message_rel_path(message_id);
         const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
-        const auto full_path = repo_.repo_dir() / trash_rel;
-        const auto rel_full = repo_.repo_dir() / rel_path;
+        const auto full_path = git_->repo_dir() / trash_rel;
+        const auto rel_full = git_->repo_dir() / rel_path;
         if (fs_->exists(rel_full)) {
           fs_->remove(rel_full);
-          repo_.remove_path(rel_path);
+          git_->remove_path(rel_path);
         }
         if (fs_->exists(full_path)) {
           fs_->remove(full_path);
-          repo_.remove_path(trash_rel);
-          repo_.commit("Remove ai message " + message_id);
+          git_->remove_path(trash_rel);
+          git_->commit("Remove ai message " + message_id);
         }
       }
     }
@@ -449,13 +458,13 @@ void AiMessageRepo::update_links(const std::string& message_id) {
     throw std::runtime_error("project not found for ai message thread");
   }
 
-  repo_.open_or_init(project_opt->root_path);
+  git_->open_or_init(project_opt->root_path);
   if (project_opt->git_remote_url.has_value()) {
-    repo_.set_remote("origin", project_opt->git_remote_url.value());
+    git_->set_remote("origin", project_opt->git_remote_url.value());
   }
 
   const std::string rel_path = holder::core::ai_message_rel_path(message_id);
-  const auto full_path = repo_.repo_dir() / rel_path;
+  const auto full_path = git_->repo_dir() / rel_path;
   if (!fs_->exists(full_path)) {
     throw std::runtime_error("ai message file missing");
   }
@@ -464,9 +473,9 @@ void AiMessageRepo::update_links(const std::string& message_id) {
   const auto front_matter = holder::core::render_ai_message_front_matter(msg_opt.value(),
                                                                          project_opt->project_id,
                                                                          links);
-  repo_.write_file(rel_path, front_matter + msg_opt->content);
-  repo_.stage_path(rel_path);
-  repo_.commit("Update ai message links " + message_id);
+  git_->write_file(rel_path, front_matter + msg_opt->content);
+  git_->stage_path(rel_path);
+  git_->commit("Update ai message links " + message_id);
 }
 
 std::optional<holder::model::AiMessage> AiMessageRepo::get(

@@ -82,6 +82,7 @@ add_executable(holder
   src/store/Tx.cpp
   src/store/Migrations.cpp
   src/git/GitRepo.cpp
+  src/git/GitOps.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp

@@ -2,7 +2,7 @@
 
 #include "core/Fs.h"
 #include "index/FtsIndexer.h"
-#include "git/GitRepo.h"
+#include "git/GitOps.h"
 #include "model/AiMessage.h"
 #include "store/AiThreadRepo.h"
 #include "store/Db.h"
@@ -17,7 +17,10 @@ namespace holder::store {
 
 class AiMessageRepo {
 public:
-  AiMessageRepo(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs = nullptr);
+  AiMessageRepo(Db& db,
+                holder::index::FtsIndexer* fts,
+                holder::core::Fs* fs = nullptr,
+                holder::git::GitOps* git = nullptr);
 
   void append(const holder::model::AiMessage& message);
   std::optional<holder::model::AiMessage> get(const std::string& message_id) const;
@@ -31,7 +34,7 @@ public:
 
 private:
   Db& db_;
-  holder::git::GitRepo repo_;
+  holder::git::GitOps* git_ = nullptr;
   holder::core::Fs* fs_ = nullptr;
   holder::store::LinkRepo link_repo_;
   holder::store::AiThreadRepo thread_repo_;
