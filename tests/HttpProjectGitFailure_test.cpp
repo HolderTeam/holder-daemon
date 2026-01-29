@@ -79,6 +79,10 @@ TEST_CASE("Project patch propagates git remove_remote failure", "[git][http]") {
                                                      boost::beast::http::status::bad_request);
   REQUIRE(patch["ok"] == false);
 
+  const auto fetched = repo.get("proj-1");
+  REQUIRE(fetched.has_value());
+  REQUIRE(!fetched->git_remote_url.has_value());
+
   std::raise(SIGTERM);
   server_thread.join();
 }
@@ -126,6 +130,11 @@ TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
                                                      patch_body,
                                                      boost::beast::http::status::bad_request);
   REQUIRE(patch["ok"] == false);
+
+  const auto fetched = repo.get("proj-1");
+  REQUIRE(fetched.has_value());
+  REQUIRE(fetched->git_remote_url.has_value());
+  REQUIRE(fetched->git_remote_url.value() == "git@example.com:repo.git");
 
   std::raise(SIGTERM);
   server_thread.join();
