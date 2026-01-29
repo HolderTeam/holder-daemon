@@ -1,5 +1,6 @@
 #include "core/Fs.h"
 
+#include <chrono>
 #include <fstream>
 #include <stdexcept>
 #include <system_error>
@@ -35,6 +36,18 @@ void RealFs::remove(const std::filesystem::path& path) const {
   if (ec) {
     throw std::runtime_error("Failed to remove: " + path.string() + " (" + ec.message() + ")");
   }
+}
+
+long long RealFs::last_write_time_seconds(const std::filesystem::path& path) const {
+  std::error_code ec;
+  const auto ftime = std::filesystem::last_write_time(path, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to stat: " + path.string() + " (" + ec.message() + ")");
+  }
+  const auto sctp =
+      std::chrono::time_point_cast<std::chrono::seconds>(ftime - decltype(ftime)::clock::now() +
+                                                         std::chrono::system_clock::now());
+  return sctp.time_since_epoch().count();
 }
 
 std::string RealFs::read_file(const std::filesystem::path& path) const {

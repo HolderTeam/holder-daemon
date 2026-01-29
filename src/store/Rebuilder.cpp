@@ -4,6 +4,7 @@
 #include "core/AiMessagePaths.h"
 #include "core/CardFrontMatter.h"
 #include "core/CardPaths.h"
+#include "core/Fs.h"
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
 #include "store/LinkRepo.h"
@@ -11,9 +12,7 @@
 
 #include <sqlite3.h>
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -24,25 +23,13 @@
 namespace holder::store {
 namespace {
 
-std::string read_file(const std::filesystem::path& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in.is_open()) return {};
-  return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
+  static holder::core::RealFs real_fs;
+  return fs ? *fs : real_fs;
 }
 
-long long file_mtime_seconds(const std::filesystem::path& path) {
-  std::error_code ec;
-  const auto ftime = std::filesystem::last_write_time(path, ec);
-  if (ec) {
-    return std::chrono::time_point_cast<std::chrono::seconds>(
-               std::chrono::system_clock::now())
-        .time_since_epoch()
-        .count();
-  }
-  const auto sctp =
-      std::chrono::time_point_cast<std::chrono::seconds>(ftime - decltype(ftime)::clock::now() +
-                                                         std::chrono::system_clock::now());
-  return sctp.time_since_epoch().count();
+long long file_mtime_seconds(holder::core::Fs& fs, const std::filesystem::path& path) {
+  return fs.last_write_time_seconds(path);
 }
 
 std::string relative_path_string(const std::filesystem::path& root,
@@ -117,12 +104,14 @@ struct MessageRecord {
 
 } // namespace
 
-Rebuilder::Rebuilder(Db& db, holder::index::FtsIndexer* fts) : db_(db), fts_(fts) {}
+Rebuilder::Rebuilder(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
+    : db_(db), fts_(fts), fs_(&resolve_fs(fs)) {}
 
 Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project& project) {
   RebuildStats stats;
+  auto& fs = *fs_;
   const std::filesystem::path root = project.root_path;
-  if (!std::filesystem::exists(root)) {
+  if (!fs.exists(root)) {
     throw std::runtime_error("project root not found");
   }
 
@@ -151,9 +140,9 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   CardRepo card_repo(db_);
   LinkRepo link_repo(db_);
 
-  auto collect_files = [](const std::filesystem::path& base) {
+  auto collect_files = [&](const std::filesystem::path& base) {
     std::vector<std::filesystem::path> out;
-    if (!std::filesystem::exists(base)) {
+    if (!fs.exists(base)) {
       return out;
     }
     for (const auto& entry : std::filesystem::recursive_directory_iterator(base)) {
@@ -168,7 +157,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   const auto trash_card_files = collect_files(root / "trash" / "cards");
 
   auto rebuild_card_file = [&](const std::filesystem::path& path, bool is_trash) {
-    const std::string raw = read_file(path);
+    const std::string raw = fs.read_file(path);
     const auto parsed = holder::core::parse_card_file(raw);
     if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
       throw std::runtime_error("invalid card front matter");
@@ -200,7 +189,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
       card.title = derive_title(parsed.body, card.card_id);
     }
 
-    const long long mtime = file_mtime_seconds(path);
+    const long long mtime = file_mtime_seconds(fs, path);
     if (card.created_at <= 0) {
       card.created_at = mtime;
     }
@@ -248,7 +237,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   std::unordered_map<std::string, std::pair<long long, long long>> thread_times;
   std::vector<MessageRecord> records;
   auto rebuild_message_file = [&](const std::filesystem::path& path, bool is_trash) {
-    const std::string raw = read_file(path);
+    const std::string raw = fs.read_file(path);
     const auto parsed = holder::core::parse_ai_message_file(raw);
     if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
       throw std::runtime_error("invalid ai message front matter");
@@ -280,7 +269,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
     if (message.role.empty()) message.role = "assistant";
     if (message.source.empty()) message.source = "manual_paste";
 
-    const long long mtime = file_mtime_seconds(path);
+    const long long mtime = file_mtime_seconds(fs, path);
     if (message.created_at <= 0) {
       message.created_at = mtime;
     }

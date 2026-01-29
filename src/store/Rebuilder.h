@@ -2,6 +2,7 @@
 
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
+#include "core/Fs.h"
 #include "store/Db.h"
 
 #include <cstddef>
@@ -10,7 +11,7 @@ namespace holder::store {
 
 class Rebuilder {
 public:
-  Rebuilder(Db& db, holder::index::FtsIndexer* fts);
+  Rebuilder(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs = nullptr);
 
   struct RebuildStats {
     std::size_t cards = 0;
@@ -24,6 +25,7 @@ public:
 private:
   Db& db_;
   holder::index::FtsIndexer* fts_ = nullptr;
+  holder::core::Fs* fs_ = nullptr;
 };
 
 } // namespace holder::store

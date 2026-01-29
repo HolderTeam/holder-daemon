@@ -2,6 +2,7 @@
 
 #include "core/AiMessageFrontMatter.h"
 #include "core/AiMessagePaths.h"
+#include "core/Fs.h"
 
 #include <sqlite3.h>
 
@@ -11,6 +12,11 @@
 
 namespace holder::store {
 namespace {
+
+holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
+  static holder::core::RealFs real_fs;
+  return fs ? *fs : real_fs;
+}
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
   const char* msg = db ? sqlite3_errmsg(db) : "unknown sqlite error";
@@ -75,8 +81,14 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(), link_repo_(db), thread_repo_(db), project_repo_(db), fts_(fts) {}
+AiMessageRepo::AiMessageRepo(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
+    : db_(db),
+      repo_(),
+      fs_(&resolve_fs(fs)),
+      link_repo_(db),
+      thread_repo_(db),
+      project_repo_(db),
+      fts_(fts) {}
 
 void AiMessageRepo::append(const holder::model::AiMessage& message) {
   const auto thread_opt = thread_repo_.get(message.thread_id);
@@ -95,7 +107,7 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
 
   const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
   const auto full_path = repo_.repo_dir() / rel_path;
-  if (std::filesystem::exists(full_path)) {
+  if (fs_->exists(full_path)) {
     throw std::runtime_error("conflict: ai message file already exists");
   }
 
@@ -133,7 +145,7 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    std::filesystem::remove(full_path);
+    fs_->remove(full_path);
     throw_sqlite(db_.handle(), "insert ai message failed");
   }
 
@@ -286,11 +298,11 @@ void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
   const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
   const auto src_path = repo_.repo_dir() / rel_path;
   const auto dst_path = repo_.repo_dir() / trash_rel;
-  if (!std::filesystem::exists(src_path)) {
+  if (!fs_->exists(src_path)) {
     throw std::runtime_error("ai message content missing");
   }
-  std::filesystem::create_directories(dst_path.parent_path());
-  std::filesystem::rename(src_path, dst_path);
+  fs_->create_directories(dst_path.parent_path());
+  fs_->rename(src_path, dst_path);
 
   static constexpr const char* SQL =
       "UPDATE ai_messages SET deleted_at = ? WHERE message_id = ?;";
@@ -342,11 +354,11 @@ void AiMessageRepo::restore(const std::string& message_id) {
   const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
   const auto src_path = repo_.repo_dir() / trash_rel;
   const auto dst_path = repo_.repo_dir() / rel_path;
-  if (!std::filesystem::exists(src_path)) {
+  if (!fs_->exists(src_path)) {
     throw std::runtime_error("ai message content missing");
   }
-  std::filesystem::create_directories(dst_path.parent_path());
-  std::filesystem::rename(src_path, dst_path);
+  fs_->create_directories(dst_path.parent_path());
+  fs_->rename(src_path, dst_path);
 
   static constexpr const char* SQL =
       "UPDATE ai_messages SET deleted_at = NULL WHERE message_id = ?;";
@@ -406,17 +418,13 @@ void AiMessageRepo::remove(const std::string& message_id) {
         const std::string rel_path = holder::core::ai_message_rel_path(message_id);
         const std::string trash_rel = holder::core::ai_message_trash_rel_path(message_id);
         const auto full_path = repo_.repo_dir() / trash_rel;
-        std::error_code ec;
         const auto rel_full = repo_.repo_dir() / rel_path;
-        if (std::filesystem::exists(rel_full)) {
-          std::filesystem::remove(rel_full, ec);
-          if (!ec) {
-            repo_.remove_path(rel_path);
-          }
+        if (fs_->exists(rel_full)) {
+          fs_->remove(rel_full);
+          repo_.remove_path(rel_path);
         }
-        ec.clear();
-        std::filesystem::remove(full_path, ec);
-        if (!ec) {
+        if (fs_->exists(full_path)) {
+          fs_->remove(full_path);
           repo_.remove_path(trash_rel);
           repo_.commit("Remove ai message " + message_id);
         }
@@ -448,7 +456,7 @@ void AiMessageRepo::update_links(const std::string& message_id) {
 
   const std::string rel_path = holder::core::ai_message_rel_path(message_id);
   const auto full_path = repo_.repo_dir() / rel_path;
-  if (!std::filesystem::exists(full_path)) {
+  if (!fs_->exists(full_path)) {
     throw std::runtime_error("ai message file missing");
   }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Fs.h"
 #include "index/FtsIndexer.h"
 #include "git/GitRepo.h"
 #include "model/AiMessage.h"
@@ -16,7 +17,7 @@ namespace holder::store {
 
 class AiMessageRepo {
 public:
-  AiMessageRepo(Db& db, holder::index::FtsIndexer* fts);
+  AiMessageRepo(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs = nullptr);
 
   void append(const holder::model::AiMessage& message);
   std::optional<holder::model::AiMessage> get(const std::string& message_id) const;
@@ -31,6 +32,7 @@ public:
 private:
   Db& db_;
   holder::git::GitRepo repo_;
+  holder::core::Fs* fs_ = nullptr;
   holder::store::LinkRepo link_repo_;
   holder::store::AiThreadRepo thread_repo_;
   holder::store::ProjectRepo project_repo_;

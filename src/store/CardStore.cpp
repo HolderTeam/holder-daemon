@@ -2,21 +2,19 @@
 
 #include "core/CardFrontMatter.h"
 #include "core/CardPaths.h"
+#include "core/Fs.h"
 #include "store/LinkRepo.h"
 
 #include <yaml-cpp/yaml.h>
 
 #include <filesystem>
-#include <fstream>
 #include <stdexcept>
 namespace holder::store {
 namespace {
 
-std::string read_file(const std::filesystem::path& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in.is_open()) return {};
-  std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  return data;
+holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
+  static holder::core::RealFs real_fs;
+  return fs ? *fs : real_fs;
 }
 
 void write_card_file(holder::git::GitRepo& repo,
@@ -29,8 +27,14 @@ void write_card_file(holder::git::GitRepo& repo,
 
 } // namespace
 
-CardStore::CardStore(Db& db, holder::index::FtsIndexer* fts)
-    : db_(db), repo_(), card_repo_(db), link_repo_(db), project_repo_(db), fts_(fts) {}
+CardStore::CardStore(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
+    : db_(db),
+      repo_(),
+      fs_(&resolve_fs(fs)),
+      card_repo_(db),
+      link_repo_(db),
+      project_repo_(db),
+      fts_(fts) {}
 
 holder::model::Project CardStore::require_project(const std::string& project_id) {
   const auto project_opt = project_repo_.get(project_id);
@@ -59,7 +63,7 @@ void CardStore::create(holder::model::Card card, const std::string& content) {
   }
 
   const auto full_path = repo_.repo_dir() / card.rel_path;
-  if (std::filesystem::exists(full_path)) {
+  if (fs_->exists(full_path)) {
     throw std::runtime_error("conflict: card file already exists");
   }
 
@@ -98,7 +102,10 @@ void CardStore::update_content(const std::string& card_id,
   }
 
   const auto full_path = repo_.repo_dir() / card.rel_path;
-  const bool unchanged = (holder::core::parse_card_file(read_file(full_path)).body == content);
+  bool unchanged = false;
+  if (fs_->exists(full_path)) {
+    unchanged = (holder::core::parse_card_file(fs_->read_file(full_path)).body == content);
+  }
 
   if (!unchanged) {
     auto updated_card = card;
@@ -142,11 +149,11 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   }
 
   const auto full_path = repo_.repo_dir() / card.rel_path;
-  if (!std::filesystem::exists(full_path)) {
+  if (!fs_->exists(full_path)) {
     throw std::runtime_error("card content missing");
   }
 
-  const auto raw = read_file(full_path);
+  const auto raw = fs_->read_file(full_path);
   const auto parsed = holder::core::parse_card_file(raw);
   const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
 
@@ -180,14 +187,14 @@ void CardStore::trash(const std::string& card_id, long long deleted_at) {
   }
 
   const auto src_path = repo_.repo_dir() / card.rel_path;
-  if (!std::filesystem::exists(src_path)) {
+  if (!fs_->exists(src_path)) {
     throw std::runtime_error("card content missing");
   }
 
   const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
   const auto dst_path = repo_.repo_dir() / trash_rel;
-  std::filesystem::create_directories(dst_path.parent_path());
-  std::filesystem::rename(src_path, dst_path);
+  fs_->create_directories(dst_path.parent_path());
+  fs_->rename(src_path, dst_path);
 
   card_repo_.soft_delete(card_id, deleted_at, deleted_at);
   if (fts_) {
@@ -216,17 +223,17 @@ void CardStore::restore(const std::string& card_id, long long updated_at) {
 
   const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
   const auto src_path = repo_.repo_dir() / trash_rel;
-  if (!std::filesystem::exists(src_path)) {
+  if (!fs_->exists(src_path)) {
     throw std::runtime_error("card content missing");
   }
 
   const auto dst_path = repo_.repo_dir() / card.rel_path;
-  std::filesystem::create_directories(dst_path.parent_path());
-  std::filesystem::rename(src_path, dst_path);
+  fs_->create_directories(dst_path.parent_path());
+  fs_->rename(src_path, dst_path);
 
   card_repo_.restore(card_id, updated_at);
   if (fts_) {
-    const auto raw = read_file(dst_path);
+    const auto raw = fs_->read_file(dst_path);
     const auto parsed = holder::core::parse_card_file(raw);
     fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
   }
@@ -248,12 +255,9 @@ void CardStore::hard_delete(const std::string& card_id) {
   require_project(card.project_id);
   const std::string trash_rel = holder::core::card_trash_rel_path(card.card_id);
   const auto trash_path = repo_.repo_dir() / trash_rel;
-  if (std::filesystem::exists(trash_path)) {
-    std::error_code ec;
-    std::filesystem::remove(trash_path, ec);
-    if (!ec) {
-      repo_.remove_path(trash_rel);
-    }
+  if (fs_->exists(trash_path)) {
+    fs_->remove(trash_path);
+    repo_.remove_path(trash_rel);
   }
 
   link_repo_.delete_links_from(card.project_id, card.card_id);
@@ -279,11 +283,11 @@ std::optional<std::string> CardStore::get_content(const holder::model::Card& car
   }
 
   const auto full_path = repo_.repo_dir() / card.rel_path;
-  if (!std::filesystem::exists(full_path)) {
+  if (!fs_->exists(full_path)) {
     return std::nullopt;
   }
 
-  return holder::core::parse_card_file(read_file(full_path)).body;
+  return holder::core::parse_card_file(fs_->read_file(full_path)).body;
 }
 
 } // namespace holder::store
