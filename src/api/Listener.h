@@ -2,6 +2,7 @@
 
 #include "api/Router.h"
 #include "core/Signal.h"
+#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "store/CardStore.h"
 #include "store/Db.h"
@@ -27,7 +28,8 @@ public:
            const Router& router,
            std::chrono::steady_clock::time_point started_at,
            holder::store::CardStore* card_store,
-           holder::index::FtsIndexer* fts);
+           holder::index::FtsIndexer* fts,
+           holder::git::GitOps* git_ops = nullptr);
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
@@ -46,6 +48,7 @@ private:
   std::chrono::steady_clock::time_point started_at_;
   holder::store::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
+  holder::git::GitOps* git_ops_ = nullptr;
 };
 
 } // namespace holder::api

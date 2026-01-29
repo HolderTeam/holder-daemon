@@ -2,7 +2,7 @@
 
 #include "core/CardPaths.h"
 #include "core/ProjectPaths.h"
-#include "git/GitRepo.h"
+#include "git/GitOps.h"
 #include "core/ServerInfo.h"
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
@@ -78,6 +78,11 @@ http::response<http::string_body> text_response(http::status status,
   res.body() = std::move(body);
   res.prepare_payload();
   return res;
+}
+
+holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
+  static holder::git::RealGitOps real_git;
+  return git ? *git : real_git;
 }
 
 bool should_include_link_target(holder::store::CardRepo& card_repo,
@@ -282,14 +287,16 @@ Session::Session(tcp::socket socket,
                  const Router& router,
                  std::chrono::steady_clock::time_point started_at,
                  holder::store::CardStore* card_store,
-                 holder::index::FtsIndexer* fts)
+                 holder::index::FtsIndexer* fts,
+                 holder::git::GitOps* git_ops)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
       router_(router),
       started_at_(started_at),
       card_store_(card_store),
-      fts_(fts) {}
+      fts_(fts),
+      git_ops_(git_ops) {}
 
 void Session::run() {
   namespace beast = boost::beast;
@@ -676,13 +683,13 @@ void Session::run() {
                   const std::string repo_root =
                       has_root ? body.at("root_path").get<std::string>()
                                : project_opt->root_path;
-                  holder::git::GitRepo git_repo;
-                  git_repo.open_or_init(repo_root);
+                  auto& git = resolve_git(git_ops_);
+                  git.open_or_init(repo_root);
                   if (body.at("git_remote_url").is_null()) {
-                    git_repo.remove_remote("origin");
+                    git.remove_remote("origin");
                   } else {
-                    git_repo.set_remote("origin",
-                                        body.at("git_remote_url").get<std::string>());
+                    git.set_remote("origin",
+                                   body.at("git_remote_url").get<std::string>());
                   }
                 }
                 nlohmann::json payload;

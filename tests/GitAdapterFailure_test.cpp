@@ -62,8 +62,10 @@ public:
   bool fail_stage = false;
   bool fail_set_remote = false;
   bool fail_remove_remote = false;
+  bool fail_open = false;
 
   void open_or_init(const std::filesystem::path& repo_dir) override {
+    if (fail_open) throw std::runtime_error("open failed");
     repo_dir_ = repo_dir;
     std::filesystem::create_directories(repo_dir_);
   }
@@ -181,3 +183,67 @@ TEST_CASE("CardStore create propagates set_remote failure", "[git]") {
 
   REQUIRE_THROWS(store.create(card, "body"));
 }
+
+TEST_CASE("CardStore update propagates git stage failure", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::store::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const auto project_root = dir / "repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  FailingGitOps git;
+  holder::store::CardStore store(db, &fts, nullptr, &git);
+
+  holder::model::Card card;
+  card.card_id = "card-2";
+  card.project_id = "proj-1";
+  card.title = "Title";
+  card.created_at = 1;
+  card.updated_at = 1;
+  store.create(card, "body");
+
+  git.fail_stage = true;
+  REQUIRE_THROWS(store.update_content(card.card_id, "updated", std::nullopt, 2));
+}
+
+TEST_CASE("AiMessageRepo update propagates git stage failure", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::store::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const auto project_root = dir / "repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-1";
+  thread.project_id = "proj-1";
+  thread.title = "Thread";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+  holder::store::AiThreadRepo thread_repo(db);
+  thread_repo.create(thread);
+
+  holder::index::FtsIndexer fts(db);
+  FailingGitOps git;
+  holder::store::AiMessageRepo repo(db, &fts, nullptr, &git);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-stage";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "hello";
+  msg.created_at = 2;
+  repo.append(msg);
+
+  msg.content = "changed";
+  git.fail_stage = true;
+  REQUIRE_THROWS(repo.update(msg));
+}
+
+// NOTE: Project git remote updates use the real GitRepo directly in Session,
+// so we can't inject FailingGitOps there without adding another seam.

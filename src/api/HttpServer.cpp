@@ -25,14 +25,16 @@ HttpServer::HttpServer(std::string bind,
                        holder::store::Db& db,
                        std::string auth_token,
                        holder::store::CardStore* card_store,
-                       holder::index::FtsIndexer* fts)
+                       holder::index::FtsIndexer* fts,
+                       holder::git::GitOps* git_ops)
     : bind_(std::move(bind)),
       port_(port),
       db_(db),
       auth_token_(std::move(auth_token)),
       router_(),
       card_store_(card_store),
-      fts_(fts) {
+      fts_(fts),
+      git_ops_(git_ops) {
   router_.add(http::verb::get, "/health",
               [this](const Router::Request&, Router::Response& res) {
                 bool db_ok = true;
@@ -70,7 +72,15 @@ HttpServer::~HttpServer() = default;
 
 HttpServer::BoundInfo HttpServer::start() {
   started_at_ = std::chrono::steady_clock::now();
-  listener_ = std::make_unique<Listener>(bind_, port_, db_, auth_token_, router_, started_at_, card_store_, fts_);
+  listener_ = std::make_unique<Listener>(bind_,
+                                         port_,
+                                         db_,
+                                         auth_token_,
+                                         router_,
+                                         started_at_,
+                                         card_store_,
+                                         fts_,
+                                         git_ops_);
   const auto bound = listener_->start();
   return BoundInfo{bound.bind, bound.port};
 }

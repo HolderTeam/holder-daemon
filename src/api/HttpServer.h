@@ -2,6 +2,7 @@
 
 #include "api/Router.h"
 #include "core/Signal.h"
+#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "store/Db.h"
 
@@ -29,7 +30,8 @@ public:
              holder::store::Db& db,
              std::string auth_token,
              holder::store::CardStore* card_store,
-             holder::index::FtsIndexer* fts);
+             holder::index::FtsIndexer* fts,
+             holder::git::GitOps* git_ops = nullptr);
   ~HttpServer();
 
   BoundInfo start();
@@ -45,6 +47,7 @@ private:
   std::unique_ptr<Listener> listener_;
   holder::store::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
+  holder::git::GitOps* git_ops_ = nullptr;
 };
 
 } // namespace holder::api

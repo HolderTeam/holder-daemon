@@ -21,7 +21,8 @@ Listener::Listener(std::string bind,
                    const Router& router,
                    std::chrono::steady_clock::time_point started_at,
                    holder::store::CardStore* card_store,
-                   holder::index::FtsIndexer* fts)
+                   holder::index::FtsIndexer* fts,
+                   holder::git::GitOps* git_ops)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
@@ -30,7 +31,8 @@ Listener::Listener(std::string bind,
       router_(router),
       started_at_(started_at),
       card_store_(card_store),
-      fts_(fts) {}
+      fts_(fts),
+      git_ops_(git_ops) {}
 
 Listener::BoundInfo Listener::start() {
   boost::system::error_code ec;
@@ -75,7 +77,14 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       continue;
     }
 
-    Session session(std::move(socket), db_, auth_token_, router_, started_at_, card_store_, fts_);
+    Session session(std::move(socket),
+                    db_,
+                    auth_token_,
+                    router_,
+                    started_at_,
+                    card_store_,
+                    fts_,
+                    git_ops_);
     session.run();
   }
   spdlog::info("listener shutdown requested");
