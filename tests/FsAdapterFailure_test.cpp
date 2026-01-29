@@ -213,3 +213,82 @@ TEST_CASE("Rebuilder propagates fs read failure", "[fs]") {
   holder::store::Rebuilder rebuilder(db, &fts, &fs);
   REQUIRE_THROWS(rebuilder.rebuild_project(project));
 }
+
+TEST_CASE("CardStore restore propagates fs rename failure", "[fs]") {
+  const auto dir = make_temp_dir();
+  holder::store::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const auto project_root = dir / "repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  FailingFs fs;
+  holder::store::CardStore store(db, &fts, &fs);
+
+  holder::model::Card card;
+  card.card_id = "restorefail";
+  card.project_id = "proj-1";
+  card.title = "Restore";
+  card.created_at = 1;
+  card.updated_at = 1;
+  store.create(card, "body");
+  store.trash(card.card_id, 10);
+
+  const auto trash_rel = holder::core::card_trash_rel_path(card.card_id);
+  const auto src_path = project_root / trash_rel;
+  fs.fail_rename_from = src_path;
+
+  REQUIRE_THROWS(store.restore(card.card_id, 11));
+  REQUIRE(std::filesystem::exists(src_path));
+
+  holder::store::CardRepo repo(db);
+  const auto fetched = repo.get(card.card_id);
+  REQUIRE(fetched.has_value());
+  REQUIRE(fetched->deleted_at.has_value());
+}
+
+TEST_CASE("AiMessageRepo restore propagates fs rename failure", "[fs]") {
+  const auto dir = make_temp_dir();
+  holder::store::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const auto project_root = dir / "repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-1";
+  thread.project_id = "proj-1";
+  thread.title = "Thread";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+  holder::store::AiThreadRepo thread_repo(db);
+  thread_repo.create(thread);
+
+  holder::index::FtsIndexer fts(db);
+  FailingFs fs;
+  holder::store::AiMessageRepo repo(db, &fts, &fs);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-restore";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "hello";
+  msg.created_at = 2;
+  repo.append(msg);
+  repo.trash(msg.message_id, 10);
+
+  const auto trash_rel = holder::core::ai_message_trash_rel_path(msg.message_id);
+  const auto src_path = project_root / trash_rel;
+  fs.fail_rename_from = src_path;
+
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+  REQUIRE(std::filesystem::exists(src_path));
+
+  const auto fetched = repo.get(msg.message_id);
+  REQUIRE(fetched.has_value());
+  REQUIRE(fetched->deleted_at.has_value());
+}
