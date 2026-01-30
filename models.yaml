@@ -7,7 +7,7 @@ info:
     single source of truth and frontends render it as an AI catalogue.
   behaviour: |
     - Web entries are not called via API
-    - Frontends open the URL in the user’s browser
+    - Frontends open the URL in the user's browser
     - Users run the prompt on the website and copy/paste the result back into a card
     - Cloud entries are called via HTTP APIs (key required)
     - Local entries are routed to local runtimes (e.g. Ollama)
