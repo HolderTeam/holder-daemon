@@ -1,0 +1,187 @@
+info:
+  title: Model List
+  version: 0.1.0
+  author: Holder Team
+  purpose: >
+    Canonical model/service catalogue for Holder. The backend keeps this as the
+    single source of truth and frontends render it as an AI catalogue.
+  behaviour: |
+    - Web entries are not called via API
+    - Frontends open the URL in the user’s browser
+    - Users run the prompt on the website and copy/paste the result back into a card
+    - Cloud entries are called via HTTP APIs (key required)
+    - Local entries are routed to local runtimes (e.g. Ollama)
+  disclaimer: |
+    - Information is collected from publicly available sources and hands-on use
+    - Model availability, limits, and behaviour change frequently
+    - Details may be incomplete, outdated, or occasionally wrong
+    - No guarantees or promises are made about accuracy or service quality
+    - This list is descriptive, not an endorsement
+    - If you find something wrong, please make a PR and fix it
+    - generosity refers to the free tier unless notes say otherwise
+  last_updated: 2026-01-30
+
+Models:
+  Web:
+    - provider: Meta
+      engine: Llama
+      url: https://www.meta.ai
+      generosity: Very High
+      login_required: Optional
+      notes: |
+        - Near-unlimited casual use with no strict message caps
+        - Basic chats can be started anonymously
+        - Account required for chat history and full features
+
+    - provider: Microsoft
+      engine: Copilot
+      url: https://copilot.microsoft.com/
+      generosity: High
+      login_required: Yes
+      notes: |
+        - Generous limits for text chat
+        - Minimal throttling for most users
+        - Requires Microsoft account (often already present via Windows or Outlook)
+
+    - provider: Google
+      engine: Gemini
+      url: https://gemini.google.com
+      generosity: Medium-High
+      login_required: Yes
+      notes: |
+        - Daily prompt limits vary (often 50+ prompts)
+        - Limits reset frequently
+        - Strong integration with Google Workspace
+
+    - provider: xAI
+      engine: Grok
+      url: https://grok.com/
+      generosity: Medium
+      login_required: Yes
+      notes: |
+        - Time-based message limits (roughly 10-20 per period)
+        - Higher limits available with X Premium
+        - Can become unavailable during peak usage with “under heavy usage” errors
+        - Strong real-time and social-context responses
+
+    - provider: Mistral AI
+      engine: LeChat
+      url: https://chat.mistral.ai/
+      generosity: Medium-High
+      login_required: Yes
+      notes: |
+        - Good daily limits for both basic and advanced usage
+        - Paid tier provides priority access
+        - Fast responses and strong cost/performance trade-offs
+
+    - provider: DeepSeek
+      engine: DeepSeek
+      url: https://chat.deepseek.com/
+      generosity: Very High
+      login_required: Minimal
+      notes: |
+        - Fully free consumer chat with no strict caps
+        - Minimal or optional signup for core usage
+        - Popular for coding and technical tasks
+        - Defaults to Chinese, add "answer in English" to your prompt
+
+    - provider: Alibaba
+      engine: Qwen
+      url: https://qwen.ai/
+      generosity: Medium
+      login_required: Yes
+      notes: |
+        - Usable free tier with moderate limits
+        - Strong multilingual performance
+        - More generous for lighter or international usage
+        - Very large user base in Asia
+
+    - provider: Perplexity
+      engine: GPT
+      url: https://www.perplexity.ai/
+      generosity: Medium
+      login_required: Yes
+      notes: |
+        - Unlimited basic AI-powered search
+        - Advanced and Pro features are capped
+        - Experience is more “AI search engine” than chat-first
+        - Underlying model varies
+
+    - provider: Anthropic
+      engine: Claude
+      url: https://claude.ai
+      generosity: Low-Medium
+      login_required: Yes
+      notes: |
+        - Strict message caps (often 20-50 messages per 5-8 hours)
+        - Limits reset periodically
+        - Paid tier heavily prioritised
+        - Excellent long-form writing and reasoning quality
+
+    - provider: OpenAI
+      engine: ChatGPT
+      url: https://chatgpt.com/
+      generosity: Low
+      login_required: Yes
+      notes: |
+        - Tight caps on flagship models (often 10-60 messages per period)
+        - Automatically falls back to smaller models when capped
+        - Very strong default UX and ecosystem
+        - Paid tiers significantly improve limits
+        - Basic Subscription gives High generosity.
+
+  Local:
+    - provider: QwenTeam
+      engine: Qwen2.5
+      tag: qwen2.5:0.5b
+      category: router
+      homepage: https://github.com/QwenLM/Qwen3
+      size: 397 MB
+      notes: |
+        - Local open-weight model
+        - Suitable for low-resource devices
+        - Useful for testing and offline workflows
+    - provider: QwenTeam
+      engine: Qwen3 Coder
+      tag: qwen3-coder:30b
+      category: coding
+      homepage: https://github.com/QwenLM/Qwen3
+      size: 18 GB
+      notes: |
+        - Add some notes here
+    - provider: DeepSeek
+      engine: DeepSeek R1
+      tag: deepseek-r1:latest
+      category: reasoning
+      homepage: https://github.com/deepseek-ai/DeepSeek-R1
+      size: 5.2 GB
+      notes: |
+        - Add some notes here
+
+  Cloud:
+    - provider: OpenAI
+      engine: GPT
+      endpoint: https://api.openai.com/v1
+      api_key_required: true
+      notes: |
+        - General-purpose multimodal cloud model
+        - Widely supported across tooling and SDKs
+        - Usage-based pricing via API
+
+    - provider: Anthropic
+      engine: Claude
+      endpoint: https://api.anthropic.com/v1
+      api_key_required: true
+      notes: |
+        - Strong reasoning and writing model
+        - Popular for long-context and document-heavy tasks
+        - API access required for programmatic use
+
+    - provider: Groq
+      engine: Llama
+      endpoint: https://api.groq.com/openai/v1
+      api_key_required: true
+      notes: |
+        - Extremely fast inference
+        - OpenAI-compatible API surface
+        - Best suited for latency-sensitive workloads
