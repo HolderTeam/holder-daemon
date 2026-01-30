@@ -131,6 +131,19 @@ std::optional<std::filesystem::path> find_openapi_path() {
   return std::nullopt;
 }
 
+std::optional<std::filesystem::path> find_models_path() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_MODELS_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "models.yaml";
+  if (fs::exists(p1)) return p1;
+  fs::path p2 = fs::current_path().parent_path() / "models.yaml";
+  if (fs::exists(p2)) return p2;
+  return std::nullopt;
+}
+
 std::optional<std::filesystem::path> find_docs_root() {
   namespace fs = std::filesystem;
   if (const char* env = std::getenv("HOLDER_DOCS_ROOT")) {
@@ -333,7 +346,8 @@ void Session::run() {
 
   http::response<http::string_body> res;
 
-  if (path == "/openapi.yaml" || path == "/docs" || path.rfind("/docs/", 0) == 0) {
+  if (path == "/openapi.yaml" || path == "/models.yaml" || path == "/docs" ||
+      path.rfind("/docs/", 0) == 0) {
     if (req.method() != http::verb::get) {
       res = text_response(http::status::method_not_allowed,
                           "Method not allowed.",
@@ -354,6 +368,24 @@ void Session::run() {
           res = text_response(http::status::ok,
                               content.value(),
                               content_type_for_extension(openapi_path->extension().string()));
+        }
+      }
+    } else if (path == "/models.yaml") {
+      const auto models_path = find_models_path();
+      if (!models_path.has_value()) {
+        res = text_response(http::status::not_found,
+                            "models.yaml not found.",
+                            "text/plain; charset=utf-8");
+      } else {
+        const auto content = read_file(models_path.value());
+        if (!content.has_value()) {
+          res = text_response(http::status::not_found,
+                              "models.yaml not found.",
+                              "text/plain; charset=utf-8");
+        } else {
+          res = text_response(http::status::ok,
+                              content.value(),
+                              content_type_for_extension(models_path->extension().string()));
         }
       }
     } else {

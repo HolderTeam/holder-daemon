@@ -35,6 +35,7 @@ add_executable(lockfile_tests
   HttpProjectGitFailure_test.cpp
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
+  HttpModels_test.cpp
   HttpRunner_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp
