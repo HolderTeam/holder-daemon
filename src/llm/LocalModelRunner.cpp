@@ -34,9 +34,9 @@ std::string getenv_or(const char* key, const std::string& fallback) {
 } // namespace
 
 LocalModelRunner::LocalModelRunner()
-    : host_(getenv_or("HOLDER_OLLAMA_HOST", "127.0.0.1")),
-      port_(getenv_or("HOLDER_OLLAMA_PORT", "11434")),
-      exec_path_(getenv_or("HOLDER_OLLAMA_BIN", "")) {}
+    : host_(getenv_or("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1")),
+      port_(getenv_or("HOLDER_MODEL_RUNNER_PORT", "11434")),
+      exec_path_(getenv_or("HOLDER_MODEL_RUNNER_BIN", "")) {}
 
 void LocalModelRunner::start_background_probe() {
   bool expected = false;
@@ -144,9 +144,11 @@ void LocalModelRunner::probe(bool allow_spawn) {
 
   std::string err;
   std::string version_body;
+  bool spawned = false;
 
   if (!http_get_json("/api/version", &version_body, &err)) {
     if (allow_spawn && try_spawn(&err)) {
+      spawned = true;
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
       version_body.clear();
       err.clear();
@@ -201,6 +203,27 @@ void LocalModelRunner::probe(bool allow_spawn) {
   {
     std::lock_guard<std::mutex> lock(mu_);
     status_ = next;
+  }
+
+  if (next.available) {
+    const std::string provider = "ollama";
+    if (spawned) {
+      if (!next.version.empty()) {
+        spdlog::info("Started local model runner subprocess ({} {}).", provider, next.version);
+      } else {
+        spdlog::info("Started local model runner subprocess ({}).", provider);
+      }
+    } else {
+      if (!next.version.empty()) {
+        spdlog::info("Connected to already running local model runner instance ({} {}).",
+                     provider,
+                     next.version);
+      } else {
+        spdlog::info("Connected to already running local model runner instance ({}).", provider);
+      }
+    }
+  } else {
+    spdlog::info("No local model runner available.");
   }
 }
 
