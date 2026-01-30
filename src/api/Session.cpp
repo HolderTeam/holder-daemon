@@ -3,6 +3,7 @@
 #include "core/CardPaths.h"
 #include "core/ProjectPaths.h"
 #include "git/GitOps.h"
+#include "llm/LocalModelRunner.h"
 #include "core/ServerInfo.h"
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
@@ -288,7 +289,8 @@ Session::Session(tcp::socket socket,
                  std::chrono::steady_clock::time_point started_at,
                  holder::store::CardStore* card_store,
                  holder::index::FtsIndexer* fts,
-                 holder::git::GitOps* git_ops)
+                 holder::git::GitOps* git_ops,
+                 holder::llm::LocalModelRunner* runner)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
@@ -296,7 +298,8 @@ Session::Session(tcp::socket socket,
       started_at_(started_at),
       card_store_(card_store),
       fts_(fts),
-      git_ops_(git_ops) {}
+      git_ops_(git_ops),
+      runner_(runner) {}
 
 void Session::run() {
   namespace beast = boost::beast;
@@ -839,6 +842,62 @@ void Session::run() {
             }
           }
         }
+      }
+    } else if (path == "/ai/capabilities" && req.method() == http::verb::get) {
+      nlohmann::json data;
+      if (!runner_) {
+        data["runner_available"] = false;
+        data["error"] = "Local model runner not configured.";
+        data["last_checked"] = now_epoch_seconds();
+      } else {
+        const auto status = runner_->status();
+        data["runner_available"] = status.available;
+        data["spawn_attempted"] = status.spawn_attempted;
+        data["last_checked"] = status.last_checked;
+        data["version"] = status.version;
+        data["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
+        nlohmann::json models = nlohmann::json::array();
+        for (const auto& model : status.models) {
+          models.push_back({
+            {"name", model.name},
+            {"digest", model.digest},
+            {"size", model.size},
+            {"modified_at", model.modified_at},
+          });
+        }
+        data["models"] = models;
+      }
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = data;
+      res = json_response(http::status::ok, payload);
+    } else if (path == "/ai/runner/retry" && req.method() == http::verb::post) {
+      if (!runner_) {
+        res = error_response(http::status::not_implemented,
+                             "not_implemented",
+                             "Local model runner not configured.");
+      } else {
+        const auto status = runner_->retry();
+        nlohmann::json data;
+        data["runner_available"] = status.available;
+        data["spawn_attempted"] = status.spawn_attempted;
+        data["last_checked"] = status.last_checked;
+        data["version"] = status.version;
+        data["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
+        nlohmann::json models = nlohmann::json::array();
+        for (const auto& model : status.models) {
+          models.push_back({
+            {"name", model.name},
+            {"digest", model.digest},
+            {"size", model.size},
+            {"modified_at", model.modified_at},
+          });
+        }
+        data["models"] = models;
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = data;
+        res = json_response(http::status::ok, payload);
       }
     } else if (path == "/ai/threads" && req.method() == http::verb::get) {
       const std::string project_id = param("project_id");

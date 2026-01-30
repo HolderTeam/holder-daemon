@@ -23,7 +23,9 @@ find_package(PkgConfig REQUIRED)
 
 # Boost: Beast is header-only; Asio lives under Boost.
 # You still generally want Boost::system for networking.
-find_package(Boost 1.74 REQUIRED COMPONENTS system)
+# Boost.Process v2 usage requires Boost 1.80+.
+# For ease of testing, we require 1.83+
+find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem)
 
 # JSON + logging (apt-friendly)
 # Ubuntu packages:
@@ -66,6 +68,7 @@ add_executable(holder
   src/core/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
+  src/llm/LocalModelRunner.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
   src/api/Session.cpp
@@ -111,6 +114,7 @@ endif()
 # Link libs
 target_link_libraries(holder PRIVATE
   Boost::system
+  Boost::filesystem
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
   spdlog::spdlog

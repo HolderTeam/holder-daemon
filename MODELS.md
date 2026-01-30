@@ -2,12 +2,10 @@ Here’s a **minimal v0.1** schema + class list that supports:
 
 * projects
 * notes (as files, DB for query)
-* corkboard ordering (optional but cheap to include now)
+* corkboard ordering
 * AI prompt export + response capture (with provenance)
 * full-text search over notes + AI responses (FTS5)
 * resources (pointers only, no ingestion yet)
-
-I’ll keep it lean but not paint-you-into-corners.
 
 ---
 

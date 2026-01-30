@@ -55,6 +55,48 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/HealthData"
+    LocalModel:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        digest:
+          type: string
+        size:
+          type: integer
+          format: int64
+        modified_at:
+          type: string
+    RunnerCapabilitiesData:
+      type: object
+      required: [runner_available, spawn_attempted, last_checked]
+      properties:
+        runner_available:
+          type: boolean
+        spawn_attempted:
+          type: boolean
+        last_checked:
+          type: integer
+          format: int64
+        version:
+          type: string
+        error:
+          type: string
+          nullable: true
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocalModel"
+    RunnerCapabilitiesResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/RunnerCapabilitiesData"
     RebuildRequest:
       type: object
       required: [project_id]
@@ -1368,6 +1410,44 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/capabilities:
+    get:
+      summary: Get local model runner capabilities
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerCapabilitiesResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/runner/retry:
+    post:
+      summary: Retry local model runner probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerCapabilitiesResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented
           content:
             application/json:
               schema:

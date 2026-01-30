@@ -10,6 +10,7 @@
 #include "store/CardStore.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
+#include "llm/LocalModelRunner.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
 
@@ -121,7 +122,9 @@ int main(int argc, char* argv[]) {
     return 0;
   }
   holder::store::CardStore card_store(db, &fts);
-  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner);
   const auto bound = server.start();
 
   info.pid = holder::core::current_pid();

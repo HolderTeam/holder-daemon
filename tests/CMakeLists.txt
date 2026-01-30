@@ -35,6 +35,7 @@ add_executable(lockfile_tests
   HttpProjectGitFailure_test.cpp
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
+  HttpRunner_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
@@ -75,6 +76,7 @@ add_executable(lockfile_tests
   ../src/core/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp
+  ../src/llm/LocalModelRunner.cpp
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
   ../src/api/Session.cpp
@@ -113,6 +115,7 @@ target_compile_definitions(lockfile_tests PRIVATE
 
 target_link_libraries(lockfile_tests PRIVATE
   Boost::system
+  Boost::filesystem
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
   spdlog::spdlog
