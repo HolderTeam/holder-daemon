@@ -144,7 +144,7 @@ Models:
     - provider: QwenTeam
       engine: Qwen3 Coder
       tag: qwen3-coder:30b
-      category: coding
+      category: code
       homepage: https://github.com/QwenLM/Qwen3
       size: 18 GB
       notes: |
@@ -152,13 +152,250 @@ Models:
     - provider: DeepSeek
       engine: DeepSeek R1
       tag: deepseek-r1:latest
-      category: reasoning
+      category: reason
       homepage: https://github.com/deepseek-ai/DeepSeek-R1
       size: 5.2 GB
       notes: |
         - Add some notes here
+    - provider: DeepSeek
+      engine: DeepSeek Coder V2
+      tag: deepseek-coder-v2:latest
+      category: code
+      homepage: https://github.com/deepseek-ai/DeepSeek-Coder
+      size: 8.9 GB
+      notes: |
+        - Add some notes here
 
+    - provider:
+      engine: Gemma 3
+      tag: gemma3:1b
+      parameters: 1B
+      size: 815MB
+      homepage:
+      notes: |
+        - Fill in: best use-case (chat/coding), quant details, license notes
+
+    - provider:
+      engine: Gemma 3
+      tag: gemma3
+      parameters: 4B
+      size: 3.3GB
+      homepage:
+      notes: |
+        - Fill in: strengths/limits, license notes
+
+    - provider:
+      engine: Gemma 3
+      tag: gemma3:12b
+      parameters: 12B
+      size: 8.1GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Gemma 3
+      tag: gemma3:27b
+      parameters: 27B
+      size: 17GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: QwQ
+      tag: qwq
+      parameters: 32B
+      size: 20GB
+      homepage:
+      notes: |
+        - Fill in: what QwQ is best at (reasoning? coding?)
+
+    - provider:
+      engine: DeepSeek-R1
+      tag: deepseek-r1
+      parameters: 7B
+      size: 4.7GB
+      homepage:
+      notes: |
+        - Fill in: reasoning style, latency, memory footprint in practice
+
+    - provider:
+      engine: DeepSeek-R1
+      tag: deepseek-r1:671b
+      parameters: 671B
+      size: 404GB
+      homepage:
+      notes: |
+        - Likely impractical for most consumer machines (huge disk + RAM/VRAM needs)
+
+    - provider:
+      engine: Llama 4
+      tag: llama4:scout
+      parameters: 109B
+      size: 67GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Llama 4
+      tag: llama4:maverick
+      parameters: 400B
+      size: 245GB
+      homepage:
+      notes: |
+        - Massive size; add realistic hardware guidance
+
+    - provider:
+      engine: Llama 3.3
+      tag: llama3.3
+      parameters: 70B
+      size: 43GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Llama 3.2
+      tag: llama3.2
+      parameters: 3B
+      size: 2.0GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Llama 3.2
+      tag: llama3.2:1b
+      parameters: 1B
+      size: 1.3GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Llama 3.2 Vision
+      tag: llama3.2-vision
+      parameters: 11B
+      size: 7.9GB
+      homepage:
+      notes: |
+        - Vision / multimodal
+
+    - provider:
+      engine: Llama 3.2 Vision
+      tag: llama3.2-vision:90b
+      parameters: 90B
+      size: 55GB
+      homepage:
+      notes: |
+        - Vision / multimodal
+
+    - provider:
+      engine: Llama 3.1
+      tag: llama3.1
+      parameters: 8B
+      size: 4.7GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Llama 3.1
+      tag: llama3.1:405b
+      parameters: 405B
+      size: 231GB
+      homepage:
+      notes: |
+        - Massive; add hardware guidance
+
+    - provider:
+      engine: Phi 4
+      tag: phi4
+      parameters: 14B
+      size: 9.1GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Phi 4 Mini
+      tag: phi4-mini
+      parameters: 3.8B
+      size: 2.5GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Mistral
+      tag: mistral
+      parameters: 7B
+      size: 4.1GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Moondream 2
+      tag: moondream
+      parameters: 1.4B
+      size: 829MB
+      homepage:
+      notes: |
+        - Vision / multimodal (image understanding)
+
+    - provider:
+      engine: Neural Chat
+      tag: neural-chat
+      parameters: 7B
+      size: 4.1GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Starling
+      tag: starling-lm
+      parameters: 7B
+      size: 4.1GB
+      homepage:
+      notes: |
+
+    - provider:
+      engine: Code Llama
+      tag: codellama
+      parameters: 7B
+      size: 3.8GB
+      homepage:
+      notes: |
+        - Coding-focused
+
+    - provider:
+      engine: Llama 2 Uncensored
+      tag: llama2-uncensored
+      parameters: 7B
+      size: 3.8GB
+      homepage:
+      notes: |
+        - “Uncensored” implies looser guardrails; be aware.
+
+    - provider:
+      engine: LLaVA
+      tag: llava
+      parameters: 7B
+      size: 4.5GB
+      homepage:
+      notes: |
+        - Vision / multimodal
+
+    - provider:
+      engine: Granite-3.3
+      tag: granite3.3
+      parameters: 8B
+      size: 4.9GB
+      homepage:
+      notes: |
+  
   Cloud:
+    - provider: Google
+      engine: Gemini
+      endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
+      api_key_required: true
+      notes: |
+        - Free tier
+        - So support this first
+
     - provider: OpenAI
       engine: GPT
       endpoint: https://api.openai.com/v1
@@ -167,6 +404,7 @@ Models:
         - General-purpose multimodal cloud model
         - Widely supported across tooling and SDKs
         - Usage-based pricing via API
+        - 0.1: Just use web/cli and copy-pasta
 
     - provider: Anthropic
       engine: Claude
@@ -176,6 +414,7 @@ Models:
         - Strong reasoning and writing model
         - Popular for long-context and document-heavy tasks
         - API access required for programmatic use
+        - 0.1: Just use web/cli and copy-pasta
 
     - provider: Groq
       engine: Llama
@@ -185,3 +424,4 @@ Models:
         - Extremely fast inference
         - OpenAI-compatible API surface
         - Best suited for latency-sensitive workloads
+        - 0.1: Just use web/cli and copy-pasta
