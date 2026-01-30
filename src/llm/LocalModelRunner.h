@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -26,10 +27,12 @@ struct RunnerStatus {
 class LocalModelRunner {
  public:
   LocalModelRunner();
+  ~LocalModelRunner();
 
   void start_background_probe();
   RunnerStatus status() const;
   RunnerStatus retry();
+  void stop();
 
  private:
   void probe(bool allow_spawn);
@@ -45,6 +48,8 @@ class LocalModelRunner {
 
   mutable std::mutex mu_;
   RunnerStatus status_;
+  struct RunnerProcess;
+  std::unique_ptr<RunnerProcess> process_;
 };
 
 } // namespace holder::llm

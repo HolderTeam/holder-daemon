@@ -139,6 +139,7 @@ int main(int argc, char* argv[]) {
                        info.auth_token);
 
   server.run(signals);
+  runner.stop();
 
   if (signals.is_requested()) {
     const int sig = signals.last_signal();

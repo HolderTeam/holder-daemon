@@ -6,12 +6,12 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/process/v2.hpp>
-
 #include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <thread>
 
 namespace holder::llm {
@@ -33,10 +33,17 @@ std::string getenv_or(const char* key, const std::string& fallback) {
 
 } // namespace
 
+struct LocalModelRunner::RunnerProcess {
+  std::mutex mu;
+  std::optional<boost::process::v2::process::handle_type> handle;
+};
+
 LocalModelRunner::LocalModelRunner()
     : host_(getenv_or("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1")),
       port_(getenv_or("HOLDER_MODEL_RUNNER_PORT", "11434")),
       exec_path_(getenv_or("HOLDER_MODEL_RUNNER_BIN", "")) {}
+
+LocalModelRunner::~LocalModelRunner() = default;
 
 void LocalModelRunner::start_background_probe() {
   bool expected = false;
@@ -125,7 +132,14 @@ bool LocalModelRunner::try_spawn(std::string* error) {
   try {
     boost::asio::io_context ioc;
     boost::process::v2::process proc(ioc.get_executor(), exe_path, {"serve"});
-    proc.detach();
+    auto handle = proc.detach();
+    if (!process_) {
+      process_ = std::make_unique<RunnerProcess>();
+    }
+    {
+      std::lock_guard<std::mutex> lock(process_->mu);
+      process_->handle = std::move(handle);
+    }
     spdlog::info("Spawned model runner: {}", exe_path.string());
     return true;
   } catch (const std::exception& ex) {
@@ -225,6 +239,31 @@ void LocalModelRunner::probe(bool allow_spawn) {
   } else {
     spdlog::info("No local model runner available.");
   }
+}
+
+void LocalModelRunner::stop() {
+  if (!process_) {
+    return;
+  }
+
+  std::optional<boost::process::v2::process::handle_type> handle;
+  {
+    std::lock_guard<std::mutex> lock(process_->mu);
+    handle = std::move(process_->handle);
+  }
+  if (!handle.has_value()) {
+    return;
+  }
+
+  boost::system::error_code ec;
+  auto& proc = handle.value();
+  boost::process::v2::native_exit_code_type exit_status{};
+  proc.terminate(exit_status, ec);
+  if (ec) {
+    spdlog::warn("Failed to terminate local model runner: {}", ec.message());
+    return;
+  }
+  spdlog::info("Local model runner terminated.");
 }
 
 } // namespace holder::llm
