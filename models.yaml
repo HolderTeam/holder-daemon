@@ -21,6 +21,45 @@ info:
     - generosity refers to the free tier unless notes say otherwise
   last_updated: 2026-01-30
 
+
+schema:
+  enums:
+    local_category: [router, code, reason, writing, general]
+    capability: [code, reasoning, summarize, translate, planning, chat]
+    speed: [fast, medium, slow]
+    quality: [low, medium, high]
+    hardware_tier: [tiny, budget, laptop, gaming, workstation]
+  LocalEntry:
+    required: [tag]
+    optional:
+      - provider
+      - engine
+      - parameters
+      - size
+      - homepage
+      - notes
+      - category
+      - capabilities
+      - speed
+      - quality
+      - hardware_tier
+      - context_window
+    field_notes:
+      tag: "Ollama tag or local identifier."
+      category: "Primary intent for routing."
+      capabilities: "Tags used by router + client UI."
+      speed: "Rough latency class."
+      quality: "Rough output quality."
+      hardware_tier: "Suggested minimum hardware."
+      context_window: "Approx token window (if known)."
+  WebEntry:
+    required: [provider, engine, url]
+    optional: [generosity, login_required, notes]
+  CloudEntry:
+    required: [provider, engine, api, auth]
+    optional: [pricing, notes]
+
+
 Models:
   Web:
     - provider: Meta
@@ -134,6 +173,11 @@ Models:
     - provider: QwenTeam
       engine: Qwen2.5
       tag: qwen2.5:0.5b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       category: router
       homepage: https://github.com/QwenLM/Qwen3
       size: 397 MB
@@ -144,6 +188,11 @@ Models:
     - provider: QwenTeam
       engine: Qwen3 Coder
       tag: qwen3-coder:30b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       category: code
       homepage: https://github.com/QwenLM/Qwen3
       size: 18 GB
@@ -152,6 +201,11 @@ Models:
     - provider: DeepSeek
       engine: DeepSeek R1
       tag: deepseek-r1:latest
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       category: reason
       homepage: https://github.com/deepseek-ai/DeepSeek-R1
       size: 5.2 GB
@@ -160,6 +214,11 @@ Models:
     - provider: DeepSeek
       engine: DeepSeek Coder V2
       tag: deepseek-coder-v2:latest
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       category: code
       homepage: https://github.com/deepseek-ai/DeepSeek-Coder
       size: 8.9 GB
@@ -169,6 +228,11 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3:1b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 1B
       size: 815MB
       homepage:
@@ -178,6 +242,11 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 4B
       size: 3.3GB
       homepage:
@@ -187,6 +256,11 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3:12b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 12B
       size: 8.1GB
       homepage:
@@ -195,6 +269,11 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3:27b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 27B
       size: 17GB
       homepage:
@@ -203,6 +282,11 @@ Models:
     - provider:
       engine: QwQ
       tag: qwq
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 32B
       size: 20GB
       homepage:
@@ -212,6 +296,11 @@ Models:
     - provider:
       engine: DeepSeek-R1
       tag: deepseek-r1
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 4.7GB
       homepage:
@@ -221,6 +310,11 @@ Models:
     - provider:
       engine: DeepSeek-R1
       tag: deepseek-r1:671b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 671B
       size: 404GB
       homepage:
@@ -230,6 +324,11 @@ Models:
     - provider:
       engine: Llama 4
       tag: llama4:scout
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 109B
       size: 67GB
       homepage:
@@ -238,6 +337,11 @@ Models:
     - provider:
       engine: Llama 4
       tag: llama4:maverick
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 400B
       size: 245GB
       homepage:
@@ -247,6 +351,11 @@ Models:
     - provider:
       engine: Llama 3.3
       tag: llama3.3
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 70B
       size: 43GB
       homepage:
@@ -255,6 +364,11 @@ Models:
     - provider:
       engine: Llama 3.2
       tag: llama3.2
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 3B
       size: 2.0GB
       homepage:
@@ -263,6 +377,11 @@ Models:
     - provider:
       engine: Llama 3.2
       tag: llama3.2:1b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 1B
       size: 1.3GB
       homepage:
@@ -271,6 +390,11 @@ Models:
     - provider:
       engine: Llama 3.2 Vision
       tag: llama3.2-vision
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 11B
       size: 7.9GB
       homepage:
@@ -280,6 +404,11 @@ Models:
     - provider:
       engine: Llama 3.2 Vision
       tag: llama3.2-vision:90b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 90B
       size: 55GB
       homepage:
@@ -289,6 +418,11 @@ Models:
     - provider:
       engine: Llama 3.1
       tag: llama3.1
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 8B
       size: 4.7GB
       homepage:
@@ -297,6 +431,11 @@ Models:
     - provider:
       engine: Llama 3.1
       tag: llama3.1:405b
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 405B
       size: 231GB
       homepage:
@@ -306,6 +445,11 @@ Models:
     - provider:
       engine: Phi 4
       tag: phi4
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 14B
       size: 9.1GB
       homepage:
@@ -314,6 +458,11 @@ Models:
     - provider:
       engine: Phi 4 Mini
       tag: phi4-mini
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 3.8B
       size: 2.5GB
       homepage:
@@ -322,6 +471,11 @@ Models:
     - provider:
       engine: Mistral
       tag: mistral
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 4.1GB
       homepage:
@@ -330,6 +484,11 @@ Models:
     - provider:
       engine: Moondream 2
       tag: moondream
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 1.4B
       size: 829MB
       homepage:
@@ -339,6 +498,11 @@ Models:
     - provider:
       engine: Neural Chat
       tag: neural-chat
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 4.1GB
       homepage:
@@ -347,6 +511,11 @@ Models:
     - provider:
       engine: Starling
       tag: starling-lm
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 4.1GB
       homepage:
@@ -355,6 +524,11 @@ Models:
     - provider:
       engine: Code Llama
       tag: codellama
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 3.8GB
       homepage:
@@ -364,6 +538,11 @@ Models:
     - provider:
       engine: Llama 2 Uncensored
       tag: llama2-uncensored
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 3.8GB
       homepage:
@@ -373,6 +552,11 @@ Models:
     - provider:
       engine: LLaVA
       tag: llava
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 7B
       size: 4.5GB
       homepage:
@@ -382,6 +566,11 @@ Models:
     - provider:
       engine: Granite-3.3
       tag: granite3.3
+      capabilities: [TODO]
+      speed: TODO
+      quality: TODO
+      hardware_tier: TODO
+      context_window: TODO
       parameters: 8B
       size: 4.9GB
       homepage:
