@@ -156,6 +156,25 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RunnerPullJob"
+    AiCompleteRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+        mode:
+          type: string
+          description: auto or model
+        model:
+          type: string
+          description: Optional explicit model tag (bypass routing).
+        project_id:
+          type: string
+        thread_id:
+          type: string
+        context:
+          type: object
+          additionalProperties: true
     RebuildRequest:
       type: object
       required: [project_id]
@@ -1541,6 +1560,46 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "501":
           description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/complete:
+    post:
+      summary: Run AI completion with routing and streaming
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiCompleteRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Runner unavailable
           content:
             application/json:
               schema:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -54,6 +55,11 @@ class LocalModelRunner {
 
   PullJob start_pull(const std::string& model);
   std::optional<PullJob> get_pull(const std::string& job_id) const;
+  bool stream_generate(const std::string& model,
+                       const std::string& prompt,
+                       const std::string& options_json,
+                       const std::function<void(const std::string&)>& on_chunk,
+                       std::string* error);
 
  private:
   void probe(bool allow_spawn);

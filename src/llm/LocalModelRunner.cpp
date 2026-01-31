@@ -174,6 +174,104 @@ bool LocalModelRunner::http_get_json(const std::string& target,
   }
 }
 
+bool LocalModelRunner::stream_generate(const std::string& model,
+                                       const std::string& prompt,
+                                       const std::string& options_json,
+                                       const std::function<void(const std::string&)>& on_chunk,
+                                       std::string* error) {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  try {
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(host_, port_);
+
+    boost::beast::tcp_stream stream(ioc);
+    stream.expires_after(std::chrono::seconds(30));
+    stream.connect(endpoints);
+
+    nlohmann::json body;
+    body["model"] = model;
+    body["prompt"] = prompt;
+    body["stream"] = true;
+    if (!options_json.empty()) {
+      body["options"] = nlohmann::json::parse(options_json);
+    }
+
+    http::request<http::string_body> req{http::verb::post, "/api/generate", 11};
+    req.set(http::field::host, host_);
+    req.set(http::field::user_agent, "holder/model-runner");
+    req.set(http::field::content_type, "application/json");
+    req.body() = body.dump();
+    req.prepare_payload();
+
+    http::write(stream, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response_parser<http::string_body> parser;
+    parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
+    http::read_header(stream, buffer, parser);
+    const auto header = parser.get();
+    if (header.result() != http::status::ok) {
+      if (error) {
+        *error = "HTTP " + std::to_string(header.result_int());
+      }
+      return false;
+    }
+
+    parser.get().body().clear();
+    boost::system::error_code ec;
+    while (!parser.is_done()) {
+      http::read_some(stream, buffer, parser, ec);
+      if (ec == http::error::need_buffer || ec == boost::asio::error::would_block) {
+        continue;
+      }
+      if (ec == http::error::end_of_stream) {
+        break;
+      }
+      if (ec) {
+        throw boost::system::system_error(ec);
+      }
+
+      std::string chunk = parser.get().body();
+      parser.get().body().clear();
+      size_t start = 0;
+      while (start < chunk.size()) {
+        const auto end = chunk.find('\n', start);
+        const auto line = (end == std::string::npos) ? chunk.substr(start)
+                                                     : chunk.substr(start, end - start);
+        start = (end == std::string::npos) ? chunk.size() : end + 1;
+        const auto trimmed = trim(line);
+        if (trimmed.empty()) continue;
+        try {
+          const auto payload = nlohmann::json::parse(trimmed);
+          if (payload.contains("response")) {
+            const auto text = payload["response"].get<std::string>();
+            if (!text.empty()) on_chunk(text);
+          }
+          if (payload.contains("done") && payload["done"].get<bool>()) {
+            boost::system::error_code shutdown_ec;
+            stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+            return true;
+          }
+        } catch (const std::exception&) {
+          // ignore malformed lines
+        }
+      }
+    }
+
+    boost::system::error_code shutdown_ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+    return true;
+  } catch (const std::exception& ex) {
+    if (error) {
+      *error = ex.what();
+    }
+    return false;
+  }
+}
+
 bool LocalModelRunner::try_spawn(std::string* error) {
   if (spawn_attempted_.exchange(true)) {
     return false;

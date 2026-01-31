@@ -126,3 +126,32 @@ Open `DELETE /trash`.
 You can fetch the default model catalog:
 `http://127.0.0.1:11499/models.yaml`
 
+Pull a model (local runner):
+Open `POST /ai/runner/pull` and click "Try it out".
+
+```json
+{
+  "model": "phi4-mini:latest"
+}
+```
+
+Copy the returned `job_id`, then check status with:
+`GET /ai/runner/pull/{job_id}`
+
+Run a completion:
+Open `POST /ai/complete` and click "Try it out".
+
+```json
+{
+  "prompt": "Summarize the card in one paragraph.",
+  "context": {
+    "card_id": "<card_id>",
+    "card_title": "First note",
+    "card_body": "This card mentions espresso beans."
+  }
+}
+```
+
+Swagger UI won’t render `text/event-stream` responses, so the request will appear
+to “spin” while the stream is active. Use the browser network panel to inspect
+events if you want to see the live stream.

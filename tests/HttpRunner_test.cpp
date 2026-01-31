@@ -65,6 +65,16 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   REQUIRE(pull_status["ok"] == false);
   REQUIRE(pull_status["error"]["code"] == "not_implemented");
 
+  const auto complete = http_json_request(bound.bind,
+                                          bound.port,
+                                          token,
+                                          boost::beast::http::verb::post,
+                                          "/ai/complete",
+                                          nlohmann::json{{"prompt", "hello"}},
+                                          boost::beast::http::status::not_implemented);
+  REQUIRE(complete["ok"] == false);
+  REQUIRE(complete["error"]["code"] == "not_implemented");
+
   std::raise(SIGTERM);
   server_thread.join();
 }

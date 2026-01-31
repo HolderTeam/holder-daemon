@@ -8,6 +8,7 @@
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
 #include "store/AiMessageRepo.h"
+#include "store/AiRunRepo.h"
 #include "store/LinkRepo.h"
 #include "store/ProjectRepo.h"
 #include "store/Rebuilder.h"
@@ -26,6 +27,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
 #include <mutex>
 #include <optional>
 #include <random>
@@ -181,6 +183,64 @@ std::string content_type_for_extension(const std::string& ext) {
   if (lower == ".ico") return "image/x-icon";
   if (lower == ".txt") return "text/plain; charset=utf-8";
   return "application/octet-stream";
+}
+
+std::string truncate_bytes(const std::string& text, size_t max_bytes) {
+  if (text.size() <= max_bytes) return text;
+  return text.substr(0, max_bytes);
+}
+
+std::optional<std::string> extract_json_array(const std::string& text) {
+  const auto start = text.find('[');
+  if (start == std::string::npos) return std::nullopt;
+  const auto end = text.find_last_of(']');
+  if (end == std::string::npos || end <= start) return std::nullopt;
+  return text.substr(start, end - start + 1);
+}
+
+std::vector<std::string> parse_ranked_models(const std::string& text,
+                                             const std::vector<std::string>& candidates) {
+  const auto array_text = extract_json_array(text);
+  if (!array_text.has_value()) return {};
+  try {
+    const auto parsed = nlohmann::json::parse(array_text.value());
+    if (!parsed.is_array()) return {};
+    std::vector<std::string> ranked;
+    for (const auto& item : parsed) {
+      if (!item.is_string()) continue;
+      const auto name = item.get<std::string>();
+      if (std::find(candidates.begin(), candidates.end(), name) != candidates.end()) {
+        if (std::find(ranked.begin(), ranked.end(), name) == ranked.end()) {
+          ranked.push_back(name);
+        }
+      }
+    }
+    return ranked;
+  } catch (const std::exception&) {
+    return {};
+  }
+}
+
+std::string pick_smallest_model(const std::vector<holder::llm::LocalModel>& models) {
+  if (models.empty()) return {};
+  const auto* best = &models.front();
+  for (const auto& model : models) {
+    if (model.size > 0 && (best->size == 0 || model.size < best->size)) {
+      best = &model;
+    }
+  }
+  return best->name;
+}
+
+std::string pick_largest_model(const std::vector<holder::llm::LocalModel>& models) {
+  if (models.empty()) return {};
+  const auto* best = &models.front();
+  for (const auto& model : models) {
+    if (model.size > best->size) {
+      best = &model;
+    }
+  }
+  return best->name;
 }
 
 bool validate_link_target(holder::store::Db& db,
@@ -930,6 +990,225 @@ void Session::run() {
         payload["ok"] = true;
         payload["data"] = data;
         res = json_response(http::status::ok, payload);
+      }
+    } else if (path == "/ai/complete" && req.method() == http::verb::post) {
+      if (!runner_) {
+        res = error_response(http::status::not_implemented,
+                             "not_implemented",
+                             "Local model runner not configured.");
+      } else {
+        try {
+          const auto body = nlohmann::json::parse(req.body());
+          if (!body.contains("prompt")) {
+            res = error_response(http::status::bad_request, "bad_request", "Missing prompt.");
+          } else {
+            const std::string prompt = body.at("prompt").get<std::string>();
+            std::string mode = "auto";
+            if (body.contains("mode")) {
+              mode = body.at("mode").get<std::string>();
+            }
+            std::optional<std::string> project_id;
+            if (body.contains("project_id") && !body.at("project_id").is_null()) {
+              project_id = body.at("project_id").get<std::string>();
+            }
+            std::optional<std::string> thread_id;
+            if (body.contains("thread_id") && !body.at("thread_id").is_null()) {
+              thread_id = body.at("thread_id").get<std::string>();
+            }
+            std::string context_json;
+            if (body.contains("context") && !body.at("context").is_null()) {
+              context_json = body.at("context").dump();
+            }
+
+            const auto runner_status = runner_->status();
+            if (!runner_status.available) {
+              res = error_response(http::status::service_unavailable,
+                                   "runner_unavailable",
+                                   "Local model runner unavailable.");
+            } else if (runner_status.models.empty()) {
+              res = error_response(http::status::service_unavailable,
+                                   "runner_unavailable",
+                                   "No local models installed.");
+            } else {
+              std::string forced_model;
+              if (body.contains("model") && !body.at("model").is_null()) {
+                forced_model = body.at("model").get<std::string>();
+                mode = "model";
+              }
+
+              std::vector<std::string> candidates;
+              candidates.reserve(runner_status.models.size());
+              for (const auto& model : runner_status.models) {
+                candidates.push_back(model.name);
+              }
+
+              std::string router_model;
+              if (forced_model.empty() && candidates.size() > 1) {
+                router_model = pick_smallest_model(runner_status.models);
+              }
+
+              holder::store::AiRunRepo run_repo(db_);
+              holder::model::AiRun run;
+              run.run_id = generate_uuid_v4();
+              run.project_id = project_id;
+              run.thread_id = thread_id;
+              run.mode = (mode == "model") ? "model" : "auto";
+              run.prompt = prompt;
+              if (!context_json.empty()) {
+                run.context_json = context_json;
+              }
+              if (!router_model.empty()) {
+                run.router_model = router_model;
+              }
+              run.status = "started";
+              run.created_at = now_epoch_seconds();
+              run.updated_at = run.created_at;
+              run_repo.create(run);
+
+              http::response<http::empty_body> sse{http::status::ok, 11};
+              sse.set(http::field::content_type, "text/event-stream");
+              sse.set(http::field::cache_control, "no-cache");
+              sse.set(http::field::connection, "keep-alive");
+              sse.keep_alive(true);
+              http::serializer<false, http::empty_body> sr{sse};
+              boost::system::error_code write_ec;
+              http::write_header(socket_, sr, write_ec);
+              if (write_ec) {
+                return;
+              }
+
+              auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
+                std::string payload = "event: " + name + "\n";
+                payload += "data: " + data.dump() + "\n\n";
+                boost::system::error_code send_ec;
+                boost::asio::write(socket_, boost::asio::buffer(payload), send_ec);
+                return !send_ec;
+              };
+
+              std::string ranked_json;
+              std::string chosen_model;
+
+              if (!forced_model.empty()) {
+                send_event("router", {{"message", "routing skipped (forced model)"}});
+                candidates = {forced_model};
+              } else if (candidates.size() == 1) {
+                send_event("router", {{"message", "routing skipped (single model)"}});
+              } else {
+                if (router_model.empty()) {
+                  router_model = pick_smallest_model(runner_status.models);
+                }
+                const size_t router_limit = 50000;
+                std::string router_input = prompt;
+                if (!context_json.empty()) {
+                  router_input += "\n\nContext:\n";
+                  router_input += truncate_bytes(context_json, router_limit);
+                }
+
+                std::ostringstream prompt_ss;
+                prompt_ss << "You are a routing assistant. Output ONLY a JSON array of model names "
+                          << "ranked by best fit for the user prompt.\n";
+                prompt_ss << "User prompt:\n" << router_input << "\n\n";
+                prompt_ss << "Candidate models:\n";
+                for (const auto& model : runner_status.models) {
+                  prompt_ss << "- " << model.name << " (size=" << model.size << ")\n";
+                }
+
+                std::string router_text;
+                std::string router_error;
+                nlohmann::json router_options;
+                router_options["temperature"] = 0.1;
+                router_options["num_predict"] = 256;
+
+                runner_->stream_generate(
+                    router_model,
+                    prompt_ss.str(),
+                    router_options.dump(),
+                    [&](const std::string& chunk) {
+                      router_text += chunk;
+                      send_event("router", {{"delta", chunk}});
+                    },
+                    &router_error);
+
+                auto ranked = parse_ranked_models(router_text, candidates);
+                if (ranked.empty()) {
+                  ranked = candidates;
+                  const std::string fallback = pick_largest_model(runner_status.models);
+                  if (!fallback.empty()) {
+                    ranked = {fallback};
+                  }
+                }
+                nlohmann::json ranked_payload = ranked;
+                ranked_json = ranked_payload.dump();
+                send_event("router_result",
+                           {{"router_model", router_model},
+                            {"ranked", ranked_payload},
+                            {"error", router_error.empty() ? nlohmann::json(nullptr)
+                                                           : nlohmann::json(router_error)}});
+                candidates = ranked;
+              }
+
+              std::string model_error;
+              bool any_output = false;
+              for (const auto& model : candidates) {
+                send_event("progress", {{"message", "Trying model"}, {"model", model}});
+                std::string prompt_full = prompt;
+                if (!context_json.empty()) {
+                  prompt_full += "\n\nContext:\n";
+                  prompt_full += context_json;
+                }
+                bool got_output = false;
+                model_error.clear();
+                const bool ok = runner_->stream_generate(
+                    model,
+                    prompt_full,
+                    std::string(),
+                    [&](const std::string& chunk) {
+                      got_output = true;
+                      any_output = true;
+                      send_event("chunk", {{"model", model}, {"delta", chunk}});
+                    },
+                    &model_error);
+
+                if (ok && got_output) {
+                  chosen_model = model;
+                  break;
+                }
+
+                nlohmann::json fallback_event = {{"model", model}};
+                if (!model_error.empty()) fallback_event["error"] = model_error;
+                if (got_output && !ok) fallback_event["partial"] = true;
+                send_event("fallback", fallback_event);
+              }
+
+              const long long updated_at = now_epoch_seconds();
+              if (!chosen_model.empty()) {
+                send_event("done", {{"model", chosen_model}});
+                run_repo.update_status(run.run_id,
+                                       "completed",
+                                       std::nullopt,
+                                       std::nullopt,
+                                       chosen_model,
+                                       ranked_json.empty() ? std::nullopt
+                                                           : std::optional<std::string>(ranked_json),
+                                       updated_at);
+              } else {
+                send_event("failed", {{"error", "All models failed."}});
+                run_repo.update_status(run.run_id,
+                                       "failed",
+                                       std::optional<std::string>(any_output ? "partial failure"
+                                                                             : "no output"),
+                                       std::nullopt,
+                                       std::nullopt,
+                                       ranked_json.empty() ? std::nullopt
+                                                           : std::optional<std::string>(ranked_json),
+                                       updated_at);
+              }
+              return;
+            }
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
       }
     } else if (path.rfind("/ai/runner/pull/", 0) == 0 &&
                path.size() > std::string("/ai/runner/pull/").size() + std::string("/events").size() &&

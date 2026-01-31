@@ -20,6 +20,13 @@ TEST_CASE("AiRunRepo create/get/update", "[db]") {
   std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   db.exec(sql);
 
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+          "VALUES('msg-1', 'thread-1', 'assistant', 'local', 'hi', 1);");
+
   holder::store::AiRunRepo repo(db);
   holder::model::AiRun run;
   run.run_id = "run-1";
