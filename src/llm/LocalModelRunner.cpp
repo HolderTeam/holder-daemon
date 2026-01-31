@@ -54,11 +54,30 @@ struct LocalModelRunner::RunnerProcess {
 LocalModelRunner::LocalModelRunner()
     : host_(getenv_or("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1")),
       port_(getenv_or("HOLDER_MODEL_RUNNER_PORT", "11434")),
-      exec_path_(getenv_or("HOLDER_MODEL_RUNNER_BIN", "")) {}
+      exec_path_(getenv_or("HOLDER_MODEL_RUNNER_BIN", "")) {
+  const char* fake = std::getenv("HOLDER_MODEL_RUNNER_FAKE");
+  if (fake && std::string(fake) == "1") {
+    fake_mode_ = true;
+  }
+}
 
 LocalModelRunner::~LocalModelRunner() = default;
 
 void LocalModelRunner::start_background_probe() {
+  if (fake_mode_) {
+    RunnerStatus fake;
+    fake.available = true;
+    fake.spawn_attempted = false;
+    fake.last_checked = now_epoch_seconds();
+    fake.version = "fake";
+    LocalModel model;
+    model.name = "fake-echo";
+    model.size = 1;
+    fake.models.push_back(model);
+    std::lock_guard<std::mutex> lock(mu_);
+    status_ = fake;
+    return;
+  }
   bool expected = false;
   if (!background_started_.compare_exchange_strong(expected, true)) {
     return;
@@ -72,8 +91,26 @@ RunnerStatus LocalModelRunner::status() const {
 }
 
 RunnerStatus LocalModelRunner::retry() {
+  if (fake_mode_) {
+    RunnerStatus fake;
+    fake.available = true;
+    fake.spawn_attempted = false;
+    fake.last_checked = now_epoch_seconds();
+    fake.version = "fake";
+    LocalModel model;
+    model.name = "fake-echo";
+    model.size = 1;
+    fake.models.push_back(model);
+    std::lock_guard<std::mutex> lock(mu_);
+    status_ = fake;
+    return status_;
+  }
   probe(true);
   return status();
+}
+
+void LocalModelRunner::set_fake_mode(bool enabled) {
+  fake_mode_ = enabled;
 }
 
 std::string LocalModelRunner::generate_job_id() {
@@ -179,6 +216,14 @@ bool LocalModelRunner::stream_generate(const std::string& model,
                                        const std::string& options_json,
                                        const std::function<void(const std::string&)>& on_chunk,
                                        std::string* error) {
+  if (fake_mode_) {
+    if (model.empty()) {
+      if (error) *error = "missing model";
+      return false;
+    }
+    on_chunk(prompt);
+    return true;
+  }
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -429,6 +474,19 @@ void LocalModelRunner::stop() {
 }
 
 void LocalModelRunner::run_pull(const std::string& job_id, const std::string& model) {
+  if (fake_mode_) {
+    std::lock_guard<std::mutex> lock(pulls_mu_);
+    auto it = pulls_.find(job_id);
+    if (it != pulls_.end()) {
+      it->second.status = "completed";
+      it->second.progress.stage = "success";
+      it->second.progress.total = 1;
+      it->second.progress.completed = 1;
+      it->second.progress.percent = 100.0;
+      it->second.updated_at = now_epoch_seconds();
+    }
+    return;
+  }
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
   bool completed = false;

@@ -60,6 +60,7 @@ class LocalModelRunner {
                        const std::string& options_json,
                        const std::function<void(const std::string&)>& on_chunk,
                        std::string* error);
+  void set_fake_mode(bool enabled);
 
  private:
   void probe(bool allow_spawn);
@@ -74,6 +75,7 @@ class LocalModelRunner {
 
   std::atomic<bool> spawn_attempted_{false};
   std::atomic<bool> background_started_{false};
+  bool fake_mode_ = false;
 
   mutable std::mutex mu_;
   RunnerStatus status_;
