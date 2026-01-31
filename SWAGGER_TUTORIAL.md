@@ -155,3 +155,11 @@ Open `POST /ai/complete` and click "Try it out".
 Swagger UI won’t render `text/event-stream` responses, so the request will appear
 to “spin” while the stream is active. Use the browser network panel to inspect
 events if you want to see the live stream.
+
+View AI runs (power-user):
+Open `GET /ai/runs` with either:
+- `project_id`: `<project_id>` or
+- `thread_id`: `<thread_id>`
+
+Fetch a single run:
+Open `GET /ai/runs/{run_id}` with a run id from the list.
