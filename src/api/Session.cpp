@@ -931,6 +931,78 @@ void Session::run() {
         payload["data"] = data;
         res = json_response(http::status::ok, payload);
       }
+    } else if (path == "/ai/runner/pull" && req.method() == http::verb::post) {
+      if (!runner_) {
+        res = error_response(http::status::not_implemented,
+                             "not_implemented",
+                             "Local model runner not configured.");
+      } else {
+        try {
+          const auto runner_status = runner_->status();
+          if (!runner_status.available) {
+            res = error_response(http::status::service_unavailable,
+                                 "runner_unavailable",
+                                 "Local model runner unavailable.");
+          } else {
+            const auto body = nlohmann::json::parse(req.body());
+            if (!body.contains("model")) {
+              res = error_response(http::status::bad_request, "bad_request", "Missing model.");
+            } else {
+              const std::string model = body.at("model").get<std::string>();
+              auto job = runner_->start_pull(model);
+              if (job.status == "failed") {
+                res = error_response(http::status::bad_request,
+                                     "bad_request",
+                                     job.error.empty() ? "Pull failed." : job.error);
+              } else {
+                nlohmann::json data;
+                data["job_id"] = job.job_id;
+                data["model"] = job.model;
+                data["status"] = job.status;
+                nlohmann::json payload;
+                payload["ok"] = true;
+                payload["data"] = data;
+                res = json_response(http::status::ok, payload);
+              }
+            }
+          }
+        } catch (const std::exception& ex) {
+          res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (path.rfind("/ai/runner/pull/", 0) == 0 && req.method() == http::verb::get) {
+      if (!runner_) {
+        res = error_response(http::status::not_implemented,
+                             "not_implemented",
+                             "Local model runner not configured.");
+      } else {
+        const std::string job_id = path.substr(std::string("/ai/runner/pull/").size());
+        if (job_id.empty()) {
+          res = error_response(http::status::not_found, "not_found", "Pull job not found.");
+        } else {
+          const auto job = runner_->get_pull(job_id);
+          if (!job.has_value()) {
+            res = error_response(http::status::not_found, "not_found", "Pull job not found.");
+          } else {
+            nlohmann::json data;
+            data["job_id"] = job->job_id;
+            data["model"] = job->model;
+            data["status"] = job->status;
+            data["updated_at"] = job->updated_at;
+            data["error"] = job->error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job->error);
+            nlohmann::json progress;
+            progress["completed"] = job->progress.completed;
+            progress["total"] = job->progress.total;
+            progress["percent"] = job->progress.percent;
+            progress["stage"] = job->progress.stage;
+            data["progress"] = progress;
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = data;
+            res = json_response(http::status::ok, payload);
+          }
+        }
+      }
     } else if (path == "/ai/threads" && req.method() == http::verb::get) {
       const std::string project_id = param("project_id");
       if (project_id.empty()) {

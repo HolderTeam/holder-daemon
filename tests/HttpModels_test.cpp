@@ -10,6 +10,9 @@ TEST_CASE("HTTP models.yaml is served without auth", "[http]") {
   holder::store::Db db;
   db.open(db_path);
 
+  const auto models_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() / "models.yaml";
+  holder::test::EnvGuard models_env("HOLDER_MODELS_PATH", models_path.string());
+
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
   holder::api::HttpServer::BoundInfo bound;

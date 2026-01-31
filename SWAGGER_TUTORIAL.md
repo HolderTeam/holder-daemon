@@ -11,6 +11,9 @@ This walkthrough uses Swagger UI to:
 Open Swagger UI:
 `http://127.0.0.1:11499/docs`
 
+You can also fetch the default model catalog:
+`http://127.0.0.1:11499/models.yaml`
+
 ## 0) Set the auth token
 
 1. Click the "Authorize" button in Swagger UI.

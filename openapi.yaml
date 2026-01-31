@@ -97,6 +97,65 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RunnerCapabilitiesData"
+    RunnerPullProgress:
+      type: object
+      required: [completed, total, percent, stage]
+      properties:
+        completed:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        percent:
+          type: number
+          format: double
+        stage:
+          type: string
+    RunnerPullJob:
+      type: object
+      required: [job_id, model, status, updated_at, progress]
+      properties:
+        job_id:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+        updated_at:
+          type: integer
+          format: int64
+        error:
+          type: string
+          nullable: true
+        progress:
+          $ref: "#/components/schemas/RunnerPullProgress"
+    RunnerPullStartResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [job_id, model, status]
+          properties:
+            job_id:
+              type: string
+            model:
+              type: string
+            status:
+              type: string
+    RunnerPullStatusResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/RunnerPullJob"
     RebuildRequest:
       type: object
       required: [project_id]
@@ -948,6 +1007,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /openapi.yaml:
+    get:
+      summary: Download the OpenAPI specification
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /models.yaml:
+    get:
+      summary: Download the default model catalog
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /rebuild:
     post:
       summary: Rebuild database state from project files
@@ -1442,6 +1535,84 @@ paths:
                 $ref: "#/components/schemas/RunnerCapabilitiesResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/runner/pull:
+    post:
+      summary: Start pulling a local model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model]
+              properties:
+                model:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerPullStartResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Runner unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/runner/pull/{job_id}:
+    get:
+      summary: Fetch pull job status
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunnerPullStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:

@@ -45,6 +45,26 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   REQUIRE(retry["ok"] == false);
   REQUIRE(retry["error"]["code"] == "not_implemented");
 
+  const auto pull = http_json_request(bound.bind,
+                                      bound.port,
+                                      token,
+                                      boost::beast::http::verb::post,
+                                      "/ai/runner/pull",
+                                      nlohmann::json{{"model", "qwen2.5:0.5b"}},
+                                      boost::beast::http::status::not_implemented);
+  REQUIRE(pull["ok"] == false);
+  REQUIRE(pull["error"]["code"] == "not_implemented");
+
+  const auto pull_status = http_json_request(bound.bind,
+                                             bound.port,
+                                             token,
+                                             boost::beast::http::verb::get,
+                                             "/ai/runner/pull/nonexistent",
+                                             nlohmann::json{},
+                                             boost::beast::http::status::not_implemented);
+  REQUIRE(pull_status["ok"] == false);
+  REQUIRE(pull_status["error"]["code"] == "not_implemented");
+
   std::raise(SIGTERM);
   server_thread.join();
 }
