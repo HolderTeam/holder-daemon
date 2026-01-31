@@ -11,8 +11,13 @@ TEST_CASE("HTTP ai complete stores run and messages", "[http]") {
   const auto db_path = dir / "holder.db";
 
   holder::store::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
+          "VALUES('card-1', 'proj-1', 'Card', 'cards/ca/rd/card-1.md', 1, 1);");
 
   const std::string token = "testtoken";
   holder::store::CardStore card_store(db, nullptr);
@@ -57,9 +62,12 @@ TEST_CASE("HTTP ai complete stores run and messages", "[http]") {
   http::write(socket, req);
 
   boost::beast::flat_buffer buffer;
-  http::response_parser<http::string_body> parser;
-  http::read_header(socket, buffer, parser);
-  REQUIRE(parser.get().result() == http::status::ok);
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  if (res.result() != http::status::ok) {
+    FAIL(res.body());
+  }
+  REQUIRE(res.result() == http::status::ok);
   socket.shutdown(tcp::socket::shutdown_both);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
