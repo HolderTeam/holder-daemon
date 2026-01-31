@@ -1016,8 +1016,13 @@ void Session::run() {
               thread_id = body.at("thread_id").get<std::string>();
             }
             std::string context_json;
+            std::optional<std::string> context_card_id;
             if (body.contains("context") && !body.at("context").is_null()) {
               context_json = body.at("context").dump();
+              if (body.at("context").is_object() && body.at("context").contains("card_id") &&
+                  !body.at("context").at("card_id").is_null()) {
+                context_card_id = body.at("context").at("card_id").get<std::string>();
+              }
             }
 
             const auto runner_status = runner_->status();
@@ -1040,6 +1045,25 @@ void Session::run() {
               candidates.reserve(runner_status.models.size());
               for (const auto& model : runner_status.models) {
                 candidates.push_back(model.name);
+              }
+
+              if (!thread_id.has_value() && project_id.has_value()) {
+                holder::store::AiThreadRepo thread_repo(db_);
+                holder::model::AiThread thread;
+                thread.thread_id = generate_uuid_v4();
+                thread.project_id = project_id.value();
+                if (context_card_id.has_value()) {
+                  thread.card_id = context_card_id.value();
+                }
+                std::string title = prompt;
+                if (title.size() > 80) {
+                  title = title.substr(0, 80);
+                }
+                thread.title = title;
+                thread.created_at = now_epoch_seconds();
+                thread.updated_at = thread.created_at;
+                thread_repo.create(thread);
+                thread_id = thread.thread_id;
               }
 
               std::string router_model;
@@ -1087,6 +1111,19 @@ void Session::run() {
 
               std::string ranked_json;
               std::string chosen_model;
+              std::string assistant_text;
+
+              if (thread_id.has_value()) {
+                holder::store::AiMessageRepo msg_repo(db_, fts_);
+                holder::model::AiMessage user_msg;
+                user_msg.message_id = generate_uuid_v4();
+                user_msg.thread_id = thread_id.value();
+                user_msg.role = "user";
+                user_msg.source = "local";
+                user_msg.content = prompt;
+                user_msg.created_at = now_epoch_seconds();
+                msg_repo.append(user_msg);
+              }
 
               if (!forced_model.empty()) {
                 send_event("router", {{"message", "routing skipped (forced model)"}});
@@ -1165,6 +1202,7 @@ void Session::run() {
                     [&](const std::string& chunk) {
                       got_output = true;
                       any_output = true;
+                      assistant_text += chunk;
                       send_event("chunk", {{"model", model}, {"delta", chunk}});
                     },
                     &model_error);
@@ -1183,10 +1221,25 @@ void Session::run() {
               const long long updated_at = now_epoch_seconds();
               if (!chosen_model.empty()) {
                 send_event("done", {{"model", chosen_model}});
+                std::optional<std::string> message_id;
+                if (thread_id.has_value()) {
+                  holder::store::AiMessageRepo msg_repo(db_, fts_);
+                  holder::model::AiMessage assistant_msg;
+                  assistant_msg.message_id = generate_uuid_v4();
+                  assistant_msg.thread_id = thread_id.value();
+                  assistant_msg.role = "assistant";
+                  assistant_msg.source = "local";
+                  assistant_msg.provider = "LocalRunner";
+                  assistant_msg.model = chosen_model;
+                  assistant_msg.content = assistant_text;
+                  assistant_msg.created_at = updated_at;
+                  msg_repo.append(assistant_msg);
+                  message_id = assistant_msg.message_id;
+                }
                 run_repo.update_status(run.run_id,
                                        "completed",
                                        std::nullopt,
-                                       std::nullopt,
+                                       message_id,
                                        chosen_model,
                                        ranked_json.empty() ? std::nullopt
                                                            : std::optional<std::string>(ranked_json),
