@@ -147,6 +147,36 @@ CREATE INDEX IF NOT EXISTS idx_ai_messages_prompt_hash
   ON ai_messages(prompt_hash);
 
 -- ----------------------------
+-- AI runs (routing/execution metadata)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_runs (
+  run_id       TEXT PRIMARY KEY,         -- UUID
+  project_id   TEXT NULL,
+  thread_id    TEXT NULL,
+  message_id   TEXT NULL,                -- assistant message created by the run
+  mode         TEXT NOT NULL,            -- 'auto' | 'model'
+  prompt       TEXT NOT NULL,
+  context_json TEXT NULL,                -- serialized context snapshot
+  router_model TEXT NULL,
+  ranked_json  TEXT NULL,                -- ranked candidates + scores
+  chosen_model TEXT NULL,
+  status       TEXT NOT NULL,            -- 'started' | 'completed' | 'failed'
+  error        TEXT NULL,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+
+  FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE SET NULL,
+  FOREIGN KEY(thread_id)  REFERENCES ai_threads(thread_id) ON DELETE SET NULL,
+  FOREIGN KEY(message_id) REFERENCES ai_messages(message_id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_project_time
+  ON ai_runs(project_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_thread_time
+  ON ai_runs(thread_id, created_at);
+
+-- ----------------------------
 -- Full-text search (FTS5)
 -- ----------------------------
 -- Contentless FTS: server maintains rows explicitly.

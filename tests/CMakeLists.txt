@@ -51,6 +51,7 @@ add_executable(lockfile_tests
   ResourceRepo_test.cpp
   AiThreadRepo_test.cpp
   AiMessageRepo_test.cpp
+  AiRunRepo_test.cpp
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
@@ -90,6 +91,7 @@ add_executable(lockfile_tests
   ../src/store/ResourceRepo.cpp
   ../src/store/AiThreadRepo.cpp
   ../src/store/AiMessageRepo.cpp
+  ../src/store/AiRunRepo.cpp
   ../src/store/Rebuilder.cpp
   ../src/store/Migrations.cpp
   ../src/store/CardStore.cpp
