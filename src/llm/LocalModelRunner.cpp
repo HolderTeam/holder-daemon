@@ -333,6 +333,7 @@ void LocalModelRunner::stop() {
 void LocalModelRunner::run_pull(const std::string& job_id, const std::string& model) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
+  bool completed = false;
 
   {
     std::lock_guard<std::mutex> lock(pulls_mu_);
@@ -453,6 +454,9 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
             }
           }
           if (done) {
+            if (update.status == "completed") {
+              completed = true;
+            }
             finished = true;
             break;
           }
@@ -465,6 +469,9 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
 
     boost::system::error_code shutdown_ec;
     stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+    if (completed) {
+      probe(false);
+    }
   } catch (const std::exception& ex) {
     std::lock_guard<std::mutex> lock(pulls_mu_);
     auto it = pulls_.find(job_id);
