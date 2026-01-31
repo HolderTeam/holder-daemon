@@ -20,17 +20,20 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+#include <yaml-cpp/yaml.h>
+
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <algorithm>
 #include <mutex>
 #include <optional>
 #include <random>
+#include <unordered_map>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -185,6 +188,58 @@ std::string content_type_for_extension(const std::string& ext) {
   return "application/octet-stream";
 }
 
+struct LocalModelMeta {
+  std::string category;
+  long long size_bytes = 0;
+};
+
+long long parse_size_bytes(const std::string& input) {
+  std::string s;
+  s.reserve(input.size());
+  for (char ch : input) {
+    if (!std::isspace(static_cast<unsigned char>(ch))) s.push_back(ch);
+  }
+  if (s.empty()) return 0;
+
+  size_t pos = 0;
+  while (pos < s.size() && (std::isdigit(static_cast<unsigned char>(s[pos])) || s[pos] == '.')) {
+    ++pos;
+  }
+  if (pos == 0) return 0;
+  const double value = std::stod(s.substr(0, pos));
+  std::string unit = s.substr(pos);
+  for (auto& ch : unit) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+
+  double multiplier = 1.0;
+  if (unit == "kb" || unit == "k") multiplier = 1024.0;
+  else if (unit == "mb" || unit == "m") multiplier = 1024.0 * 1024.0;
+  else if (unit == "gb" || unit == "g") multiplier = 1024.0 * 1024.0 * 1024.0;
+  else if (unit == "tb" || unit == "t") multiplier = 1024.0 * 1024.0 * 1024.0 * 1024.0;
+
+  return static_cast<long long>(value * multiplier);
+}
+
+std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
+  std::unordered_map<std::string, LocalModelMeta> meta;
+  const auto models_path = find_models_path();
+  if (!models_path.has_value()) return meta;
+  try {
+    const YAML::Node root = YAML::LoadFile(models_path->string());
+    if (!root["Models"] || !root["Models"]["Local"]) return meta;
+    for (const auto& node : root["Models"]["Local"]) {
+      if (!node || !node["tag"]) continue;
+      const std::string tag = node["tag"].as<std::string>();
+      LocalModelMeta entry;
+      if (node["category"]) entry.category = node["category"].as<std::string>();
+      if (node["size"]) entry.size_bytes = parse_size_bytes(node["size"].as<std::string>());
+      meta[tag] = entry;
+    }
+  } catch (const std::exception&) {
+    return meta;
+  }
+  return meta;
+}
+
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
   return text.substr(0, max_bytes);
@@ -230,6 +285,23 @@ std::string pick_smallest_model(const std::vector<holder::llm::LocalModel>& mode
     }
   }
   return best->name;
+}
+
+std::string pick_router_model(const std::vector<holder::llm::LocalModel>& models,
+                              const std::unordered_map<std::string, LocalModelMeta>& meta) {
+  long long best_size = 0;
+  std::string best;
+  for (const auto& model : models) {
+    const auto it = meta.find(model.name);
+    if (it == meta.end()) continue;
+    if (it->second.category != "router") continue;
+    const long long size = it->second.size_bytes > 0 ? it->second.size_bytes : model.size;
+    if (best.empty() || (size > 0 && (best_size == 0 || size < best_size))) {
+      best = model.name;
+      best_size = size;
+    }
+  }
+  return best;
 }
 
 std::string pick_largest_model(const std::vector<holder::llm::LocalModel>& models) {
@@ -1067,8 +1139,12 @@ void Session::run() {
               }
 
               std::string router_model;
+              const auto model_meta = load_local_model_meta();
               if (forced_model.empty() && candidates.size() > 1) {
-                router_model = pick_smallest_model(runner_status.models);
+                router_model = pick_router_model(runner_status.models, model_meta);
+                if (router_model.empty()) {
+                  router_model = pick_smallest_model(runner_status.models);
+                }
               }
 
               holder::store::AiRunRepo run_repo(db_);
@@ -1131,9 +1207,6 @@ void Session::run() {
               } else if (candidates.size() == 1) {
                 send_event("router", {{"message", "routing skipped (single model)"}});
               } else {
-                if (router_model.empty()) {
-                  router_model = pick_smallest_model(runner_status.models);
-                }
                 const size_t router_limit = 50000;
                 std::string router_input = prompt;
                 if (!context_json.empty()) {
@@ -1147,7 +1220,13 @@ void Session::run() {
                 prompt_ss << "User prompt:\n" << router_input << "\n\n";
                 prompt_ss << "Candidate models:\n";
                 for (const auto& model : runner_status.models) {
-                  prompt_ss << "- " << model.name << " (size=" << model.size << ")\n";
+                  const auto it = model_meta.find(model.name);
+                  const std::string category = (it != model_meta.end()) ? it->second.category : "";
+                  prompt_ss << "- " << model.name << " (size=" << model.size;
+                  if (!category.empty()) {
+                    prompt_ss << ", category=" << category;
+                  }
+                  prompt_ss << ")\n";
                 }
 
                 std::string router_text;
