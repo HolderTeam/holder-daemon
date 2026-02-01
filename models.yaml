@@ -25,7 +25,7 @@ info:
 schema:
   enums:
     local_category: [router, code, reason, writing, general]
-    capability: [code, reasoning, summarize, translate, planning, chat]
+    capability: [code, reasoning, summarize, translate, planning, chat, vision]
     speed: [fast, medium, slow]
     quality: [low, medium, high]
     hardware_tier: [tiny, budget, laptop, gaming, workstation]
@@ -59,6 +59,73 @@ schema:
     required: [provider, engine, api, auth]
     optional: [pricing, notes]
 
+
+# ============================================================
+# Model ranking rubric (normative)
+# ============================================================
+# These enums are intentionally coarse and deterministic.
+# They are designed to be *literally comparable* by routing
+# and ranking algorithms.
+#
+# Do not assign these values by vibes.
+# Follow the rules below.
+#
+model_rubric:
+  hardware_tier:
+    definition: >
+      Minimum practical target machine the model fits comfortably on,
+      based primarily on model size.
+    tiers:
+      tiny:
+        typical_device: "Raspberry Pi / very old laptop"
+        comfortable_model_size_gb: "<= 1.5"
+      budget:
+        typical_device: "Low-end laptop / iGPU"
+        comfortable_model_size_gb: "<= 4"
+      laptop:
+        typical_device: "Modern laptop / small dGPU"
+        comfortable_model_size_gb: "<= 8"
+      gaming:
+        typical_device: "Mid-range gaming GPU"
+        comfortable_model_size_gb: "<= 16"
+      workstation:
+        typical_device: "24GB+ VRAM or large system RAM"
+        comfortable_model_size_gb: "> 16"
+
+    assignment_rule: >
+      Choose the smallest tier whose comfortable_model_size_gb
+      is greater than or equal to the model's size.
+
+  speed:
+    definition: >
+      Expected responsiveness on the minimum hardware_tier machine.
+    values:
+      fast: "Interactive; suitable for chat and UI-driven use"
+      medium: "Usable latency; brief waits acceptable"
+      slow: "Deliberate; long-running or batch-style use"
+
+    ranking_weight:
+      fast: 3
+      medium: 2
+      slow: 1
+
+  quality:
+    definition: >
+      Expected correctness and usefulness for the model's intended role,
+      not absolute SOTA performance.
+    values:
+      low: "Often needs retries; lightweight or routing tasks"
+      medium: "Generally reliable local assistant"
+      high: "Strong local model; fewer retries for its category"
+
+    ranking_weight:
+      low: 1
+      medium: 2
+      high: 3
+
+# ============================================================
+# Model catalogue
+# ============================================================
 
 Models:
   Web:
@@ -173,11 +240,11 @@ Models:
     - provider: QwenTeam
       engine: Qwen2.5
       tag: qwen2.5:0.5b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [chat, summarize, translate]
+      speed: fast
+      quality: low
+      hardware_tier: tiny
+      context_window: 32K
       category: router
       homepage: https://github.com/QwenLM/Qwen3
       size: 397 MB
@@ -188,11 +255,11 @@ Models:
     - provider: QwenTeam
       engine: Qwen3 Coder
       tag: qwen3-coder:30b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
+      capabilities: [code, reasoning, summarize]
+      speed: slow
+      quality: high
       hardware_tier: TODO
-      context_window: TODO
+      context_window: 128K
       category: code
       homepage: https://github.com/QwenLM/Qwen3
       size: 18 GB
@@ -201,16 +268,18 @@ Models:
     - provider: DeepSeek
       engine: DeepSeek R1
       tag: deepseek-r1:latest
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [reasoning, code, planning, chat]
+      speed: medium
+      quality: high
+      hardware_tier: laptop
+      context_window: 128K
       category: reason
       homepage: https://github.com/deepseek-ai/DeepSeek-R1
       size: 5.2 GB
       notes: |
-        - Add some notes here
+        - Strong reasoning model (chain-of-thought / thinking mode).
+        - Excellent price/performance for math, logic, complex prompts.
+        - Runs surprisingly well quantized.
     - provider: DeepSeek
       engine: DeepSeek Coder V2
       tag: deepseek-coder-v2:latest
@@ -228,11 +297,11 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3:1b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [chat, summarize, translate]
+      speed: fast
+      quality: low
+      hardware_tier: tiny
+      context_window: 32K
       parameters: 1B
       size: 815MB
       homepage:
@@ -242,84 +311,83 @@ Models:
     - provider:
       engine: Gemma 3
       tag: gemma3
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [chat, summarize, translate, reasoning, code, vision]
+      speed: medium
+      quality: medium
+      hardware_tier: budget
+      context_window: laptop
       parameters: 4B
       size: 3.3GB
       homepage:
       notes: |
-        - Fill in: strengths/limits, license notes
+        - Multimodal (text+image) starting here.
+        - Very efficient single-GPU model,
+        - strong multilingual support (>140 languages),
+        - good all-rounder.
 
     - provider:
       engine: Gemma 3
       tag: gemma3:12b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: : [code, reasoning, summarize, translate, planning, chat, vision]
+      speed: medium
+      quality: high
+      hardware_tier: gaming
+      context_window: 128K
       parameters: 12B
       size: 8.1GB
       homepage:
       notes: |
+        - Notes: Excellent balance 
+        - often competes with much larger models in reasoning and coding
+        - while fitting on mid-range GPUs.
 
     - provider:
       engine: Gemma 3
       tag: gemma3:27b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [code, reasoning, summarize, translate, planning, chat, vision]
+      speed: slow
+      quality: high
+      hardware_tier: workstation
+      context_window: 128K
       parameters: 27B
       size: 17GB
       homepage:
-      notes: |
+      notes: | 
+        - One of the strongest open models that runs on consumer hardware
+        - (24 GB VRAM class for comfortable Q4/Q5).
+        - Top-tier local multimodal and reasoning in 2026.
 
     - provider:
       engine: QwQ
       tag: qwq
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [reasoning, planning, code, chat]
+      speed: slow
+      quality: high
+      hardware_tier: workstation
+      context_window: 40K
       parameters: 32B
       size: 20GB
       homepage:
       notes: |
-        - Fill in: what QwQ is best at (reasoning? coding?)
+        - Best at complex multi-step reasoning, math, logic puzzles.
+        - QwQ is the dedicated reasoning variant in the Qwen family (think o1-style chain-of-thought specialization).
+        - Competes with DeepSeek-R1 / larger models on hard problems despite "only" 32B params.
 
     - provider:
       engine: DeepSeek-R1
       tag: deepseek-r1
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [reasoning, code, planning, chat]
+      speed: medium
+      quality: medium
+      hardware_tier: laptop
+      context_window: 128K
       parameters: 7B
       size: 4.7GB
       homepage:
       notes: |
-        - Fill in: reasoning style, latency, memory footprint in practice
-
-    - provider:
-      engine: DeepSeek-R1
-      tag: deepseek-r1:671b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 671B
-      size: 404GB
-      homepage:
-      notes: |
-        - Likely impractical for most consumer machines (huge disk + RAM/VRAM needs)
+        - Strong reasoning model (chain-of-thought / thinking mode).
+        - Excellent performance for math, logic, complex prompts.
+        - Runs surprisingly well quantized.
 
     - provider:
       engine: Llama 4
