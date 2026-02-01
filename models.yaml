@@ -2,775 +2,806 @@ info:
   title: Model List
   version: 0.1.0
   author: Holder Team
-  purpose: >
-    Canonical model/service catalogue for Holder. The backend keeps this as the
-    single source of truth and frontends render it as an AI catalogue.
-  behaviour: |
-    - Web entries are not called via API
-    - Frontends open the URL in the user's browser
+  purpose: 'Canonical model/service catalogue for Holder. The backend keeps this as the single source of truth and frontends
+    render it as an AI catalogue.
+
+    '
+  behaviour: '- Web entries are not called via API
+
+    - Frontends open the URL in the user''s browser
+
     - Users run the prompt on the website and copy/paste the result back into a card
+
     - Cloud entries are called via HTTP APIs (key required)
+
     - Local entries are routed to local runtimes (e.g. Ollama)
-  disclaimer: |
-    - Information is collected from publicly available sources and hands-on use
+
+    '
+  disclaimer: '- Information is collected from publicly available sources and hands-on use
+
     - Model availability, limits, and behaviour change frequently
+
     - Details may be incomplete, outdated, or occasionally wrong
+
     - No guarantees or promises are made about accuracy or service quality
+
     - This list is descriptive, not an endorsement
+
     - If you find something wrong, please make a PR and fix it
+
     - generosity refers to the free tier unless notes say otherwise
+
+    '
   last_updated: 2026-01-30
-
-
 schema:
   enums:
-    local_category: [router, code, reason, writing, general]
-    capability: [code, reasoning, summarize, translate, planning, chat, vision]
-    speed: [fast, medium, slow]
-    quality: [low, medium, high]
-    hardware_tier: [tiny, budget, laptop, gaming, workstation]
+    local_category:
+    - router
+    - code
+    - reason
+    - writing
+    - general
+    capability:
+    - code
+    - reasoning
+    - summarize
+    - translate
+    - planning
+    - chat
+    - vision
+    speed:
+    - fast
+    - medium
+    - slow
+    quality:
+    - low
+    - medium
+    - high
+    hardware_tier:
+    - tiny
+    - budget
+    - laptop
+    - gaming
+    - workstation
   LocalEntry:
-    required: [tag]
+    required:
+    - tag
     optional:
-      - provider
-      - engine
-      - parameters
-      - size
-      - homepage
-      - notes
-      - category
-      - capabilities
-      - speed
-      - quality
-      - hardware_tier
-      - context_window
+    - provider
+    - engine
+    - parameters
+    - size
+    - homepage
+    - notes
+    - category
+    - capabilities
+    - speed
+    - quality
+    - hardware_tier
+    - context_window
     field_notes:
-      tag: "Ollama tag or local identifier."
-      category: "Primary intent for routing."
-      capabilities: "Tags used by router + client UI."
-      speed: "Rough latency class."
-      quality: "Rough output quality."
-      hardware_tier: "Suggested minimum hardware."
-      context_window: "Approx token window (if known)."
+      tag: Ollama tag or local identifier.
+      category: Primary intent for routing.
+      capabilities: Tags used by router + client UI.
+      speed: Rough latency class.
+      quality: Rough output quality.
+      hardware_tier: Suggested minimum hardware.
+      context_window: Approx token window (if known).
   WebEntry:
-    required: [provider, engine, url]
-    optional: [generosity, login_required, notes]
+    required:
+    - provider
+    - engine
+    - url
+    optional:
+    - generosity
+    - login_required
+    - notes
   CloudEntry:
-    required: [provider, engine, api, auth]
-    optional: [pricing, notes]
-
-
-# ============================================================
-# Model ranking rubric (normative)
-# ============================================================
-# These enums are intentionally coarse and deterministic.
-# They are designed to be *literally comparable* by routing
-# and ranking algorithms.
-#
-# Do not assign these values by vibes.
-# Follow the rules below.
-#
+    required:
+    - provider
+    - engine
+    - api
+    - auth
+    optional:
+    - pricing
+    - notes
 model_rubric:
   hardware_tier:
-    definition: >
-      Minimum practical target machine the model fits comfortably on,
-      based primarily on model size.
+    definition: 'Minimum practical target machine the model fits comfortably on, based primarily on model size.
+
+      '
     tiers:
       tiny:
-        typical_device: "Raspberry Pi / very old laptop"
-        comfortable_model_size_gb: "<= 1.5"
+        typical_device: Raspberry Pi / very old laptop
+        comfortable_model_size_gb: <= 1.5
       budget:
-        typical_device: "Low-end laptop / iGPU"
-        comfortable_model_size_gb: "<= 4"
+        typical_device: Low-end laptop / iGPU
+        comfortable_model_size_gb: <= 4
       laptop:
-        typical_device: "Modern laptop / small dGPU"
-        comfortable_model_size_gb: "<= 8"
+        typical_device: Modern laptop / small dGPU
+        comfortable_model_size_gb: <= 8
       gaming:
-        typical_device: "Mid-range gaming GPU"
-        comfortable_model_size_gb: "<= 16"
+        typical_device: Mid-range gaming GPU
+        comfortable_model_size_gb: <= 16
       workstation:
-        typical_device: "24GB+ VRAM or large system RAM"
-        comfortable_model_size_gb: "> 16"
+        typical_device: 24GB+ VRAM or large system RAM
+        comfortable_model_size_gb: '> 16'
+    assignment_rule: 'Choose the smallest tier whose comfortable_model_size_gb is greater than or equal to the model''s size.
 
-    assignment_rule: >
-      Choose the smallest tier whose comfortable_model_size_gb
-      is greater than or equal to the model's size.
-
+      '
   speed:
-    definition: >
-      Expected responsiveness on the minimum hardware_tier machine.
-    values:
-      fast: "Interactive; suitable for chat and UI-driven use"
-      medium: "Usable latency; brief waits acceptable"
-      slow: "Deliberate; long-running or batch-style use"
+    definition: 'Expected responsiveness on the minimum hardware_tier machine.
 
+      '
+    values:
+      fast: Interactive; suitable for chat and UI-driven use
+      medium: Usable latency; brief waits acceptable
+      slow: Deliberate; long-running or batch-style use
     ranking_weight:
       fast: 3
       medium: 2
       slow: 1
-
   quality:
-    definition: >
-      Expected correctness and usefulness for the model's intended role,
-      not absolute SOTA performance.
-    values:
-      low: "Often needs retries; lightweight or routing tasks"
-      medium: "Generally reliable local assistant"
-      high: "Strong local model; fewer retries for its category"
+    definition: 'Expected correctness and usefulness for the model''s intended role, not absolute SOTA performance.
 
+      '
+    values:
+      low: Often needs retries; lightweight or routing tasks
+      medium: Generally reliable local assistant
+      high: Strong local model; fewer retries for its category
     ranking_weight:
       low: 1
       medium: 2
       high: 3
-
-# ============================================================
-# Model catalogue
-# ============================================================
-
 Models:
   Web:
-    - provider: Meta
-      engine: Llama
-      url: https://www.meta.ai
-      generosity: Very High
-      login_required: Optional
-      notes: |
-        - Near-unlimited casual use with no strict message caps
-        - Basic chats can be started anonymously
-        - Account required for chat history and full features
+  - provider: Meta
+    engine: Llama
+    url: https://www.meta.ai
+    generosity: Very High
+    login_required: Optional
+    notes: '- Near-unlimited casual use with no strict message caps
 
-    - provider: Microsoft
-      engine: Copilot
-      url: https://copilot.microsoft.com/
-      generosity: High
-      login_required: Yes
-      notes: |
-        - Generous limits for text chat
-        - Minimal throttling for most users
-        - Requires Microsoft account (often already present via Windows or Outlook)
+      - Basic chats can be started anonymously
 
-    - provider: Google
-      engine: Gemini
-      url: https://gemini.google.com
-      generosity: Medium-High
-      login_required: Yes
-      notes: |
-        - Daily prompt limits vary (often 50+ prompts)
-        - Limits reset frequently
-        - Strong integration with Google Workspace
+      - Account required for chat history and full features
 
-    - provider: xAI
-      engine: Grok
-      url: https://grok.com/
-      generosity: Medium
-      login_required: Yes
-      notes: |
-        - Time-based message limits (roughly 10-20 per period)
-        - Higher limits available with X Premium
-        - Can become unavailable during peak usage with “under heavy usage” errors
-        - Strong real-time and social-context responses
+      '
+  - provider: Microsoft
+    engine: Copilot
+    url: https://copilot.microsoft.com/
+    generosity: High
+    login_required: true
+    notes: '- Generous limits for text chat
 
-    - provider: Mistral AI
-      engine: LeChat
-      url: https://chat.mistral.ai/
-      generosity: Medium-High
-      login_required: Yes
-      notes: |
-        - Good daily limits for both basic and advanced usage
-        - Paid tier provides priority access
-        - Fast responses and strong cost/performance trade-offs
+      - Minimal throttling for most users
 
-    - provider: DeepSeek
-      engine: DeepSeek
-      url: https://chat.deepseek.com/
-      generosity: Very High
-      login_required: Minimal
-      notes: |
-        - Fully free consumer chat with no strict caps
-        - Minimal or optional signup for core usage
-        - Popular for coding and technical tasks
-        - Defaults to Chinese, add "answer in English" to your prompt
+      - Requires Microsoft account (often already present via Windows or Outlook)
 
-    - provider: Alibaba
-      engine: Qwen
-      url: https://qwen.ai/
-      generosity: Medium
-      login_required: Yes
-      notes: |
-        - Usable free tier with moderate limits
-        - Strong multilingual performance
-        - More generous for lighter or international usage
-        - Very large user base in Asia
+      '
+  - provider: Google
+    engine: Gemini
+    url: https://gemini.google.com
+    generosity: Medium-High
+    login_required: true
+    notes: '- Daily prompt limits vary (often 50+ prompts)
 
-    - provider: Perplexity
-      engine: GPT
-      url: https://www.perplexity.ai/
-      generosity: Medium
-      login_required: Yes
-      notes: |
-        - Unlimited basic AI-powered search
-        - Advanced and Pro features are capped
-        - Experience is more “AI search engine” than chat-first
-        - Underlying model varies
+      - Limits reset frequently
 
-    - provider: Anthropic
-      engine: Claude
-      url: https://claude.ai
-      generosity: Low-Medium
-      login_required: Yes
-      notes: |
-        - Strict message caps (often 20-50 messages per 5-8 hours)
-        - Limits reset periodically
-        - Paid tier heavily prioritised
-        - Excellent long-form writing and reasoning quality
+      - Strong integration with Google Workspace
 
-    - provider: OpenAI
-      engine: ChatGPT
-      url: https://chatgpt.com/
-      generosity: Low
-      login_required: Yes
-      notes: |
-        - Tight caps on flagship models (often 10-60 messages per period)
-        - Automatically falls back to smaller models when capped
-        - Very strong default UX and ecosystem
-        - Paid tiers significantly improve limits
-        - Basic Subscription gives High generosity.
+      '
+  - provider: xAI
+    engine: Grok
+    url: https://grok.com/
+    generosity: Medium
+    login_required: true
+    notes: "- Time-based message limits (roughly 10-20 per period)\n- Higher limits available with X Premium\n- Can become\
+      \ unavailable during peak usage with \u201Cunder heavy usage\u201D errors\n- Strong real-time and social-context responses\n"
+  - provider: Mistral AI
+    engine: LeChat
+    url: https://chat.mistral.ai/
+    generosity: Medium-High
+    login_required: true
+    notes: '- Good daily limits for both basic and advanced usage
 
+      - Paid tier provides priority access
+
+      - Fast responses and strong cost/performance trade-offs
+
+      '
+  - provider: DeepSeek
+    engine: DeepSeek
+    url: https://chat.deepseek.com/
+    generosity: Very High
+    login_required: Minimal
+    notes: '- Fully free consumer chat with no strict caps
+
+      - Minimal or optional signup for core usage
+
+      - Popular for coding and technical tasks
+
+      - Defaults to Chinese, add "answer in English" to your prompt
+
+      '
+  - provider: Alibaba
+    engine: Qwen
+    url: https://qwen.ai/
+    generosity: Medium
+    login_required: true
+    notes: '- Usable free tier with moderate limits
+
+      - Strong multilingual performance
+
+      - More generous for lighter or international usage
+
+      - Very large user base in Asia
+
+      '
+  - provider: Perplexity
+    engine: GPT
+    url: https://www.perplexity.ai/
+    generosity: Medium
+    login_required: true
+    notes: "- Unlimited basic AI-powered search\n- Advanced and Pro features are capped\n- Experience is more \u201CAI search\
+      \ engine\u201D than chat-first\n- Underlying model varies\n"
+  - provider: Anthropic
+    engine: Claude
+    url: https://claude.ai
+    generosity: Low-Medium
+    login_required: true
+    notes: '- Strict message caps (often 20-50 messages per 5-8 hours)
+
+      - Limits reset periodically
+
+      - Paid tier heavily prioritised
+
+      - Excellent long-form writing and reasoning quality
+
+      '
+  - provider: OpenAI
+    engine: ChatGPT
+    url: https://chatgpt.com/
+    generosity: Low
+    login_required: true
+    notes: '- Tight caps on flagship models (often 10-60 messages per period)
+
+      - Automatically falls back to smaller models when capped
+
+      - Very strong default UX and ecosystem
+
+      - Paid tiers significantly improve limits
+
+      - Basic Subscription gives High generosity.
+
+      '
   Local:
-    - provider: QwenTeam
-      engine: Qwen2.5
-      tag: qwen2.5:0.5b
-      capabilities: [chat, summarize, translate]
-      speed: fast
-      quality: low
-      hardware_tier: tiny
-      context_window: 32K
-      category: router
-      homepage: https://github.com/QwenLM/Qwen3
-      size: 397 MB
-      notes: |
-        - Local open-weight model
-        - Suitable for low-resource devices
-        - Useful for testing and offline workflows
-    - provider: QwenTeam
-      engine: Qwen3 Coder
-      tag: qwen3-coder:30b
-      capabilities: [code, reasoning, summarize]
-      speed: slow
-      quality: high
-      hardware_tier: workstation
-      context_window: 128K
-      category: code
-      homepage: https://github.com/QwenLM/Qwen3
-      size: 18 GB
-      notes: |
-        - Large coding-focused model
-        - Best for complex refactors, generation, and long code reasoning
-        - Requires 24GB+ VRAM or large system RAM for comfort
-    - provider: DeepSeek
-      engine: DeepSeek R1
-      tag: deepseek-r1:latest
-      capabilities: [reasoning, code, planning, chat]
-      speed: medium
-      quality: high
-      hardware_tier: laptop
-      context_window: 128K
-      category: reason
-      homepage: https://github.com/deepseek-ai/DeepSeek-R1
-      size: 5.2 GB
-      notes: |
-        - Strong reasoning model (chain-of-thought / thinking mode).
-        - Excellent price/performance for math, logic, complex prompts.
-        - Runs surprisingly well quantized.
-    - provider: DeepSeek
-      engine: DeepSeek Coder V2
-      tag: deepseek-coder-v2:latest
-      capabilities: [code, summarize, planning, chat]
-      speed: medium
-      quality: high
-      hardware_tier: gaming
-      context_window: 32K
-      category: code
-      homepage: https://github.com/deepseek-ai/DeepSeek-Coder
-      size: 8.9 GB
-      notes: |
-        - Strong open-weight coding specialist
-        - Good balance of size vs capability
-        - Suitable default local coding model on 16GB GPUs
-    - provider: Google
-      engine: Gemma 3
-      tag: gemma3
-      capabilities: [chat, summarize, translate, reasoning, code, vision]
-      speed: medium
-      quality: medium
-      hardware_tier: budget
-      context_window: 32K
-      parameters: 4B
-      size: 3.3GB
-      homepage: https://ai.google.dev/gemma
-      notes: |
-        - Multimodal (text+image)
-        - Efficient all-rounder
-        - Strong multilingual support
-    - provider: Google
-      engine: Gemma 3
-      tag: gemma3:12b
-      capabilities: [code, reasoning, summarize, translate, planning, chat, vision]
-      speed: slow
-      quality: high
-      hardware_tier: gaming
-      context_window: 128K
-      parameters: 12B
-      size: 8.1GB
-      homepage: https://ai.google.dev/gemma
-      notes: |
-        - Excellent balance of size vs quality
-        - Often competes with much larger models
-    - provider:
-      engine: Gemma 3
-      tag: gemma3:27b
-      capabilities: [code, reasoning, summarize, translate, planning, chat, vision]
-      speed: slow
-      quality: high
-      hardware_tier: workstation
-      context_window: 128K
-      parameters: 27B
-      size: 17GB
-      homepage:
-      notes: | 
-        - One of the strongest open models that runs on consumer hardware
-        - (24 GB VRAM class for comfortable Q4/Q5).
-        - Top-tier local multimodal and reasoning in 2026.
-    - provider:
-      engine: QwQ
-      tag: qwq
-      capabilities: [reasoning, planning, code, chat]
-      speed: slow
-      quality: high
-      hardware_tier: workstation
-      context_window: 40K
-      parameters: 32B
-      size: 20GB
-      homepage:
-      notes: |
-        - Best at complex multi-step reasoning, math, logic puzzles.
-        - QwQ is the dedicated reasoning variant in the Qwen family (think o1-style chain-of-thought specialization).
-        - Competes with DeepSeek-R1 / larger models on hard problems despite "only" 32B params.
-    - provider:
-      engine: DeepSeek-R1
-      tag: deepseek-r1
-      capabilities: [reasoning, code, planning, chat]
-      speed: medium
-      quality: medium
-      hardware_tier: laptop
-      context_window: 128K
-      parameters: 7B
-      size: 4.7GB
-      homepage:
-      notes: |
-        - Strong reasoning model (chain-of-thought / thinking mode).
-        - Excellent performance for math, logic, complex prompts.
-        - Runs surprisingly well quantized.
-    - provider: Meta
-      engine: Llama 3.2
-      tag: llama3.2:1b
-      capabilities: [chat, summarize]
-      speed: fast
-      quality: low
-      hardware_tier: tiny
-      context_window: 32K
-      parameters: 1B
-      size: 1.3GB
-      notes: |
-    - provider: Meta
-      engine: Llama 3.2
-      tag: llama3.2
-      capabilities: [chat, summarize, planning]
-      speed: fast
-      quality: low
-      hardware_tier: budget
-      context_window: 32K
-      parameters: 3B
-      size: 2.0GB
-    - provider: Meta
-      engine: Llama 3.1
-      tag: llama3.1
-      capabilities: [chat, reasoning, summarize]
-      speed: medium
-      quality: medium
-      hardware_tier: laptop
-      context_window: 128K
-      parameters: 8B
-      size: 4.7GB
-    - provider: Meta
-      engine: Llama 3.3
-      tag: llama3.3
-      capabilities: [chat, reasoning, code, summarize]
-      speed: slow
-      quality: high
-      hardware_tier: workstation
-      context_window: 128K
-      parameters: 70B
-      size: 43GB
-    - provider: Meta
-      engine: Llama 3.2 Vision
-      tag: llama3.2-vision
-      capabilities: [vision, chat, summarize]
-      speed: medium
-      quality: medium
-      hardware_tier: laptop
-      context_window: 32K
-      parameters: 11B
-      size: 7.9GB
-    - provider: Meta
-      engine: Llama 3.2 Vision
-      tag: llama3.2-vision:90b
-      capabilities: [vision, reasoning, chat]
-      speed: slow
-      quality: high
-      hardware_tier: workstation
-      context_window: 128K
-      parameters: 90B
-      size: 55GB
-    - provider: Microsoft
-      engine: Phi 4 Mini
-      tag: phi4-mini
-      capabilities: [chat, reasoning, summarize]
-      speed: fast
-      quality: medium
-      hardware_tier: budget
-      context_window: 32K
-      parameters: 3.8B
-      size: 2.5GB
-    - provider: Microsoft
-      engine: Phi 4
-      tag: phi4
-      capabilities: [chat, reasoning, code, planning]
-      speed: medium
-      quality: high
-      hardware_tier: gaming
-      context_window: 128K
-      parameters: 14B
-      size: 9.1GB
-    - provider: Mistral AI
-      engine: Mistral
-      tag: mistral
-      capabilities: [chat, reasoning, summarize]
-      speed: medium
-      quality: medium
-      hardware_tier: laptop
-      context_window: 32K
-      parameters: 7B
-      size: 4.1GB
-    - provider: HuggingFace
-      engine: Moondream 2
-      tag: moondream
-      capabilities: [vision, chat]
-      speed: fast
-      quality: low
-      hardware_tier: tiny
-      context_window: 8K
-      parameters: 1.4B
-      size: 829MB
-    - provider:
-      engine: Llama 4
-      tag: llama4:scout
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 109B
-      size: 67GB
-      homepage:
-      notes: |
+  - provider: QwenTeam
+    engine: Qwen2.5
+    tag: qwen2.5:0.5b
+    category: router
+    capabilities:
+    - chat
+    - summarize
+    - translate
+    speed: fast
+    quality: low
+    hardware_tier: tiny
+    context_window: 32K
+    size: 397 MB
+    homepage: https://github.com/QwenLM/Qwen3
+    notes: '- Local open-weight model
 
-    - provider:
-      engine: Llama 4
-      tag: llama4:maverick
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 400B
-      size: 245GB
-      homepage:
-      notes: |
-        - Massive size; add realistic hardware guidance
-    - provider:
-      engine: Llama 3.3
-      tag: llama3.3
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 70B
-      size: 43GB
-      homepage:
-      notes: |
-    - provider: Meta
-      engine: Llama 3.2
-      tag: llama3.2:1b
-      capabilities: [chat, summarize]
-      speed: fast
-      quality: low
-      hardware_tier: tiny
-      context_window: 32K
-      parameters: 1B
-      size: 1.3GB
+      - Suitable for low-resource devices
 
-    - provider:
-      engine: Llama 3.2
-      tag: llama3.2
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 3B
-      size: 2.0GB
-      homepage:
-      notes: |
+      - Useful for testing and offline workflows
 
-    - provider:
-      engine: Llama 3.2
-      tag: llama3.2:1b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 1B
-      size: 1.3GB
-      homepage:
-      notes: |
+      '
+  - provider: QwenTeam
+    engine: Qwen3 Coder
+    tag: qwen3-coder:30b
+    category: code
+    capabilities:
+    - code
+    - reasoning
+    - summarize
+    speed: slow
+    quality: high
+    hardware_tier: workstation
+    context_window: 128K
+    size: 18 GB
+    homepage: https://github.com/QwenLM/Qwen3
+    notes: '- Large coding-focused model
 
-    - provider:
-      engine: Llama 3.2 Vision
-      tag: llama3.2-vision
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 11B
-      size: 7.9GB
-      homepage:
-      notes: |
-        - Vision / multimodal
+      - Best for complex refactors, generation, and long code reasoning
 
-    - provider:
-      engine: Llama 3.2 Vision
-      tag: llama3.2-vision:90b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 90B
-      size: 55GB
-      homepage:
-      notes: |
-        - Vision / multimodal
+      - Requires 24GB+ VRAM or large system RAM for comfort
 
-    - provider:
-      engine: Llama 3.1
-      tag: llama3.1
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 8B
-      size: 4.7GB
-      homepage:
-      notes: |
+      '
+  - provider: DeepSeek
+    engine: DeepSeek R1
+    tag: deepseek-r1:latest
+    category: reason
+    capabilities:
+    - reasoning
+    - code
+    - planning
+    - chat
+    speed: medium
+    quality: high
+    hardware_tier: laptop
+    context_window: 128K
+    size: 5.2 GB
+    homepage: https://github.com/deepseek-ai/DeepSeek-R1
+    notes: '- Strong reasoning model (chain-of-thought / thinking mode).
 
-    - provider:
-      engine: Llama 3.1
-      tag: llama3.1:405b
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 405B
-      size: 231GB
-      homepage:
-      notes: |
-        - Massive; add hardware guidance
+      - Excellent price/performance for math, logic, complex prompts.
 
-    - provider:
-      engine: Phi 4
-      tag: phi4
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 14B
-      size: 9.1GB
-      homepage:
-      notes: |
+      - Runs surprisingly well quantized.
 
-    - provider:
-      engine: Phi 4 Mini
-      tag: phi4-mini
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 3.8B
-      size: 2.5GB
-      homepage:
-      notes: |
+      '
+  - provider: DeepSeek
+    engine: DeepSeek Coder V2
+    tag: deepseek-coder-v2:latest
+    category: code
+    capabilities:
+    - code
+    - summarize
+    - planning
+    - chat
+    speed: medium
+    quality: high
+    hardware_tier: gaming
+    context_window: 32K
+    size: 8.9 GB
+    homepage: https://github.com/deepseek-ai/DeepSeek-Coder
+    notes: '- Strong open-weight coding specialist
 
-    - provider:
-      engine: Mistral
-      tag: mistral
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 4.1GB
-      homepage:
-      notes: |
+      - Good balance of size vs capability
 
-    - provider:
-      engine: Moondream 2
-      tag: moondream
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 1.4B
-      size: 829MB
-      homepage:
-      notes: |
-        - Vision / multimodal (image understanding)
+      - Suitable default local coding model on 16GB GPUs
 
-    - provider:
-      engine: Neural Chat
-      tag: neural-chat
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 4.1GB
-      homepage:
-      notes: |
+      '
+  - provider: Google
+    engine: Gemma 3
+    tag: gemma3
+    category: TODO
+    capabilities:
+    - chat
+    - summarize
+    - translate
+    - reasoning
+    - code
+    - vision
+    speed: medium
+    quality: medium
+    hardware_tier: budget
+    context_window: 32K
+    parameters: 4B
+    size: 3.3 GB
+    homepage: https://ai.google.dev/gemma
+    notes: '- Multimodal (text+image)
 
-    - provider:
-      engine: Starling
-      tag: starling-lm
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 4.1GB
-      homepage:
-      notes: |
+      - Efficient all-rounder
 
-    - provider:
-      engine: Code Llama
-      tag: codellama
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 3.8GB
-      homepage:
-      notes: |
-        - Coding-focused
+      - Strong multilingual support
 
-    - provider:
-      engine: Llama 2 Uncensored
-      tag: llama2-uncensored
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 3.8GB
-      homepage:
-      notes: |
-        - “Uncensored” implies looser guardrails; be aware.
+      '
+  - provider: Google
+    engine: Gemma 3
+    tag: gemma3:12b
+    category: TODO
+    capabilities:
+    - code
+    - reasoning
+    - summarize
+    - translate
+    - planning
+    - chat
+    - vision
+    speed: slow
+    quality: high
+    hardware_tier: gaming
+    context_window: 128K
+    parameters: 12B
+    size: 8.1 GB
+    homepage: https://ai.google.dev/gemma
+    notes: '- Excellent balance of size vs quality
 
-    - provider:
-      engine: LLaVA
-      tag: llava
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 7B
-      size: 4.5GB
-      homepage:
-      notes: |
-        - Vision / multimodal
+      - Often competes with much larger models
 
-    - provider:
-      engine: Granite-3.3
-      tag: granite3.3
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
-      parameters: 8B
-      size: 4.9GB
-      homepage:
-      notes: |
-  
+      '
+  - provider: TODO
+    engine: Gemma 3
+    tag: gemma3:27b
+    category: TODO
+    capabilities:
+    - code
+    - reasoning
+    - summarize
+    - translate
+    - planning
+    - chat
+    - vision
+    speed: slow
+    quality: high
+    hardware_tier: workstation
+    context_window: 128K
+    parameters: 27B
+    size: 17 GB
+    homepage: TODO
+    notes: '- One of the strongest open models that runs on consumer hardware
+
+      - (24 GB VRAM class for comfortable Q4/Q5).
+
+      - Top-tier local multimodal and reasoning in 2026.
+
+      '
+  - provider: TODO
+    engine: QwQ
+    tag: qwq
+    category: TODO
+    capabilities:
+    - reasoning
+    - planning
+    - code
+    - chat
+    speed: slow
+    quality: high
+    hardware_tier: workstation
+    context_window: 40K
+    parameters: 32B
+    size: 20 GB
+    homepage: TODO
+    notes: '- Best at complex multi-step reasoning, math, logic puzzles.
+
+      - QwQ is the dedicated reasoning variant in the Qwen family (think o1-style chain-of-thought specialization).
+
+      - Competes with DeepSeek-R1 / larger models on hard problems despite "only" 32B params.
+
+      '
+  - provider: TODO
+    engine: DeepSeek-R1
+    tag: deepseek-r1
+    category: TODO
+    capabilities:
+    - reasoning
+    - code
+    - planning
+    - chat
+    speed: medium
+    quality: medium
+    hardware_tier: laptop
+    context_window: 128K
+    parameters: 7B
+    size: 4.7 GB
+    homepage: TODO
+    notes: '- Strong reasoning model (chain-of-thought / thinking mode).
+
+      - Excellent performance for math, logic, complex prompts.
+
+      - Runs surprisingly well quantized.
+
+      '
+  - provider: Meta
+    engine: Llama 3.2
+    tag: llama3.2:1b
+    category: TODO
+    capabilities:
+    - chat
+    - summarize
+    speed: fast
+    quality: low
+    hardware_tier: tiny
+    context_window: 32K
+    parameters: 1B
+    size: 1.3 GB
+    notes: TODO
+  - provider: Meta
+    engine: Llama 3.2
+    tag: llama3.2
+    category: TODO
+    capabilities:
+    - chat
+    - summarize
+    - planning
+    speed: fast
+    quality: low
+    hardware_tier: budget
+    context_window: 32K
+    parameters: 3B
+    size: 2.0 GB
+  - provider: Meta
+    engine: Llama 3.1
+    tag: llama3.1
+    category: TODO
+    capabilities:
+    - chat
+    - reasoning
+    - summarize
+    speed: medium
+    quality: medium
+    hardware_tier: laptop
+    context_window: 128K
+    parameters: 8B
+    size: 4.7 GB
+  - provider: Meta
+    engine: Llama 3.3
+    tag: llama3.3
+    category: TODO
+    capabilities:
+    - chat
+    - reasoning
+    - code
+    - summarize
+    speed: slow
+    quality: high
+    hardware_tier: workstation
+    context_window: 128K
+    parameters: 70B
+    size: 43 GB
+  - provider: Meta
+    engine: Llama 3.2 Vision
+    tag: llama3.2-vision
+    category: TODO
+    capabilities:
+    - vision
+    - chat
+    - summarize
+    speed: medium
+    quality: medium
+    hardware_tier: laptop
+    context_window: 32K
+    parameters: 11B
+    size: 7.9 GB
+  - provider: Meta
+    engine: Llama 3.2 Vision
+    tag: llama3.2-vision:90b
+    category: TODO
+    capabilities:
+    - vision
+    - reasoning
+    - chat
+    speed: slow
+    quality: high
+    hardware_tier: workstation
+    context_window: 128K
+    parameters: 90B
+    size: 55 GB
+  - provider: Microsoft
+    engine: Phi 4 Mini
+    tag: phi4-mini
+    category: TODO
+    capabilities:
+    - chat
+    - reasoning
+    - summarize
+    speed: fast
+    quality: medium
+    hardware_tier: budget
+    context_window: 32K
+    parameters: 3.8B
+    size: 2.5 GB
+  - provider: Microsoft
+    engine: Phi 4
+    tag: phi4
+    category: TODO
+    capabilities:
+    - chat
+    - reasoning
+    - code
+    - planning
+    speed: medium
+    quality: high
+    hardware_tier: gaming
+    context_window: 128K
+    parameters: 14B
+    size: 9.1 GB
+  - provider: Mistral AI
+    engine: Mistral
+    tag: mistral
+    category: TODO
+    capabilities:
+    - chat
+    - reasoning
+    - summarize
+    speed: medium
+    quality: medium
+    hardware_tier: laptop
+    context_window: 32K
+    parameters: 7B
+    size: 4.1 GB
+  - provider: HuggingFace
+    engine: Moondream 2
+    tag: moondream
+    category: TODO
+    capabilities:
+    - vision
+    - chat
+    speed: fast
+    quality: low
+    hardware_tier: tiny
+    context_window: 8K
+    parameters: 1.4B
+    size: 829 MB
+  - provider: TODO
+    engine: Llama 4
+    tag: llama4:scout
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 109B
+    size: 67 GB
+    homepage: TODO
+    notes: TODO
+  - provider: TODO
+    engine: Llama 4
+    tag: llama4:maverick
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 400B
+    size: 245 GB
+    homepage: TODO
+    notes: '- Massive size; add realistic hardware guidance
+
+      '
+  - provider: TODO
+    engine: Llama 3.1
+    tag: llama3.1:405b
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 405B
+    size: 231 GB
+    homepage: TODO
+    notes: '- Massive; add hardware guidance
+
+      '
+  - provider: TODO
+    engine: Neural Chat
+    tag: neural-chat
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 7B
+    size: 4.1 GB
+    homepage: TODO
+    notes: TODO
+  - provider: TODO
+    engine: Starling
+    tag: starling-lm
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 7B
+    size: 4.1 GB
+    homepage: TODO
+    notes: TODO
+  - provider: TODO
+    engine: Code Llama
+    tag: codellama
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 7B
+    size: 3.8 GB
+    homepage: TODO
+    notes: '- Coding-focused'
+  - provider: TODO
+    engine: Llama 2 Uncensored
+    tag: llama2-uncensored
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 7B
+    size: 3.8 GB
+    homepage: TODO
+    notes: Uncensored implies looser guardrails; be aware.
+  - provider: TODO
+    engine: LLaVA
+    tag: llava
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 7B
+    size: 4.5 GB
+    homepage: TODO
+    notes: '- Vision / multimodal
+
+      '
+  - provider: TODO
+    engine: Granite-3.3
+    tag: granite3.3
+    category: TODO
+    capabilities:
+    - TODO
+    speed: TODO
+    quality: TODO
+    hardware_tier: TODO
+    context_window: TODO
+    parameters: 8B
+    size: 4.9 GB
+    homepage: TODO
+    notes: TODO
   Cloud:
-    - provider: Google
-      engine: Gemini
-      endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
-      api_key_required: true
-      notes: |
-        - Free tier
-        - So support this first
+  - provider: Google
+    engine: Gemini
+    endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
+    api_key_required: true
+    notes: '- Free tier
 
-    - provider: OpenAI
-      engine: GPT
-      endpoint: https://api.openai.com/v1
-      api_key_required: true
-      notes: |
-        - General-purpose multimodal cloud model
-        - Widely supported across tooling and SDKs
-        - Usage-based pricing via API
-        - 0.1: Just use web/cli and copy-pasta
+      - So support this first
 
-    - provider: Anthropic
-      engine: Claude
-      endpoint: https://api.anthropic.com/v1
-      api_key_required: true
-      notes: |
-        - Strong reasoning and writing model
-        - Popular for long-context and document-heavy tasks
-        - API access required for programmatic use
-        - 0.1: Just use web/cli and copy-pasta
+      '
+  - provider: OpenAI
+    engine: GPT
+    endpoint: https://api.openai.com/v1
+    api_key_required: true
+    notes: '- General-purpose multimodal cloud model
 
-    - provider: Groq
-      engine: Llama
-      endpoint: https://api.groq.com/openai/v1
-      api_key_required: true
-      notes: |
-        - Extremely fast inference
-        - OpenAI-compatible API surface
-        - Best suited for latency-sensitive workloads
-        - 0.1: Just use web/cli and copy-pasta
+      - Widely supported across tooling and SDKs
+
+      - Usage-based pricing via API
+
+      - 0.1: Just use web/cli and copy-pasta
+
+      '
+  - provider: Anthropic
+    engine: Claude
+    endpoint: https://api.anthropic.com/v1
+    api_key_required: true
+    notes: '- Strong reasoning and writing model
+
+      - Popular for long-context and document-heavy tasks
+
+      - API access required for programmatic use
+
+      - 0.1: Just use web/cli and copy-pasta
+
+      '
+  - provider: Groq
+    engine: Llama
+    endpoint: https://api.groq.com/openai/v1
+    api_key_required: true
+    notes: '- Extremely fast inference
+
+      - OpenAI-compatible API surface
+
+      - Best suited for latency-sensitive workloads
+
+      - 0.1: Just use web/cli and copy-pasta
+
+      '
