@@ -258,13 +258,15 @@ Models:
       capabilities: [code, reasoning, summarize]
       speed: slow
       quality: high
-      hardware_tier: TODO
+      hardware_tier: workstation
       context_window: 128K
       category: code
       homepage: https://github.com/QwenLM/Qwen3
       size: 18 GB
       notes: |
-        - Add some notes here
+        - Large coding-focused model
+        - Best for complex refactors, generation, and long code reasoning
+        - Requires 24GB+ VRAM or large system RAM for comfort
     - provider: DeepSeek
       engine: DeepSeek R1
       tag: deepseek-r1:latest
@@ -283,64 +285,47 @@ Models:
     - provider: DeepSeek
       engine: DeepSeek Coder V2
       tag: deepseek-coder-v2:latest
-      capabilities: [TODO]
-      speed: TODO
-      quality: TODO
-      hardware_tier: TODO
-      context_window: TODO
+      capabilities: [code, summarize, planning, chat]
+      speed: medium
+      quality: high
+      hardware_tier: gaming
+      context_window: 32K
       category: code
       homepage: https://github.com/deepseek-ai/DeepSeek-Coder
       size: 8.9 GB
       notes: |
-        - Add some notes here
-
-    - provider:
-      engine: Gemma 3
-      tag: gemma3:1b
-      capabilities: [chat, summarize, translate]
-      speed: fast
-      quality: low
-      hardware_tier: tiny
-      context_window: 32K
-      parameters: 1B
-      size: 815MB
-      homepage:
-      notes: |
-        - Fill in: best use-case (chat/coding), quant details, license notes
-
-    - provider:
+        - Strong open-weight coding specialist
+        - Good balance of size vs capability
+        - Suitable default local coding model on 16GB GPUs
+    - provider: Google
       engine: Gemma 3
       tag: gemma3
       capabilities: [chat, summarize, translate, reasoning, code, vision]
       speed: medium
       quality: medium
       hardware_tier: budget
-      context_window: laptop
+      context_window: 32K
       parameters: 4B
       size: 3.3GB
-      homepage:
+      homepage: https://ai.google.dev/gemma
       notes: |
-        - Multimodal (text+image) starting here.
-        - Very efficient single-GPU model,
-        - strong multilingual support (>140 languages),
-        - good all-rounder.
-
-    - provider:
+        - Multimodal (text+image)
+        - Efficient all-rounder
+        - Strong multilingual support
+    - provider: Google
       engine: Gemma 3
       tag: gemma3:12b
-      capabilities: : [code, reasoning, summarize, translate, planning, chat, vision]
-      speed: medium
+      capabilities: [code, reasoning, summarize, translate, planning, chat, vision]
+      speed: slow
       quality: high
       hardware_tier: gaming
       context_window: 128K
       parameters: 12B
       size: 8.1GB
-      homepage:
+      homepage: https://ai.google.dev/gemma
       notes: |
-        - Notes: Excellent balance 
-        - often competes with much larger models in reasoning and coding
-        - while fitting on mid-range GPUs.
-
+        - Excellent balance of size vs quality
+        - Often competes with much larger models
     - provider:
       engine: Gemma 3
       tag: gemma3:27b
@@ -356,7 +341,6 @@ Models:
         - One of the strongest open models that runs on consumer hardware
         - (24 GB VRAM class for comfortable Q4/Q5).
         - Top-tier local multimodal and reasoning in 2026.
-
     - provider:
       engine: QwQ
       tag: qwq
@@ -372,7 +356,6 @@ Models:
         - Best at complex multi-step reasoning, math, logic puzzles.
         - QwQ is the dedicated reasoning variant in the Qwen family (think o1-style chain-of-thought specialization).
         - Competes with DeepSeek-R1 / larger models on hard problems despite "only" 32B params.
-
     - provider:
       engine: DeepSeek-R1
       tag: deepseek-r1
@@ -388,7 +371,107 @@ Models:
         - Strong reasoning model (chain-of-thought / thinking mode).
         - Excellent performance for math, logic, complex prompts.
         - Runs surprisingly well quantized.
-
+    - provider: Meta
+      engine: Llama 3.2
+      tag: llama3.2:1b
+      capabilities: [chat, summarize]
+      speed: fast
+      quality: low
+      hardware_tier: tiny
+      context_window: 32K
+      parameters: 1B
+      size: 1.3GB
+      notes: |
+    - provider: Meta
+      engine: Llama 3.2
+      tag: llama3.2
+      capabilities: [chat, summarize, planning]
+      speed: fast
+      quality: low
+      hardware_tier: budget
+      context_window: 32K
+      parameters: 3B
+      size: 2.0GB
+    - provider: Meta
+      engine: Llama 3.1
+      tag: llama3.1
+      capabilities: [chat, reasoning, summarize]
+      speed: medium
+      quality: medium
+      hardware_tier: laptop
+      context_window: 128K
+      parameters: 8B
+      size: 4.7GB
+    - provider: Meta
+      engine: Llama 3.3
+      tag: llama3.3
+      capabilities: [chat, reasoning, code, summarize]
+      speed: slow
+      quality: high
+      hardware_tier: workstation
+      context_window: 128K
+      parameters: 70B
+      size: 43GB
+    - provider: Meta
+      engine: Llama 3.2 Vision
+      tag: llama3.2-vision
+      capabilities: [vision, chat, summarize]
+      speed: medium
+      quality: medium
+      hardware_tier: laptop
+      context_window: 32K
+      parameters: 11B
+      size: 7.9GB
+    - provider: Meta
+      engine: Llama 3.2 Vision
+      tag: llama3.2-vision:90b
+      capabilities: [vision, reasoning, chat]
+      speed: slow
+      quality: high
+      hardware_tier: workstation
+      context_window: 128K
+      parameters: 90B
+      size: 55GB
+    - provider: Microsoft
+      engine: Phi 4 Mini
+      tag: phi4-mini
+      capabilities: [chat, reasoning, summarize]
+      speed: fast
+      quality: medium
+      hardware_tier: budget
+      context_window: 32K
+      parameters: 3.8B
+      size: 2.5GB
+    - provider: Microsoft
+      engine: Phi 4
+      tag: phi4
+      capabilities: [chat, reasoning, code, planning]
+      speed: medium
+      quality: high
+      hardware_tier: gaming
+      context_window: 128K
+      parameters: 14B
+      size: 9.1GB
+    - provider: Mistral AI
+      engine: Mistral
+      tag: mistral
+      capabilities: [chat, reasoning, summarize]
+      speed: medium
+      quality: medium
+      hardware_tier: laptop
+      context_window: 32K
+      parameters: 7B
+      size: 4.1GB
+    - provider: HuggingFace
+      engine: Moondream 2
+      tag: moondream
+      capabilities: [vision, chat]
+      speed: fast
+      quality: low
+      hardware_tier: tiny
+      context_window: 8K
+      parameters: 1.4B
+      size: 829MB
     - provider:
       engine: Llama 4
       tag: llama4:scout
@@ -415,7 +498,6 @@ Models:
       homepage:
       notes: |
         - Massive size; add realistic hardware guidance
-
     - provider:
       engine: Llama 3.3
       tag: llama3.3
@@ -428,6 +510,16 @@ Models:
       size: 43GB
       homepage:
       notes: |
+    - provider: Meta
+      engine: Llama 3.2
+      tag: llama3.2:1b
+      capabilities: [chat, summarize]
+      speed: fast
+      quality: low
+      hardware_tier: tiny
+      context_window: 32K
+      parameters: 1B
+      size: 1.3GB
 
     - provider:
       engine: Llama 3.2
