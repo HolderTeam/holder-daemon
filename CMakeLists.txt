@@ -51,6 +51,17 @@ if(CARD_SERVER_ENABLE_MD4C)
   pkg_check_modules(MD4C REQUIRED IMPORTED_TARGET md4c)
 endif()
 
+# Holder depends on caste for hardware capability classification.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/caste/CMakeLists.txt")
+  message(FATAL_ERROR
+    "Missing dependency at third_party/caste. "
+    "Run: git submodule update --init --recursive -- third_party/caste")
+endif()
+set(CASTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CASTE_BUILD_CLI OFF CACHE BOOL "" FORCE)
+set(CASTE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/caste)
+
 # ----------------------------
 # Target
 # ----------------------------
@@ -121,6 +132,7 @@ target_link_libraries(holder PRIVATE
   spdlog::spdlog
   XdgUtils::BaseDir
   yaml-cpp
+  caste
 )
 
 # Feature-linked deps
