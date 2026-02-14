@@ -126,6 +126,7 @@ target_link_libraries(lockfile_tests PRIVATE
   spdlog::spdlog
   XdgUtils::BaseDir
   yaml-cpp
+  caste
 )
 
 if(TARGET PkgConfig::LIBGIT2)

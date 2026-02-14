@@ -1,5 +1,6 @@
 #include "api/Session.h"
 
+#include "caste.hpp"
 #include "core/CardPaths.h"
 #include "core/ProjectPaths.h"
 #include "git/GitOps.h"
@@ -34,6 +35,7 @@
 #include <optional>
 #include <random>
 #include <unordered_map>
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -189,7 +191,13 @@ std::string content_type_for_extension(const std::string& ext) {
 }
 
 struct LocalModelMeta {
+  std::string tag;
+  std::string provider;
+  std::string engine;
   std::string category;
+  std::string hardware_tier;
+  std::string speed;
+  std::string quality;
   long long size_bytes = 0;
 };
 
@@ -219,6 +227,87 @@ long long parse_size_bytes(const std::string& input) {
   return static_cast<long long>(value * multiplier);
 }
 
+std::string trim_ascii(std::string s) {
+  auto not_space = [](unsigned char c) { return !std::isspace(c); };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+  return s;
+}
+
+std::string lowercase_ascii(std::string s) {
+  for (char& ch : s) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return s;
+}
+
+std::string normalize_caste_name(const std::string& raw) {
+  const std::string key = lowercase_ascii(trim_ascii(raw));
+  if (key.empty()) return {};
+  if (key == "mini" || key == "user" || key == "developer" || key == "workstation" || key == "rig") {
+    return key;
+  }
+
+  // Legacy models.yaml tier names.
+  if (key == "tiny") return "mini";
+  if (key == "budget") return "user";
+  if (key == "laptop") return "developer";
+  if (key == "gaming") return "workstation";
+
+  return {};
+}
+
+int caste_rank(const std::string& caste_name_value) {
+  const std::string n = normalize_caste_name(caste_name_value);
+  if (n == "mini") return 0;
+  if (n == "user") return 1;
+  if (n == "developer") return 2;
+  if (n == "workstation") return 3;
+  if (n == "rig") return 4;
+  return -1;
+}
+
+bool caste_meets_or_exceeds(const std::string& machine_caste, const std::string& required_caste) {
+  const int machine = caste_rank(machine_caste);
+  const int required = caste_rank(required_caste);
+  if (machine < 0 || required < 0) return false;
+  return machine >= required;
+}
+
+int quality_rank(const std::string& quality) {
+  const std::string q = lowercase_ascii(trim_ascii(quality));
+  if (q == "high") return 3;
+  if (q == "medium") return 2;
+  if (q == "low") return 1;
+  return 0;
+}
+
+int speed_rank(const std::string& speed) {
+  const std::string s = lowercase_ascii(trim_ascii(speed));
+  if (s == "fast") return 3;
+  if (s == "medium") return 2;
+  if (s == "slow") return 1;
+  return 0;
+}
+
+struct CasteInfo {
+  std::string name;
+  std::string reason;
+};
+
+std::optional<CasteInfo> detect_machine_caste() {
+  try {
+    const CasteResult result = detect_caste();
+    CasteInfo out;
+    out.name = normalize_caste_name(caste_name(result.caste));
+    out.reason = result.reason;
+    if (out.name.empty()) return std::nullopt;
+    return out;
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
 std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
   std::unordered_map<std::string, LocalModelMeta> meta;
   const auto models_path = find_models_path();
@@ -230,7 +319,17 @@ std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
       if (!node || !node["tag"]) continue;
       const std::string tag = node["tag"].as<std::string>();
       LocalModelMeta entry;
+      entry.tag = tag;
+      if (node["provider"]) entry.provider = node["provider"].as<std::string>();
+      if (node["engine"]) entry.engine = node["engine"].as<std::string>();
       if (node["category"]) entry.category = node["category"].as<std::string>();
+      if (node["hardware_tier"]) {
+        entry.hardware_tier = normalize_caste_name(node["hardware_tier"].as<std::string>());
+      } else if (node["caste"]) {
+        entry.hardware_tier = normalize_caste_name(node["caste"].as<std::string>());
+      }
+      if (node["speed"]) entry.speed = node["speed"].as<std::string>();
+      if (node["quality"]) entry.quality = node["quality"].as<std::string>();
       if (node["size"]) entry.size_bytes = parse_size_bytes(node["size"].as<std::string>());
       meta[tag] = entry;
     }
@@ -313,6 +412,47 @@ std::string pick_largest_model(const std::vector<holder::llm::LocalModel>& model
     }
   }
   return best->name;
+}
+
+std::vector<nlohmann::json> build_caste_recommendations(
+    const std::vector<holder::llm::LocalModel>& installed_models,
+    const std::unordered_map<std::string, LocalModelMeta>& model_meta,
+    const std::string& machine_caste) {
+  std::unordered_set<std::string> installed;
+  for (const auto& model : installed_models) {
+    installed.insert(model.name);
+  }
+
+  std::vector<nlohmann::json> out;
+  for (const auto& [tag, meta] : model_meta) {
+    if (meta.hardware_tier.empty()) continue;
+    if (!caste_meets_or_exceeds(machine_caste, meta.hardware_tier)) continue;
+
+    nlohmann::json item;
+    item["tag"] = tag;
+    item["provider"] = meta.provider.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.provider);
+    item["engine"] = meta.engine.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.engine);
+    item["category"] = meta.category.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.category);
+    item["required_caste"] = meta.hardware_tier;
+    item["installed"] = installed.find(tag) != installed.end();
+    out.push_back(std::move(item));
+  }
+
+  std::stable_sort(out.begin(), out.end(), [&](const nlohmann::json& a, const nlohmann::json& b) {
+    const std::string ta = a.value("tag", "");
+    const std::string tb = b.value("tag", "");
+    const auto ita = model_meta.find(ta);
+    const auto itb = model_meta.find(tb);
+    const int qa = (ita != model_meta.end()) ? quality_rank(ita->second.quality) : 0;
+    const int qb = (itb != model_meta.end()) ? quality_rank(itb->second.quality) : 0;
+    if (qa != qb) return qa > qb;
+    const int sa = (ita != model_meta.end()) ? speed_rank(ita->second.speed) : 0;
+    const int sb = (itb != model_meta.end()) ? speed_rank(itb->second.speed) : 0;
+    if (sa != sb) return sa > sb;
+    return ta < tb;
+  });
+
+  return out;
 }
 
 bool validate_link_target(holder::store::Db& db,
@@ -1009,10 +1149,36 @@ void Session::run() {
       }
     } else if (path == "/ai/capabilities" && req.method() == http::verb::get) {
       nlohmann::json data;
+      const auto machine_caste = detect_machine_caste();
+      const auto model_meta = load_local_model_meta();
+      if (machine_caste.has_value()) {
+        data["caste"] = {
+          {"name", machine_caste->name},
+          {"reason", machine_caste->reason.empty() ? nlohmann::json(nullptr)
+                                                   : nlohmann::json(machine_caste->reason)},
+        };
+      } else {
+        data["caste"] = nullptr;
+      }
       if (!runner_) {
         data["runner_available"] = false;
         data["error"] = "Local model runner not configured.";
         data["last_checked"] = now_epoch_seconds();
+        data["models"] = nlohmann::json::array();
+        if (machine_caste.has_value()) {
+          const auto recommendations = build_caste_recommendations({},
+                                                                   model_meta,
+                                                                   machine_caste->name);
+          nlohmann::json all = nlohmann::json::array();
+          for (const auto& item : recommendations) {
+            all.push_back(item);
+          }
+          data["recommended_models"] = all;
+          data["recommended_install"] = all;
+        } else {
+          data["recommended_models"] = nlohmann::json::array();
+          data["recommended_install"] = nlohmann::json::array();
+        }
       } else {
         const auto status = runner_->status();
         data["runner_available"] = status.available;
@@ -1030,6 +1196,25 @@ void Session::run() {
           });
         }
         data["models"] = models;
+
+        if (machine_caste.has_value()) {
+          const auto recommendations = build_caste_recommendations(status.models,
+                                                                   model_meta,
+                                                                   machine_caste->name);
+          nlohmann::json all = nlohmann::json::array();
+          nlohmann::json to_install = nlohmann::json::array();
+          for (const auto& item : recommendations) {
+            all.push_back(item);
+            if (!item.value("installed", false)) {
+              to_install.push_back(item);
+            }
+          }
+          data["recommended_models"] = all;
+          data["recommended_install"] = to_install;
+        } else {
+          data["recommended_models"] = nlohmann::json::array();
+          data["recommended_install"] = nlohmann::json::array();
+        }
       }
       nlohmann::json payload;
       payload["ok"] = true;
@@ -1113,6 +1298,7 @@ void Session::run() {
                 mode = "model";
               }
 
+              const auto machine_caste = detect_machine_caste();
               std::vector<std::string> candidates;
               candidates.reserve(runner_status.models.size());
               for (const auto& model : runner_status.models) {
@@ -1138,32 +1324,64 @@ void Session::run() {
                 thread_id = thread.thread_id;
               }
 
-              std::string router_model;
               const auto model_meta = load_local_model_meta();
-              if (forced_model.empty() && candidates.size() > 1) {
-                router_model = pick_router_model(runner_status.models, model_meta);
-                if (router_model.empty()) {
-                  router_model = pick_smallest_model(runner_status.models);
+              const bool forced_model_installed =
+                  forced_model.empty() ||
+                  std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
+              if (!forced_model_installed) {
+                res = error_response(http::status::bad_request,
+                                     "bad_request",
+                                     "Requested model is not installed.");
+              } else if (forced_model.empty() && machine_caste.has_value()) {
+                std::vector<std::string> caste_candidates;
+                caste_candidates.reserve(candidates.size());
+                for (const auto& candidate : candidates) {
+                  const auto it = model_meta.find(candidate);
+                  if (it == model_meta.end() || it->second.hardware_tier.empty() ||
+                      caste_meets_or_exceeds(machine_caste->name, it->second.hardware_tier)) {
+                    caste_candidates.push_back(candidate);
+                  }
+                }
+                if (!caste_candidates.empty()) {
+                  candidates = std::move(caste_candidates);
                 }
               }
 
-              holder::store::AiRunRepo run_repo(db_);
-              holder::model::AiRun run;
-              run.run_id = generate_uuid_v4();
-              run.project_id = project_id;
-              run.thread_id = thread_id;
-              run.mode = (mode == "model") ? "model" : "auto";
-              run.prompt = prompt;
-              if (!context_json.empty()) {
-                run.context_json = context_json;
-              }
-              if (!router_model.empty()) {
-                run.router_model = router_model;
-              }
-              run.status = "started";
-              run.created_at = now_epoch_seconds();
-              run.updated_at = run.created_at;
-              run_repo.create(run);
+              if (!forced_model_installed) {
+                // Response already set above.
+              } else {
+                std::string router_model;
+                if (forced_model.empty() && candidates.size() > 1) {
+                std::vector<holder::llm::LocalModel> candidate_models;
+                candidate_models.reserve(runner_status.models.size());
+                for (const auto& model : runner_status.models) {
+                  if (std::find(candidates.begin(), candidates.end(), model.name) != candidates.end()) {
+                    candidate_models.push_back(model);
+                  }
+                }
+                router_model = pick_router_model(candidate_models, model_meta);
+                if (router_model.empty()) {
+                  router_model = pick_smallest_model(candidate_models);
+                }
+                }
+
+                holder::store::AiRunRepo run_repo(db_);
+                holder::model::AiRun run;
+                run.run_id = generate_uuid_v4();
+                run.project_id = project_id;
+                run.thread_id = thread_id;
+                run.mode = (mode == "model") ? "model" : "auto";
+                run.prompt = prompt;
+                if (!context_json.empty()) {
+                  run.context_json = context_json;
+                }
+                if (!router_model.empty()) {
+                  run.router_model = router_model;
+                }
+                run.status = "started";
+                run.created_at = now_epoch_seconds();
+                run.updated_at = run.created_at;
+                run_repo.create(run);
 
               http::response<http::empty_body> sse{http::status::ok, 11};
               sse.set(http::field::content_type, "text/event-stream");
@@ -1219,10 +1437,15 @@ void Session::run() {
                           << "ranked by best fit for the user prompt.\n";
                 prompt_ss << "User prompt:\n" << router_input << "\n\n";
                 prompt_ss << "Candidate models:\n";
-                for (const auto& model : runner_status.models) {
-                  const auto it = model_meta.find(model.name);
+                for (const auto& name : candidates) {
+                  const auto model_it =
+                      std::find_if(runner_status.models.begin(),
+                                   runner_status.models.end(),
+                                   [&](const holder::llm::LocalModel& m) { return m.name == name; });
+                  if (model_it == runner_status.models.end()) continue;
+                  const auto it = model_meta.find(model_it->name);
                   const std::string category = (it != model_meta.end()) ? it->second.category : "";
-                  prompt_ss << "- " << model.name << " (size=" << model.size;
+                  prompt_ss << "- " << model_it->name << " (size=" << model_it->size;
                   if (!category.empty()) {
                     prompt_ss << ", category=" << category;
                   }
@@ -1248,7 +1471,14 @@ void Session::run() {
                 auto ranked = parse_ranked_models(router_text, candidates);
                 if (ranked.empty()) {
                   ranked = candidates;
-                  const std::string fallback = pick_largest_model(runner_status.models);
+                  std::vector<holder::llm::LocalModel> candidate_models;
+                  candidate_models.reserve(runner_status.models.size());
+                  for (const auto& model : runner_status.models) {
+                    if (std::find(candidates.begin(), candidates.end(), model.name) != candidates.end()) {
+                      candidate_models.push_back(model);
+                    }
+                  }
+                  const std::string fallback = pick_largest_model(candidate_models);
                   if (!fallback.empty()) {
                     ranked = {fallback};
                   }
@@ -1335,7 +1565,8 @@ void Session::run() {
                                                            : std::optional<std::string>(ranked_json),
                                        updated_at);
               }
-              return;
+                return;
+              }
             }
           }
         } catch (const std::exception& ex) {

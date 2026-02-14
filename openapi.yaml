@@ -68,9 +68,39 @@ components:
           format: int64
         modified_at:
           type: string
+    CasteInfo:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          enum: [mini, user, developer, workstation, rig]
+        reason:
+          type: string
+          nullable: true
+    CasteRecommendedModel:
+      type: object
+      required: [tag, required_caste, installed]
+      properties:
+        tag:
+          type: string
+        provider:
+          type: string
+          nullable: true
+        engine:
+          type: string
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        required_caste:
+          type: string
+          enum: [mini, user, developer, workstation, rig]
+        installed:
+          type: boolean
     RunnerCapabilitiesData:
       type: object
-      required: [runner_available, spawn_attempted, last_checked]
+      required: [runner_available, last_checked, models, recommended_models, recommended_install]
       properties:
         runner_available:
           type: boolean
@@ -84,10 +114,22 @@ components:
         error:
           type: string
           nullable: true
+        caste:
+          allOf:
+            - $ref: "#/components/schemas/CasteInfo"
+          nullable: true
         models:
           type: array
           items:
             $ref: "#/components/schemas/LocalModel"
+        recommended_models:
+          type: array
+          items:
+            $ref: "#/components/schemas/CasteRecommendedModel"
+        recommended_install:
+          type: array
+          items:
+            $ref: "#/components/schemas/CasteRecommendedModel"
     RunnerCapabilitiesResponse:
       type: object
       required: [ok, data]

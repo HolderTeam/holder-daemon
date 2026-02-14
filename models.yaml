@@ -32,7 +32,7 @@ info:
     - generosity refers to the free tier unless notes say otherwise
 
     '
-  last_updated: 2026-01-30
+  last_updated: 2026-02-14
 schema:
   enums:
     local_category:
@@ -58,11 +58,11 @@ schema:
     - medium
     - high
     hardware_tier:
-    - tiny
-    - budget
-    - laptop
-    - gaming
+    - mini
+    - user
+    - developer
     - workstation
+    - rig
   LocalEntry:
     required:
     - tag
@@ -111,19 +111,19 @@ model_rubric:
 
       '
     tiers:
-      tiny:
-        typical_device: Raspberry Pi / very old laptop
+      mini:
+        typical_device: Raspberry Pi / classic laptop
         comfortable_model_size_gb: <= 1.5
-      budget:
-        typical_device: Low-end laptop / iGPU
+      user:
+        typical_device: Consumer laptop / iGPU
         comfortable_model_size_gb: <= 4
-      laptop:
-        typical_device: Modern laptop / small dGPU
+      developer:
+        typical_device: Premium laptop / small dGPU
         comfortable_model_size_gb: <= 8
-      gaming:
-        typical_device: Mid-range gaming GPU
-        comfortable_model_size_gb: <= 16
       workstation:
+        typical_device: Creative workstation, gaming PC
+        comfortable_model_size_gb: <= 16
+      rig:
         typical_device: 24GB+ VRAM or large system RAM
         comfortable_model_size_gb: '> 16'
     assignment_rule: 'Choose the smallest tier whose comfortable_model_size_gb is greater than or equal to the model''s size.
@@ -286,7 +286,7 @@ Models:
     - translate
     speed: fast
     quality: low
-    hardware_tier: tiny
+    hardware_tier: mini
     context_window: 32K
     size: 397 MB
     homepage: https://github.com/QwenLM/Qwen3
@@ -307,7 +307,7 @@ Models:
     - summarize
     speed: slow
     quality: high
-    hardware_tier: workstation
+    hardware_tier: rig
     context_window: 128K
     size: 18 GB
     homepage: https://github.com/QwenLM/Qwen3
@@ -329,7 +329,7 @@ Models:
     - chat
     speed: medium
     quality: high
-    hardware_tier: laptop
+    hardware_tier: developer
     context_window: 128K
     size: 5.2 GB
     homepage: https://github.com/deepseek-ai/DeepSeek-R1
@@ -351,7 +351,7 @@ Models:
     - chat
     speed: medium
     quality: high
-    hardware_tier: gaming
+    hardware_tier: workstation
     context_window: 32K
     size: 8.9 GB
     homepage: https://github.com/deepseek-ai/DeepSeek-Coder
@@ -375,7 +375,7 @@ Models:
     - vision
     speed: medium
     quality: medium
-    hardware_tier: budget
+    hardware_tier: user
     context_window: 32K
     parameters: 4B
     size: 3.3 GB
@@ -401,7 +401,7 @@ Models:
     - vision
     speed: slow
     quality: high
-    hardware_tier: gaming
+    hardware_tier: workstation
     context_window: 128K
     parameters: 12B
     size: 8.1 GB
@@ -425,7 +425,7 @@ Models:
     - vision
     speed: slow
     quality: high
-    hardware_tier: workstation
+    hardware_tier: rig
     context_window: 128K
     parameters: 27B
     size: 17 GB
@@ -448,7 +448,7 @@ Models:
     - chat
     speed: slow
     quality: high
-    hardware_tier: workstation
+    hardware_tier: rig
     context_window: 40K
     parameters: 32B
     size: 20 GB
@@ -471,7 +471,7 @@ Models:
     - chat
     speed: medium
     quality: medium
-    hardware_tier: laptop
+    hardware_tier: developer
     context_window: 128K
     parameters: 7B
     size: 4.7 GB
@@ -492,7 +492,7 @@ Models:
     - summarize
     speed: fast
     quality: low
-    hardware_tier: tiny
+    hardware_tier: mini
     context_window: 32K
     parameters: 1B
     size: 1.3 GB
@@ -507,7 +507,7 @@ Models:
     - planning
     speed: fast
     quality: low
-    hardware_tier: budget
+    hardware_tier: user
     context_window: 32K
     parameters: 3B
     size: 2.0 GB
@@ -521,7 +521,7 @@ Models:
     - summarize
     speed: medium
     quality: medium
-    hardware_tier: laptop
+    hardware_tier: developer
     context_window: 128K
     parameters: 8B
     size: 4.7 GB
@@ -536,7 +536,7 @@ Models:
     - summarize
     speed: slow
     quality: high
-    hardware_tier: workstation
+    hardware_tier: rig
     context_window: 128K
     parameters: 70B
     size: 43 GB
@@ -550,7 +550,7 @@ Models:
     - summarize
     speed: medium
     quality: medium
-    hardware_tier: laptop
+    hardware_tier: developer
     context_window: 32K
     parameters: 11B
     size: 7.9 GB
@@ -564,7 +564,7 @@ Models:
     - chat
     speed: slow
     quality: high
-    hardware_tier: workstation
+    hardware_tier: rig
     context_window: 128K
     parameters: 90B
     size: 55 GB
@@ -578,7 +578,7 @@ Models:
     - summarize
     speed: fast
     quality: medium
-    hardware_tier: budget
+    hardware_tier: user
     context_window: 32K
     parameters: 3.8B
     size: 2.5 GB
@@ -593,7 +593,7 @@ Models:
     - planning
     speed: medium
     quality: high
-    hardware_tier: gaming
+    hardware_tier: workstation
     context_window: 128K
     parameters: 14B
     size: 9.1 GB
@@ -607,7 +607,7 @@ Models:
     - summarize
     speed: medium
     quality: medium
-    hardware_tier: laptop
+    hardware_tier: developer
     context_window: 32K
     parameters: 7B
     size: 4.1 GB
@@ -620,7 +620,7 @@ Models:
     - chat
     speed: fast
     quality: low
-    hardware_tier: tiny
+    hardware_tier: mini
     context_window: 8K
     parameters: 1.4B
     size: 829 MB
