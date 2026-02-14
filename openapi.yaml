@@ -100,7 +100,7 @@ components:
           type: boolean
     RunnerCapabilitiesData:
       type: object
-      required: [runner_available, last_checked, models, recommended_models, recommended_install]
+      required: [runner_available, last_checked, router_config, models, recommended_models, recommended_install]
       properties:
         runner_available:
           type: boolean
@@ -118,6 +118,8 @@ components:
           allOf:
             - $ref: "#/components/schemas/CasteInfo"
           nullable: true
+        router_config:
+          $ref: "#/components/schemas/AiRouterConfigData"
         models:
           type: array
           items:
@@ -139,6 +141,68 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RunnerCapabilitiesData"
+    AiRouterConfigScoped:
+      type: object
+      required: [router_model, updated_at]
+      properties:
+        project_id:
+          type: string
+          nullable: true
+        router_model:
+          type: string
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+          nullable: true
+    AiRouterConfigEffective:
+      type: object
+      required: [scope, router_model]
+      properties:
+        scope:
+          type: string
+          enum: [auto, global, project]
+        router_model:
+          type: string
+          nullable: true
+    AiRouterConfigData:
+      type: object
+      required: [global, project, effective]
+      properties:
+        global:
+          $ref: "#/components/schemas/AiRouterConfigScoped"
+        project:
+          allOf:
+            - $ref: "#/components/schemas/AiRouterConfigScoped"
+          nullable: true
+        effective:
+          $ref: "#/components/schemas/AiRouterConfigEffective"
+    AiRouterConfigResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AiRouterConfigData"
+    AiRouterConfigUpdateRequest:
+      type: object
+      required: [scope]
+      properties:
+        scope:
+          type: string
+          enum: [global, project]
+        project_id:
+          type: string
+          nullable: true
+        router_model:
+          type: string
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+          nullable: true
     RunnerPullProgress:
       type: object
       required: [completed, total, percent, stage]
@@ -1633,6 +1697,13 @@ paths:
   /ai/capabilities:
     get:
       summary: Get local model runner capabilities
+      parameters:
+        - in: query
+          name: project_id
+          required: false
+          schema:
+            type: string
+          description: Optional project id for project-scoped router config in response.
       responses:
         "200":
           description: OK
@@ -1664,6 +1735,62 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "501":
           description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/router/config:
+    get:
+      summary: Get router model configuration
+      parameters:
+        - in: query
+          name: project_id
+          required: false
+          schema:
+            type: string
+          description: Optional project id for project-scoped config lookup.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiRouterConfigResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Set or clear router model configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiRouterConfigUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiRouterConfigResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:

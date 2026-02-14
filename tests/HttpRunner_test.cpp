@@ -38,6 +38,9 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   REQUIRE(caps["data"]["recommended_models"].is_array());
   REQUIRE(caps["data"]["recommended_install"].is_array());
   REQUIRE(caps["data"].contains("caste"));
+  REQUIRE(caps["data"].contains("router_config"));
+  REQUIRE(caps["data"]["router_config"].contains("effective"));
+  REQUIRE(caps["data"]["router_config"]["effective"]["scope"] == "auto");
 
   const auto retry = http_json_request(bound.bind,
                                        bound.port,

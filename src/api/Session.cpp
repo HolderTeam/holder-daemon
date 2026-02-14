@@ -9,6 +9,7 @@
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
 #include "store/AiMessageRepo.h"
+#include "store/AiRouterConfigRepo.h"
 #include "store/AiRunRepo.h"
 #include "store/LinkRepo.h"
 #include "store/ProjectRepo.h"
@@ -1149,6 +1150,55 @@ void Session::run() {
       }
     } else if (path == "/ai/capabilities" && req.method() == http::verb::get) {
       nlohmann::json data;
+      const std::string project_id = param("project_id");
+      std::optional<holder::model::AiRouterConfig> global_router_cfg;
+      std::optional<holder::model::AiRouterConfig> project_router_cfg;
+      try {
+        holder::store::AiRouterConfigRepo router_cfg_repo(db_);
+        global_router_cfg = router_cfg_repo.get_global();
+        project_router_cfg =
+            project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
+                               : router_cfg_repo.get_for_project(project_id);
+      } catch (const std::exception&) {
+        global_router_cfg.reset();
+        project_router_cfg.reset();
+      }
+      data["router_config"] = {
+        {"global",
+         {
+             {"router_model",
+              global_router_cfg.has_value() ? nlohmann::json(global_router_cfg->router_model)
+                                            : nlohmann::json(nullptr)},
+             {"updated_at",
+              global_router_cfg.has_value() ? nlohmann::json(global_router_cfg->updated_at)
+                                            : nlohmann::json(nullptr)},
+         }},
+        {"project",
+         project_id.empty()
+             ? nlohmann::json(nullptr)
+             : nlohmann::json{
+                   {"project_id", project_id},
+                   {"router_model", project_router_cfg.has_value()
+                                        ? nlohmann::json(project_router_cfg->router_model)
+                                        : nlohmann::json(nullptr)},
+                   {"updated_at", project_router_cfg.has_value()
+                                      ? nlohmann::json(project_router_cfg->updated_at)
+                                      : nlohmann::json(nullptr)},
+               }},
+      };
+      std::string router_effective_scope = "auto";
+      nlohmann::json router_effective_model = nullptr;
+      if (project_router_cfg.has_value()) {
+        router_effective_scope = "project";
+        router_effective_model = project_router_cfg->router_model;
+      } else if (global_router_cfg.has_value()) {
+        router_effective_scope = "global";
+        router_effective_model = global_router_cfg->router_model;
+      }
+      data["router_config"]["effective"] = {
+        {"scope", router_effective_scope},
+        {"router_model", router_effective_model},
+      };
       const auto machine_caste = detect_machine_caste();
       const auto model_meta = load_local_model_meta();
       if (machine_caste.has_value()) {
@@ -1247,6 +1297,170 @@ void Session::run() {
         payload["ok"] = true;
         payload["data"] = data;
         res = json_response(http::status::ok, payload);
+      }
+    } else if (path == "/ai/router/config" && req.method() == http::verb::get) {
+      try {
+        const std::string project_id = param("project_id");
+        holder::store::AiRouterConfigRepo repo(db_);
+        const auto global_cfg = repo.get_global();
+        const auto project_cfg =
+            project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
+                               : repo.get_for_project(project_id);
+
+        nlohmann::json data;
+        data["global"] = {
+          {"router_model", global_cfg.has_value() ? nlohmann::json(global_cfg->router_model)
+                                                  : nlohmann::json(nullptr)},
+          {"updated_at", global_cfg.has_value() ? nlohmann::json(global_cfg->updated_at)
+                                                : nlohmann::json(nullptr)},
+        };
+        if (!project_id.empty()) {
+          data["project"] = {
+            {"project_id", project_id},
+            {"router_model", project_cfg.has_value() ? nlohmann::json(project_cfg->router_model)
+                                                     : nlohmann::json(nullptr)},
+            {"updated_at", project_cfg.has_value() ? nlohmann::json(project_cfg->updated_at)
+                                                   : nlohmann::json(nullptr)},
+          };
+        } else {
+          data["project"] = nullptr;
+        }
+
+        std::string effective_scope = "auto";
+        nlohmann::json effective_model = nullptr;
+        if (project_cfg.has_value()) {
+          effective_scope = "project";
+          effective_model = project_cfg->router_model;
+        } else if (global_cfg.has_value()) {
+          effective_scope = "global";
+          effective_model = global_cfg->router_model;
+        }
+        data["effective"] = {
+          {"scope", effective_scope},
+          {"router_model", effective_model},
+        };
+
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = data;
+        res = json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if (path == "/ai/router/config" && req.method() == http::verb::put) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("scope")) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing scope.");
+        } else {
+          const std::string scope = body.at("scope").get<std::string>();
+          if (scope != "global" && scope != "project") {
+            res = error_response(http::status::bad_request,
+                                 "bad_request",
+                                 "scope must be global or project.");
+          } else {
+            bool valid = true;
+            std::string project_id;
+            if (scope == "project") {
+              if (!body.contains("project_id") || body.at("project_id").is_null()) {
+                res = error_response(http::status::bad_request,
+                                     "bad_request",
+                                     "project_id required for project scope.");
+                valid = false;
+              }
+              if (valid) {
+                project_id = body.at("project_id").get<std::string>();
+              }
+              if (valid && project_id.empty()) {
+                res = error_response(http::status::bad_request,
+                                     "bad_request",
+                                     "project_id required for project scope.");
+                valid = false;
+              }
+              if (valid) {
+                holder::store::ProjectRepo projects(db_);
+                if (!projects.get(project_id).has_value()) {
+                  res = error_response(http::status::not_found, "not_found", "Project not found.");
+                  valid = false;
+                }
+              }
+            }
+
+            if (valid) {
+              std::string router_model;
+              bool has_model = false;
+              if (body.contains("router_model") && !body.at("router_model").is_null()) {
+                router_model = body.at("router_model").get<std::string>();
+                has_model = !router_model.empty();
+              }
+
+              const long long updated_at =
+                  (body.contains("updated_at") && !body.at("updated_at").is_null())
+                      ? body.at("updated_at").get<long long>()
+                      : now_epoch_seconds();
+
+              holder::store::AiRouterConfigRepo repo(db_);
+              if (scope == "global") {
+                if (has_model) {
+                  repo.set_global(router_model, updated_at);
+                } else {
+                  repo.clear_global();
+                }
+              } else {
+                if (has_model) {
+                  repo.set_for_project(project_id, router_model, updated_at);
+                } else {
+                  repo.clear_for_project(project_id);
+                }
+              }
+
+              const auto global_cfg = repo.get_global();
+              const auto project_cfg =
+                  (scope == "project" && !project_id.empty())
+                      ? repo.get_for_project(project_id)
+                      : std::optional<holder::model::AiRouterConfig>{};
+
+              nlohmann::json data;
+              data["global"] = {
+                {"router_model", global_cfg.has_value() ? nlohmann::json(global_cfg->router_model)
+                                                        : nlohmann::json(nullptr)},
+                {"updated_at", global_cfg.has_value() ? nlohmann::json(global_cfg->updated_at)
+                                                      : nlohmann::json(nullptr)},
+              };
+              if (scope == "project" && !project_id.empty()) {
+                data["project"] = {
+                  {"project_id", project_id},
+                  {"router_model", project_cfg.has_value() ? nlohmann::json(project_cfg->router_model)
+                                                           : nlohmann::json(nullptr)},
+                  {"updated_at", project_cfg.has_value() ? nlohmann::json(project_cfg->updated_at)
+                                                         : nlohmann::json(nullptr)},
+                };
+              } else {
+                data["project"] = nullptr;
+              }
+              std::string effective_scope = "auto";
+              nlohmann::json effective_model = nullptr;
+              if (project_cfg.has_value()) {
+                effective_scope = "project";
+                effective_model = project_cfg->router_model;
+              } else if (global_cfg.has_value()) {
+                effective_scope = "global";
+                effective_model = global_cfg->router_model;
+              }
+              data["effective"] = {
+                {"scope", effective_scope},
+                {"router_model", effective_model},
+              };
+
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = data;
+              res = json_response(http::status::ok, payload);
+            }
+          }
+        }
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else if (path == "/ai/complete" && req.method() == http::verb::post) {
       if (!runner_) {
@@ -1352,17 +1566,46 @@ void Session::run() {
               } else {
                 std::string router_model;
                 if (forced_model.empty() && candidates.size() > 1) {
-                std::vector<holder::llm::LocalModel> candidate_models;
-                candidate_models.reserve(runner_status.models.size());
-                for (const auto& model : runner_status.models) {
-                  if (std::find(candidates.begin(), candidates.end(), model.name) != candidates.end()) {
-                    candidate_models.push_back(model);
+                  auto is_installed = [&](const std::string& name) {
+                    return std::find_if(runner_status.models.begin(),
+                                        runner_status.models.end(),
+                                        [&](const holder::llm::LocalModel& m) {
+                                          return m.name == name;
+                                        }) != runner_status.models.end();
+                  };
+
+                  try {
+                    holder::store::AiRouterConfigRepo router_cfg_repo(db_);
+                    if (project_id.has_value()) {
+                      const auto cfg = router_cfg_repo.get_for_project(project_id.value());
+                      if (cfg.has_value() && is_installed(cfg->router_model)) {
+                        router_model = cfg->router_model;
+                      }
+                    }
+                    if (router_model.empty()) {
+                      const auto global_cfg = router_cfg_repo.get_global();
+                      if (global_cfg.has_value() && is_installed(global_cfg->router_model)) {
+                        router_model = global_cfg->router_model;
+                      }
+                    }
+                  } catch (const std::exception&) {
+                    // Router config storage unavailable; fallback to auto pick.
                   }
-                }
-                router_model = pick_router_model(candidate_models, model_meta);
-                if (router_model.empty()) {
-                  router_model = pick_smallest_model(candidate_models);
-                }
+
+                  std::vector<holder::llm::LocalModel> candidate_models;
+                  candidate_models.reserve(runner_status.models.size());
+                  for (const auto& model : runner_status.models) {
+                    if (std::find(candidates.begin(), candidates.end(), model.name) != candidates.end()) {
+                      candidate_models.push_back(model);
+                    }
+                  }
+
+                  if (router_model.empty()) {
+                    router_model = pick_router_model(candidate_models, model_meta);
+                  }
+                  if (router_model.empty()) {
+                    router_model = pick_smallest_model(candidate_models);
+                  }
                 }
 
                 holder::store::AiRunRepo run_repo(db_);

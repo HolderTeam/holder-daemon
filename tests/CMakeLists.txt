@@ -24,6 +24,7 @@ add_executable(lockfile_tests
   ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
   HttpAiThreads_test.cpp
+  HttpAiRouterConfig_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
   HttpAiComplete_test.cpp
@@ -54,6 +55,7 @@ add_executable(lockfile_tests
   AiThreadRepo_test.cpp
   AiMessageRepo_test.cpp
   AiRunRepo_test.cpp
+  AiRouterConfigRepo_test.cpp
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
@@ -94,6 +96,7 @@ add_executable(lockfile_tests
   ../src/store/AiThreadRepo.cpp
   ../src/store/AiMessageRepo.cpp
   ../src/store/AiRunRepo.cpp
+  ../src/store/AiRouterConfigRepo.cpp
   ../src/store/Rebuilder.cpp
   ../src/store/Migrations.cpp
   ../src/store/CardStore.cpp

@@ -91,6 +91,7 @@ add_executable(holder
   src/store/AiThreadRepo.cpp
   src/store/AiMessageRepo.cpp
   src/store/AiRunRepo.cpp
+  src/store/AiRouterConfigRepo.cpp
   src/store/Rebuilder.cpp
   src/store/CardStore.cpp
   src/store/Db.cpp
