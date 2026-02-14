@@ -186,7 +186,9 @@ Clients can:
 * list projects
 * read/write notes
 * manage links
-* submit AI jobs
+* run AI completions and inspect AI runs
+* inspect local model capabilities/recommendations
+* pull local models and stream pull progress
 * query search
 * attach metadata
 

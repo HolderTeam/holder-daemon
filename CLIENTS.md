@@ -1,15 +1,13 @@
 # Client Integration Guide
 
-This document describes how a client should connect to the holder server and
-interact with the API in a safe, predictable way. It assumes a local-first
-deployment and a server that owns all persistent data.
+This document describes how clients should connect to Holder safely and predictably.
 
-## 1) Discover the running server
+## 1) Discover the Running Server
 
-Clients should read the server info file (`holder.json`) to find the bind
-address, port, auth token, and version fields.
+Read `holder.json`.
 
 Expected fields:
+
 - `pid`
 - `api_version`
 - `server_version`
@@ -18,134 +16,87 @@ Expected fields:
 - `auth_token`
 - `started_at`
 
-`holder.json` is written atomically by the server on startup. If the file does
-not exist, the server may not be running.
+If the file does not exist, server may not be running.
 
-## 2) First API call: health check
+## 2) Health Check
 
-The client should validate connectivity and API compatibility:
+Call:
 
 - `GET /health`
 - Header: `Authorization: Bearer <auth_token>`
 
-Expected success response:
-```json
-{
-  "ok": true,
-  "data": {
-    "db_ok": true,
-    "uptime_ms": 1234,
-    "api_version": "0.1",
-    "server_version": "0.1.0",
-    "pid": 12345
-  }
-}
-```
+Use this to validate API compatibility and process health.
 
-If `api_version` is unknown or unsupported, the client should refuse to
-continue and prompt the user to update either the client or the server.
+## 3) Auth Model
 
-## 3) Auth model
-
-All API requests require the bearer token from `holder.json`.
+All API requests require bearer auth.
 
 Header:
-```
-Authorization: Bearer <auth_token>
-```
 
-If the token is missing or invalid, the server responds:
-```json
-{
-  "ok": false,
-  "error": { "code": "unauthorized", "message": "Missing or invalid token." }
-}
-```
+`Authorization: Bearer <auth_token>`
 
-## 4) Response shape conventions
+## 4) Response Conventions
 
-All JSON responses are standardized:
+- Success: `{ "ok": true, "data": ... }`
+- Error: `{ "ok": false, "error": { "code": "...", "message": "..." } }`
 
-- Success:
-```json
-{ "ok": true, "data": ... }
-```
-- Error:
-```json
-{ "ok": false, "error": { "code": "...", "message": "..." } }
-```
+## 5) First-Run Project Flow
 
-## 5) First-run flow (create project + first card)
+1. `GET /projects`
+2. If empty: `POST /projects` with `{ "name": "My Project" }`
+3. Create first card: `POST /cards`
+4. List cards: `GET /cards?project_id=...`
+5. Load card: `GET /cards/{card_id}`
+6. Autosave edits: `PATCH /cards/{card_id}`
 
-This is the expected client flow for a brand new user:
+## 6) AI Onboarding Flow (Local Models)
 
-1. `GET /projects` to list existing projects.
-2. If empty, `POST /projects` with minimal fields:
-```json
-{ "name": "My Project" }
-```
-The server generates:
-- `project_id`
-- `created_at` / `updated_at` if omitted or 0.
-- `root_path` if omitted.
+1. `GET /ai/capabilities`
+2. Read:
+   - `runner_available`
+   - `error`
+   - `caste` (`name`, `reason`)
+   - `models` (installed)
+   - `recommended_models`
+   - `recommended_install`
+3. If required, start install:
+   - `POST /ai/runner/pull` with `{ "model": "<tag>" }`
+4. Track install:
+   - Poll: `GET /ai/runner/pull/{job_id}`
+   - Stream: `GET /ai/runner/pull/{job_id}/events`
+5. Refresh `GET /ai/capabilities` after pull completes.
 
-3. Create the first card:
-```json
-{ "project_id": "<returned id>", "title": "First note", "content": "..." }
-```
-The server generates:
-- `card_id`
-- `created_at` / `updated_at` if omitted or 0.
+## 7) AI Execution + History
 
-4. `GET /cards?project_id=<id>` to list cards for the sidebar.
-5. `GET /cards/<card_id>` to load full content.
-6. `PATCH /cards/<card_id>` to autosave edits.
+Primary execution endpoint:
 
-## 6) Typical request flow (ongoing usage)
+- `POST /ai/complete` (SSE stream)
 
-1. `GET /projects` to list projects.
-2. `GET /cards?project_id=...` for the project list.
-3. `GET /cards/{id}` to load content.
-4. `PATCH /cards/{id}` for updates (auto-save style).
-5. `GET /search/cards?project_id=...&q=...` for search.
+Persisted run history:
 
-## 7) Search endpoints
+- `GET /ai/runs?project_id=...` or `GET /ai/runs?thread_id=...`
+- `GET /ai/runs/{run_id}`
 
-Search endpoints require `project_id` and `q`:
+Thread/message APIs:
+
+- `GET/POST /ai/threads`
+- `GET/PATCH /ai/threads/{thread_id}`
+- `GET/POST /ai/messages`
+- `GET/PATCH/DELETE /ai/messages/{message_id}`
+
+For manual capture (copy/paste cloud responses), clients can create AI messages with source/provenance fields via `POST /ai/messages`.
+
+## 8) Search
 
 - `GET /search/cards?project_id=...&q=...`
 - `GET /search/ai?project_id=...&q=...`
 
-Results include metadata so clients can render a list immediately:
+## 9) Docs Endpoints
 
-`/search/cards` response items:
-- `card_id`
-- `title`
-- `updated_at`
-- `created_at`
-- `snippet`
-- `rank`
+- Swagger UI: `GET /docs`
+- OpenAPI: `GET /openapi.yaml`
+- Model catalog: `GET /models.yaml`
 
-`/search/ai` response items:
-- `message_id`
-- `created_at`
-- `snippet`
-- `rank`
+## 10) Local-First Rule
 
-## 8) Notes on local-first behavior
-
-Clients should never touch the project repo or database directly. The server
-owns all persistence and indexing.
-
-If the server is not running, the client can prompt the user to start it or
-attempt to launch it as a separate process.
-
-## 9) Swagger docs
-
-The server exposes Swagger UI at:
-
-- `http://<bind>:<port>/docs`
-
-The OpenAPI spec is served at:
-
-- `http://<bind>:<port>/openapi.yaml`
+Clients must never write project files or DB directly. Server owns persistence/indexing.
