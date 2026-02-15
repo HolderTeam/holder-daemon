@@ -83,6 +83,7 @@ add_executable(holder
   src/llm/LocalModelRunner.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
+  src/api/routes/AiProviderRoutes.cpp
   src/api/routes/StaticRoutes.cpp
   src/api/support/PathDiscovery.cpp
   src/api/support/CloudConfig.cpp

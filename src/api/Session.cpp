@@ -1,5 +1,6 @@
 #include "api/Session.h"
 #include "api/routes/StaticRoutes.h"
+#include "api/routes/AiProviderRoutes.h"
 #include "api/support/PathDiscovery.h"
 #include "api/support/CloudConfig.h"
 #include "api/support/CloudClient.h"
@@ -31,8 +32,6 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-
-#include <yaml-cpp/yaml.h>
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -144,44 +143,6 @@ std::string mask_api_key(const std::string& api_key) {
   if (api_key.empty()) return {};
   if (api_key.size() <= 8) return "****";
   return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
-}
-
-nlohmann::json yaml_node_to_json(const YAML::Node& node) {
-  if (!node) return nullptr;
-  if (node.IsNull()) return nullptr;
-  if (node.IsScalar()) {
-    const std::string raw = node.as<std::string>();
-    if (raw == "true") return true;
-    if (raw == "false") return false;
-    try {
-      size_t pos = 0;
-      const long long i = std::stoll(raw, &pos);
-      if (pos == raw.size()) return i;
-    } catch (const std::exception&) {
-    }
-    try {
-      size_t pos = 0;
-      const double d = std::stod(raw, &pos);
-      if (pos == raw.size()) return d;
-    } catch (const std::exception&) {
-    }
-    return raw;
-  }
-  if (node.IsSequence()) {
-    nlohmann::json out = nlohmann::json::array();
-    for (const auto& item : node) {
-      out.push_back(yaml_node_to_json(item));
-    }
-    return out;
-  }
-  if (node.IsMap()) {
-    nlohmann::json out = nlohmann::json::object();
-    for (const auto& it : node) {
-      out[it.first.as<std::string>()] = yaml_node_to_json(it.second);
-    }
-    return out;
-  }
-  return nullptr;
 }
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes);
@@ -1010,176 +971,8 @@ void Session::run() {
       payload["ok"] = true;
       payload["data"] = data;
       res = json_response(http::status::ok, payload);
-    } else if (path == "/ai/providers/catalog" && req.method() == http::verb::get) {
-      try {
-        const auto cloudproviders_path = support::find_cloudproviders_path();
-        if (!cloudproviders_path.has_value()) {
-          res = error_response(http::status::bad_request,
-                               "bad_request",
-                               "cloudproviders.yaml not found.");
-        } else {
-          const YAML::Node root = YAML::LoadFile(cloudproviders_path->string());
-          holder::store::AiProviderCredentialRepo credential_repo(db_);
-          std::unordered_set<std::string> configured_ids;
-          for (const auto& credential : credential_repo.list()) {
-            configured_ids.insert(credential.provider);
-          }
-
-          nlohmann::json data;
-          if (root["defaults"] && root["defaults"]["route_policy"] &&
-              root["defaults"]["route_policy"]["default_provider"]) {
-            data["default_provider"] =
-                normalize_provider_name(root["defaults"]["route_policy"]["default_provider"]
-                                            .as<std::string>());
-          } else {
-            data["default_provider"] = nullptr;
-          }
-
-          nlohmann::json providers = nlohmann::json::array();
-          if (root["providers"] && root["providers"].IsSequence()) {
-            for (const auto& provider_node : root["providers"]) {
-              if (!provider_node["id"]) continue;
-              const std::string id =
-                  normalize_provider_name(provider_node["id"].as<std::string>());
-              if (id.empty()) continue;
-
-              nlohmann::json item;
-              item["id"] = id;
-              item["display_name"] =
-                  provider_node["display_name"]
-                      ? nlohmann::json(provider_node["display_name"].as<std::string>())
-                      : nlohmann::json(id);
-              item["enabled"] =
-                  provider_node["enabled"] ? nlohmann::json(provider_node["enabled"].as<bool>())
-                                            : nlohmann::json(false);
-              item["configured"] = configured_ids.find(id) != configured_ids.end();
-
-              if (provider_node["api"]) {
-                item["api"] = yaml_node_to_json(provider_node["api"]);
-              } else {
-                item["api"] = nullptr;
-              }
-              if (provider_node["auth"]) {
-                nlohmann::json auth = yaml_node_to_json(provider_node["auth"]);
-                if (auth.is_object()) {
-                  auth.erase("credential_provider_key");
-                }
-                item["auth"] = auth;
-              } else {
-                item["auth"] = nullptr;
-              }
-              if (provider_node["models"]) {
-                item["models"] = yaml_node_to_json(provider_node["models"]);
-              } else {
-                item["models"] = nlohmann::json::array();
-              }
-              if (provider_node["setup_url"]) {
-                item["setup_url"] = provider_node["setup_url"].as<std::string>();
-              }
-              if (provider_node["docs_url"]) {
-                item["docs_url"] = provider_node["docs_url"].as<std::string>();
-              }
-              providers.push_back(std::move(item));
-            }
-          }
-          data["providers"] = providers;
-
-          nlohmann::json payload;
-          payload["ok"] = true;
-          payload["data"] = data;
-          res = json_response(http::status::ok, payload);
-        }
-      } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
-      }
-    } else if (path == "/ai/providers/credentials" && req.method() == http::verb::get) {
-      try {
-        holder::store::AiProviderCredentialRepo repo(db_);
-        nlohmann::json providers = nlohmann::json::array();
-        for (const auto& credential : repo.list()) {
-          providers.push_back({
-              {"provider", credential.provider},
-              {"configured", true},
-              {"api_key_preview", mask_api_key(credential.api_key)},
-              {"created_at", credential.created_at},
-              {"updated_at", credential.updated_at},
-          });
-        }
-        nlohmann::json payload;
-        payload["ok"] = true;
-        payload["data"] = {{"providers", providers}};
-        res = json_response(http::status::ok, payload);
-      } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
-      }
-    } else if (path == "/ai/providers/credentials" && req.method() == http::verb::put) {
-      try {
-        const auto body = nlohmann::json::parse(req.body());
-        if (!body.contains("provider") || !body.contains("api_key") ||
-            body.at("provider").is_null() || body.at("api_key").is_null()) {
-          res = error_response(http::status::bad_request,
-                               "bad_request",
-                               "Missing provider or api_key.");
-        } else {
-          const std::string provider_raw = body.at("provider").get<std::string>();
-          const std::string provider = normalize_provider_name(provider_raw);
-          if (provider.empty()) {
-            res = error_response(http::status::bad_request,
-                                 "bad_request",
-                                 "provider must be alphanumeric and may include '-', '_' or '.'.");
-          } else {
-            const std::string api_key = support::trim_ascii(body.at("api_key").get<std::string>());
-            if (api_key.empty()) {
-              res = error_response(http::status::bad_request,
-                                   "bad_request",
-                                   "api_key cannot be empty.");
-            } else {
-              const long long ts =
-                  (body.contains("updated_at") && !body.at("updated_at").is_null())
-                      ? body.at("updated_at").get<long long>()
-                      : now_epoch_seconds();
-
-              holder::store::AiProviderCredentialRepo repo(db_);
-              const auto existing = repo.get(provider);
-              const long long created_at = existing.has_value() ? existing->created_at : ts;
-              repo.upsert(provider, api_key, created_at, ts);
-
-              nlohmann::json payload;
-              payload["ok"] = true;
-              payload["data"] = {
-                  {"provider", provider},
-                  {"configured", true},
-                  {"api_key_preview", mask_api_key(api_key)},
-                  {"created_at", created_at},
-                  {"updated_at", ts},
-              };
-              res = json_response(http::status::ok, payload);
-            }
-          }
-        }
-      } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
-      }
-    } else if (path.rfind("/ai/providers/credentials/", 0) == 0 &&
-               req.method() == http::verb::delete_) {
-      try {
-        const std::string provider = normalize_provider_name(
-            path.substr(std::string("/ai/providers/credentials/").size()));
-        if (provider.empty()) {
-          res = error_response(http::status::bad_request,
-                               "bad_request",
-                               "Invalid provider.");
-        } else {
-          holder::store::AiProviderCredentialRepo repo(db_);
-          repo.remove(provider);
-          nlohmann::json payload;
-          payload["ok"] = true;
-          payload["data"] = {{"provider", provider}};
-          res = json_response(http::status::ok, payload);
-        }
-      } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
-      }
+    } else if (routes::handle_ai_provider_routes(path, req, res, db_)) {
+      // handled
     } else if (path == "/ai/runner/retry" && req.method() == http::verb::post) {
       if (!runner_) {
         res = error_response(http::status::not_implemented,
