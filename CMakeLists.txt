@@ -87,6 +87,7 @@ add_executable(holder
   src/api/routes/AiRunRoutes.cpp
   src/api/routes/AiRunnerRoutes.cpp
   src/api/routes/AiStatusRoutes.cpp
+  src/api/routes/AiThreadRoutes.cpp
   src/api/routes/StaticRoutes.cpp
   src/api/support/PathDiscovery.cpp
   src/api/support/CloudConfig.cpp
