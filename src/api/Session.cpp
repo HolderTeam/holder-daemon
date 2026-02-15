@@ -5,6 +5,7 @@
 #include "api/routes/AiThreadRoutes.h"
 #include "api/routes/CardRoutes.h"
 #include "api/routes/ProjectRoutes.h"
+#include "api/routes/SearchRoutes.h"
 #include "api/routes/TrashRoutes.h"
 #include "api/routes/StaticRoutes.h"
 #include "api/routes/AiRunRoutes.h"
@@ -221,96 +222,8 @@ void Session::run() {
       } catch (const std::exception& ex) {
         res = error_response(http::status::bad_request, "bad_request", ex.what());
       }
-    } else if (path == "/search/cards" && req.method() == http::verb::get) {
-      if (!fts_) {
-        res = error_response(http::status::not_implemented, "not_implemented", "Search unavailable.");
-      } else {
-        const std::string project_id = param("project_id");
-        const std::string q = param("q");
-        int limit = 20;
-        int offset = 0;
-        bool bad_params = false;
-        try {
-          if (!param("limit").empty()) limit = std::stoi(param("limit"));
-          if (!param("offset").empty()) offset = std::stoi(param("offset"));
-        } catch (const std::exception&) {
-          res = error_response(http::status::bad_request,
-                               "bad_request",
-                               "Invalid limit/offset.");
-          bad_params = true;
-        }
-
-        if (!bad_params) {
-          if (project_id.empty() || q.empty()) {
-            res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
-          } else {
-            try {
-              const auto rows = fts_->search_cards(project_id, q, limit, offset);
-              nlohmann::json data = nlohmann::json::array();
-              for (const auto& row : rows) {
-                data.push_back({
-                  {"card_id", row.id},
-                  {"title", row.title},
-                  {"updated_at", row.updated_at},
-                  {"created_at", row.created_at},
-                  {"snippet", row.snippet},
-                  {"rank", row.rank}
-                });
-              }
-              nlohmann::json payload;
-              payload["ok"] = true;
-              payload["data"] = data;
-              res = json_response(http::status::ok, payload);
-            } catch (const std::exception& ex) {
-              res = error_response(http::status::bad_request, "bad_request", ex.what());
-            }
-          }
-        }
-      }
-    } else if (path == "/search/ai" && req.method() == http::verb::get) {
-      if (!fts_) {
-        res = error_response(http::status::not_implemented, "not_implemented", "Search unavailable.");
-      } else {
-        const std::string project_id = param("project_id");
-        const std::string q = param("q");
-        int limit = 20;
-        int offset = 0;
-        bool bad_params = false;
-        try {
-          if (!param("limit").empty()) limit = std::stoi(param("limit"));
-          if (!param("offset").empty()) offset = std::stoi(param("offset"));
-        } catch (const std::exception&) {
-          res = error_response(http::status::bad_request,
-                               "bad_request",
-                               "Invalid limit/offset.");
-          bad_params = true;
-        }
-
-        if (!bad_params) {
-          if (project_id.empty() || q.empty()) {
-            res = error_response(http::status::bad_request, "bad_request", "Missing project_id or q.");
-          } else {
-            try {
-              const auto rows = fts_->search_messages(project_id, q, limit, offset);
-              nlohmann::json data = nlohmann::json::array();
-              for (const auto& row : rows) {
-                data.push_back({
-                  {"message_id", row.id},
-                  {"created_at", row.created_at},
-                  {"snippet", row.snippet},
-                  {"rank", row.rank}
-                });
-              }
-              nlohmann::json payload;
-              payload["ok"] = true;
-              payload["data"] = data;
-              res = json_response(http::status::ok, payload);
-            } catch (const std::exception& ex) {
-              res = error_response(http::status::bad_request, "bad_request", ex.what());
-            }
-          }
-        }
-      }
+    } else if (routes::handle_search_routes(path, req, res, fts_, param)) {
+      // handled
     } else if (routes::handle_ai_status_routes(path, req, res, db_, runner_, param)) {
       // handled
     } else if (routes::handle_ai_provider_routes(path, req, res, db_)) {
