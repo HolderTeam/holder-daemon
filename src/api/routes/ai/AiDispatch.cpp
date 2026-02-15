@@ -70,6 +70,9 @@ DispatchResult dispatch_ai_routes(
     return {.handled = false, .streamed = false};
   }
   if (ai_resource == "runner") {
+    if (handle_ai_status_routes(path, req, res, db, runner, param)) {
+      return {.handled = true, .streamed = false};
+    }
     if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, runner);
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
