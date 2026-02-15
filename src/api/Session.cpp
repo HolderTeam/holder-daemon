@@ -1,60 +1,21 @@
 #include "api/Session.h"
-#include "api/routes/AiMessageRoutes.h"
-#include "api/routes/AiResourceRoutes.h"
-#include "api/routes/AiRunnerRoutes.h"
-#include "api/routes/AiThreadRoutes.h"
-#include "api/routes/CardRoutes.h"
-#include "api/routes/ProjectRoutes.h"
-#include "api/routes/RebuildRoutes.h"
-#include "api/routes/SearchRoutes.h"
-#include "api/routes/TrashRoutes.h"
+#include "api/routes/AuthenticatedRoutes.h"
 #include "api/routes/StaticRoutes.h"
-#include "api/routes/AiRunRoutes.h"
-#include "api/routes/AiStatusRoutes.h"
-#include "api/routes/AiProviderRoutes.h"
-#include "api/support/PathDiscovery.h"
-#include "api/support/CloudConfig.h"
-#include "api/support/CloudClient.h"
-#include "api/support/CloudQuota.h"
-#include "api/support/LocalModelRouting.h"
-#include "api/support/RunEventStore.h"
-
-#include "caste.hpp"
-#include "core/CardPaths.h"
-#include "core/ProjectPaths.h"
-#include "git/GitOps.h"
-#include "llm/LocalModelRunner.h"
-#include "core/ServerInfo.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiRouterConfigRepo.h"
-#include "store/AiRunRepo.h"
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
-#include <boost/beast/ssl.hpp>
-#include <boost/asio/ssl.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
-#include <openssl/ssl.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <mutex>
-#include <optional>
 #include <random>
-#include <unordered_map>
-#include <unordered_set>
-#include <sstream>
 #include <string>
-#include <thread>
-#include <utility>
 
 namespace holder::api {
 namespace {
@@ -175,82 +136,19 @@ void Session::run() {
   } else if (router_.dispatch(req, res)) {
     // handled
   } else {
-    auto param = [&](const std::string& key) -> std::string {
-      const std::string needle = key + "=";
-      const auto pos = query_string.find(needle);
-      if (pos == std::string::npos) return {};
-      const auto start = pos + needle.size();
-      const auto end = query_string.find('&', start);
-      return query_string.substr(start, end == std::string::npos ? std::string::npos : end - start);
-    };
-
-    if (routes::handle_project_routes(path,
-                                      req,
-                                      res,
-                                      db_,
-                                      git_ops_,
-                                      [&]() { return generate_uuid_v4(); },
-                                      param)) {
-      // handled
-    } else if (routes::handle_rebuild_routes(path, req, res, db_, fts_)) {
-      // handled
-    } else if (routes::handle_search_routes(path, req, res, fts_, param)) {
-      // handled
-    } else if (routes::handle_ai_status_routes(path, req, res, db_, runner_, param)) {
-      // handled
-    } else if (routes::handle_ai_provider_routes(path, req, res, db_)) {
-      // handled
-    } else if (const auto route_result = routes::handle_ai_run_routes(path,
-                                                                      req,
-                                                                      res,
-                                                                      socket_,
-                                                                      db_,
-                                                                      fts_,
-                                                                      runner_,
-                                                                      [&]() { return generate_uuid_v4(); },
-                                                                      param);
-               route_result.handled) {
-      if (route_result.streamed) return;
-    } else if (const auto runner_route_result =
-                   routes::handle_ai_runner_routes(path, req, res, socket_, runner_);
-               runner_route_result.handled) {
-      if (runner_route_result.streamed) return;
-    } else if (routes::handle_ai_thread_routes(path,
-                                               req,
-                                               res,
-                                               db_,
-                                               [&]() { return generate_uuid_v4(); },
-                                               param)) {
-      // handled
-    } else if (routes::handle_ai_message_routes(path,
-                                                req,
-                                                res,
-                                                db_,
-                                                fts_,
-                                                [&]() { return generate_uuid_v4(); },
-                                                param)) {
-      // handled
-    } else if (routes::handle_ai_resource_routes(path,
-                                                 req,
-                                                 res,
-                                                 db_,
-                                                 [&]() { return generate_uuid_v4(); },
-                                                 param)) {
-      // handled
-    } else if (routes::handle_trash_routes(path, req, res, db_, card_store_, fts_, param)) {
-      // handled
-    } else if (routes::handle_card_routes(path,
-                                          req,
-                                          res,
-                                          db_,
-                                          card_store_,
-                                          fts_,
-                                          [&]() { return generate_uuid_v4(); },
-                                          param)) {
-      // handled
-    } else {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
-    }
+    const auto route_result =
+        routes::dispatch_authenticated_routes(path,
+                                              query_string,
+                                              req,
+                                              res,
+                                              socket_,
+                                              db_,
+                                              card_store_,
+                                              fts_,
+                                              git_ops_,
+                                              runner_,
+                                              [&]() { return generate_uuid_v4(); });
+    if (route_result.streamed) return;
   }
 
   http::write(socket_, res, ec);

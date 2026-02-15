@@ -92,6 +92,7 @@ add_executable(lockfile_tests
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
   ../src/api/routes/AiProviderRoutes.cpp
+  ../src/api/routes/AuthenticatedRoutes.cpp
   ../src/api/routes/AiMessageRoutes.cpp
   ../src/api/routes/AiResourceRoutes.cpp
   ../src/api/routes/AiRunRoutes.cpp
