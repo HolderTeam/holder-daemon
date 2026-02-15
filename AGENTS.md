@@ -13,6 +13,7 @@ It acts as the **single source of truth** for:
 * search and indexing
 * git-backed storage
 * local AI model execution
+* optional cloud AI model execution (provider-agnostic REST)
 
 The server is designed to be **headless, reusable, and UI-agnostic**.
 
@@ -123,21 +124,18 @@ Clients request *capabilities*, not models (“code help”, “general reasonin
 
 ---
 
-### 6. Cloud AI (Indirect)
+### 6. Cloud AI (Optional, Provider-Agnostic)
 
-The server does **not** directly integrate with hostile or unstable cloud APIs by default.
+The server may execute cloud AI models via provider APIs, using a provider-agnostic internal contract.
 
-Instead, it supports:
+Principles:
 
-* prompt export
-* response capture
-* provenance tracking
+* local-first routing remains the default
+* cloud usage is capability/policy driven, not vendor-specific in clients
+* reliability controls are automatic (quota-aware context compaction/degradation)
+* provenance is always recorded (provider/model/source/metadata)
 
-This keeps the system:
-
-* ToS-compliant
-* resilient to API churn
-* usable without paid subscriptions
+The server does **not** handle billing or payment flows.
 
 ---
 
@@ -189,6 +187,7 @@ Clients can:
 * run AI completions and inspect AI runs
 * inspect local model capabilities/recommendations
 * pull local models and stream pull progress
+* execute cloud AI models via provider-agnostic endpoints/policies
 * query search
 * attach metadata
 
@@ -215,7 +214,8 @@ The API must remain:
 
 * No UI logic
 * No theming or presentation concerns
-* No hard dependency on specific AI vendors
+* No hard dependency on a single AI vendor
+* No billing/payment/accounting workflow implementation
 * No attempt to be a distributed system
 * No premature optimisation for massive scale
 

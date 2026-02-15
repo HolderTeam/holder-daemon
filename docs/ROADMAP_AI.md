@@ -19,43 +19,19 @@ Already in place:
   - `GET /ai/runs`
   - `GET /ai/runs/{run_id}`
 - Thread/message storage APIs (`/ai/threads`, `/ai/messages`)
+- Persisted router config:
+  - schema: `ai_router_config`
+  - endpoints:
+    - `GET /ai/router/config`
+    - `PUT /ai/router/config`
+  - `/ai/complete` router precedence:
+    1. forced request model
+    2. project router config
+    3. global router config
+    4. auto fallback
+- `/ai/capabilities` includes router config and effective scope/model
 
-## Commit 1: Persisted Router Config
-
-Goal:
-
-- Add explicit router model configuration (global + optional per-project override).
-
-Why:
-
-- Current router selection is heuristic and implicit.
-- Frontends need deterministic control.
-
-Changes:
-
-- Schema: add `ai_router_config` table
-  - `scope` (`global` or `project`)
-  - `project_id` nullable
-  - `router_model`
-  - `mode` (optional future flag)
-  - `updated_at`
-- Add repo: `AiRouterConfigRepo`
-- Add endpoints:
-  - `GET /ai/router/config?project_id=...`
-  - `PUT /ai/router/config`
-- Update `/ai/complete` router model resolution order:
-  1. forced model in request (already present)
-  2. project router config
-  3. global router config
-  4. existing auto-pick fallback
-
-Acceptance:
-
-- Router config persists and is returned correctly.
-- `/ai/complete` uses configured router when valid.
-- Existing clients continue to work unchanged.
-
-## Commit 2: Run-Centric Execution Surface
+## Commit 1: Run-Centric Execution Surface
 
 Goal:
 
@@ -78,7 +54,7 @@ Acceptance:
 - Frontend can reconnect to a specific run stream by `run_id`.
 - No semantic duplication between run/job resources.
 
-## Commit 3: Manual Capture Convenience + Status Consolidation
+## Commit 2: Manual Capture Convenience + Status Consolidation
 
 Goal:
 
