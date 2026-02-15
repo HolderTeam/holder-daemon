@@ -28,6 +28,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
@@ -39,6 +40,7 @@
 #include <unordered_set>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace holder::api {
@@ -293,6 +295,45 @@ struct CasteInfo {
   std::string name;
   std::string reason;
 };
+
+struct RunEvent {
+  std::string name;
+  nlohmann::json data;
+};
+
+struct RunEventStream {
+  std::vector<RunEvent> events;
+  bool finished = false;
+  long long updated_at = 0;
+};
+
+std::mutex g_run_events_mu;
+std::unordered_map<std::string, RunEventStream> g_run_events;
+
+void append_run_event(const std::string& run_id,
+                      std::string name,
+                      nlohmann::json data,
+                      bool finished) {
+  std::lock_guard<std::mutex> lock(g_run_events_mu);
+  auto& stream = g_run_events[run_id];
+  data["run_id"] = run_id;
+  stream.events.push_back({std::move(name), std::move(data)});
+  if (stream.events.size() > 512) {
+    stream.events.erase(stream.events.begin(),
+                        stream.events.begin() + static_cast<std::ptrdiff_t>(stream.events.size() - 512));
+  }
+  stream.finished = stream.finished || finished;
+  stream.updated_at = std::chrono::duration_cast<std::chrono::seconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+}
+
+std::optional<RunEventStream> get_run_event_stream(const std::string& run_id) {
+  std::lock_guard<std::mutex> lock(g_run_events_mu);
+  const auto it = g_run_events.find(run_id);
+  if (it == g_run_events.end()) return std::nullopt;
+  return it->second;
+}
 
 std::optional<CasteInfo> detect_machine_caste() {
   try {
@@ -1623,6 +1664,10 @@ void Session::run() {
                 run.created_at = now_epoch_seconds();
                 run.updated_at = run.created_at;
                 run_repo.create(run);
+                append_run_event(run.run_id,
+                                 "run_started",
+                                 {{"status", "started"}, {"created_at", run.created_at}},
+                                 false);
 
               http::response<http::empty_body> sse{http::status::ok, 11};
               sse.set(http::field::content_type, "text/event-stream");
@@ -1637,8 +1682,12 @@ void Session::run() {
               }
 
               auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
+                const bool is_terminal = (name == "done" || name == "failed");
+                append_run_event(run.run_id, name, data, is_terminal);
                 std::string payload = "event: " + name + "\n";
-                payload += "data: " + data.dump() + "\n\n";
+                nlohmann::json wire = data;
+                wire["run_id"] = run.run_id;
+                payload += "data: " + wire.dump() + "\n\n";
                 boost::system::error_code send_ec;
                 boost::asio::write(socket_, boost::asio::buffer(payload), send_ec);
                 return !send_ec;
@@ -1865,6 +1914,92 @@ void Session::run() {
           res = json_response(http::status::ok, payload);
         } catch (const std::exception& ex) {
           res = error_response(http::status::bad_request, "bad_request", ex.what());
+        }
+      }
+    } else if (path.rfind("/ai/runs/", 0) == 0 &&
+               path.size() > std::string("/ai/runs/").size() + std::string("/events").size() &&
+               path.compare(path.size() - std::string("/events").size(),
+                            std::string("/events").size(),
+                            "/events") == 0 &&
+               req.method() == http::verb::get) {
+      const std::string prefix = "/ai/runs/";
+      const std::string suffix = "/events";
+      const std::string run_id =
+          path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+      if (run_id.empty()) {
+        res = error_response(http::status::not_found, "not_found", "Run not found.");
+      } else {
+        std::optional<holder::model::AiRun> run_record;
+        try {
+          holder::store::AiRunRepo repo(db_);
+          run_record = repo.get(run_id);
+        } catch (const std::exception&) {
+          run_record = std::nullopt;
+        }
+        if (!run_record.has_value()) {
+          res = error_response(http::status::not_found, "not_found", "Run not found.");
+        } else {
+          http::response<http::empty_body> sse{http::status::ok, 11};
+          sse.set(http::field::content_type, "text/event-stream");
+          sse.set(http::field::cache_control, "no-cache");
+          sse.set(http::field::connection, "keep-alive");
+          sse.keep_alive(true);
+          http::serializer<false, http::empty_body> sr{sse};
+          boost::system::error_code write_ec;
+          http::write_header(socket_, sr, write_ec);
+          if (write_ec) {
+            return;
+          }
+
+          auto write_sse = [&](const std::string& name, const nlohmann::json& data) -> bool {
+            std::string payload = "event: " + name + "\n";
+            payload += "data: " + data.dump() + "\n\n";
+            boost::system::error_code send_ec;
+            boost::asio::write(socket_, boost::asio::buffer(payload), send_ec);
+            return !send_ec;
+          };
+
+          size_t cursor = 0;
+          const long long started = now_epoch_seconds();
+          for (;;) {
+            const auto stream = get_run_event_stream(run_id);
+            if (stream.has_value()) {
+              while (cursor < stream->events.size()) {
+                if (!write_sse(stream->events[cursor].name, stream->events[cursor].data)) {
+                  return;
+                }
+                ++cursor;
+              }
+              if (stream->finished) {
+                return;
+              }
+            } else if (run_record->status == "completed" || run_record->status == "failed") {
+              nlohmann::json terminal;
+              terminal["run_id"] = run_id;
+              if (run_record->chosen_model.has_value()) {
+                terminal["model"] = run_record->chosen_model.value();
+              }
+              if (run_record->error.has_value()) {
+                terminal["error"] = run_record->error.value();
+              }
+              if (run_record->status == "completed") {
+                write_sse("done", terminal);
+              } else {
+                write_sse("failed", terminal);
+              }
+              return;
+            }
+
+            if (now_epoch_seconds() - started > 60) {
+              nlohmann::json keepalive;
+              keepalive["run_id"] = run_id;
+              keepalive["status"] = "pending";
+              write_sse("pending", keepalive);
+              return;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+          }
         }
       }
     } else if (path.rfind("/ai/runs/", 0) == 0 && req.method() == http::verb::get) {

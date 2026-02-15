@@ -99,6 +99,10 @@ Fetch one run:
 
 `GET /ai/runs/{run_id}`
 
+Reconnect to run events:
+
+`GET /ai/runs/{run_id}/events`
+
 ## 7) View AI Threads and Messages
 
 - `GET /ai/threads?project_id=<project_id>`

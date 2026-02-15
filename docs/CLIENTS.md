@@ -76,6 +76,7 @@ Persisted run history:
 
 - `GET /ai/runs?project_id=...` or `GET /ai/runs?thread_id=...`
 - `GET /ai/runs/{run_id}`
+- `GET /ai/runs/{run_id}/events` (SSE reconnect stream)
 
 Thread/message APIs:
 

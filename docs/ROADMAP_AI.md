@@ -18,6 +18,7 @@ Already in place:
 - Persisted run history:
   - `GET /ai/runs`
   - `GET /ai/runs/{run_id}`
+  - `GET /ai/runs/{run_id}/events`
 - Thread/message storage APIs (`/ai/threads`, `/ai/messages`)
 - Persisted router config:
   - schema: `ai_router_config`
@@ -31,30 +32,7 @@ Already in place:
     4. auto fallback
 - `/ai/capabilities` includes router config and effective scope/model
 
-## Commit 1: Run-Centric Execution Surface
-
-Goal:
-
-- Formalize "runs" as the canonical execution concept.
-
-Why:
-
-- Avoid introducing duplicate `jobs` concept.
-
-Changes:
-
-- Remove `/ai/complete`.
-- Use `POST /ai/runs` as the single execution entrypoint (SSE stream).
-- Add run-centric stream endpoint:
-  - `GET /ai/runs/{run_id}/events` (SSE)
-- Ensure docs consistently use run terminology, not jobs.
-
-Acceptance:
-
-- Frontend can reconnect to a specific run stream by `run_id`.
-- No semantic duplication between run/job resources.
-
-## Commit 2: Manual Capture Convenience + Status Consolidation
+## Commit 1: Manual Capture Convenience + Status Consolidation
 
 Goal:
 
