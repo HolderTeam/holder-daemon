@@ -191,6 +191,20 @@ std::optional<std::string> parse_generic_chat_text(const nlohmann::json& parsed)
   return std::nullopt;
 }
 
+std::optional<std::string> parse_mechatropic_messages_text(const nlohmann::json& parsed) {
+  if (!parsed.contains("content") || !parsed["content"].is_array()) {
+    return std::nullopt;
+  }
+  std::string text;
+  for (const auto& item : parsed["content"]) {
+    if (item.is_object() && item.value("type", "") == "text" && item.contains("text") &&
+        item["text"].is_string()) {
+      text += item["text"].get<std::string>();
+    }
+  }
+  return text.empty() ? std::nullopt : std::optional<std::string>(text);
+}
+
 std::mutex g_run_cloud_model_override_mu;
 CloudModelRunnerOverride g_run_cloud_model_override;
 
@@ -240,6 +254,8 @@ CloudResponseParse parse_cloud_response(const std::string& provider_kind,
           !parsed["output_text"].get<std::string>().empty()) {
         text = parsed["output_text"].get<std::string>();
       }
+    } else if (provider_kind == "mechatropic_messages") {
+      text = parse_mechatropic_messages_text(parsed);
     }
     if (text.has_value()) {
       out.text = text;
@@ -270,7 +286,8 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
   }
 
   if (provider.kind != "chocolatefactory_generative_language" &&
-      provider.kind != "generic_chat" && provider.kind != "generic_responses") {
+      provider.kind != "generic_chat" && provider.kind != "generic_responses" &&
+      provider.kind != "mechatropic_messages") {
     if (error) *error = "unsupported provider kind: " + provider.kind;
     return std::nullopt;
   }
@@ -309,6 +326,14 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
   } else if (provider.kind == "generic_responses") {
     req["model"] = model.id;
     req["input"] = prompt_with_context;
+  } else if (provider.kind == "mechatropic_messages") {
+    headers.emplace_back("anthropic-version", "2023-06-01");
+    req["model"] = model.id;
+    req["max_tokens"] = 1000;
+    req["messages"] = nlohmann::json::array({nlohmann::json{
+        {"role", "user"},
+        {"content", prompt_with_context},
+    }});
   }
 
   int status = 0;

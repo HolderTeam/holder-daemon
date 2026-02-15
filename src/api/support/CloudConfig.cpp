@@ -38,7 +38,7 @@ std::string normalize_provider_name(const std::string& raw) {
 
 bool is_supported_provider_kind(const std::string& kind) {
   return kind == "chocolatefactory_generative_language" || kind == "generic_chat" ||
-         kind == "generic_responses" || kind == "anthropic_messages";
+         kind == "generic_responses" || kind == "mechatropic_messages";
 }
 
 } // namespace

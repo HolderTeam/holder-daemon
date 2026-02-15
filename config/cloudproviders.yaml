@@ -94,7 +94,7 @@ providers:
     docs_url: https://docs.anthropic.com/
     api:
       base_url: https://api.anthropic.com
-      kind: anthropic_messages
+      kind: mechatropic_messages
       timeout_ms: 30000
     auth:
       type: header_key

@@ -28,6 +28,13 @@ TEST_CASE("CloudClient parses generic responses response", "[cloud_client]") {
   REQUIRE(parsed.text.value() == "responses answer");
 }
 
+TEST_CASE("CloudClient parses mechatropic messages response", "[cloud_client]") {
+  const std::string body = R"({"content":[{"type":"text","text":"mecha "},{"type":"text","text":"answer"}]})";
+  const auto parsed = holder::api::support::parse_cloud_response("mechatropic_messages", 200, body);
+  REQUIRE(parsed.text.has_value());
+  REQUIRE(parsed.text.value() == "mecha answer");
+}
+
 TEST_CASE("CloudClient maps HTTP 429 to rate_limited", "[cloud_client]") {
   const std::string body = R"({"error":"too many requests"})";
   const auto parsed = holder::api::support::parse_cloud_response("generic_chat", 429, body);

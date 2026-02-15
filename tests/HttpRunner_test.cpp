@@ -362,3 +362,125 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig& provider,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string* error) -> std::optional<std::string> {
+        if (provider.id != "mechatropic") {
+          if (error) *error = "unexpected provider";
+          return std::nullopt;
+        }
+        if (model.id != "claude-opus-4-6") {
+          if (error) *error = "unexpected model";
+          return std::nullopt;
+        }
+        return std::string("mock mechatropic output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "cloudproviders.yaml";
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "defaults:\n";
+    out << "  route_policy:\n";
+    out << "    default_provider: mechatropic\n";
+    out << "providers:\n";
+    out << "  - id: mechatropic\n";
+    out << "    display_name: Mechatropic\n";
+    out << "    enabled: true\n";
+    out << "    api:\n";
+    out << "      base_url: https://127.0.0.1:1\n";
+    out << "      kind: mechatropic_messages\n";
+    out << "    auth:\n";
+    out << "      type: header_key\n";
+    out << "      header_name: x-api-key\n";
+    out << "      credential_provider_key: mechatropic\n";
+    out << "    models:\n";
+    out << "      - id: claude-opus-4-6\n";
+    out << "        endpoint: /v1/messages\n";
+    out << "        role: default\n";
+    out << "        limits:\n";
+    out << "          rpm: 0\n";
+    out << "          tpm: 0\n";
+    out << "          rpd: 0\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_CLOUDPROVIDERS_PATH", cloud_cfg_path.string());
+
+  auto db = open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  holder::store::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("mechatropic", "test-key", 1, 1);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  nlohmann::json body = {
+      {"prompt", "hello from mechatropic test"},
+      {"project_id", "proj-1"},
+      {"provider", "mechatropic"},
+  };
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = body.dump();
+  req.prepare_payload();
+
+  http::write(socket, req);
+
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  REQUIRE(res.result() == http::status::ok);
+  REQUIRE(res.body().find("\"provider\":\"mechatropic\"") != std::string::npos);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  holder::store::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_project("proj-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("mechatropic:claude-opus-4-6"));
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto policy_trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(policy_trace["path"] == "cloud");
+  REQUIRE(policy_trace["provider"] == "mechatropic");
+  REQUIRE(policy_trace["result"]["status"] == "completed");
+  REQUIRE(policy_trace["result"]["model"] == "claude-opus-4-6");
+  REQUIRE(policy_trace["attempts"].is_array());
+  REQUIRE_FALSE(policy_trace["attempts"].empty());
+  REQUIRE(policy_trace["attempts"][0]["model"] == "claude-opus-4-6");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
