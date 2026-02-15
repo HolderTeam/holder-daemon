@@ -116,6 +116,30 @@ Execution phases:
       - still to do:
         - compact-model refresh quality tuning (prompt/summary format and future thread-level analytics)
 
+Quality tuning scope:
+
+- Standardize compact summary output format
+  - include stable sections (decisions, constraints, open questions, next actions)
+  - keep deterministic length targets for downstream context assembly
+- Improve pinned-facts handling
+  - extract/normalize durable facts from compact summaries
+  - dedupe and preserve priority facts across refreshes
+- Add summary quality guards
+  - detect obvious drift/regression (missing core constraints, empty/low-signal summaries)
+  - fallback to previous summary when quality checks fail
+- Add per-thread refresh analytics
+  - track last refresh reason, token delta, summary length, and refresh outcome counts
+  - expose metrics in run policy trace and future thread-level status APIs
+- Add prompt variant experimentation hooks
+  - allow config-selected compact prompt templates for offline tuning
+
+Quality tuning acceptance criteria:
+
+- Compact summaries are structurally consistent across runs.
+- Pinned facts remain stable unless explicitly superseded.
+- Failed/low-quality refresh attempts do not degrade existing summary state.
+- Refresh decisions and outcomes are observable per thread.
+
 3. Additional Providers (After Reliability)
    - implement adapters for `switchyard`, `chadjeopardy`, `mechatropic`
    - keep the same internal execution contract and policy engine
