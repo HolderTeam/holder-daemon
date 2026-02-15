@@ -91,6 +91,7 @@ add_executable(lockfile_tests
   ../src/llm/LocalModelRunner.cpp
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
+  ../src/api/routes/StaticRoutes.cpp
   ../src/api/support/PathDiscovery.cpp
   ../src/api/support/CloudConfig.cpp
   ../src/api/support/CloudClient.cpp
