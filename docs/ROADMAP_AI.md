@@ -38,11 +38,6 @@ Already in place:
   - `POST /ai/messages/capture`
   - creates/fetches thread and appends user+assistant messages with provenance
 
-## Non-Goals (This Cycle)
-
-- Full cloud API execution integration.
-- Replacing `/ai/runs` in one step.
-
 ## Next Phase: REST Cloud Models (Provider-Agnostic)
 
 Goal:
