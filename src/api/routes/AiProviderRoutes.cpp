@@ -1,15 +1,14 @@
 #include "api/routes/AiProviderRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
 
 #include "api/support/CloudConfig.h"
-#include "api/support/LocalModelRouting.h"
 #include "store/AiProviderCredentialRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <cctype>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -18,23 +17,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-std::string normalize_provider_name(const std::string& raw) {
-  const std::string key = support::lowercase_ascii(support::trim_ascii(raw));
-  if (key.empty()) return {};
-  for (const char ch : key) {
-    const unsigned char c = static_cast<unsigned char>(ch);
-    if (std::isalnum(c) || ch == '-' || ch == '_' || ch == '.') continue;
-    return {};
-  }
-  return key;
-}
-
-std::string mask_api_key(const std::string& api_key) {
-  if (api_key.empty()) return {};
-  if (api_key.size() <= 8) return "****";
-  return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
-}
 
 nlohmann::json model_to_json(const support::CloudModelConfig& model) {
   nlohmann::json out;
@@ -129,7 +111,7 @@ bool handle_ai_provider_routes(const std::string& path,
         providers.push_back({
             {"provider", credential.provider},
             {"configured", true},
-            {"api_key_preview", mask_api_key(credential.api_key)},
+            {"api_key_preview", support::mask_api_key(credential.api_key)},
             {"created_at", credential.created_at},
             {"updated_at", credential.updated_at},
         });
@@ -156,7 +138,8 @@ bool handle_ai_provider_routes(const std::string& path,
         return true;
       }
 
-      const std::string provider = normalize_provider_name(body.at("provider").get<std::string>());
+      const std::string provider =
+          support::normalize_provider_name(body.at("provider").get<std::string>());
       if (provider.empty()) {
         res = support::error_response(http::status::bad_request,
                              "bad_request",
@@ -187,7 +170,7 @@ bool handle_ai_provider_routes(const std::string& path,
       payload["data"] = {
           {"provider", provider},
           {"configured", true},
-          {"api_key_preview", mask_api_key(api_key)},
+          {"api_key_preview", support::mask_api_key(api_key)},
           {"created_at", created_at},
           {"updated_at", ts},
       };
@@ -202,7 +185,7 @@ bool handle_ai_provider_routes(const std::string& path,
   if (path.rfind("/ai/providers/credentials/", 0) == 0 &&
       req.method() == http::verb::delete_) {
     try {
-      const std::string provider = normalize_provider_name(
+      const std::string provider = support::normalize_provider_name(
           path.substr(std::string("/ai/providers/credentials/").size()));
       if (provider.empty()) {
         res = support::error_response(http::status::bad_request,

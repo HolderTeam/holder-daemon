@@ -1,5 +1,6 @@
 #include "api/routes/AiRunRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
 
 #include "api/support/CloudClient.h"
@@ -18,7 +19,6 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <optional>
 #include <sstream>
@@ -31,17 +31,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-std::string normalize_provider_name(const std::string& raw) {
-  const std::string key = support::lowercase_ascii(support::trim_ascii(raw));
-  if (key.empty()) return {};
-  for (const char ch : key) {
-    const unsigned char c = static_cast<unsigned char>(ch);
-    if (std::isalnum(c) || ch == '-' || ch == '_' || ch == '.') continue;
-    return {};
-  }
-  return key;
-}
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
@@ -153,7 +142,8 @@ RouteDispatchResult handle_ai_run_routes(
           } else {
             std::string requested_provider;
             if (body.contains("provider") && !body.at("provider").is_null()) {
-              requested_provider = normalize_provider_name(body.at("provider").get<std::string>());
+              requested_provider =
+                  support::normalize_provider_name(body.at("provider").get<std::string>());
             }
             std::string requested_model;
             if (body.contains("model") && !body.at("model").is_null()) {

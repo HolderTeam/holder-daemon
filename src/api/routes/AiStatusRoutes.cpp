@@ -1,5 +1,6 @@
 #include "api/routes/AiStatusRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
 
 #include "api/support/LocalModelRouting.h"
@@ -19,12 +20,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-std::string mask_api_key(const std::string& api_key) {
-  if (api_key.empty()) return {};
-  if (api_key.size() <= 8) return "****";
-  return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
-}
 
 long long count_started_runs(holder::store::Db& db) {
   static constexpr const char* SQL = "SELECT COUNT(*) FROM ai_runs WHERE status = 'started';";
@@ -230,7 +225,7 @@ bool handle_ai_status_routes(const std::string& path,
       cloud.push_back({
           {"provider", credential.provider},
           {"configured", true},
-          {"api_key_preview", mask_api_key(credential.api_key)},
+          {"api_key_preview", support::mask_api_key(credential.api_key)},
           {"created_at", credential.created_at},
           {"updated_at", credential.updated_at},
       });
