@@ -1,0 +1,47 @@
+#pragma once
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace holder::api::support {
+
+struct CloudModelConfig {
+  std::string id;
+  std::string endpoint;
+  std::string role;
+  long long rpm = 0;
+  long long tpm = 0;
+  long long rpd = 0;
+};
+
+struct CloudProviderConfig {
+  std::string id;
+  std::string display_name;
+  bool enabled = false;
+  std::string base_url;
+  std::string kind;
+  std::string auth_type;
+  std::string key_param;
+  std::string header_name;
+  std::string bearer_prefix;
+  std::string credential_provider_key;
+  std::vector<CloudModelConfig> models;
+};
+
+struct CloudProvidersConfig {
+  std::string default_provider;
+  std::vector<CloudProviderConfig> providers;
+};
+
+std::optional<CloudProvidersConfig> load_cloudproviders_config();
+const CloudProviderConfig* find_cloud_provider(const CloudProvidersConfig& cfg,
+                                               const std::string& provider_id);
+const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
+                                           const std::string& requested_model);
+const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
+                                         const std::string& model_id);
+std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
+                                                            const std::string& requested_model);
+
+} // namespace holder::api::support

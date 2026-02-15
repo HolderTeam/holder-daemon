@@ -1,5 +1,8 @@
 #include "api/Session.h"
 #include "api/support/PathDiscovery.h"
+#include "api/support/CloudConfig.h"
+#include "api/support/CloudClient.h"
+#include "api/support/CloudQuota.h"
 #include "api/support/RunEventStore.h"
 
 #include "caste.hpp"
@@ -257,442 +260,7 @@ nlohmann::json yaml_node_to_json(const YAML::Node& node) {
   return nullptr;
 }
 
-struct CloudModelConfig {
-  std::string id;
-  std::string endpoint;
-  std::string role;
-  long long rpm = 0;
-  long long tpm = 0;
-  long long rpd = 0;
-};
-
-struct CloudProviderConfig {
-  std::string id;
-  std::string display_name;
-  bool enabled = false;
-  std::string base_url;
-  std::string kind;
-  std::string auth_type;
-  std::string key_param;
-  std::string header_name;
-  std::string bearer_prefix;
-  std::string credential_provider_key;
-  std::vector<CloudModelConfig> models;
-};
-
-struct CloudProvidersConfig {
-  std::string default_provider;
-  std::vector<CloudProviderConfig> providers;
-};
-
 std::string truncate_bytes(const std::string& text, size_t max_bytes);
-
-struct ParsedHttpsBaseUrl {
-  std::string host;
-  std::string port;
-  std::string base_path;
-};
-
-std::optional<ParsedHttpsBaseUrl> parse_https_base_url(const std::string& base_url) {
-  constexpr const char kPrefix[] = "https://";
-  if (base_url.rfind(kPrefix, 0) != 0) return std::nullopt;
-  std::string rest = base_url.substr(sizeof(kPrefix) - 1);
-  std::string host_port = rest;
-  std::string base_path = "";
-  const auto slash = rest.find('/');
-  if (slash != std::string::npos) {
-    host_port = rest.substr(0, slash);
-    base_path = rest.substr(slash);
-  }
-  if (host_port.empty()) return std::nullopt;
-  ParsedHttpsBaseUrl out;
-  out.port = "443";
-  const auto colon = host_port.find(':');
-  if (colon == std::string::npos) {
-    out.host = host_port;
-  } else {
-    out.host = host_port.substr(0, colon);
-    out.port = host_port.substr(colon + 1);
-  }
-  out.base_path = base_path;
-  if (out.host.empty()) return std::nullopt;
-  return out;
-}
-
-std::string url_encode_component(const std::string& in) {
-  static constexpr char kHex[] = "0123456789ABCDEF";
-  std::string out;
-  out.reserve(in.size() * 3);
-  for (const char raw_ch : in) {
-    const unsigned char ch = static_cast<unsigned char>(raw_ch);
-    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-        (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
-        ch == '.' || ch == '~') {
-      out.push_back(static_cast<char>(ch));
-    } else {
-      out.push_back('%');
-      out.push_back(kHex[(ch >> 4) & 0x0F]);
-      out.push_back(kHex[ch & 0x0F]);
-    }
-  }
-  return out;
-}
-
-std::optional<CloudProvidersConfig> load_cloudproviders_config() {
-  const auto path = support::find_cloudproviders_path();
-  if (!path.has_value()) return std::nullopt;
-
-  CloudProvidersConfig cfg;
-  const YAML::Node root = YAML::LoadFile(path->string());
-  if (root["defaults"] && root["defaults"]["route_policy"] &&
-      root["defaults"]["route_policy"]["default_provider"]) {
-    cfg.default_provider = normalize_provider_name(
-        root["defaults"]["route_policy"]["default_provider"].as<std::string>());
-  }
-
-  if (root["providers"] && root["providers"].IsSequence()) {
-    for (const auto& provider_node : root["providers"]) {
-      if (!provider_node["id"]) continue;
-      CloudProviderConfig provider;
-      provider.id = normalize_provider_name(provider_node["id"].as<std::string>());
-      if (provider.id.empty()) continue;
-      provider.display_name = provider_node["display_name"]
-                                  ? provider_node["display_name"].as<std::string>()
-                                  : provider.id;
-      provider.enabled = provider_node["enabled"] ? provider_node["enabled"].as<bool>() : false;
-      if (provider_node["api"]) {
-        if (provider_node["api"]["base_url"]) {
-          provider.base_url = provider_node["api"]["base_url"].as<std::string>();
-        }
-        if (provider_node["api"]["kind"]) {
-          provider.kind = provider_node["api"]["kind"].as<std::string>();
-        }
-      }
-      if (provider_node["auth"]) {
-        if (provider_node["auth"]["type"]) {
-          provider.auth_type = provider_node["auth"]["type"].as<std::string>();
-        }
-        if (provider_node["auth"]["key_param"]) {
-          provider.key_param = provider_node["auth"]["key_param"].as<std::string>();
-        }
-        if (provider_node["auth"]["header_name"]) {
-          provider.header_name = provider_node["auth"]["header_name"].as<std::string>();
-        }
-        if (provider_node["auth"]["bearer_prefix"]) {
-          provider.bearer_prefix = provider_node["auth"]["bearer_prefix"].as<std::string>();
-        }
-        if (provider_node["auth"]["credential_provider_key"]) {
-          provider.credential_provider_key = normalize_provider_name(
-              provider_node["auth"]["credential_provider_key"].as<std::string>());
-        }
-      }
-      if (provider.credential_provider_key.empty()) {
-        provider.credential_provider_key = provider.id;
-      }
-      if (provider_node["models"] && provider_node["models"].IsSequence()) {
-        for (const auto& model_node : provider_node["models"]) {
-          if (!model_node["id"] || !model_node["endpoint"]) continue;
-          CloudModelConfig m;
-          m.id = model_node["id"].as<std::string>();
-          m.endpoint = model_node["endpoint"].as<std::string>();
-          m.role = model_node["role"] ? model_node["role"].as<std::string>() : "";
-          if (model_node["limits"]) {
-            if (model_node["limits"]["rpm"]) {
-              m.rpm = model_node["limits"]["rpm"].as<long long>();
-            }
-            if (model_node["limits"]["tpm"]) {
-              m.tpm = model_node["limits"]["tpm"].as<long long>();
-            }
-            if (model_node["limits"]["rpd"]) {
-              m.rpd = model_node["limits"]["rpd"].as<long long>();
-            }
-          }
-          provider.models.push_back(std::move(m));
-        }
-      }
-      cfg.providers.push_back(std::move(provider));
-    }
-  }
-  return cfg;
-}
-
-const CloudProviderConfig* find_cloud_provider(const CloudProvidersConfig& cfg,
-                                               const std::string& provider_id) {
-  for (const auto& provider : cfg.providers) {
-    if (provider.id == provider_id) return &provider;
-  }
-  return nullptr;
-}
-
-const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
-                                           const std::string& requested_model) {
-  if (!requested_model.empty()) {
-    for (const auto& model : provider.models) {
-      if (model.id == requested_model) return &model;
-    }
-  }
-  for (const auto& model : provider.models) {
-    if (model.role == "default") return &model;
-  }
-  if (!provider.models.empty()) return &provider.models.front();
-  return nullptr;
-}
-
-const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
-                                         const std::string& model_id) {
-  for (const auto& model : provider.models) {
-    if (model.id == model_id) return &model;
-  }
-  return nullptr;
-}
-
-std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
-                                                            const std::string& requested_model) {
-  std::vector<const CloudModelConfig*> out;
-  std::unordered_set<std::string> seen;
-  auto push = [&](const CloudModelConfig* model) {
-    if (!model) return;
-    if (seen.insert(model->id).second) {
-      out.push_back(model);
-    }
-  };
-
-  if (!requested_model.empty()) {
-    push(find_cloud_model(provider, requested_model));
-  }
-  push(choose_cloud_model(provider, ""));
-  for (const auto& model : provider.models) {
-    if (model.role == "compact") push(&model);
-  }
-  for (const auto& model : provider.models) {
-    push(&model);
-  }
-  return out;
-}
-
-long long estimate_tokens_from_text(const std::string& text) {
-  if (text.empty()) return 0;
-  return static_cast<long long>((text.size() + 3) / 4);
-}
-
-std::string compact_context_tail(const std::string& context_json,
-                                 long long allowed_context_tokens,
-                                 bool* compacted) {
-  if (compacted) *compacted = false;
-  if (allowed_context_tokens <= 0) {
-    if (compacted) *compacted = !context_json.empty();
-    return {};
-  }
-  const long long max_bytes = allowed_context_tokens * 4;
-  if (max_bytes <= 0 || static_cast<long long>(context_json.size()) <= max_bytes) {
-    return context_json;
-  }
-  if (compacted) *compacted = true;
-  const std::size_t keep = static_cast<std::size_t>(max_bytes);
-  return std::string("[context_compacted]\n") + context_json.substr(context_json.size() - keep);
-}
-
-struct CloudQuotaWindowUsage {
-  long long requests = 0;
-  long long tokens = 0;
-};
-
-CloudQuotaWindowUsage load_cloud_window_usage(holder::store::Db& db,
-                                              const std::string& provider,
-                                              const std::string& model_id,
-                                              long long since_epoch_seconds) {
-  static constexpr const char* SQL =
-      "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) "
-      "FROM ai_cloud_usage_events "
-      "WHERE provider = ? AND model_id = ? AND created_at >= ?;";
-
-  sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw std::runtime_error("prepare cloud usage query failed");
-  }
-  sqlite3_bind_text(stmt, 1, provider.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 2, model_id.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 3, since_epoch_seconds);
-
-  CloudQuotaWindowUsage usage;
-  const int rc = sqlite3_step(stmt);
-  if (rc == SQLITE_ROW) {
-    usage.requests = sqlite3_column_int64(stmt, 0);
-    usage.tokens = sqlite3_column_int64(stmt, 1);
-  }
-  sqlite3_finalize(stmt);
-  return usage;
-}
-
-void record_cloud_usage_event(holder::store::Db& db,
-                              const std::string& provider,
-                              const std::string& model_id,
-                              long long prompt_tokens,
-                              long long response_tokens,
-                              long long created_at) {
-  static constexpr const char* SQL =
-      "INSERT INTO ai_cloud_usage_events("
-      "event_id, provider, model_id, prompt_tokens, response_tokens, total_tokens, created_at) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?);";
-
-  const std::string event_id =
-      "cloud-" + std::to_string(created_at) + "-" +
-      std::to_string(static_cast<unsigned long long>(std::rand()));
-  const long long total_tokens = prompt_tokens + response_tokens;
-  sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw std::runtime_error("prepare cloud usage insert failed");
-  }
-  sqlite3_bind_text(stmt, 1, event_id.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 2, provider.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt, 3, model_id.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int64(stmt, 4, prompt_tokens);
-  sqlite3_bind_int64(stmt, 5, response_tokens);
-  sqlite3_bind_int64(stmt, 6, total_tokens);
-  sqlite3_bind_int64(stmt, 7, created_at);
-  const int rc = sqlite3_step(stmt);
-  sqlite3_finalize(stmt);
-  if (rc != SQLITE_DONE) {
-    throw std::runtime_error("insert cloud usage event failed");
-  }
-}
-
-bool https_post_json(const std::string& base_url,
-                     const std::string& target_path_and_query,
-                     const std::vector<std::pair<std::string, std::string>>& headers,
-                     const nlohmann::json& body,
-                     int* out_status,
-                     std::string* out_body,
-                     std::string* error) {
-  namespace http = boost::beast::http;
-  namespace ssl = boost::asio::ssl;
-  using tcp = boost::asio::ip::tcp;
-
-  try {
-    const auto parsed_opt = parse_https_base_url(base_url);
-    if (!parsed_opt.has_value()) {
-      if (error) *error = "invalid https base_url";
-      return false;
-    }
-    const auto& parsed = parsed_opt.value();
-    const std::string target = parsed.base_path + target_path_and_query;
-
-    boost::asio::io_context ioc;
-    ssl::context ctx(ssl::context::tls_client);
-    ctx.set_default_verify_paths();
-
-    tcp::resolver resolver(ioc);
-    auto endpoints = resolver.resolve(parsed.host, parsed.port);
-
-    boost::beast::ssl_stream<boost::beast::tcp_stream> stream(ioc, ctx);
-    if (!SSL_set_tlsext_host_name(stream.native_handle(), parsed.host.c_str())) {
-      if (error) *error = "failed to set tls host name";
-      return false;
-    }
-    boost::beast::get_lowest_layer(stream).connect(endpoints);
-    stream.set_verify_mode(ssl::verify_peer);
-    stream.set_verify_callback(ssl::host_name_verification(parsed.host));
-    stream.handshake(ssl::stream_base::client);
-
-    http::request<http::string_body> req{http::verb::post, target, 11};
-    req.set(http::field::host, parsed.host);
-    req.set(http::field::user_agent, "holder/cloud-runner");
-    req.set(http::field::content_type, "application/json");
-    for (const auto& [name, value] : headers) {
-      req.set(name, value);
-    }
-    req.body() = body.dump();
-    req.prepare_payload();
-
-    http::write(stream, req);
-
-    boost::beast::flat_buffer buffer;
-    http::response<http::string_body> res;
-    http::read(stream, buffer, res);
-
-    boost::system::error_code ec;
-    stream.shutdown(ec);
-    if (ec == boost::asio::error::eof || ec == boost::asio::ssl::error::stream_truncated) {
-      ec = {};
-    }
-
-    if (out_status) *out_status = static_cast<int>(res.result_int());
-    if (out_body) *out_body = res.body();
-    return true;
-  } catch (const std::exception& ex) {
-    if (error) *error = ex.what();
-    return false;
-  }
-}
-
-std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
-                                           const CloudModelConfig& model,
-                                           const std::string& api_key,
-                                           const std::string& prompt_with_context,
-                                           std::string* error) {
-  if (provider.kind != "chocolatefactory_generative_language") {
-    if (error) *error = "unsupported provider kind: " + provider.kind;
-    return std::nullopt;
-  }
-  if (provider.auth_type != "api_key_query") {
-    if (error) *error = "unsupported auth type for chocolatefactory adapter";
-    return std::nullopt;
-  }
-  const std::string key_param = provider.key_param.empty() ? "key" : provider.key_param;
-  std::string target = model.endpoint;
-  if (target.empty()) {
-    if (error) *error = "missing provider model endpoint";
-    return std::nullopt;
-  }
-  target += "?" + key_param + "=" + url_encode_component(api_key);
-
-  nlohmann::json req;
-  req["contents"] = nlohmann::json::array(
-      {nlohmann::json{{"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}}});
-
-  int status = 0;
-  std::string response_body;
-  std::string transport_error;
-  if (!https_post_json(provider.base_url, target, {}, req, &status, &response_body, &transport_error)) {
-    if (error) *error = transport_error.empty() ? "cloud request failed" : transport_error;
-    return std::nullopt;
-  }
-
-  if (status < 200 || status >= 300) {
-    if (error) *error = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
-    return std::nullopt;
-  }
-
-  try {
-    const auto parsed = nlohmann::json::parse(response_body);
-    if (!parsed.contains("candidates") || !parsed["candidates"].is_array() ||
-        parsed["candidates"].empty()) {
-      if (error) *error = "cloud response missing candidates";
-      return std::nullopt;
-    }
-    const auto& first = parsed["candidates"][0];
-    if (!first.contains("content") || !first["content"].contains("parts") ||
-        !first["content"]["parts"].is_array()) {
-      if (error) *error = "cloud response missing content parts";
-      return std::nullopt;
-    }
-    std::string text;
-    for (const auto& part : first["content"]["parts"]) {
-      if (part.contains("text") && part["text"].is_string()) {
-        text += part["text"].get<std::string>();
-      }
-    }
-    if (text.empty()) {
-      if (error) *error = "cloud response text empty";
-      return std::nullopt;
-    }
-    return text;
-  } catch (const std::exception& ex) {
-    if (error) *error = ex.what();
-    return std::nullopt;
-  }
-}
-
 int caste_rank(const std::string& caste_name_value) {
   const std::string n = normalize_caste_name(caste_name_value);
   if (n == "mini") return 0;
@@ -2219,7 +1787,7 @@ void Session::run() {
           }
 
           if (!local_runner_ready) {
-            const auto cloud_cfg = load_cloudproviders_config();
+            const auto cloud_cfg = support::load_cloudproviders_config();
             if (!cloud_cfg.has_value()) {
               res = error_response(http::status::service_unavailable,
                                    "runner_unavailable",
@@ -2242,11 +1810,11 @@ void Session::run() {
                 creds_by_key[credential.provider] = credential;
               }
 
-              const CloudProviderConfig* selected_provider = nullptr;
+              const support::CloudProviderConfig* selected_provider = nullptr;
               const holder::model::AiProviderCredential* selected_cred = nullptr;
               bool selection_failed = false;
 
-              auto try_select = [&](const CloudProviderConfig& provider) -> bool {
+              auto try_select = [&](const support::CloudProviderConfig& provider) -> bool {
                 if (!provider.enabled) return false;
                 const auto it = creds_by_key.find(provider.credential_provider_key);
                 if (it == creds_by_key.end()) return false;
@@ -2256,7 +1824,7 @@ void Session::run() {
               };
 
               if (!requested_provider.empty()) {
-                const auto* provider = find_cloud_provider(cloud_cfg.value(), requested_provider);
+                const auto* provider = support::find_cloud_provider(cloud_cfg.value(), requested_provider);
                 if (provider && try_select(*provider)) {
                   // selected by request
                 } else {
@@ -2269,7 +1837,8 @@ void Session::run() {
 
               if (!selected_provider && !selection_failed) {
                 if (!cloud_cfg->default_provider.empty()) {
-                  const auto* provider = find_cloud_provider(cloud_cfg.value(), cloud_cfg->default_provider);
+                  const auto* provider =
+                      support::find_cloud_provider(cloud_cfg.value(), cloud_cfg->default_provider);
                   if (provider) {
                     try_select(*provider);
                   }
@@ -2289,7 +1858,7 @@ void Session::run() {
 
               if (selected_provider && selected_cred) {
                 const auto candidate_models =
-                    cloud_model_candidates(*selected_provider, requested_model);
+                    support::cloud_model_candidates(*selected_provider, requested_model);
                 if (candidate_models.empty()) {
                   res = error_response(http::status::service_unavailable,
                                        "cloud_not_configured",
@@ -2382,23 +1951,25 @@ void Session::run() {
                     const long long now = now_epoch_seconds();
                     const long long minute_start = now - 60;
                     const long long day_start = now - 86400;
-                    const auto minute_usage =
-                        load_cloud_window_usage(db_, selected_provider->id, candidate->id, minute_start);
-                    const auto day_usage =
-                        load_cloud_window_usage(db_, selected_provider->id, candidate->id, day_start);
+                    const auto minute_usage = support::load_cloud_window_usage(
+                        db_, selected_provider->id, candidate->id, minute_start);
+                    const auto day_usage = support::load_cloud_window_usage(
+                        db_, selected_provider->id, candidate->id, day_start);
 
-                    const long long prompt_tokens = estimate_tokens_from_text(prompt);
+                    const long long prompt_tokens = support::estimate_tokens_from_text(prompt);
                     const long long model_input_budget =
                         (candidate->tpm > 0) ? std::max(256LL, (candidate->tpm * 7) / 10) : 6000LL;
                     const long long context_budget = std::max(0LL, model_input_budget - prompt_tokens - 64LL);
                     bool compacted = false;
-                    std::string compacted_context = compact_context_tail(context_json, context_budget, &compacted);
+                    std::string compacted_context =
+                        support::compact_context_tail(context_json, context_budget, &compacted);
                     std::string prompt_full = prompt;
                     if (!compacted_context.empty()) {
                       prompt_full += "\n\nContext:\n";
                       prompt_full += compacted_context;
                     }
-                    const long long prompt_full_tokens = estimate_tokens_from_text(prompt_full);
+                    const long long prompt_full_tokens =
+                        support::estimate_tokens_from_text(prompt_full);
                     const long long reserved_response_tokens = 512;
                     const long long projected_tokens = prompt_full_tokens + reserved_response_tokens;
 
@@ -2442,11 +2013,11 @@ void Session::run() {
                                 {"context_compacted", compacted}});
 
                     std::string cloud_error;
-                    const auto candidate_output = run_cloud_model(*selected_provider,
-                                                                  *candidate,
-                                                                  selected_cred->api_key,
-                                                                  prompt_full,
-                                                                  &cloud_error);
+                    const auto candidate_output = support::run_cloud_model(*selected_provider,
+                                                                           *candidate,
+                                                                           selected_cred->api_key,
+                                                                           prompt_full,
+                                                                           &cloud_error);
                     if (candidate_output.has_value()) {
                       chosen_model_id = candidate->id;
                       output = candidate_output.value();
@@ -2478,13 +2049,15 @@ void Session::run() {
                                            std::optional<std::string>(policy_trace.dump()),
                                            updated_at);
                   } else {
-                    const long long response_tokens = estimate_tokens_from_text(output.value());
-                    record_cloud_usage_event(db_,
-                                             selected_provider->id,
-                                             chosen_model_id.value(),
-                                             output_prompt_tokens,
-                                             response_tokens,
-                                             updated_at);
+                    const long long response_tokens =
+                        support::estimate_tokens_from_text(output.value());
+                    support::record_cloud_usage_event(db_,
+                                                      selected_provider->id,
+                                                      chosen_model_id.value(),
+                                                      output_prompt_tokens,
+                                                      response_tokens,
+                                                      updated_at,
+                                                      run.run_id);
 
                     policy_trace["result"] = {
                         {"status", "completed"},
