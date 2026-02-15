@@ -42,7 +42,6 @@ Already in place:
 
 - Full cloud API execution integration.
 - Replacing `/ai/runs` in one step.
-- Embeddings/vector search.
 
 ## Next Phase: REST Cloud Models (Provider-Agnostic)
 
@@ -87,6 +86,27 @@ Acceptance criteria:
 - Low-end users can run cloud inference without routinely hitting provider caps.
 - Automatic degradation is observable in run metadata/policy trace.
 - Adding a new provider does not require schema redesign.
+
+## Next Phase: Embeddings + Vector Retrieval
+
+Goal:
+
+- Add semantic retrieval for cards/AI history/resources to improve run context quality.
+
+Scope:
+
+- local-first embedding generation and storage
+- vector similarity retrieval at run time
+- context assembly that mixes:
+  - recency (recent turns)
+  - lexical search (FTS)
+  - semantic retrieval (vectors)
+
+Initial constraints:
+
+- keep retrieval transparent and inspectable
+- cap retrieved context by token budget before model call
+- preserve provenance (which chunks were retrieved and why)
 
 ## Notes for Frontend Work
 
