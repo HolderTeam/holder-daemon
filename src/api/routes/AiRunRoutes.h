@@ -1,5 +1,7 @@
 #pragma once
 
+#include "index/FtsIndexer.h"
+#include "llm/LocalModelRunner.h"
 #include "store/Db.h"
 
 #include <boost/asio/ip/tcp.hpp>
@@ -21,6 +23,9 @@ RouteDispatchResult handle_ai_run_routes(
     boost::beast::http::response<boost::beast::http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
     holder::store::Db& db,
+    holder::index::FtsIndexer* fts,
+    holder::llm::LocalModelRunner* runner,
+    const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get);
 
 } // namespace holder::api::routes
