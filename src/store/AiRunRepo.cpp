@@ -30,11 +30,12 @@ model::AiRun row_to_run(sqlite3_stmt* stmt) {
   run.context_json = column_nullable(stmt, 6);
   run.router_model = column_nullable(stmt, 7);
   run.ranked_json = column_nullable(stmt, 8);
-  run.chosen_model = column_nullable(stmt, 9);
-  run.status = column_text(stmt, 10);
-  run.error = column_nullable(stmt, 11);
-  run.created_at = sqlite3_column_int64(stmt, 12);
-  run.updated_at = sqlite3_column_int64(stmt, 13);
+  run.policy_trace_json = column_nullable(stmt, 9);
+  run.chosen_model = column_nullable(stmt, 10);
+  run.status = column_text(stmt, 11);
+  run.error = column_nullable(stmt, 12);
+  run.created_at = sqlite3_column_int64(stmt, 13);
+  run.updated_at = sqlite3_column_int64(stmt, 14);
   return run;
 }
 
@@ -50,8 +51,8 @@ void AiRunRepo::create(const model::AiRun& run) {
   static constexpr const char* SQL =
       "INSERT INTO ai_runs("
       "run_id, project_id, thread_id, message_id, mode, prompt, context_json, router_model, "
-      "ranked_json, chosen_model, status, error, created_at, updated_at) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      "ranked_json, policy_trace_json, chosen_model, status, error, created_at, updated_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -91,19 +92,24 @@ void AiRunRepo::create(const model::AiRun& run) {
   } else {
     sqlite3_bind_null(stmt, 9);
   }
-  if (run.chosen_model.has_value()) {
-    sqlite3_bind_text(stmt, 10, run.chosen_model->c_str(), -1, SQLITE_TRANSIENT);
+  if (run.policy_trace_json.has_value()) {
+    sqlite3_bind_text(stmt, 10, run.policy_trace_json->c_str(), -1, SQLITE_TRANSIENT);
   } else {
     sqlite3_bind_null(stmt, 10);
   }
-  sqlite3_bind_text(stmt, 11, run.status.c_str(), -1, SQLITE_TRANSIENT);
-  if (run.error.has_value()) {
-    sqlite3_bind_text(stmt, 12, run.error->c_str(), -1, SQLITE_TRANSIENT);
+  if (run.chosen_model.has_value()) {
+    sqlite3_bind_text(stmt, 11, run.chosen_model->c_str(), -1, SQLITE_TRANSIENT);
   } else {
-    sqlite3_bind_null(stmt, 12);
+    sqlite3_bind_null(stmt, 11);
   }
-  sqlite3_bind_int64(stmt, 13, run.created_at);
-  sqlite3_bind_int64(stmt, 14, run.updated_at);
+  sqlite3_bind_text(stmt, 12, run.status.c_str(), -1, SQLITE_TRANSIENT);
+  if (run.error.has_value()) {
+    sqlite3_bind_text(stmt, 13, run.error->c_str(), -1, SQLITE_TRANSIENT);
+  } else {
+    sqlite3_bind_null(stmt, 13);
+  }
+  sqlite3_bind_int64(stmt, 14, run.created_at);
+  sqlite3_bind_int64(stmt, 15, run.updated_at);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     sqlite3_finalize(stmt);
@@ -115,7 +121,7 @@ void AiRunRepo::create(const model::AiRun& run) {
 std::optional<model::AiRun> AiRunRepo::get(const std::string& run_id) const {
   static constexpr const char* SQL =
       "SELECT run_id, project_id, thread_id, message_id, mode, prompt, context_json, router_model, "
-      "ranked_json, chosen_model, status, error, created_at, updated_at "
+      "ranked_json, policy_trace_json, chosen_model, status, error, created_at, updated_at "
       "FROM ai_runs WHERE run_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -141,7 +147,7 @@ std::optional<model::AiRun> AiRunRepo::get(const std::string& run_id) const {
 std::vector<model::AiRun> AiRunRepo::list_by_thread(const std::string& thread_id) const {
   static constexpr const char* SQL =
       "SELECT run_id, project_id, thread_id, message_id, mode, prompt, context_json, router_model, "
-      "ranked_json, chosen_model, status, error, created_at, updated_at "
+      "ranked_json, policy_trace_json, chosen_model, status, error, created_at, updated_at "
       "FROM ai_runs WHERE thread_id = ? ORDER BY created_at DESC;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -161,7 +167,7 @@ std::vector<model::AiRun> AiRunRepo::list_by_thread(const std::string& thread_id
 std::vector<model::AiRun> AiRunRepo::list_by_project(const std::string& project_id) const {
   static constexpr const char* SQL =
       "SELECT run_id, project_id, thread_id, message_id, mode, prompt, context_json, router_model, "
-      "ranked_json, chosen_model, status, error, created_at, updated_at "
+      "ranked_json, policy_trace_json, chosen_model, status, error, created_at, updated_at "
       "FROM ai_runs WHERE project_id = ? ORDER BY created_at DESC;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -184,10 +190,11 @@ void AiRunRepo::update_status(const std::string& run_id,
                               const std::optional<std::string>& message_id,
                               const std::optional<std::string>& chosen_model,
                               const std::optional<std::string>& ranked_json,
+                              const std::optional<std::string>& policy_trace_json,
                               long long updated_at) {
   static constexpr const char* SQL =
       "UPDATE ai_runs SET status = ?, error = ?, message_id = ?, chosen_model = ?, ranked_json = ?, "
-      "updated_at = ? WHERE run_id = ?;";
+      "policy_trace_json = ?, updated_at = ? WHERE run_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -215,8 +222,13 @@ void AiRunRepo::update_status(const std::string& run_id,
   } else {
     sqlite3_bind_null(stmt, 5);
   }
-  sqlite3_bind_int64(stmt, 6, updated_at);
-  sqlite3_bind_text(stmt, 7, run_id.c_str(), -1, SQLITE_TRANSIENT);
+  if (policy_trace_json.has_value()) {
+    sqlite3_bind_text(stmt, 6, policy_trace_json->c_str(), -1, SQLITE_TRANSIENT);
+  } else {
+    sqlite3_bind_null(stmt, 6);
+  }
+  sqlite3_bind_int64(stmt, 7, updated_at);
+  sqlite3_bind_text(stmt, 8, run_id.c_str(), -1, SQLITE_TRANSIENT);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     sqlite3_finalize(stmt);

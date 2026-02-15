@@ -476,6 +476,13 @@ components:
         ranked_json:
           type: string
           nullable: true
+        policy_trace_json:
+          type: string
+          nullable: true
+        policy_trace:
+          type: object
+          nullable: true
+          additionalProperties: true
         chosen_model:
           type: string
           nullable: true

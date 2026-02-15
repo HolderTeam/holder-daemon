@@ -23,6 +23,7 @@ class AiRunRepo {
                      const std::optional<std::string>& message_id,
                      const std::optional<std::string>& chosen_model,
                      const std::optional<std::string>& ranked_json,
+                     const std::optional<std::string>& policy_trace_json,
                      long long updated_at);
 
  private:

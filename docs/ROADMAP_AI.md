@@ -101,6 +101,14 @@ Execution phases:
        - RPM/TPM/RPD gate checks in cloud `/ai/runs` path
        - context compaction (tail window) before cloud call
        - policy trace persisted on run metadata
+     - now implemented:
+       - cooldown/error-state persistence for cloud provider+model pairs
+       - `/ai/runs` cloud candidate selection rejects models with active cooldown
+       - failed cloud attempts set backoff cooldown; successful attempts clear cooldown
+       - dedicated `policy_trace_json` persistence on runs + structured `policy_trace` in run API payloads
+     - still to do:
+       - rolling summary + pinned-facts compaction state
+       - optional cooldown policy tuning from config (`cloudproviders.yaml`)
 
 3. Additional Providers (After Reliability)
    - implement adapters for `switchyard`, `chadjeopardy`, `mechatropic`

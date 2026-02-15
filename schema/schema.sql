@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS ai_runs (
   context_json TEXT NULL,                -- serialized context snapshot
   router_model TEXT NULL,
   ranked_json  TEXT NULL,                -- ranked candidates + scores
+  policy_trace_json TEXT NULL,           -- structured routing/degradation trace
   chosen_model TEXT NULL,
   status       TEXT NOT NULL,            -- 'started' | 'completed' | 'failed'
   error        TEXT NULL,
@@ -224,6 +225,22 @@ CREATE INDEX IF NOT EXISTS idx_ai_cloud_usage_provider_model_time
 
 CREATE INDEX IF NOT EXISTS idx_ai_cloud_usage_time
   ON ai_cloud_usage_events(created_at);
+
+-- ----------------------------
+-- Cloud model cooldown/error state
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_cloud_model_cooldowns (
+  provider       TEXT NOT NULL,
+  model_id       TEXT NOT NULL,
+  failure_count  INTEGER NOT NULL,
+  cooldown_until INTEGER NOT NULL,
+  last_error     TEXT NULL,
+  updated_at     INTEGER NOT NULL,
+  PRIMARY KEY(provider, model_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_cloud_cooldowns_until
+  ON ai_cloud_model_cooldowns(cooldown_until);
 
 -- ----------------------------
 -- Full-text search (FTS5)

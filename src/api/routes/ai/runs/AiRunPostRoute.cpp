@@ -279,8 +279,25 @@ RouteDispatchResult execute_cloud_post_path(
       for (const auto* candidate : candidate_models) {
         nlohmann::json attempt;
         attempt["model"] = candidate->id;
-
         const long long now = support::now_epoch_seconds();
+
+        const auto cooldown_state =
+            support::load_cloud_model_cooldown(db, selected_provider->id, candidate->id);
+        if (cooldown_state.has_value() && cooldown_state->cooldown_until > now) {
+          attempt["decision"] = "rejected";
+          attempt["reason"] = "cooldown_active";
+          attempt["cooldown"] = {
+              {"failure_count", cooldown_state->failure_count},
+              {"cooldown_until", cooldown_state->cooldown_until},
+              {"remaining_seconds", cooldown_state->cooldown_until - now},
+              {"last_error", cooldown_state->last_error.empty()
+                                 ? nlohmann::json(nullptr)
+                                 : nlohmann::json(cooldown_state->last_error)},
+          };
+          policy_trace["attempts"].push_back(attempt);
+          continue;
+        }
+
         const long long minute_start = now - 60;
         const long long day_start = now - 86400;
         const auto minute_usage =
@@ -353,13 +370,28 @@ RouteDispatchResult execute_cloud_post_path(
           chosen_model_id = candidate->id;
           output = candidate_output.value();
           output_prompt_tokens = prompt_full_tokens;
+          support::clear_cloud_model_cooldown(
+              db, selected_provider->id, candidate->id, support::now_epoch_seconds());
           break;
         }
         final_error = cloud_error.empty() ? "cloud call failed" : cloud_error;
+        const auto cooldown = support::record_cloud_model_failure(
+            db, selected_provider->id, candidate->id, final_error, support::now_epoch_seconds());
+        attempt["cooldown"] = {
+            {"failure_count", cooldown.failure_count},
+            {"cooldown_until", cooldown.cooldown_until},
+            {"remaining_seconds", std::max(0LL, cooldown.cooldown_until - support::now_epoch_seconds())},
+        };
+        if (!policy_trace["attempts"].empty() && policy_trace["attempts"].back().is_object() &&
+            policy_trace["attempts"].back().value("model", "") == candidate->id &&
+            policy_trace["attempts"].back().value("decision", "") == "selected") {
+          policy_trace["attempts"].back()["cooldown"] = attempt["cooldown"];
+        }
         send_event("fallback",
                    {{"provider", selected_provider->id},
                     {"model", candidate->id},
-                    {"error", final_error}});
+                    {"error", final_error},
+                    {"cooldown_until", cooldown.cooldown_until}});
       }
 
       const long long updated_at = support::now_epoch_seconds();
@@ -372,6 +404,7 @@ RouteDispatchResult execute_cloud_post_path(
         run_repo.update_status(run.run_id,
                                "failed",
                                std::optional<std::string>(final_error),
+                               std::nullopt,
                                std::nullopt,
                                std::nullopt,
                                std::optional<std::string>(policy_trace.dump()),
@@ -422,6 +455,7 @@ RouteDispatchResult execute_cloud_post_path(
             std::nullopt,
             message_id,
             std::optional<std::string>(selected_provider->id + ":" + chosen_model_id.value()),
+            std::nullopt,
             std::optional<std::string>(policy_trace.dump()),
             updated_at);
       }
@@ -726,6 +760,7 @@ RouteDispatchResult execute_local_post_path(
                            chosen_model,
                            ranked_json.empty() ? std::nullopt
                                                : std::optional<std::string>(ranked_json),
+                           std::nullopt,
                            updated_at);
   } else {
     send_event("failed", {{"error", "All models failed."}});
@@ -736,6 +771,7 @@ RouteDispatchResult execute_local_post_path(
                            std::nullopt,
                            ranked_json.empty() ? std::nullopt
                                                : std::optional<std::string>(ranked_json),
+                           std::nullopt,
                            updated_at);
   }
 

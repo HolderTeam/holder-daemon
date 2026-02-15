@@ -20,6 +20,15 @@ namespace {
 
 namespace http = boost::beast::http;
 
+nlohmann::json parse_json_or_null(const std::optional<std::string>& raw) {
+  if (!raw.has_value() || raw->empty()) return nullptr;
+  try {
+    return nlohmann::json::parse(raw.value());
+  } catch (const std::exception&) {
+    return nullptr;
+  }
+}
+
 nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
   nlohmann::json item;
   item["run_id"] = run.run_id;
@@ -37,6 +46,18 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
       run.router_model.has_value() ? nlohmann::json(run.router_model.value()) : nlohmann::json(nullptr);
   item["ranked_json"] =
       run.ranked_json.has_value() ? nlohmann::json(run.ranked_json.value()) : nlohmann::json(nullptr);
+  item["policy_trace_json"] = run.policy_trace_json.has_value()
+                                  ? nlohmann::json(run.policy_trace_json.value())
+                                  : nlohmann::json(nullptr);
+  nlohmann::json policy_trace = parse_json_or_null(run.policy_trace_json);
+  if (policy_trace.is_null() && run.ranked_json.has_value()) {
+    // Backward-compat for older rows where cloud policy traces were stored in ranked_json.
+    const nlohmann::json ranked_maybe_obj = parse_json_or_null(run.ranked_json);
+    if (ranked_maybe_obj.is_object()) {
+      policy_trace = ranked_maybe_obj;
+    }
+  }
+  item["policy_trace"] = policy_trace;
   item["chosen_model"] =
       run.chosen_model.has_value() ? nlohmann::json(run.chosen_model.value()) : nlohmann::json(nullptr);
   item["status"] = run.status;

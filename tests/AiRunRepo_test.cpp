@@ -44,10 +44,18 @@ TEST_CASE("AiRunRepo create/get/update", "[db]") {
   REQUIRE(fetched->run_id == "run-1");
   REQUIRE(fetched->status == "started");
 
-  repo.update_status("run-1", "completed", std::nullopt, "msg-1", "model-1", std::nullopt, 2);
+  repo.update_status("run-1",
+                     "completed",
+                     std::nullopt,
+                     "msg-1",
+                     "model-1",
+                     std::nullopt,
+                     std::optional<std::string>(R"({"path":"cloud","result":{"status":"completed"}})"),
+                     2);
   const auto updated = repo.get("run-1");
   REQUIRE(updated.has_value());
   REQUIRE(updated->status == "completed");
   REQUIRE(updated->message_id.value() == "msg-1");
   REQUIRE(updated->chosen_model.value() == "model-1");
+  REQUIRE(updated->policy_trace_json.has_value());
 }

@@ -15,6 +15,7 @@ struct AiRun {
   std::optional<std::string> context_json;
   std::optional<std::string> router_model;
   std::optional<std::string> ranked_json;
+  std::optional<std::string> policy_trace_json;
   std::optional<std::string> chosen_model;
   std::string status;
   std::optional<std::string> error;
