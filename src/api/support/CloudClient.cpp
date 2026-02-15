@@ -135,6 +135,59 @@ bool https_post_json(const std::string& base_url,
   }
 }
 
+std::string status_error_code(int status) {
+  if (status == 401 || status == 403) return "auth_failed";
+  if (status == 429) return "rate_limited";
+  if (status == 408 || status == 504) return "provider_timeout";
+  if (status >= 500) return "provider_unavailable";
+  return "provider_error";
+}
+
+std::optional<std::string> parse_chocolatefactory_text(const nlohmann::json& parsed) {
+  if (!parsed.contains("candidates") || !parsed["candidates"].is_array() || parsed["candidates"].empty()) {
+    return std::nullopt;
+  }
+  const auto& first = parsed["candidates"][0];
+  if (!first.contains("content") || !first["content"].contains("parts") ||
+      !first["content"]["parts"].is_array()) {
+    return std::nullopt;
+  }
+  std::string text;
+  for (const auto& part : first["content"]["parts"]) {
+    if (part.contains("text") && part["text"].is_string()) {
+      text += part["text"].get<std::string>();
+    }
+  }
+  if (text.empty()) return std::nullopt;
+  return text;
+}
+
+std::optional<std::string> parse_generic_chat_text(const nlohmann::json& parsed) {
+  if (!parsed.contains("choices") || !parsed["choices"].is_array() || parsed["choices"].empty()) {
+    return std::nullopt;
+  }
+  const auto& choice = parsed["choices"][0];
+  if (!choice.contains("message") || !choice["message"].is_object()) return std::nullopt;
+  const auto& message = choice["message"];
+  if (!message.contains("content")) return std::nullopt;
+  const auto& content = message["content"];
+  if (content.is_string()) {
+    const auto text = content.get<std::string>();
+    return text.empty() ? std::nullopt : std::optional<std::string>(text);
+  }
+  if (content.is_array()) {
+    std::string text;
+    for (const auto& item : content) {
+      if (item.is_object() && item.value("type", "") == "text" && item.contains("text") &&
+          item["text"].is_string()) {
+        text += item["text"].get<std::string>();
+      }
+    }
+    return text.empty() ? std::nullopt : std::optional<std::string>(text);
+  }
+  return std::nullopt;
+}
+
 } // namespace
 
 long long estimate_tokens_from_text(const std::string& text) {
@@ -159,72 +212,110 @@ std::string compact_context_tail(const std::string& context_json,
   return std::string("[context_compacted]\n") + context_json.substr(context_json.size() - keep);
 }
 
+CloudResponseParse parse_cloud_response(const std::string& provider_kind,
+                                        int status,
+                                        const std::string& response_body) {
+  CloudResponseParse out;
+  if (status < 200 || status >= 300) {
+    out.error_code = status_error_code(status);
+    out.error_message = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
+    return out;
+  }
+
+  try {
+    const auto parsed = nlohmann::json::parse(response_body);
+    std::optional<std::string> text;
+    if (provider_kind == "chocolatefactory_generative_language") {
+      text = parse_chocolatefactory_text(parsed);
+    } else if (provider_kind == "generic_chat") {
+      text = parse_generic_chat_text(parsed);
+    } else if (provider_kind == "generic_responses") {
+      if (parsed.contains("output_text") && parsed["output_text"].is_string() &&
+          !parsed["output_text"].get<std::string>().empty()) {
+        text = parsed["output_text"].get<std::string>();
+      }
+    }
+    if (text.has_value()) {
+      out.text = text;
+      return out;
+    }
+    out.error_code = "malformed_response";
+    out.error_message = "cloud response missing expected text";
+    return out;
+  } catch (const std::exception& ex) {
+    out.error_code = "malformed_response";
+    out.error_message = ex.what();
+    return out;
+  }
+}
+
 std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
                                            const CloudModelConfig& model,
                                            const std::string& api_key,
                                            const std::string& prompt_with_context,
                                            std::string* error) {
-  if (provider.kind != "chocolatefactory_generative_language") {
+  if (provider.kind != "chocolatefactory_generative_language" &&
+      provider.kind != "generic_chat" && provider.kind != "generic_responses") {
     if (error) *error = "unsupported provider kind: " + provider.kind;
     return std::nullopt;
   }
-  if (provider.auth_type != "api_key_query") {
-    if (error) *error = "unsupported auth type for chocolatefactory adapter";
-    return std::nullopt;
-  }
-  const std::string key_param = provider.key_param.empty() ? "key" : provider.key_param;
   std::string target = model.endpoint;
   if (target.empty()) {
     if (error) *error = "missing provider model endpoint";
     return std::nullopt;
   }
-  target += "?" + key_param + "=" + url_encode_component(api_key);
+
+  std::vector<std::pair<std::string, std::string>> headers;
+  if (provider.auth_type == "api_key_query") {
+    const std::string key_param = provider.key_param.empty() ? "key" : provider.key_param;
+    target += "?" + key_param + "=" + url_encode_component(api_key);
+  } else if (provider.auth_type == "bearer_header") {
+    const std::string header_name = provider.header_name.empty() ? "Authorization" : provider.header_name;
+    const std::string prefix = provider.bearer_prefix.empty() ? "Bearer" : provider.bearer_prefix;
+    headers.emplace_back(header_name, prefix + " " + api_key);
+  } else if (provider.auth_type == "header_key") {
+    const std::string header_name = provider.header_name.empty() ? "x-api-key" : provider.header_name;
+    headers.emplace_back(header_name, api_key);
+  } else {
+    if (error) *error = "unsupported auth type: " + provider.auth_type;
+    return std::nullopt;
+  }
 
   nlohmann::json req;
-  req["contents"] = nlohmann::json::array(
-      {nlohmann::json{{"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}}});
+  if (provider.kind == "chocolatefactory_generative_language") {
+    req["contents"] = nlohmann::json::array(
+        {nlohmann::json{{"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}}});
+  } else if (provider.kind == "generic_chat") {
+    req["model"] = model.id;
+    req["messages"] = nlohmann::json::array({nlohmann::json{
+        {"role", "user"},
+        {"content", prompt_with_context},
+    }});
+  } else if (provider.kind == "generic_responses") {
+    req["model"] = model.id;
+    req["input"] = prompt_with_context;
+  }
 
   int status = 0;
   std::string response_body;
   std::string transport_error;
-  if (!https_post_json(provider.base_url, target, {}, req, &status, &response_body, &transport_error)) {
-    if (error) *error = transport_error.empty() ? "cloud request failed" : transport_error;
+  if (!https_post_json(provider.base_url, target, headers, req, &status, &response_body, &transport_error)) {
+    if (error) {
+      *error = "transport_error: " + (transport_error.empty() ? std::string("cloud request failed")
+                                                               : transport_error);
+    }
     return std::nullopt;
   }
 
-  if (status < 200 || status >= 300) {
-    if (error) *error = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
+  const auto parsed = parse_cloud_response(provider.kind, status, response_body);
+  if (!parsed.text.has_value()) {
+    if (error) {
+      *error = parsed.error_code.empty() ? parsed.error_message
+                                         : (parsed.error_code + ": " + parsed.error_message);
+    }
     return std::nullopt;
   }
-
-  try {
-    const auto parsed = nlohmann::json::parse(response_body);
-    if (!parsed.contains("candidates") || !parsed["candidates"].is_array() ||
-        parsed["candidates"].empty()) {
-      if (error) *error = "cloud response missing candidates";
-      return std::nullopt;
-    }
-    const auto& first = parsed["candidates"][0];
-    if (!first.contains("content") || !first["content"].contains("parts") ||
-        !first["content"]["parts"].is_array()) {
-      if (error) *error = "cloud response missing content parts";
-      return std::nullopt;
-    }
-    std::string text;
-    for (const auto& part : first["content"]["parts"]) {
-      if (part.contains("text") && part["text"].is_string()) {
-        text += part["text"].get<std::string>();
-      }
-    }
-    if (text.empty()) {
-      if (error) *error = "cloud response text empty";
-      return std::nullopt;
-    }
-    return text;
-  } catch (const std::exception& ex) {
-    if (error) *error = ex.what();
-    return std::nullopt;
-  }
+  return parsed.text.value();
 }
 
 } // namespace holder::api::support

@@ -72,7 +72,7 @@ providers:
     docs_url: https://platform.openai.com/docs
     api:
       base_url: https://api.openai.com
-      kind: openai_compatible
+      kind: generic_responses
       timeout_ms: 30000
     auth:
       type: bearer_header
@@ -116,7 +116,7 @@ providers:
     docs_url: https://openrouter.ai/docs
     api:
       base_url: https://openrouter.ai
-      kind: openai_compatible_chat
+      kind: generic_chat
       timeout_ms: 30000
     auth:
       type: bearer_header

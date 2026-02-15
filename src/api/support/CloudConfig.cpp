@@ -4,6 +4,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <cctype>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace holder::api::support {
@@ -32,6 +34,11 @@ std::string normalize_provider_name(const std::string& raw) {
     return {};
   }
   return key;
+}
+
+bool is_supported_provider_kind(const std::string& kind) {
+  return kind == "chocolatefactory_generative_language" || kind == "generic_chat" ||
+         kind == "generic_responses" || kind == "anthropic_messages";
 }
 
 } // namespace
@@ -101,6 +108,10 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
         }
         if (provider_node["api"]["kind"]) {
           provider.kind = provider_node["api"]["kind"].as<std::string>();
+          if (!is_supported_provider_kind(provider.kind)) {
+            throw std::runtime_error("cloudproviders.yaml: provider '" + provider.id +
+                                     "' has unsupported api.kind '" + provider.kind + "'");
+          }
         }
       }
       if (provider_node["cooldown"]) {

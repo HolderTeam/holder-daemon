@@ -1,10 +1,12 @@
 #include "api/support/CloudConfig.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -97,4 +99,25 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   REQUIRE(cfg->providers[0].models.size() == 1);
   REQUIRE(cfg->providers[0].models[0].cooldown_base_seconds == 12);
   REQUIRE(cfg->providers[0].models[0].cooldown_cap_seconds == 180);
+}
+
+TEST_CASE("CloudConfig rejects unknown provider api.kind", "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_unknown_kind_test";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "cloudproviders.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "providers:\n";
+  out << "  - id: unknown-provider\n";
+  out << "    enabled: true\n";
+  out << "    api:\n";
+  out << "      base_url: https://example.com\n";
+  out << "      kind: made_up_kind\n";
+  out.close();
+
+  EnvGuard env("HOLDER_CLOUDPROVIDERS_PATH", yaml_path.string());
+  REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
+                      Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
 }
