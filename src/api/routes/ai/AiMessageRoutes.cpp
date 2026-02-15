@@ -1,4 +1,4 @@
-#include "api/routes/AiMessageRoutes.h"
+#include "api/routes/ai/AiMessageRoutes.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 

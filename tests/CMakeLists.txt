@@ -91,14 +91,15 @@ add_executable(lockfile_tests
   ../src/llm/LocalModelRunner.cpp
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
-  ../src/api/routes/AiProviderRoutes.cpp
+  ../src/api/routes/ai/AiProviderRoutes.cpp
   ../src/api/routes/AuthenticatedRoutes.cpp
-  ../src/api/routes/AiMessageRoutes.cpp
+  ../src/api/routes/ai/AiDispatch.cpp
+  ../src/api/routes/ai/AiMessageRoutes.cpp
   ../src/api/routes/AiResourceRoutes.cpp
-  ../src/api/routes/AiRunRoutes.cpp
-  ../src/api/routes/AiRunnerRoutes.cpp
-  ../src/api/routes/AiStatusRoutes.cpp
-  ../src/api/routes/AiThreadRoutes.cpp
+  ../src/api/routes/ai/AiRunRoutes.cpp
+  ../src/api/routes/ai/AiRunnerRoutes.cpp
+  ../src/api/routes/ai/AiStatusRoutes.cpp
+  ../src/api/routes/ai/AiThreadRoutes.cpp
   ../src/api/routes/CardRoutes.cpp
   ../src/api/routes/ProjectRoutes.cpp
   ../src/api/routes/RebuildRoutes.cpp

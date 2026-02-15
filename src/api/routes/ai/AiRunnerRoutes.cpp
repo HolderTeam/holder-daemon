@@ -1,4 +1,4 @@
-#include "api/routes/AiRunnerRoutes.h"
+#include "api/routes/ai/AiRunnerRoutes.h"
 #include "api/support/HttpResponses.h"
 
 #include <boost/asio/write.hpp>

@@ -1,4 +1,4 @@
-#include "api/routes/AiProviderRoutes.h"
+#include "api/routes/ai/AiProviderRoutes.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
