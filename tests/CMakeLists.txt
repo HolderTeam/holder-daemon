@@ -46,6 +46,7 @@ add_executable(lockfile_tests
   HttpCloudProviders_test.cpp
   HttpRunner_test.cpp
   CloudQuota_test.cpp
+  CloudConfig_test.cpp
   ThreadCompaction_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp

@@ -14,6 +14,11 @@ defaults:
   compaction:
     strategy: sliding_window_with_summary
     summary_model_role: compact
+    summary_refresh:
+      trigger_context_tokens: 1200
+      source_context_tokens: 2000
+      response_tokens_budget: 256
+      max_summary_chars: 5000
 
 providers:
   - id: chocolatefactory

@@ -47,6 +47,25 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
     cfg.default_provider = normalize_provider_name(
         root["defaults"]["route_policy"]["default_provider"].as<std::string>());
   }
+  if (root["defaults"] && root["defaults"]["compaction"] &&
+      root["defaults"]["compaction"]["summary_refresh"]) {
+    const auto summary_refresh = root["defaults"]["compaction"]["summary_refresh"];
+    if (summary_refresh["trigger_context_tokens"]) {
+      cfg.summary_refresh.trigger_context_tokens =
+          summary_refresh["trigger_context_tokens"].as<long long>();
+    }
+    if (summary_refresh["source_context_tokens"]) {
+      cfg.summary_refresh.source_context_tokens =
+          summary_refresh["source_context_tokens"].as<long long>();
+    }
+    if (summary_refresh["response_tokens_budget"]) {
+      cfg.summary_refresh.response_tokens_budget =
+          summary_refresh["response_tokens_budget"].as<long long>();
+    }
+    if (summary_refresh["max_summary_chars"]) {
+      cfg.summary_refresh.max_summary_chars = summary_refresh["max_summary_chars"].as<long long>();
+    }
+  }
 
   if (root["providers"] && root["providers"].IsSequence()) {
     for (const auto& provider_node : root["providers"]) {

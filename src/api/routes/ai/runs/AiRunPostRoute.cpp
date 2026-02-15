@@ -286,6 +286,14 @@ RouteDispatchResult execute_cloud_post_path(
       std::string final_error = "All cloud model attempts failed.";
       std::optional<support::ThreadCompactionState> compaction_state;
       bool summary_refreshed = false;
+      const long long refresh_threshold_tokens =
+          std::max(1LL, cloud_cfg->summary_refresh.trigger_context_tokens);
+      const long long summary_source_tokens =
+          std::max(256LL, cloud_cfg->summary_refresh.source_context_tokens);
+      const long long summary_response_tokens_budget =
+          std::max(64LL, cloud_cfg->summary_refresh.response_tokens_budget);
+      const long long max_summary_chars =
+          std::max(256LL, cloud_cfg->summary_refresh.max_summary_chars);
       if (thread_id.has_value()) {
         compaction_state = support::load_thread_compaction_state(db, thread_id.value());
       }
@@ -295,7 +303,6 @@ RouteDispatchResult execute_cloud_post_path(
         compaction_trace["summary_refresh"] = {{"status", "skipped"}};
 
         const long long context_tokens = support::estimate_tokens_from_text(context_json);
-        const long long refresh_threshold_tokens = 1200;
         const auto* compact_model = choose_compact_summary_model(*selected_provider);
         if (!compact_model) {
           compaction_trace["summary_refresh"]["reason"] = "no_compact_model";
@@ -319,7 +326,7 @@ RouteDispatchResult execute_cloud_post_path(
 
             bool src_compacted = false;
             const std::string summary_source =
-                support::compact_context_tail(context_json, 2000, &src_compacted);
+                support::compact_context_tail(context_json, summary_source_tokens, &src_compacted);
             std::string summarize_prompt =
                 "Summarize the context for future turns.\n"
                 "Return plain text only.\n"
@@ -333,7 +340,8 @@ RouteDispatchResult execute_cloud_post_path(
             summarize_prompt += "\nNew context:\n";
             summarize_prompt += summary_source;
             const long long summary_prompt_tokens = support::estimate_tokens_from_text(summarize_prompt);
-            const long long summary_projected_tokens = summary_prompt_tokens + 256;
+            const long long summary_projected_tokens =
+                summary_prompt_tokens + summary_response_tokens_budget;
 
             bool quota_reject = false;
             if (compact_model->rpm > 0 && minute_usage.requests + 1 > compact_model->rpm) {
@@ -358,8 +366,8 @@ RouteDispatchResult execute_cloud_post_path(
                   *selected_provider, *compact_model, selected_cred->api_key, summarize_prompt, &summary_error);
               if (summary_output.has_value()) {
                 std::string summary = summary_output.value();
-                if (summary.size() > 5000) {
-                  summary = summary.substr(0, 5000);
+                if (summary.size() > static_cast<size_t>(max_summary_chars)) {
+                  summary = summary.substr(0, static_cast<size_t>(max_summary_chars));
                 }
                 support::ThreadCompactionState next_state;
                 if (compaction_state.has_value()) {

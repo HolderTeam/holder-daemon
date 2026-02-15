@@ -109,8 +109,9 @@ Execution phases:
        - per-thread compaction state persistence (`rolling_summary`, `pinned_facts_json`)
        - cloud context builder now uses rolling summary + pinned facts + tail-window
        - summariser-model-driven summary refresh (uses provider `role: compact` when context is large)
+       - summary refresh thresholds/budgets now loaded from `cloudproviders.yaml` (`defaults.compaction.summary_refresh`)
       - still to do:
-       - compact-model refresh policy tuning (thresholds, cadence, token budgets)
+       - compact-model refresh policy tuning (cadence/heuristics beyond current thresholds)
        - optional cooldown policy tuning from config (`cloudproviders.yaml`)
 
 3. Additional Providers (After Reliability)

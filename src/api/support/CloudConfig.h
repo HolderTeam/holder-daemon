@@ -30,7 +30,15 @@ struct CloudProviderConfig {
 };
 
 struct CloudProvidersConfig {
+  struct SummaryRefreshConfig {
+    long long trigger_context_tokens = 1200;
+    long long source_context_tokens = 2000;
+    long long response_tokens_budget = 256;
+    long long max_summary_chars = 5000;
+  };
+
   std::string default_provider;
+  SummaryRefreshConfig summary_refresh;
   std::vector<CloudProviderConfig> providers;
 };
 
