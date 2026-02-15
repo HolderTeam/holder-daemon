@@ -39,6 +39,9 @@ struct CloudProvidersConfig {
     long long source_context_tokens = 2000;
     long long response_tokens_budget = 256;
     long long max_summary_chars = 5000;
+    long long min_interval_seconds = 120;
+    long long min_delta_tokens = 300;
+    long long force_refresh_tokens = 4000;
   };
   struct CooldownConfig {
     long long base_seconds = 30;

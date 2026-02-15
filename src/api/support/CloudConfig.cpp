@@ -65,6 +65,15 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
     if (summary_refresh["max_summary_chars"]) {
       cfg.summary_refresh.max_summary_chars = summary_refresh["max_summary_chars"].as<long long>();
     }
+    if (summary_refresh["min_interval_seconds"]) {
+      cfg.summary_refresh.min_interval_seconds = summary_refresh["min_interval_seconds"].as<long long>();
+    }
+    if (summary_refresh["min_delta_tokens"]) {
+      cfg.summary_refresh.min_delta_tokens = summary_refresh["min_delta_tokens"].as<long long>();
+    }
+    if (summary_refresh["force_refresh_tokens"]) {
+      cfg.summary_refresh.force_refresh_tokens = summary_refresh["force_refresh_tokens"].as<long long>();
+    }
   }
   if (root["defaults"] && root["defaults"]["cooldown"]) {
     const auto cooldown = root["defaults"]["cooldown"];

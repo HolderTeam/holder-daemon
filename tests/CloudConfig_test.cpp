@@ -56,6 +56,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "      source_context_tokens: 2400\n";
   out << "      response_tokens_budget: 320\n";
   out << "      max_summary_chars: 4200\n";
+  out << "      min_interval_seconds: 90\n";
+  out << "      min_delta_tokens: 220\n";
+  out << "      force_refresh_tokens: 3600\n";
   out << "providers:\n";
   out << "  - id: chocolatefactory\n";
   out << "    enabled: true\n";
@@ -83,6 +86,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   REQUIRE(cfg->summary_refresh.source_context_tokens == 2400);
   REQUIRE(cfg->summary_refresh.response_tokens_budget == 320);
   REQUIRE(cfg->summary_refresh.max_summary_chars == 4200);
+  REQUIRE(cfg->summary_refresh.min_interval_seconds == 90);
+  REQUIRE(cfg->summary_refresh.min_delta_tokens == 220);
+  REQUIRE(cfg->summary_refresh.force_refresh_tokens == 3600);
   REQUIRE(cfg->cooldown.base_seconds == 45);
   REQUIRE(cfg->cooldown.cap_seconds == 600);
   REQUIRE(cfg->providers.size() == 1);

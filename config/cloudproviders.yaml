@@ -22,6 +22,9 @@ defaults:
       source_context_tokens: 2000
       response_tokens_budget: 256
       max_summary_chars: 5000
+      min_interval_seconds: 120
+      min_delta_tokens: 300
+      force_refresh_tokens: 4000
 
 providers:
   - id: chocolatefactory
