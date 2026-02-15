@@ -4,7 +4,7 @@
 
 using holder::test::make_temp_dir;
 
-TEST_CASE("HTTP ai complete stores run and messages", "[http]") {
+TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
@@ -51,7 +51,7 @@ TEST_CASE("HTTP ai complete stores run and messages", "[http]") {
     {"context", { {"card_id", "card-1"}, {"card_title", "First"}, {"card_body", "Body"} }}
   };
 
-  http::request<http::string_body> req{http::verb::post, "/ai/complete", 11};
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, bound.bind);
   req.set(http::field::user_agent, "holder-tests");
   req.set(http::field::authorization, "Bearer " + token);

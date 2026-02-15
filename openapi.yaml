@@ -262,7 +262,7 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RunnerPullJob"
-    AiCompleteRequest:
+    AiRunCreateRequest:
       type: object
       required: [prompt]
       properties:
@@ -1795,15 +1795,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /ai/complete:
+  /ai/runs:
     post:
-      summary: Run AI completion with routing and streaming
+      summary: Create and execute an AI run with routing and streaming
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AiCompleteRequest"
+              $ref: "#/components/schemas/AiRunCreateRequest"
       responses:
         "200":
           description: OK
@@ -1835,7 +1835,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /ai/runs:
     get:
       summary: List AI runs by project or thread
       parameters:

@@ -14,7 +14,7 @@ Already in place:
   - `POST /ai/runner/pull`
   - `GET /ai/runner/pull/{job_id}`
   - `GET /ai/runner/pull/{job_id}/events`
-- AI execution with SSE: `POST /ai/complete`
+- AI execution with SSE: `POST /ai/runs`
 - Persisted run history:
   - `GET /ai/runs`
   - `GET /ai/runs/{run_id}`
@@ -24,7 +24,7 @@ Already in place:
   - endpoints:
     - `GET /ai/router/config`
     - `PUT /ai/router/config`
-  - `/ai/complete` router precedence:
+  - `/ai/runs` router precedence:
     1. forced request model
     2. project router config
     3. global router config
@@ -43,10 +43,10 @@ Why:
 
 Changes:
 
-- Keep `/ai/complete` for backward compatibility.
+- Remove `/ai/complete`.
+- Use `POST /ai/runs` as the single execution entrypoint (SSE stream).
 - Add run-centric stream endpoint:
   - `GET /ai/runs/{run_id}/events` (SSE)
-- Optionally add `POST /ai/runs` as an alias entrypoint (internally same pipeline), if needed by frontend architecture.
 - Ensure docs consistently use run terminology, not jobs.
 
 Acceptance:
@@ -83,7 +83,7 @@ Acceptance:
 ## Non-Goals (This Cycle)
 
 - Full cloud API execution integration.
-- Replacing `/ai/complete` in one step.
+- Replacing `/ai/runs` in one step.
 - Embeddings/vector search.
 
 ## Next Phase: REST Cloud Models (Provider-Agnostic)
@@ -121,7 +121,7 @@ Planned rollout:
 
 1. Add provider-agnostic request/response interface and YAML config loader.
 2. Implement Google adapter first (Gemma + Gemini endpoints).
-3. Add quota governor + compaction policy into `/ai/complete` path.
+3. Add quota governor + compaction policy into `/ai/runs` path.
 4. Add optional adapters for other providers without changing core policy engine.
 
 Acceptance criteria:
@@ -138,5 +138,5 @@ Recommended onboarding flow remains:
 2. show `caste` + `recommended_install`
 3. pull selected model(s)
 4. watch pull events
-5. execute via `/ai/complete`
+5. execute via `/ai/runs`
 6. inspect runs via `/ai/runs`

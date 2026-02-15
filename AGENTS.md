@@ -210,6 +210,30 @@ The API must remain:
 
 ---
 
+## Current Development Phase
+
+Holder is currently **private pre-production**.
+
+Current priority:
+
+* stabilise and simplify the backend first
+* defer broad client polish until backend behaviour is nailed down
+* keep implementation velocity high while core API/data model is still settling
+
+Planned clients after backend stabilisation:
+
+* Vala (GTK)
+* SwiftUI
+* WinUI
+
+Implications for engineering decisions in this phase:
+
+* schema can change directly in `schema/schema.sql` when needed
+* incremental DB migration machinery is deferred to a later phase
+* redirect/legacy endpoint shims are generally unnecessary unless they unblock active backend work
+
+---
+
 ## Non-Goals
 
 * No UI logic

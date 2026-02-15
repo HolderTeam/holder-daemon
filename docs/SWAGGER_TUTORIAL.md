@@ -72,7 +72,7 @@ Track progress with:
 
 ## 5) Run AI Completion
 
-`POST /ai/complete`
+`POST /ai/runs`
 
 ```json
 {

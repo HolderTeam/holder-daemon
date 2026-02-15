@@ -76,7 +76,7 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                           bound.port,
                                           token,
                                           boost::beast::http::verb::post,
-                                          "/ai/complete",
+                                          "/ai/runs",
                                           nlohmann::json{{"prompt", "hello"}},
                                           boost::beast::http::status::not_implemented);
   REQUIRE(complete["ok"] == false);

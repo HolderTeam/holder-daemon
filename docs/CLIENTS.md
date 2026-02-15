@@ -70,7 +70,7 @@ Header:
 
 Primary execution endpoint:
 
-- `POST /ai/complete` (SSE stream)
+- `POST /ai/runs` (SSE stream)
 
 Persisted run history:
 

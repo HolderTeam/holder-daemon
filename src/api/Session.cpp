@@ -1460,7 +1460,7 @@ void Session::run() {
       } catch (const std::exception& ex) {
         res = error_response(http::status::bad_request, "bad_request", ex.what());
       }
-    } else if (path == "/ai/complete" && req.method() == http::verb::post) {
+    } else if (path == "/ai/runs" && req.method() == http::verb::post) {
       if (!runner_) {
         res = error_response(http::status::not_implemented,
                              "not_implemented",
