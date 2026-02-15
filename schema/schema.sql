@@ -197,6 +197,16 @@ CREATE INDEX IF NOT EXISTS idx_ai_router_config_project
   ON ai_router_config(project_id);
 
 -- ----------------------------
+-- Cloud provider credentials
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_provider_credentials (
+  provider   TEXT PRIMARY KEY,          -- provider key, e.g. chocolatefactory
+  api_key    TEXT NOT NULL,             -- stored locally for outbound REST calls
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- ----------------------------
 -- Full-text search (FTS5)
 -- ----------------------------
 -- Contentless FTS: server maintains rows explicitly.

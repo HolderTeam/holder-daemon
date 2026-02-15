@@ -2,13 +2,13 @@
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
+using holder::test::open_db_with_schema;
 
 TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
-  db.open(db_path);
+  auto db = open_db_with_schema(db_path);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -91,9 +91,10 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                           boost::beast::http::verb::post,
                                           "/ai/runs",
                                           nlohmann::json{{"prompt", "hello"}},
-                                          boost::beast::http::status::not_implemented);
+                                          boost::beast::http::status::service_unavailable);
   REQUIRE(complete["ok"] == false);
-  REQUIRE(complete["error"]["code"] == "not_implemented");
+  REQUIRE((complete["error"]["code"] == "runner_unavailable" ||
+           complete["error"]["code"] == "cloud_not_configured"));
 
   std::raise(SIGTERM);
   server_thread.join();

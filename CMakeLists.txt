@@ -20,6 +20,7 @@ endif()
 # Dependencies
 # ----------------------------
 find_package(PkgConfig REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 # Boost: Beast is header-only; Asio lives under Boost.
 # You still generally want Boost::system for networking.
@@ -92,6 +93,7 @@ add_executable(holder
   src/store/AiMessageRepo.cpp
   src/store/AiRunRepo.cpp
   src/store/AiRouterConfigRepo.cpp
+  src/store/AiProviderCredentialRepo.cpp
   src/store/Rebuilder.cpp
   src/store/CardStore.cpp
   src/store/Db.cpp
@@ -128,6 +130,8 @@ endif()
 target_link_libraries(holder PRIVATE
   Boost::system
   Boost::filesystem
+  OpenSSL::SSL
+  OpenSSL::Crypto
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
   spdlog::spdlog

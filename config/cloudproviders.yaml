@@ -1,0 +1,122 @@
+info:
+  title: Cloud Provider Registry
+  version: 0.1.0
+  purpose: >
+    Provider-agnostic cloud runtime config for Holder.
+    Defines API endpoints, model ids, auth mapping, and quota policy inputs.
+  last_updated: 2026-02-15
+
+defaults:
+  route_policy:
+    prefer_local: true
+    allow_cloud_fallback: true
+    default_provider: chocolatefactory
+  compaction:
+    strategy: sliding_window_with_summary
+    summary_model_role: compact
+
+providers:
+  - id: chocolatefactory
+    display_name: ChocolateFactory
+    enabled: true
+    setup_url: https://aistudio.google.com/apikey
+    docs_url: https://ai.google.dev/gemini-api/docs
+    api:
+      base_url: https://generativelanguage.googleapis.com
+      kind: chocolatefactory_generative_language
+      timeout_ms: 30000
+    auth:
+      type: api_key_query
+      key_param: key
+      credential_provider_key: chocolatefactory
+    models:
+      - id: gemma-3-1b-it
+        endpoint: /v1beta/models/gemma-3-1b-it:generateContent
+        role: compact
+        limits:
+          rpm: 30
+          tpm: 15000
+          rpd: 14400
+      - id: gemma-3-12b-it
+        endpoint: /v1beta/models/gemma-3-12b-it:generateContent
+        role: default
+        limits:
+          rpm: 30
+          tpm: 15000
+          rpd: 14400
+      - id: gemma-3-27b-it
+        endpoint: /v1beta/models/gemma-3-27b-it:generateContent
+        role: quality
+        limits:
+          rpm: 30
+          tpm: 15000
+          rpd: 14400
+
+  - id: chadjeopardy
+    display_name: ChadJeopardy
+    enabled: false
+    docs_url: https://platform.openai.com/docs
+    api:
+      base_url: https://api.openai.com
+      kind: openai_compatible
+      timeout_ms: 30000
+    auth:
+      type: bearer_header
+      header_name: Authorization
+      bearer_prefix: Bearer
+      credential_provider_key: chadjeopardy
+    models:
+      - id: gpt-5.2
+        endpoint: /v1/responses
+        role: quality
+        limits:
+          rpm: 0
+          tpm: 0
+          rpd: 0
+
+  - id: mechatropic
+    display_name: Mechatropic
+    enabled: false
+    docs_url: https://docs.anthropic.com/
+    api:
+      base_url: https://api.anthropic.com
+      kind: anthropic_messages
+      timeout_ms: 30000
+    auth:
+      type: header_key
+      header_name: x-api-key
+      credential_provider_key: mechatropic
+    models:
+      - id: claude-opus-4-6
+        endpoint: /v1/messages
+        role: quality
+        limits:
+          rpm: 0
+          tpm: 0
+          rpd: 0
+
+  - id: switchyard
+    display_name: Switchyard
+    enabled: false
+    setup_url: https://openrouter.ai/settings/keys
+    docs_url: https://openrouter.ai/docs
+    api:
+      base_url: https://openrouter.ai
+      kind: openai_compatible_chat
+      timeout_ms: 30000
+    auth:
+      type: bearer_header
+      header_name: Authorization
+      bearer_prefix: Bearer
+      credential_provider_key: switchyard
+    models:
+      - id: openrouter/auto
+        endpoint: /api/v1/chat/completions
+        role: default
+        limits:
+          rpm: 0
+          tpm: 0
+          rpd: 50
+        notes:
+          - baseline free allowance: 50 requests/day
+          - with one-time $10 credit: up to 1000 requests/day

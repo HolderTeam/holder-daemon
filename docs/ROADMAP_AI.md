@@ -37,6 +37,18 @@ Already in place:
 - Manual capture convenience endpoint:
   - `POST /ai/messages/capture`
   - creates/fetches thread and appends user+assistant messages with provenance
+- Cloud provider credential setup endpoints:
+  - `GET /ai/providers/credentials`
+  - `PUT /ai/providers/credentials`
+  - `DELETE /ai/providers/credentials/{provider}`
+  - `/ai/status` includes configured cloud providers
+- Cloud provider catalog endpoint:
+  - `GET /ai/providers/catalog`
+  - reads `config/cloudproviders.yaml` and marks configured providers from DB
+- `/ai/runs` cloud fallback path (provider-agnostic selection, first adapter):
+  - if local runner unavailable, route via configured cloud provider credentials
+  - uses `config/cloudproviders.yaml` + `ai_provider_credentials`
+  - first execution adapter: `chocolatefactory` (`generateContent`)
 
 ## Next Phase: REST Cloud Models (Provider-Agnostic)
 
@@ -48,7 +60,7 @@ Goal:
 Default product policy:
 
 1. Prefer local models.
-2. If local is not viable, prefer free-tier cloud routes (Google/Gemma first).
+2. If local is not viable, prefer free-tier cloud routes (ChocolateFactory/Gemma first).
 3. Keep paid providers supported but opt-in/off by default.
 
 Design constraints:
@@ -59,20 +71,20 @@ Design constraints:
 
 Planned architecture:
 
-- Provider adapter interface (OpenAI/Anthropic/Google implementations).
+- Provider adapter interface (OpenAI/Anthropic/ChocolateFactory implementations).
 - Quota governor (RPM/TPM/RPD budget checks + degradation decisions).
 - Context compactor (sliding window + rolling summary + pinned facts).
 - Model policy resolver (automatic route/model selection under pressure).
 
 Planned config/state split:
 
-- YAML (`providers.yaml`): endpoints, auth style, model ids, limits, default caps, cost tier, feature flags.
+- YAML (`cloudproviders.yaml`): endpoints, auth style, model ids, limits, default caps, cost tier, feature flags.
 - DB: rolling quota counters, cooldown/error state, per-thread compaction state, per-run policy trace.
 
 Planned rollout:
 
 1. Add provider-agnostic request/response interface and YAML config loader.
-2. Implement Google adapter first (Gemma + Gemini endpoints).
+2. Implement ChocolateFactory adapter first (Gemma + Gemini endpoints).
 3. Add quota governor + compaction policy into `/ai/runs` path.
 4. Add optional adapters for other providers without changing core policy engine.
 

@@ -270,9 +270,121 @@ components:
           properties:
             active:
               type: boolean
+    AiProviderCredential:
+      type: object
+      required: [provider, configured, api_key_preview, created_at, updated_at]
+      properties:
+        provider:
+          type: string
+        configured:
+          type: boolean
+        api_key_preview:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    AiProviderCredentialsListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [providers]
+          properties:
+            providers:
+              type: array
+              items:
+                $ref: "#/components/schemas/AiProviderCredential"
+    AiProviderCredentialUpsertRequest:
+      type: object
+      required: [provider, api_key]
+      properties:
+        provider:
+          type: string
+        api_key:
+          type: string
+        updated_at:
+          type: integer
+          format: int64
+          nullable: true
+    AiProviderCredentialUpsertResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AiProviderCredential"
+    AiProviderCredentialDeleteResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [provider]
+          properties:
+            provider:
+              type: string
+    AiProviderCatalogProvider:
+      type: object
+      required: [id, display_name, enabled, configured, api, auth, models]
+      properties:
+        id:
+          type: string
+        display_name:
+          type: string
+        enabled:
+          type: boolean
+        configured:
+          type: boolean
+        api:
+          type: object
+          additionalProperties: true
+          nullable: true
+        auth:
+          type: object
+          additionalProperties: true
+          nullable: true
+        models:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        setup_url:
+          type: string
+        docs_url:
+          type: string
+    AiProviderCatalogResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [providers]
+          properties:
+            default_provider:
+              type: string
+              nullable: true
+            providers:
+              type: array
+              items:
+                $ref: "#/components/schemas/AiProviderCatalogProvider"
     AiStatusData:
       type: object
-      required: [checked_at, runner_available, runner_last_checked, active_runs, active_pull_jobs, pulls]
+      required: [checked_at, runner_available, runner_last_checked, active_runs, active_pull_jobs, pulls, cloud, cloud_configured_providers]
       properties:
         checked_at:
           type: integer
@@ -298,6 +410,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AiStatusPullJob"
+        cloud:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiProviderCredential"
+        cloud_configured_providers:
+          type: integer
+          format: int64
     AiStatusResponse:
       type: object
       required: [ok, data]
@@ -318,7 +437,10 @@ components:
           description: auto or model
         model:
           type: string
-          description: Optional explicit model tag (bypass routing).
+          description: Optional explicit model id; interpreted for local or cloud selected provider.
+        provider:
+          type: string
+          description: Optional cloud provider id when local runner is unavailable.
         project_id:
           type: string
         thread_id:
@@ -1323,6 +1445,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /cloudproviders.yaml:
+    get:
+      summary: Download cloud provider runtime config
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /rebuild:
     post:
       summary: Rebuild database state from project files
@@ -1828,6 +1967,99 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ai/providers/credentials:
+    get:
+      summary: List configured cloud provider credentials
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderCredentialsListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Create or update a cloud provider API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiProviderCredentialUpsertRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderCredentialUpsertResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/providers/catalog:
+    get:
+      summary: Get provider-agnostic cloud catalog with configured flags
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderCatalogResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/providers/credentials/{provider}:
+    delete:
+      summary: Delete a configured cloud provider API key
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProviderCredentialDeleteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ai/runner/retry:
     post:
       summary: Retry local model runner probe
@@ -1934,14 +2166,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "501":
-          description: Not implemented
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Runner unavailable
+          description: No local runner or configured cloud provider available
           content:
             application/json:
               schema:

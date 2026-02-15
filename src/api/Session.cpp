@@ -9,6 +9,7 @@
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
 #include "store/AiMessageRepo.h"
+#include "store/AiProviderCredentialRepo.h"
 #include "store/AiRouterConfigRepo.h"
 #include "store/AiRunRepo.h"
 #include "store/LinkRepo.h"
@@ -18,6 +19,8 @@
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/ssl.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -27,6 +30,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <sqlite3.h>
+#include <openssl/ssl.h>
 
 #include <algorithm>
 #include <chrono>
@@ -153,6 +157,17 @@ std::optional<std::filesystem::path> find_models_path() {
   return std::nullopt;
 }
 
+std::optional<std::filesystem::path> find_cloudproviders_path() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_CLOUDPROVIDERS_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "config" / "cloudproviders.yaml";
+  if (fs::exists(p1)) return p1;
+  return std::nullopt;
+}
+
 std::optional<std::filesystem::path> find_docs_root() {
   namespace fs = std::filesystem;
   if (const char* env = std::getenv("HOLDER_DOCS_ROOT")) {
@@ -257,6 +272,364 @@ std::string normalize_caste_name(const std::string& raw) {
   if (key == "gaming") return "workstation";
 
   return {};
+}
+
+std::string normalize_provider_name(const std::string& raw) {
+  const std::string key = lowercase_ascii(trim_ascii(raw));
+  if (key.empty()) return {};
+  for (const char ch : key) {
+    const unsigned char c = static_cast<unsigned char>(ch);
+    if (std::isalnum(c) || ch == '-' || ch == '_' || ch == '.') continue;
+    return {};
+  }
+  return key;
+}
+
+std::string mask_api_key(const std::string& api_key) {
+  if (api_key.empty()) return {};
+  if (api_key.size() <= 8) return "****";
+  return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
+}
+
+nlohmann::json yaml_node_to_json(const YAML::Node& node) {
+  if (!node) return nullptr;
+  if (node.IsNull()) return nullptr;
+  if (node.IsScalar()) {
+    const std::string raw = node.as<std::string>();
+    if (raw == "true") return true;
+    if (raw == "false") return false;
+    try {
+      size_t pos = 0;
+      const long long i = std::stoll(raw, &pos);
+      if (pos == raw.size()) return i;
+    } catch (const std::exception&) {
+    }
+    try {
+      size_t pos = 0;
+      const double d = std::stod(raw, &pos);
+      if (pos == raw.size()) return d;
+    } catch (const std::exception&) {
+    }
+    return raw;
+  }
+  if (node.IsSequence()) {
+    nlohmann::json out = nlohmann::json::array();
+    for (const auto& item : node) {
+      out.push_back(yaml_node_to_json(item));
+    }
+    return out;
+  }
+  if (node.IsMap()) {
+    nlohmann::json out = nlohmann::json::object();
+    for (const auto& it : node) {
+      out[it.first.as<std::string>()] = yaml_node_to_json(it.second);
+    }
+    return out;
+  }
+  return nullptr;
+}
+
+struct CloudModelConfig {
+  std::string id;
+  std::string endpoint;
+  std::string role;
+};
+
+struct CloudProviderConfig {
+  std::string id;
+  std::string display_name;
+  bool enabled = false;
+  std::string base_url;
+  std::string kind;
+  std::string auth_type;
+  std::string key_param;
+  std::string header_name;
+  std::string bearer_prefix;
+  std::string credential_provider_key;
+  std::vector<CloudModelConfig> models;
+};
+
+struct CloudProvidersConfig {
+  std::string default_provider;
+  std::vector<CloudProviderConfig> providers;
+};
+
+std::string truncate_bytes(const std::string& text, size_t max_bytes);
+
+struct ParsedHttpsBaseUrl {
+  std::string host;
+  std::string port;
+  std::string base_path;
+};
+
+std::optional<ParsedHttpsBaseUrl> parse_https_base_url(const std::string& base_url) {
+  constexpr const char kPrefix[] = "https://";
+  if (base_url.rfind(kPrefix, 0) != 0) return std::nullopt;
+  std::string rest = base_url.substr(sizeof(kPrefix) - 1);
+  std::string host_port = rest;
+  std::string base_path = "";
+  const auto slash = rest.find('/');
+  if (slash != std::string::npos) {
+    host_port = rest.substr(0, slash);
+    base_path = rest.substr(slash);
+  }
+  if (host_port.empty()) return std::nullopt;
+  ParsedHttpsBaseUrl out;
+  out.port = "443";
+  const auto colon = host_port.find(':');
+  if (colon == std::string::npos) {
+    out.host = host_port;
+  } else {
+    out.host = host_port.substr(0, colon);
+    out.port = host_port.substr(colon + 1);
+  }
+  out.base_path = base_path;
+  if (out.host.empty()) return std::nullopt;
+  return out;
+}
+
+std::string url_encode_component(const std::string& in) {
+  static constexpr char kHex[] = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(in.size() * 3);
+  for (const char raw_ch : in) {
+    const unsigned char ch = static_cast<unsigned char>(raw_ch);
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
+        ch == '.' || ch == '~') {
+      out.push_back(static_cast<char>(ch));
+    } else {
+      out.push_back('%');
+      out.push_back(kHex[(ch >> 4) & 0x0F]);
+      out.push_back(kHex[ch & 0x0F]);
+    }
+  }
+  return out;
+}
+
+std::optional<CloudProvidersConfig> load_cloudproviders_config() {
+  const auto path = find_cloudproviders_path();
+  if (!path.has_value()) return std::nullopt;
+
+  CloudProvidersConfig cfg;
+  const YAML::Node root = YAML::LoadFile(path->string());
+  if (root["defaults"] && root["defaults"]["route_policy"] &&
+      root["defaults"]["route_policy"]["default_provider"]) {
+    cfg.default_provider = normalize_provider_name(
+        root["defaults"]["route_policy"]["default_provider"].as<std::string>());
+  }
+
+  if (root["providers"] && root["providers"].IsSequence()) {
+    for (const auto& provider_node : root["providers"]) {
+      if (!provider_node["id"]) continue;
+      CloudProviderConfig provider;
+      provider.id = normalize_provider_name(provider_node["id"].as<std::string>());
+      if (provider.id.empty()) continue;
+      provider.display_name = provider_node["display_name"]
+                                  ? provider_node["display_name"].as<std::string>()
+                                  : provider.id;
+      provider.enabled = provider_node["enabled"] ? provider_node["enabled"].as<bool>() : false;
+      if (provider_node["api"]) {
+        if (provider_node["api"]["base_url"]) {
+          provider.base_url = provider_node["api"]["base_url"].as<std::string>();
+        }
+        if (provider_node["api"]["kind"]) {
+          provider.kind = provider_node["api"]["kind"].as<std::string>();
+        }
+      }
+      if (provider_node["auth"]) {
+        if (provider_node["auth"]["type"]) {
+          provider.auth_type = provider_node["auth"]["type"].as<std::string>();
+        }
+        if (provider_node["auth"]["key_param"]) {
+          provider.key_param = provider_node["auth"]["key_param"].as<std::string>();
+        }
+        if (provider_node["auth"]["header_name"]) {
+          provider.header_name = provider_node["auth"]["header_name"].as<std::string>();
+        }
+        if (provider_node["auth"]["bearer_prefix"]) {
+          provider.bearer_prefix = provider_node["auth"]["bearer_prefix"].as<std::string>();
+        }
+        if (provider_node["auth"]["credential_provider_key"]) {
+          provider.credential_provider_key = normalize_provider_name(
+              provider_node["auth"]["credential_provider_key"].as<std::string>());
+        }
+      }
+      if (provider.credential_provider_key.empty()) {
+        provider.credential_provider_key = provider.id;
+      }
+      if (provider_node["models"] && provider_node["models"].IsSequence()) {
+        for (const auto& model_node : provider_node["models"]) {
+          if (!model_node["id"] || !model_node["endpoint"]) continue;
+          CloudModelConfig m;
+          m.id = model_node["id"].as<std::string>();
+          m.endpoint = model_node["endpoint"].as<std::string>();
+          m.role = model_node["role"] ? model_node["role"].as<std::string>() : "";
+          provider.models.push_back(std::move(m));
+        }
+      }
+      cfg.providers.push_back(std::move(provider));
+    }
+  }
+  return cfg;
+}
+
+const CloudProviderConfig* find_cloud_provider(const CloudProvidersConfig& cfg,
+                                               const std::string& provider_id) {
+  for (const auto& provider : cfg.providers) {
+    if (provider.id == provider_id) return &provider;
+  }
+  return nullptr;
+}
+
+const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
+                                           const std::string& requested_model) {
+  if (!requested_model.empty()) {
+    for (const auto& model : provider.models) {
+      if (model.id == requested_model) return &model;
+    }
+  }
+  for (const auto& model : provider.models) {
+    if (model.role == "default") return &model;
+  }
+  if (!provider.models.empty()) return &provider.models.front();
+  return nullptr;
+}
+
+bool https_post_json(const std::string& base_url,
+                     const std::string& target_path_and_query,
+                     const std::vector<std::pair<std::string, std::string>>& headers,
+                     const nlohmann::json& body,
+                     int* out_status,
+                     std::string* out_body,
+                     std::string* error) {
+  namespace http = boost::beast::http;
+  namespace ssl = boost::asio::ssl;
+  using tcp = boost::asio::ip::tcp;
+
+  try {
+    const auto parsed_opt = parse_https_base_url(base_url);
+    if (!parsed_opt.has_value()) {
+      if (error) *error = "invalid https base_url";
+      return false;
+    }
+    const auto& parsed = parsed_opt.value();
+    const std::string target = parsed.base_path + target_path_and_query;
+
+    boost::asio::io_context ioc;
+    ssl::context ctx(ssl::context::tls_client);
+    ctx.set_default_verify_paths();
+
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(parsed.host, parsed.port);
+
+    boost::beast::ssl_stream<boost::beast::tcp_stream> stream(ioc, ctx);
+    if (!SSL_set_tlsext_host_name(stream.native_handle(), parsed.host.c_str())) {
+      if (error) *error = "failed to set tls host name";
+      return false;
+    }
+    boost::beast::get_lowest_layer(stream).connect(endpoints);
+    stream.set_verify_mode(ssl::verify_peer);
+    stream.set_verify_callback(ssl::host_name_verification(parsed.host));
+    stream.handshake(ssl::stream_base::client);
+
+    http::request<http::string_body> req{http::verb::post, target, 11};
+    req.set(http::field::host, parsed.host);
+    req.set(http::field::user_agent, "holder/cloud-runner");
+    req.set(http::field::content_type, "application/json");
+    for (const auto& [name, value] : headers) {
+      req.set(name, value);
+    }
+    req.body() = body.dump();
+    req.prepare_payload();
+
+    http::write(stream, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    boost::system::error_code ec;
+    stream.shutdown(ec);
+    if (ec == boost::asio::error::eof || ec == boost::asio::ssl::error::stream_truncated) {
+      ec = {};
+    }
+
+    if (out_status) *out_status = static_cast<int>(res.result_int());
+    if (out_body) *out_body = res.body();
+    return true;
+  } catch (const std::exception& ex) {
+    if (error) *error = ex.what();
+    return false;
+  }
+}
+
+std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
+                                           const CloudModelConfig& model,
+                                           const std::string& api_key,
+                                           const std::string& prompt_with_context,
+                                           std::string* error) {
+  if (provider.kind != "chocolatefactory_generative_language") {
+    if (error) *error = "unsupported provider kind: " + provider.kind;
+    return std::nullopt;
+  }
+  if (provider.auth_type != "api_key_query") {
+    if (error) *error = "unsupported auth type for chocolatefactory adapter";
+    return std::nullopt;
+  }
+  const std::string key_param = provider.key_param.empty() ? "key" : provider.key_param;
+  std::string target = model.endpoint;
+  if (target.empty()) {
+    if (error) *error = "missing provider model endpoint";
+    return std::nullopt;
+  }
+  target += "?" + key_param + "=" + url_encode_component(api_key);
+
+  nlohmann::json req;
+  req["contents"] = nlohmann::json::array(
+      {nlohmann::json{{"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}}});
+
+  int status = 0;
+  std::string response_body;
+  std::string transport_error;
+  if (!https_post_json(provider.base_url, target, {}, req, &status, &response_body, &transport_error)) {
+    if (error) *error = transport_error.empty() ? "cloud request failed" : transport_error;
+    return std::nullopt;
+  }
+
+  if (status < 200 || status >= 300) {
+    if (error) *error = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
+    return std::nullopt;
+  }
+
+  try {
+    const auto parsed = nlohmann::json::parse(response_body);
+    if (!parsed.contains("candidates") || !parsed["candidates"].is_array() ||
+        parsed["candidates"].empty()) {
+      if (error) *error = "cloud response missing candidates";
+      return std::nullopt;
+    }
+    const auto& first = parsed["candidates"][0];
+    if (!first.contains("content") || !first["content"].contains("parts") ||
+        !first["content"]["parts"].is_array()) {
+      if (error) *error = "cloud response missing content parts";
+      return std::nullopt;
+    }
+    std::string text;
+    for (const auto& part : first["content"]["parts"]) {
+      if (part.contains("text") && part["text"].is_string()) {
+        text += part["text"].get<std::string>();
+      }
+    }
+    if (text.empty()) {
+      if (error) *error = "cloud response text empty";
+      return std::nullopt;
+    }
+    return text;
+  } catch (const std::exception& ex) {
+    if (error) *error = ex.what();
+    return std::nullopt;
+  }
 }
 
 int caste_rank(const std::string& caste_name_value) {
@@ -674,7 +1047,7 @@ void Session::run() {
 
   http::response<http::string_body> res;
 
-  if (path == "/openapi.yaml" || path == "/models.yaml" || path == "/docs" ||
+  if (path == "/openapi.yaml" || path == "/models.yaml" || path == "/cloudproviders.yaml" || path == "/docs" ||
       path.rfind("/docs/", 0) == 0) {
     if (req.method() != http::verb::get) {
       res = text_response(http::status::method_not_allowed,
@@ -714,6 +1087,24 @@ void Session::run() {
           res = text_response(http::status::ok,
                               content.value(),
                               content_type_for_extension(models_path->extension().string()));
+        }
+      }
+    } else if (path == "/cloudproviders.yaml") {
+      const auto cloudproviders_path = find_cloudproviders_path();
+      if (!cloudproviders_path.has_value()) {
+        res = text_response(http::status::not_found,
+                            "cloudproviders.yaml not found.",
+                            "text/plain; charset=utf-8");
+      } else {
+        const auto content = read_file(cloudproviders_path.value());
+        if (!content.has_value()) {
+          res = text_response(http::status::not_found,
+                              "cloudproviders.yaml not found.",
+                              "text/plain; charset=utf-8");
+        } else {
+          res = text_response(http::status::ok,
+                              content.value(),
+                              content_type_for_extension(cloudproviders_path->extension().string()));
         }
       }
     } else {
@@ -1377,10 +1768,194 @@ void Session::run() {
         data["pulls"] = pulls;
       }
 
+      holder::store::AiProviderCredentialRepo credential_repo(db_);
+      nlohmann::json cloud = nlohmann::json::array();
+      for (const auto& credential : credential_repo.list()) {
+        cloud.push_back({
+            {"provider", credential.provider},
+            {"configured", true},
+            {"api_key_preview", mask_api_key(credential.api_key)},
+            {"created_at", credential.created_at},
+            {"updated_at", credential.updated_at},
+        });
+      }
+      data["cloud"] = cloud;
+      data["cloud_configured_providers"] = static_cast<long long>(cloud.size());
+
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
       res = json_response(http::status::ok, payload);
+    } else if (path == "/ai/providers/catalog" && req.method() == http::verb::get) {
+      try {
+        const auto cloudproviders_path = find_cloudproviders_path();
+        if (!cloudproviders_path.has_value()) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "cloudproviders.yaml not found.");
+        } else {
+          const YAML::Node root = YAML::LoadFile(cloudproviders_path->string());
+          holder::store::AiProviderCredentialRepo credential_repo(db_);
+          std::unordered_set<std::string> configured_ids;
+          for (const auto& credential : credential_repo.list()) {
+            configured_ids.insert(credential.provider);
+          }
+
+          nlohmann::json data;
+          if (root["defaults"] && root["defaults"]["route_policy"] &&
+              root["defaults"]["route_policy"]["default_provider"]) {
+            data["default_provider"] =
+                normalize_provider_name(root["defaults"]["route_policy"]["default_provider"]
+                                            .as<std::string>());
+          } else {
+            data["default_provider"] = nullptr;
+          }
+
+          nlohmann::json providers = nlohmann::json::array();
+          if (root["providers"] && root["providers"].IsSequence()) {
+            for (const auto& provider_node : root["providers"]) {
+              if (!provider_node["id"]) continue;
+              const std::string id =
+                  normalize_provider_name(provider_node["id"].as<std::string>());
+              if (id.empty()) continue;
+
+              nlohmann::json item;
+              item["id"] = id;
+              item["display_name"] =
+                  provider_node["display_name"]
+                      ? nlohmann::json(provider_node["display_name"].as<std::string>())
+                      : nlohmann::json(id);
+              item["enabled"] =
+                  provider_node["enabled"] ? nlohmann::json(provider_node["enabled"].as<bool>())
+                                            : nlohmann::json(false);
+              item["configured"] = configured_ids.find(id) != configured_ids.end();
+
+              if (provider_node["api"]) {
+                item["api"] = yaml_node_to_json(provider_node["api"]);
+              } else {
+                item["api"] = nullptr;
+              }
+              if (provider_node["auth"]) {
+                nlohmann::json auth = yaml_node_to_json(provider_node["auth"]);
+                if (auth.is_object()) {
+                  auth.erase("credential_provider_key");
+                }
+                item["auth"] = auth;
+              } else {
+                item["auth"] = nullptr;
+              }
+              if (provider_node["models"]) {
+                item["models"] = yaml_node_to_json(provider_node["models"]);
+              } else {
+                item["models"] = nlohmann::json::array();
+              }
+              if (provider_node["setup_url"]) {
+                item["setup_url"] = provider_node["setup_url"].as<std::string>();
+              }
+              if (provider_node["docs_url"]) {
+                item["docs_url"] = provider_node["docs_url"].as<std::string>();
+              }
+              providers.push_back(std::move(item));
+            }
+          }
+          data["providers"] = providers;
+
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = data;
+          res = json_response(http::status::ok, payload);
+        }
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if (path == "/ai/providers/credentials" && req.method() == http::verb::get) {
+      try {
+        holder::store::AiProviderCredentialRepo repo(db_);
+        nlohmann::json providers = nlohmann::json::array();
+        for (const auto& credential : repo.list()) {
+          providers.push_back({
+              {"provider", credential.provider},
+              {"configured", true},
+              {"api_key_preview", mask_api_key(credential.api_key)},
+              {"created_at", credential.created_at},
+              {"updated_at", credential.updated_at},
+          });
+        }
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = {{"providers", providers}};
+        res = json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if (path == "/ai/providers/credentials" && req.method() == http::verb::put) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("provider") || !body.contains("api_key") ||
+            body.at("provider").is_null() || body.at("api_key").is_null()) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "Missing provider or api_key.");
+        } else {
+          const std::string provider_raw = body.at("provider").get<std::string>();
+          const std::string provider = normalize_provider_name(provider_raw);
+          if (provider.empty()) {
+            res = error_response(http::status::bad_request,
+                                 "bad_request",
+                                 "provider must be alphanumeric and may include '-', '_' or '.'.");
+          } else {
+            const std::string api_key = trim_ascii(body.at("api_key").get<std::string>());
+            if (api_key.empty()) {
+              res = error_response(http::status::bad_request,
+                                   "bad_request",
+                                   "api_key cannot be empty.");
+            } else {
+              const long long ts =
+                  (body.contains("updated_at") && !body.at("updated_at").is_null())
+                      ? body.at("updated_at").get<long long>()
+                      : now_epoch_seconds();
+
+              holder::store::AiProviderCredentialRepo repo(db_);
+              const auto existing = repo.get(provider);
+              const long long created_at = existing.has_value() ? existing->created_at : ts;
+              repo.upsert(provider, api_key, created_at, ts);
+
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = {
+                  {"provider", provider},
+                  {"configured", true},
+                  {"api_key_preview", mask_api_key(api_key)},
+                  {"created_at", created_at},
+                  {"updated_at", ts},
+              };
+              res = json_response(http::status::ok, payload);
+            }
+          }
+        }
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if (path.rfind("/ai/providers/credentials/", 0) == 0 &&
+               req.method() == http::verb::delete_) {
+      try {
+        const std::string provider = normalize_provider_name(
+            path.substr(std::string("/ai/providers/credentials/").size()));
+        if (provider.empty()) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "Invalid provider.");
+        } else {
+          holder::store::AiProviderCredentialRepo repo(db_);
+          repo.remove(provider);
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = {{"provider", provider}};
+          res = json_response(http::status::ok, payload);
+        }
+      } catch (const std::exception& ex) {
+        res = error_response(http::status::bad_request, "bad_request", ex.what());
+      }
     } else if (path == "/ai/runner/retry" && req.method() == http::verb::post) {
       if (!runner_) {
         res = error_response(http::status::not_implemented,
@@ -1574,79 +2149,276 @@ void Session::run() {
         res = error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else if (path == "/ai/runs" && req.method() == http::verb::post) {
-      if (!runner_) {
-        res = error_response(http::status::not_implemented,
-                             "not_implemented",
-                             "Local model runner not configured.");
-      } else {
-        try {
-          const auto body = nlohmann::json::parse(req.body());
-          if (!body.contains("prompt")) {
-            res = error_response(http::status::bad_request, "bad_request", "Missing prompt.");
-          } else {
-            const std::string prompt = body.at("prompt").get<std::string>();
-            std::string mode = "auto";
-            if (body.contains("mode")) {
-              mode = body.at("mode").get<std::string>();
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("prompt")) {
+          res = error_response(http::status::bad_request, "bad_request", "Missing prompt.");
+        } else {
+          const std::string prompt = body.at("prompt").get<std::string>();
+          std::string mode = "auto";
+          if (body.contains("mode")) {
+            mode = body.at("mode").get<std::string>();
+          }
+          std::optional<std::string> project_id;
+          if (body.contains("project_id") && !body.at("project_id").is_null()) {
+            project_id = body.at("project_id").get<std::string>();
+          }
+          std::optional<std::string> thread_id;
+          if (body.contains("thread_id") && !body.at("thread_id").is_null()) {
+            thread_id = body.at("thread_id").get<std::string>();
+          }
+          std::string context_json;
+          std::optional<std::string> context_card_id;
+          if (body.contains("context") && !body.at("context").is_null()) {
+            context_json = body.at("context").dump();
+            if (body.at("context").is_object() && body.at("context").contains("card_id") &&
+                !body.at("context").at("card_id").is_null()) {
+              context_card_id = body.at("context").at("card_id").get<std::string>();
             }
-            std::optional<std::string> project_id;
-            if (body.contains("project_id") && !body.at("project_id").is_null()) {
-              project_id = body.at("project_id").get<std::string>();
-            }
-            std::optional<std::string> thread_id;
-            if (body.contains("thread_id") && !body.at("thread_id").is_null()) {
-              thread_id = body.at("thread_id").get<std::string>();
-            }
-            std::string context_json;
-            std::optional<std::string> context_card_id;
-            if (body.contains("context") && !body.at("context").is_null()) {
-              context_json = body.at("context").dump();
-              if (body.at("context").is_object() && body.at("context").contains("card_id") &&
-                  !body.at("context").at("card_id").is_null()) {
-                context_card_id = body.at("context").at("card_id").get<std::string>();
-              }
-            }
+          }
 
-            const auto runner_status = runner_->status();
-            if (!runner_status.available) {
+          holder::llm::RunnerStatus runner_status;
+          const bool has_runner = (runner_ != nullptr);
+          if (has_runner) {
+            runner_status = runner_->status();
+          }
+          const bool local_runner_ready =
+              has_runner && runner_status.available && !runner_status.models.empty();
+
+          if (!thread_id.has_value() && project_id.has_value()) {
+            holder::store::AiThreadRepo thread_repo(db_);
+            holder::model::AiThread thread;
+            thread.thread_id = generate_uuid_v4();
+            thread.project_id = project_id.value();
+            if (context_card_id.has_value()) {
+              thread.card_id = context_card_id.value();
+            }
+            std::string title = prompt;
+            if (title.size() > 80) {
+              title = title.substr(0, 80);
+            }
+            thread.title = title;
+            thread.created_at = now_epoch_seconds();
+            thread.updated_at = thread.created_at;
+            thread_repo.create(thread);
+            thread_id = thread.thread_id;
+          }
+
+          if (!local_runner_ready) {
+            const auto cloud_cfg = load_cloudproviders_config();
+            if (!cloud_cfg.has_value()) {
               res = error_response(http::status::service_unavailable,
                                    "runner_unavailable",
-                                   "Local model runner unavailable.");
-            } else if (runner_status.models.empty()) {
-              res = error_response(http::status::service_unavailable,
-                                   "runner_unavailable",
-                                   "No local models installed.");
+                                   "No local runner and cloudproviders.yaml not found.");
             } else {
-              std::string forced_model;
+              std::string requested_provider;
+              if (body.contains("provider") && !body.at("provider").is_null()) {
+                requested_provider = normalize_provider_name(body.at("provider").get<std::string>());
+              }
+              std::string requested_model;
               if (body.contains("model") && !body.at("model").is_null()) {
-                forced_model = body.at("model").get<std::string>();
+                requested_model = body.at("model").get<std::string>();
                 mode = "model";
               }
+
+              holder::store::AiProviderCredentialRepo credential_repo(db_);
+              const auto credentials = credential_repo.list();
+              std::unordered_map<std::string, holder::model::AiProviderCredential> creds_by_key;
+              for (const auto& credential : credentials) {
+                creds_by_key[credential.provider] = credential;
+              }
+
+              const CloudProviderConfig* selected_provider = nullptr;
+              const holder::model::AiProviderCredential* selected_cred = nullptr;
+              bool selection_failed = false;
+
+              auto try_select = [&](const CloudProviderConfig& provider) -> bool {
+                if (!provider.enabled) return false;
+                const auto it = creds_by_key.find(provider.credential_provider_key);
+                if (it == creds_by_key.end()) return false;
+                selected_provider = &provider;
+                selected_cred = &it->second;
+                return true;
+              };
+
+              if (!requested_provider.empty()) {
+                const auto* provider = find_cloud_provider(cloud_cfg.value(), requested_provider);
+                if (provider && try_select(*provider)) {
+                  // selected by request
+                } else {
+                  res = error_response(http::status::service_unavailable,
+                                       "cloud_not_configured",
+                                       "Requested cloud provider is not enabled/configured.");
+                  selection_failed = true;
+                }
+              }
+
+              if (!selected_provider && !selection_failed) {
+                if (!cloud_cfg->default_provider.empty()) {
+                  const auto* provider = find_cloud_provider(cloud_cfg.value(), cloud_cfg->default_provider);
+                  if (provider) {
+                    try_select(*provider);
+                  }
+                }
+              }
+              if (!selected_provider && !selection_failed) {
+                for (const auto& provider : cloud_cfg->providers) {
+                  if (try_select(provider)) break;
+                }
+              }
+
+              if (!selected_provider && !selection_failed) {
+                res = error_response(http::status::service_unavailable,
+                                     "cloud_not_configured",
+                                     "No enabled cloud provider with stored API key.");
+              }
+
+              if (selected_provider && selected_cred) {
+                const auto* selected_model = choose_cloud_model(*selected_provider, requested_model);
+                if (!selected_model) {
+                  res = error_response(http::status::service_unavailable,
+                                       "cloud_not_configured",
+                                       "No cloud model configured for selected provider.");
+                } else {
+                  holder::store::AiRunRepo run_repo(db_);
+                  holder::model::AiRun run;
+                  run.run_id = generate_uuid_v4();
+                  run.project_id = project_id;
+                  run.thread_id = thread_id;
+                  run.mode = (mode == "model") ? "model" : "auto";
+                  run.prompt = prompt;
+                  if (!context_json.empty()) {
+                    run.context_json = context_json;
+                  }
+                  run.status = "started";
+                  run.created_at = now_epoch_seconds();
+                  run.updated_at = run.created_at;
+                  run_repo.create(run);
+                  append_run_event(run.run_id,
+                                   "run_started",
+                                   {{"status", "started"}, {"created_at", run.created_at}},
+                                   false);
+
+                  http::response<http::empty_body> sse{http::status::ok, 11};
+                  sse.set(http::field::content_type, "text/event-stream");
+                  sse.set(http::field::cache_control, "no-cache");
+                  sse.set(http::field::connection, "keep-alive");
+                  sse.keep_alive(true);
+                  http::serializer<false, http::empty_body> sr{sse};
+                  boost::system::error_code write_ec;
+                  http::write_header(socket_, sr, write_ec);
+                  if (write_ec) {
+                    return;
+                  }
+
+                  auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
+                    const bool is_terminal = (name == "done" || name == "failed");
+                    append_run_event(run.run_id, name, data, is_terminal);
+                    std::string payload = "event: " + name + "\n";
+                    nlohmann::json wire = data;
+                    wire["run_id"] = run.run_id;
+                    payload += "data: " + wire.dump() + "\n\n";
+                    boost::system::error_code send_ec;
+                    boost::asio::write(socket_, boost::asio::buffer(payload), send_ec);
+                    return !send_ec;
+                  };
+
+                  send_event("progress",
+                             {{"message", "Using cloud provider"},
+                              {"provider", selected_provider->id},
+                              {"model", selected_model->id}});
+
+                  if (thread_id.has_value()) {
+                    holder::store::AiMessageRepo msg_repo(db_, fts_);
+                    holder::model::AiMessage user_msg;
+                    user_msg.message_id = generate_uuid_v4();
+                    user_msg.thread_id = thread_id.value();
+                    user_msg.role = "user";
+                    user_msg.source = "cloud";
+                    user_msg.provider = selected_provider->id;
+                    user_msg.model = selected_model->id;
+                    user_msg.content = prompt;
+                    user_msg.created_at = now_epoch_seconds();
+                    msg_repo.append(user_msg);
+                  }
+
+                  std::string prompt_full = prompt;
+                  if (!context_json.empty()) {
+                    prompt_full += "\n\nContext:\n";
+                    prompt_full += context_json;
+                  }
+
+                  std::string cloud_error;
+                  const auto output = run_cloud_model(*selected_provider,
+                                                      *selected_model,
+                                                      selected_cred->api_key,
+                                                      prompt_full,
+                                                      &cloud_error);
+                  const long long updated_at = now_epoch_seconds();
+                  if (!output.has_value()) {
+                    send_event("failed",
+                               {{"error", cloud_error.empty() ? "Cloud call failed." : cloud_error},
+                                {"provider", selected_provider->id},
+                                {"model", selected_model->id}});
+                    run_repo.update_status(run.run_id,
+                                           "failed",
+                                           cloud_error.empty() ? std::optional<std::string>("cloud call failed")
+                                                               : std::optional<std::string>(cloud_error),
+                                           std::nullopt,
+                                           std::optional<std::string>(selected_provider->id + ":" +
+                                                                      selected_model->id),
+                                           std::nullopt,
+                                           updated_at);
+                  } else {
+                    send_event("chunk",
+                               {{"provider", selected_provider->id},
+                                {"model", selected_model->id},
+                                {"delta", output.value()}});
+                    send_event("done",
+                               {{"provider", selected_provider->id},
+                                {"model", selected_model->id}});
+
+                    std::optional<std::string> message_id;
+                    if (thread_id.has_value()) {
+                      holder::store::AiMessageRepo msg_repo(db_, fts_);
+                      holder::model::AiMessage assistant_msg;
+                      assistant_msg.message_id = generate_uuid_v4();
+                      assistant_msg.thread_id = thread_id.value();
+                      assistant_msg.role = "assistant";
+                      assistant_msg.source = "cloud";
+                      assistant_msg.provider = selected_provider->id;
+                      assistant_msg.model = selected_model->id;
+                      assistant_msg.content = output.value();
+                      assistant_msg.created_at = updated_at;
+                      msg_repo.append(assistant_msg);
+                      message_id = assistant_msg.message_id;
+                    }
+
+                    run_repo.update_status(run.run_id,
+                                           "completed",
+                                           std::nullopt,
+                                           message_id,
+                                           std::optional<std::string>(selected_provider->id + ":" +
+                                                                      selected_model->id),
+                                           std::nullopt,
+                                           updated_at);
+                  }
+                  return;
+                }
+              }
+            }
+          } else {
+            std::string forced_model;
+            if (body.contains("model") && !body.at("model").is_null()) {
+              forced_model = body.at("model").get<std::string>();
+              mode = "model";
+            }
 
               const auto machine_caste = detect_machine_caste();
               std::vector<std::string> candidates;
               candidates.reserve(runner_status.models.size());
               for (const auto& model : runner_status.models) {
                 candidates.push_back(model.name);
-              }
-
-              if (!thread_id.has_value() && project_id.has_value()) {
-                holder::store::AiThreadRepo thread_repo(db_);
-                holder::model::AiThread thread;
-                thread.thread_id = generate_uuid_v4();
-                thread.project_id = project_id.value();
-                if (context_card_id.has_value()) {
-                  thread.card_id = context_card_id.value();
-                }
-                std::string title = prompt;
-                if (title.size() > 80) {
-                  title = title.substr(0, 80);
-                }
-                thread.title = title;
-                thread.created_at = now_epoch_seconds();
-                thread.updated_at = thread.created_at;
-                thread_repo.create(thread);
-                thread_id = thread.thread_id;
               }
 
               const auto model_meta = load_local_model_meta();
@@ -1934,7 +2706,6 @@ void Session::run() {
         } catch (const std::exception& ex) {
           res = error_response(http::status::bad_request, "bad_request", ex.what());
         }
-      }
     } else if (path == "/ai/runs" && req.method() == http::verb::get) {
       const std::string project_id = param("project_id");
       const std::string thread_id = param("thread_id");

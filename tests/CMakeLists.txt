@@ -25,6 +25,8 @@ add_executable(lockfile_tests
   HttpAiMessages_test.cpp
   HttpAiThreads_test.cpp
   HttpAiRouterConfig_test.cpp
+  HttpAiProviderCatalog_test.cpp
+  HttpAiProviderCredentials_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
   HttpAiRunEvents_test.cpp
@@ -41,6 +43,7 @@ add_executable(lockfile_tests
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
   HttpModels_test.cpp
+  HttpCloudProviders_test.cpp
   HttpRunner_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp
@@ -58,6 +61,7 @@ add_executable(lockfile_tests
   AiMessageRepo_test.cpp
   AiRunRepo_test.cpp
   AiRouterConfigRepo_test.cpp
+  AiProviderCredentialRepo_test.cpp
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
@@ -99,6 +103,7 @@ add_executable(lockfile_tests
   ../src/store/AiMessageRepo.cpp
   ../src/store/AiRunRepo.cpp
   ../src/store/AiRouterConfigRepo.cpp
+  ../src/store/AiProviderCredentialRepo.cpp
   ../src/store/Rebuilder.cpp
   ../src/store/Migrations.cpp
   ../src/store/CardStore.cpp
@@ -126,6 +131,8 @@ target_compile_definitions(lockfile_tests PRIVATE
 target_link_libraries(lockfile_tests PRIVATE
   Boost::system
   Boost::filesystem
+  OpenSSL::SSL
+  OpenSSL::Crypto
   PkgConfig::SQLITE3
   nlohmann_json::nlohmann_json
   spdlog::spdlog

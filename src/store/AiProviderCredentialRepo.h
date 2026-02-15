@@ -1,0 +1,28 @@
+#pragma once
+
+#include "model/AiProviderCredential.h"
+#include "store/Db.h"
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace holder::store {
+
+class AiProviderCredentialRepo {
+ public:
+  explicit AiProviderCredentialRepo(Db& db);
+
+  std::vector<holder::model::AiProviderCredential> list() const;
+  std::optional<holder::model::AiProviderCredential> get(const std::string& provider) const;
+  void upsert(const std::string& provider,
+              const std::string& api_key,
+              long long created_at,
+              long long updated_at);
+  void remove(const std::string& provider);
+
+ private:
+  Db& db_;
+};
+
+} // namespace holder::store
