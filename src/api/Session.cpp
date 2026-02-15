@@ -26,6 +26,7 @@
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <sqlite3.h>
 
 #include <algorithm>
 #include <chrono>
@@ -575,6 +576,21 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
   std::ostringstream out;
   out << file.rdbuf();
   return out.str();
+}
+
+long long count_started_runs(holder::store::Db& db) {
+  static constexpr const char* SQL = "SELECT COUNT(*) FROM ai_runs WHERE status = 'started';";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw std::runtime_error("prepare count started runs failed");
+  }
+  long long out = 0;
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    out = sqlite3_column_int64(stmt, 0);
+  }
+  sqlite3_finalize(stmt);
+  return out;
 }
 
 long long now_epoch_seconds() {
@@ -1305,6 +1321,62 @@ void Session::run() {
           data["recommended_install"] = nlohmann::json::array();
         }
       }
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = data;
+      res = json_response(http::status::ok, payload);
+    } else if (path == "/ai/status" && req.method() == http::verb::get) {
+      nlohmann::json data;
+      data["checked_at"] = now_epoch_seconds();
+
+      long long active_runs = 0;
+      try {
+        active_runs = count_started_runs(db_);
+      } catch (const std::exception&) {
+        active_runs = 0;
+      }
+      data["active_runs"] = active_runs;
+
+      if (!runner_) {
+        data["runner_available"] = false;
+        data["runner_error"] = "Local model runner not configured.";
+        data["runner_last_checked"] = now_epoch_seconds();
+        data["active_pull_jobs"] = 0;
+        data["pulls"] = nlohmann::json::array();
+      } else {
+        const auto status = runner_->status();
+        data["runner_available"] = status.available;
+        data["runner_error"] = status.error.empty() ? nlohmann::json(nullptr)
+                                                    : nlohmann::json(status.error);
+        data["runner_last_checked"] = status.last_checked;
+        data["runner_version"] = status.version.empty() ? nlohmann::json(nullptr)
+                                                        : nlohmann::json(status.version);
+
+        nlohmann::json pulls = nlohmann::json::array();
+        long long active_pull_jobs = 0;
+        for (const auto& job : runner_->list_pulls()) {
+          nlohmann::json item;
+          item["job_id"] = job.job_id;
+          item["model"] = job.model;
+          item["status"] = job.status;
+          item["updated_at"] = job.updated_at;
+          item["error"] = job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error);
+          item["progress"] = {
+              {"completed", job.progress.completed},
+              {"total", job.progress.total},
+              {"percent", job.progress.percent},
+              {"stage", job.progress.stage},
+          };
+          const bool active = (job.status == "queued" || job.status == "downloading" ||
+                               job.status == "verifying");
+          item["active"] = active;
+          if (active) ++active_pull_jobs;
+          pulls.push_back(std::move(item));
+        }
+        data["active_pull_jobs"] = active_pull_jobs;
+        data["pulls"] = pulls;
+      }
+
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
@@ -2362,6 +2434,118 @@ void Session::run() {
         }
       } else {
         res = error_response(http::status::not_found, "not_found", "Route not found.");
+      }
+    } else if (path == "/ai/messages/capture" && req.method() == http::verb::post) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("project_id") || !body.contains("prompt") || !body.contains("response")) {
+          res = error_response(http::status::bad_request,
+                               "bad_request",
+                               "Missing required fields.");
+        } else {
+          const std::string project_id = body.at("project_id").get<std::string>();
+          const std::string prompt = body.at("prompt").get<std::string>();
+          const std::string response_text = body.at("response").get<std::string>();
+          const std::string source =
+              (body.contains("source") && !body.at("source").is_null())
+                  ? body.at("source").get<std::string>()
+                  : "manual_paste";
+
+          std::optional<std::string> provider;
+          if (body.contains("provider") && !body.at("provider").is_null()) {
+            provider = body.at("provider").get<std::string>();
+          }
+          std::optional<std::string> model;
+          if (body.contains("model") && !body.at("model").is_null()) {
+            model = body.at("model").get<std::string>();
+          }
+          std::optional<std::string> thread_id;
+          if (body.contains("thread_id") && !body.at("thread_id").is_null()) {
+            thread_id = body.at("thread_id").get<std::string>();
+          }
+
+          holder::store::ProjectRepo project_repo(db_);
+          if (!project_repo.get(project_id).has_value()) {
+            res = error_response(http::status::not_found, "not_found", "Project not found.");
+          } else {
+            const long long created_at =
+                (body.contains("created_at") && !body.at("created_at").is_null())
+                    ? body.at("created_at").get<long long>()
+                    : now_epoch_seconds();
+
+            holder::store::AiThreadRepo thread_repo(db_);
+            if (thread_id.has_value()) {
+              const auto existing = thread_repo.get(thread_id.value());
+              if (!existing.has_value()) {
+                res = error_response(http::status::not_found, "not_found", "AI thread not found.");
+              } else if (existing->project_id != project_id) {
+                res = error_response(http::status::bad_request,
+                                     "bad_request",
+                                     "Thread belongs to a different project.");
+              }
+            } else {
+              holder::model::AiThread thread;
+              thread.thread_id = generate_uuid_v4();
+              thread.project_id = project_id;
+              std::string title = prompt.empty() ? response_text : prompt;
+              if (title.size() > 80) title = title.substr(0, 80);
+              if (title.empty()) title = "Captured response";
+              thread.title = title;
+              thread.created_at = created_at;
+              thread.updated_at = created_at;
+              thread_repo.create(thread);
+              thread_id = thread.thread_id;
+            }
+
+            holder::store::AiMessageRepo msg_repo(db_, fts_);
+            holder::model::AiMessage user_msg;
+            user_msg.message_id = generate_uuid_v4();
+            user_msg.thread_id = thread_id.value();
+            user_msg.role = "user";
+            user_msg.source = source;
+            user_msg.content = prompt;
+            user_msg.created_at = created_at;
+            msg_repo.append(user_msg);
+
+            holder::model::AiMessage assistant_msg;
+            assistant_msg.message_id = generate_uuid_v4();
+            assistant_msg.thread_id = thread_id.value();
+            assistant_msg.role = "assistant";
+            assistant_msg.source = source;
+            assistant_msg.provider = provider;
+            assistant_msg.model = model;
+            assistant_msg.content = response_text;
+            assistant_msg.created_at = created_at;
+
+            nlohmann::json meta;
+            if (body.contains("url") && !body.at("url").is_null()) {
+              meta["url"] = body.at("url").get<std::string>();
+            }
+            if (body.contains("context") && !body.at("context").is_null()) {
+              meta["context"] = body.at("context");
+            }
+            if (!meta.empty()) {
+              assistant_msg.meta_json = meta.dump();
+            }
+            msg_repo.append(assistant_msg);
+
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = {
+                {"thread_id", thread_id.value()},
+                {"user_message_id", user_msg.message_id},
+                {"assistant_message_id", assistant_msg.message_id},
+            };
+            res = json_response(http::status::created, payload);
+          }
+        }
+      } catch (const std::exception& ex) {
+        const std::string msg = ex.what();
+        if (msg.rfind("conflict:", 0) == 0) {
+          res = error_response(http::status::conflict, "conflict", msg);
+        } else {
+          res = error_response(http::status::bad_request, "bad_request", msg);
+        }
       }
     } else if (path == "/ai/messages" && req.method() == http::verb::get) {
       const std::string thread_id = param("thread_id");

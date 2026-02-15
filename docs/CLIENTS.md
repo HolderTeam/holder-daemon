@@ -65,6 +65,7 @@ Header:
    - Poll: `GET /ai/runner/pull/{job_id}`
    - Stream: `GET /ai/runner/pull/{job_id}/events`
 5. Refresh `GET /ai/capabilities` after pull completes.
+6. Use `GET /ai/status` for live operational state (active runs/pulls, runner health).
 
 ## 7) AI Execution + History
 
@@ -83,9 +84,10 @@ Thread/message APIs:
 - `GET/POST /ai/threads`
 - `GET/PATCH /ai/threads/{thread_id}`
 - `GET/POST /ai/messages`
+- `POST /ai/messages/capture` (one-call prompt+response capture with provenance)
 - `GET/PATCH/DELETE /ai/messages/{message_id}`
 
-For manual capture (copy/paste cloud responses), clients can create AI messages with source/provenance fields via `POST /ai/messages`.
+For manual capture (copy/paste cloud responses), prefer `POST /ai/messages/capture`.
 
 ## 8) Search
 

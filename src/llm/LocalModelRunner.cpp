@@ -164,6 +164,17 @@ std::optional<LocalModelRunner::PullJob> LocalModelRunner::get_pull(const std::s
   return it->second;
 }
 
+std::vector<LocalModelRunner::PullJob> LocalModelRunner::list_pulls() const {
+  std::lock_guard<std::mutex> lock(pulls_mu_);
+  std::vector<PullJob> out;
+  out.reserve(pulls_.size());
+  for (const auto& [id, job] : pulls_) {
+    (void)id;
+    out.push_back(job);
+  }
+  return out;
+}
+
 bool LocalModelRunner::http_get_json(const std::string& target,
                                   std::string* out,
                                   std::string* error) {

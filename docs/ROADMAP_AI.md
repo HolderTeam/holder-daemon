@@ -31,32 +31,12 @@ Already in place:
     3. global router config
     4. auto fallback
 - `/ai/capabilities` includes router config and effective scope/model
-
-## Commit 1: Manual Capture Convenience + Status Consolidation
-
-Goal:
-
-- Improve cloud copy/paste UX and clarify status entrypoint.
-
-Why:
-
-- Provenance capture should be easy for clients.
-- Status model should be obvious.
-
-Changes:
-
-- Add convenience endpoint:
+- Operational status endpoint:
+  - `GET /ai/status`
+  - exposes live runtime state (runner health, active runs, active pulls)
+- Manual capture convenience endpoint:
   - `POST /ai/messages/capture`
-  - Inputs: `project_id`, optional `thread_id`, `prompt`, `response`, provenance (`source/provider/model/url`)
-  - Behavior: create/find thread, append user+assistant messages, return IDs.
-- Add status alias endpoint:
-  - `GET /ai/status` as a thin compatibility alias to `/ai/capabilities`
-  - Or document `/ai/capabilities` as canonical and skip alias.
-
-Acceptance:
-
-- Client can record manual cloud responses in one call.
-- Status endpoint strategy is explicit and documented.
+  - creates/fetches thread and appends user+assistant messages with provenance
 
 ## Non-Goals (This Cycle)
 

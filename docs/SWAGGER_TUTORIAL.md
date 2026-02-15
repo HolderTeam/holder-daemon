@@ -52,6 +52,11 @@ Inspect:
 - `data.caste`
 - `data.models` (installed)
 - `data.recommended_install` (good next pulls)
+- `data.router_config` (effective routing model source)
+
+For live runtime state (active runs/pulls), call:
+
+`GET /ai/status`
 
 ## 4) Pull a Recommended Model
 
@@ -107,6 +112,10 @@ Reconnect to run events:
 
 - `GET /ai/threads?project_id=<project_id>`
 - `GET /ai/messages?thread_id=<thread_id>`
+
+Capture copy/pasted cloud response in one call:
+
+`POST /ai/messages/capture`
 
 ## 8) Search
 

@@ -42,6 +42,19 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   REQUIRE(caps["data"]["router_config"].contains("effective"));
   REQUIRE(caps["data"]["router_config"]["effective"]["scope"] == "auto");
 
+  const auto status = http_json_request(bound.bind,
+                                        bound.port,
+                                        token,
+                                        boost::beast::http::verb::get,
+                                        "/ai/status",
+                                        nlohmann::json{},
+                                        boost::beast::http::status::ok);
+  REQUIRE(status["ok"] == true);
+  REQUIRE(status["data"]["runner_available"] == false);
+  REQUIRE(status["data"]["active_runs"].is_number_integer());
+  REQUIRE(status["data"]["active_pull_jobs"].is_number_integer());
+  REQUIRE(status["data"]["pulls"].is_array());
+
   const auto retry = http_json_request(bound.bind,
                                        bound.port,
                                        token,

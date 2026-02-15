@@ -55,6 +55,7 @@ class LocalModelRunner {
 
   PullJob start_pull(const std::string& model);
   std::optional<PullJob> get_pull(const std::string& job_id) const;
+  std::vector<PullJob> list_pulls() const;
   bool stream_generate(const std::string& model,
                        const std::string& prompt,
                        const std::string& options_json,

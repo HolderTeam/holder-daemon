@@ -262,6 +262,51 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RunnerPullJob"
+    AiStatusPullJob:
+      allOf:
+        - $ref: "#/components/schemas/RunnerPullJob"
+        - type: object
+          required: [active]
+          properties:
+            active:
+              type: boolean
+    AiStatusData:
+      type: object
+      required: [checked_at, runner_available, runner_last_checked, active_runs, active_pull_jobs, pulls]
+      properties:
+        checked_at:
+          type: integer
+          format: int64
+        runner_available:
+          type: boolean
+        runner_last_checked:
+          type: integer
+          format: int64
+        runner_version:
+          type: string
+          nullable: true
+        runner_error:
+          type: string
+          nullable: true
+        active_runs:
+          type: integer
+          format: int64
+        active_pull_jobs:
+          type: integer
+          format: int64
+        pulls:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiStatusPullJob"
+    AiStatusResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AiStatusData"
     AiRunCreateRequest:
       type: object
       required: [prompt]
@@ -698,6 +743,56 @@ components:
           required: [message_id]
           properties:
             message_id:
+              type: string
+    AiMessageCaptureRequest:
+      type: object
+      required: [project_id, prompt, response]
+      properties:
+        project_id:
+          type: string
+        thread_id:
+          type: string
+          nullable: true
+        prompt:
+          type: string
+        response:
+          type: string
+        source:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        url:
+          type: string
+          nullable: true
+        context:
+          type: object
+          additionalProperties: true
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+          nullable: true
+    AiMessageCaptureResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [thread_id, user_message_id, assistant_message_id]
+          properties:
+            thread_id:
+              type: string
+            user_message_id:
+              type: string
+            assistant_message_id:
               type: string
     AiMessageUpdateRequest:
       type: object
@@ -1717,6 +1812,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ai/status:
+    get:
+      summary: Get live AI runtime status
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ai/runner/retry:
     post:
       summary: Retry local model runner probe
@@ -2092,6 +2203,46 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ai/messages/capture:
+    post:
+      summary: Capture prompt/response pair with provenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiMessageCaptureRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiMessageCaptureResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
