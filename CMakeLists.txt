@@ -97,11 +97,15 @@ add_executable(holder
   src/api/routes/ai/runs/AiRunQueryRoutes.cpp
   src/api/routes/ai/AiRunRoutes.cpp
   src/api/routes/ai/AiRunnerRoutes.cpp
+  src/api/routes/ai/runner/AiRunnerPullEventRoutes.cpp
+  src/api/routes/ai/runner/AiRunnerPullRoutes.cpp
   src/api/routes/ai/AiStatusRoutes.cpp
   src/api/routes/ai/status/AiCapabilitiesRoutes.cpp
   src/api/routes/ai/status/AiRuntimeStatusRoutes.cpp
   src/api/routes/ai/status/AiRouterConfigRoutes.cpp
   src/api/routes/ai/AiThreadRoutes.cpp
+  src/api/routes/ai/threads/AiThreadCollectionRoutes.cpp
+  src/api/routes/ai/threads/AiThreadItemRoutes.cpp
   src/api/routes/CardRoutes.cpp
   src/api/routes/ProjectRoutes.cpp
   src/api/routes/RebuildRoutes.cpp
