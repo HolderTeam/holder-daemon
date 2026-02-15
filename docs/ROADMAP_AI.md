@@ -106,8 +106,10 @@ Execution phases:
        - `/ai/runs` cloud candidate selection rejects models with active cooldown
        - failed cloud attempts set backoff cooldown; successful attempts clear cooldown
        - dedicated `policy_trace_json` persistence on runs + structured `policy_trace` in run API payloads
+       - per-thread compaction state persistence (`rolling_summary`, `pinned_facts_json`)
+       - cloud context builder now uses rolling summary + pinned facts + tail-window
      - still to do:
-       - rolling summary + pinned-facts compaction state
+       - summariser-model-driven summary refresh (current rolling summary is deterministic text compaction)
        - optional cooldown policy tuning from config (`cloudproviders.yaml`)
 
 3. Additional Providers (After Reliability)

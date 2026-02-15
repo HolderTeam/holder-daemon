@@ -46,6 +46,7 @@ add_executable(lockfile_tests
   HttpCloudProviders_test.cpp
   HttpRunner_test.cpp
   CloudQuota_test.cpp
+  ThreadCompaction_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
@@ -125,6 +126,7 @@ add_executable(lockfile_tests
   ../src/api/support/CloudConfig.cpp
   ../src/api/support/CloudClient.cpp
   ../src/api/support/CloudQuota.cpp
+  ../src/api/support/ThreadCompaction.cpp
   ../src/api/support/LocalModelRouting.cpp
   ../src/api/support/RunEventStore.cpp
   ../src/api/Session.cpp

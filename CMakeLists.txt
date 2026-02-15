@@ -116,6 +116,7 @@ add_executable(holder
   src/api/support/CloudConfig.cpp
   src/api/support/CloudClient.cpp
   src/api/support/CloudQuota.cpp
+  src/api/support/ThreadCompaction.cpp
   src/api/support/LocalModelRouting.cpp
   src/api/support/RunEventStore.cpp
   src/api/Session.cpp

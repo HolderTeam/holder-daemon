@@ -243,6 +243,19 @@ CREATE INDEX IF NOT EXISTS idx_ai_cloud_cooldowns_until
   ON ai_cloud_model_cooldowns(cooldown_until);
 
 -- ----------------------------
+-- Thread compaction state (rolling summary + pinned facts)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_thread_compaction_state (
+  thread_id                  TEXT PRIMARY KEY,
+  rolling_summary            TEXT NULL,
+  pinned_facts_json          TEXT NULL,  -- JSON array of short strings
+  last_compacted_message_id  TEXT NULL,
+  updated_at                 INTEGER NOT NULL,
+
+  FOREIGN KEY(thread_id) REFERENCES ai_threads(thread_id) ON DELETE CASCADE
+);
+
+-- ----------------------------
 -- Full-text search (FTS5)
 -- ----------------------------
 -- Contentless FTS: server maintains rows explicitly.

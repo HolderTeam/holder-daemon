@@ -7,6 +7,7 @@
 #include "api/support/LocalModelRouting.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/RunEventStore.h"
+#include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiProviderCredentialRepo.h"
@@ -275,6 +276,10 @@ RouteDispatchResult execute_cloud_post_path(
       std::optional<std::string> output;
       long long output_prompt_tokens = 0;
       std::string final_error = "All cloud model attempts failed.";
+      std::optional<support::ThreadCompactionState> compaction_state;
+      if (thread_id.has_value()) {
+        compaction_state = support::load_thread_compaction_state(db, thread_id.value());
+      }
 
       for (const auto* candidate : candidate_models) {
         nlohmann::json attempt;
@@ -310,8 +315,10 @@ RouteDispatchResult execute_cloud_post_path(
             (candidate->tpm > 0) ? std::max(256LL, (candidate->tpm * 7) / 10) : 6000LL;
         const long long context_budget = std::max(0LL, model_input_budget - prompt_tokens - 64LL);
         bool compacted = false;
-        std::string compacted_context =
-            support::compact_context_tail(context_json, context_budget, &compacted);
+        bool used_summary = false;
+        int pinned_fact_count = 0;
+        std::string compacted_context = support::build_compacted_context(
+            context_json, context_budget, compaction_state, &compacted, &used_summary, &pinned_fact_count);
         std::string prompt_full = prompt;
         if (!compacted_context.empty()) {
           prompt_full += "\n\nContext:\n";
@@ -331,6 +338,10 @@ RouteDispatchResult execute_cloud_post_path(
             {"projected_tokens", projected_tokens},
         };
         attempt["context_compacted"] = compacted;
+        attempt["compaction"] = {
+            {"used_summary", used_summary},
+            {"pinned_fact_count", pinned_fact_count},
+        };
         attempt["input_tokens"] = prompt_full_tokens;
 
         if (candidate->rpm > 0 && minute_usage.requests + 1 > candidate->rpm) {
@@ -396,6 +407,9 @@ RouteDispatchResult execute_cloud_post_path(
 
       const long long updated_at = support::now_epoch_seconds();
       if (!output.has_value() || !chosen_model_id.has_value()) {
+        if (thread_id.has_value() && !context_json.empty()) {
+          support::roll_thread_compaction_state(db, thread_id.value(), context_json, updated_at);
+        }
         policy_trace["result"] = {
             {"status", "failed"},
             {"error", final_error},
@@ -411,6 +425,9 @@ RouteDispatchResult execute_cloud_post_path(
                                updated_at);
       } else {
         const long long response_tokens = support::estimate_tokens_from_text(output.value());
+        if (thread_id.has_value() && !context_json.empty()) {
+          support::roll_thread_compaction_state(db, thread_id.value(), context_json, updated_at);
+        }
         support::record_cloud_usage_event(db,
                                           selected_provider->id,
                                           chosen_model_id.value(),
