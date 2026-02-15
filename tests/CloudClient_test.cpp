@@ -42,3 +42,33 @@ TEST_CASE("CloudClient maps malformed success body", "[cloud_client]") {
   REQUIRE_FALSE(parsed.text.has_value());
   REQUIRE(parsed.error_code == "malformed_response");
 }
+
+TEST_CASE("CloudClient run override returns mocked output", "[cloud_client]") {
+  holder::api::support::CloudProviderConfig provider;
+  provider.id = "switchyard";
+  provider.kind = "generic_chat";
+  provider.base_url = "https://127.0.0.1:1";
+
+  holder::api::support::CloudModelConfig model;
+  model.id = "openrouter/auto";
+  model.endpoint = "/api/v1/chat/completions";
+
+  holder::api::support::set_run_cloud_model_override_for_tests(
+      [](const holder::api::support::CloudProviderConfig& p,
+         const holder::api::support::CloudModelConfig& m,
+         const std::string&,
+         const std::string& prompt,
+         std::string*) -> std::optional<std::string> {
+        if (p.id != "switchyard" || m.id != "openrouter/auto") return std::nullopt;
+        return std::string("mocked: ") + prompt;
+      });
+
+  std::string error;
+  const auto out =
+      holder::api::support::run_cloud_model(provider, model, "key", "hello", &error);
+  holder::api::support::clear_run_cloud_model_override_for_tests();
+
+  REQUIRE(out.has_value());
+  REQUIRE(out.value() == "mocked: hello");
+  REQUIRE(error.empty());
+}

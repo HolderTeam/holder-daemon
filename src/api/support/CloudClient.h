@@ -2,6 +2,7 @@
 
 #include "api/support/CloudConfig.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -12,6 +13,13 @@ struct CloudResponseParse {
   std::string error_code;
   std::string error_message;
 };
+
+using CloudModelRunnerOverride = std::function<std::optional<std::string>(
+    const CloudProviderConfig& provider,
+    const CloudModelConfig& model,
+    const std::string& api_key,
+    const std::string& prompt_with_context,
+    std::string* error)>;
 
 long long estimate_tokens_from_text(const std::string& text);
 std::string compact_context_tail(const std::string& context_json,
@@ -25,5 +33,7 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
                                            const std::string& api_key,
                                            const std::string& prompt_with_context,
                                            std::string* error);
+void set_run_cloud_model_override_for_tests(CloudModelRunnerOverride fn);
+void clear_run_cloud_model_override_for_tests();
 
 } // namespace holder::api::support

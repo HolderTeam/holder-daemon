@@ -8,6 +8,9 @@
 #include <nlohmann/json.hpp>
 #include <openssl/ssl.h>
 
+#include <mutex>
+#include <utility>
+
 namespace holder::api::support {
 namespace {
 
@@ -188,6 +191,9 @@ std::optional<std::string> parse_generic_chat_text(const nlohmann::json& parsed)
   return std::nullopt;
 }
 
+std::mutex g_run_cloud_model_override_mu;
+CloudModelRunnerOverride g_run_cloud_model_override;
+
 } // namespace
 
 long long estimate_tokens_from_text(const std::string& text) {
@@ -254,6 +260,15 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
                                            const std::string& api_key,
                                            const std::string& prompt_with_context,
                                            std::string* error) {
+  CloudModelRunnerOverride override_fn;
+  {
+    std::lock_guard<std::mutex> lock(g_run_cloud_model_override_mu);
+    override_fn = g_run_cloud_model_override;
+  }
+  if (override_fn) {
+    return override_fn(provider, model, api_key, prompt_with_context, error);
+  }
+
   if (provider.kind != "chocolatefactory_generative_language" &&
       provider.kind != "generic_chat" && provider.kind != "generic_responses") {
     if (error) *error = "unsupported provider kind: " + provider.kind;
@@ -316,6 +331,16 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
     return std::nullopt;
   }
   return parsed.text.value();
+}
+
+void set_run_cloud_model_override_for_tests(CloudModelRunnerOverride fn) {
+  std::lock_guard<std::mutex> lock(g_run_cloud_model_override_mu);
+  g_run_cloud_model_override = std::move(fn);
+}
+
+void clear_run_cloud_model_override_for_tests() {
+  std::lock_guard<std::mutex> lock(g_run_cloud_model_override_mu);
+  g_run_cloud_model_override = nullptr;
 }
 
 } // namespace holder::api::support
