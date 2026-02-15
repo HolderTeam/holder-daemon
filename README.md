@@ -24,6 +24,8 @@ Runtime/build dependencies used by this repo:
 - Git clone: initializes submodule automatically.
 - ZIP download: fetches pinned `caste` archive (requires `curl` or `wget`).
 
+Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
+
 ## Quick Start (Ubuntu)
 
 This is the primary tested dev path.

@@ -145,10 +145,15 @@ std::optional<std::filesystem::path> find_models_path() {
     fs::path p(env);
     if (fs::exists(p)) return p;
   }
-  fs::path p1 = fs::current_path() / "models.yaml";
+  fs::path p1 = fs::current_path() / "config" / "models.yaml";
   if (fs::exists(p1)) return p1;
-  fs::path p2 = fs::current_path().parent_path() / "models.yaml";
+  fs::path p2 = fs::current_path().parent_path() / "config" / "models.yaml";
   if (fs::exists(p2)) return p2;
+  // Legacy location
+  fs::path p3 = fs::current_path() / "models.yaml";
+  if (fs::exists(p3)) return p3;
+  fs::path p4 = fs::current_path().parent_path() / "models.yaml";
+  if (fs::exists(p4)) return p4;
   return std::nullopt;
 }
 
