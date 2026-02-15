@@ -11,6 +11,9 @@ defaults:
     prefer_local: true
     allow_cloud_fallback: true
     default_provider: chocolatefactory
+  cooldown:
+    base_seconds: 30
+    cap_seconds: 900
   compaction:
     strategy: sliding_window_with_summary
     summary_model_role: compact

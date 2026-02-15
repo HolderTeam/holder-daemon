@@ -9,13 +9,16 @@
 namespace holder::api::support {
 namespace {
 
-long long failure_cooldown_seconds(long long failure_count) {
-  // 30s, 60s, 120s, 240s, 480s, then capped at 900s.
+long long failure_cooldown_seconds(long long failure_count,
+                                   long long base_seconds,
+                                   long long cap_seconds) {
+  // Exponential backoff with a conservative cap.
   if (failure_count <= 0) return 0;
+  const long long safe_base = std::max(1LL, base_seconds);
+  const long long safe_cap = std::max(safe_base, cap_seconds);
   const long long bounded = std::min(failure_count - 1, 5LL);
-  const long long base = 30LL;
-  const long long raw = base * (1LL << bounded);
-  return std::min(raw, 900LL);
+  const long long raw = safe_base * (1LL << bounded);
+  return std::min(raw, safe_cap);
 }
 
 } // namespace
@@ -119,12 +122,15 @@ CloudModelCooldownState record_cloud_model_failure(holder::store::Db& db,
                                                    const std::string& provider,
                                                    const std::string& model_id,
                                                    const std::string& error,
-                                                   long long now_epoch_seconds) {
+                                                   long long now_epoch_seconds,
+                                                   long long cooldown_base_seconds,
+                                                   long long cooldown_cap_seconds) {
   long long failure_count = 1;
   if (const auto current = load_cloud_model_cooldown(db, provider, model_id); current.has_value()) {
     failure_count = std::max(1LL, current->failure_count + 1);
   }
-  const long long cooldown_seconds = failure_cooldown_seconds(failure_count);
+  const long long cooldown_seconds =
+      failure_cooldown_seconds(failure_count, cooldown_base_seconds, cooldown_cap_seconds);
   const long long cooldown_until = now_epoch_seconds + cooldown_seconds;
 
   static constexpr const char* SQL =

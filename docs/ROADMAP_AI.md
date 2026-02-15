@@ -110,9 +110,10 @@ Execution phases:
        - cloud context builder now uses rolling summary + pinned facts + tail-window
        - summariser-model-driven summary refresh (uses provider `role: compact` when context is large)
        - summary refresh thresholds/budgets now loaded from `cloudproviders.yaml` (`defaults.compaction.summary_refresh`)
+       - cooldown backoff policy now loaded from `cloudproviders.yaml` (`defaults.cooldown`)
       - still to do:
-       - compact-model refresh policy tuning (cadence/heuristics beyond current thresholds)
-       - optional cooldown policy tuning from config (`cloudproviders.yaml`)
+        - compact-model refresh policy tuning (cadence/heuristics beyond current thresholds)
+       - optional provider-specific cooldown policy overrides (current policy is global defaults)
 
 3. Additional Providers (After Reliability)
    - implement adapters for `switchyard`, `chadjeopardy`, `mechatropic`

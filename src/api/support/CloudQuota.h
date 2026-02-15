@@ -42,7 +42,9 @@ CloudModelCooldownState record_cloud_model_failure(holder::store::Db& db,
                                                    const std::string& provider,
                                                    const std::string& model_id,
                                                    const std::string& error,
-                                                   long long now_epoch_seconds);
+                                                   long long now_epoch_seconds,
+                                                   long long cooldown_base_seconds = 30,
+                                                   long long cooldown_cap_seconds = 900);
 
 void clear_cloud_model_cooldown(holder::store::Db& db,
                                 const std::string& provider,

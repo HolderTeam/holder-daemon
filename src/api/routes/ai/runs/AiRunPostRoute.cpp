@@ -400,7 +400,13 @@ RouteDispatchResult execute_cloud_post_path(
                 const std::string fail_error =
                     summary_error.empty() ? "summary refresh failed" : summary_error;
                 const auto cooldown = support::record_cloud_model_failure(
-                    db, selected_provider->id, compact_model->id, fail_error, now);
+                    db,
+                    selected_provider->id,
+                    compact_model->id,
+                    fail_error,
+                    now,
+                    cloud_cfg->cooldown.base_seconds,
+                    cloud_cfg->cooldown.cap_seconds);
                 compaction_trace["summary_refresh"] = {
                     {"status", "failed"},
                     {"model", compact_model->id},
@@ -520,7 +526,13 @@ RouteDispatchResult execute_cloud_post_path(
         }
         final_error = cloud_error.empty() ? "cloud call failed" : cloud_error;
         const auto cooldown = support::record_cloud_model_failure(
-            db, selected_provider->id, candidate->id, final_error, support::now_epoch_seconds());
+            db,
+            selected_provider->id,
+            candidate->id,
+            final_error,
+            support::now_epoch_seconds(),
+            cloud_cfg->cooldown.base_seconds,
+            cloud_cfg->cooldown.cap_seconds);
         attempt["cooldown"] = {
             {"failure_count", cooldown.failure_count},
             {"cooldown_until", cooldown.cooldown_until},

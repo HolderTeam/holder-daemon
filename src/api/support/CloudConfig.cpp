@@ -66,6 +66,15 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       cfg.summary_refresh.max_summary_chars = summary_refresh["max_summary_chars"].as<long long>();
     }
   }
+  if (root["defaults"] && root["defaults"]["cooldown"]) {
+    const auto cooldown = root["defaults"]["cooldown"];
+    if (cooldown["base_seconds"]) {
+      cfg.cooldown.base_seconds = cooldown["base_seconds"].as<long long>();
+    }
+    if (cooldown["cap_seconds"]) {
+      cfg.cooldown.cap_seconds = cooldown["cap_seconds"].as<long long>();
+    }
+  }
 
   if (root["providers"] && root["providers"].IsSequence()) {
     for (const auto& provider_node : root["providers"]) {

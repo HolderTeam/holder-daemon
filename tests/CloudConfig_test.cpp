@@ -47,6 +47,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "defaults:\n";
   out << "  route_policy:\n";
   out << "    default_provider: chocolatefactory\n";
+  out << "  cooldown:\n";
+  out << "    base_seconds: 45\n";
+  out << "    cap_seconds: 600\n";
   out << "  compaction:\n";
   out << "    summary_refresh:\n";
   out << "      trigger_context_tokens: 1800\n";
@@ -74,5 +77,6 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   REQUIRE(cfg->summary_refresh.source_context_tokens == 2400);
   REQUIRE(cfg->summary_refresh.response_tokens_budget == 320);
   REQUIRE(cfg->summary_refresh.max_summary_chars == 4200);
+  REQUIRE(cfg->cooldown.base_seconds == 45);
+  REQUIRE(cfg->cooldown.cap_seconds == 600);
 }
-

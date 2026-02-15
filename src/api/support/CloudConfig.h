@@ -36,9 +36,14 @@ struct CloudProvidersConfig {
     long long response_tokens_budget = 256;
     long long max_summary_chars = 5000;
   };
+  struct CooldownConfig {
+    long long base_seconds = 30;
+    long long cap_seconds = 900;
+  };
 
   std::string default_provider;
   SummaryRefreshConfig summary_refresh;
+  CooldownConfig cooldown;
   std::vector<CloudProviderConfig> providers;
 };
 
