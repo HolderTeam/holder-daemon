@@ -1,5 +1,6 @@
 #include "api/routes/ProjectRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "core/ProjectPaths.h"
 #include "git/GitRepo.h"
@@ -9,7 +10,6 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,12 +18,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
   static holder::git::RealGitOps real_git;
@@ -211,7 +205,7 @@ bool handle_project_routes(const std::string& path,
           }
         }
         if (project.created_at <= 0) {
-          project.created_at = now_epoch_seconds();
+          project.created_at = support::now_epoch_seconds();
         }
         if (project.updated_at <= 0) {
           project.updated_at = project.created_at;

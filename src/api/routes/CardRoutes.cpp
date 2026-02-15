@@ -1,5 +1,6 @@
 #include "api/routes/CardRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "core/CardPaths.h"
 #include "store/AiMessageRepo.h"
@@ -11,7 +12,6 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <optional>
 #include <string>
 
@@ -19,12 +19,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 bool should_include_link_target(holder::store::CardRepo& card_repo,
                                 holder::store::AiMessageRepo& msg_repo,
@@ -214,7 +208,7 @@ bool handle_card_routes(const std::string& path,
             card.updated_at = body.at("updated_at").get<long long>();
           }
           if (card.created_at <= 0) {
-            card.created_at = now_epoch_seconds();
+            card.created_at = support::now_epoch_seconds();
           }
           if (card.updated_at <= 0) {
             card.updated_at = card.created_at;
@@ -325,7 +319,7 @@ bool handle_card_routes(const std::string& path,
                 if (body.contains("created_at") && !body.at("created_at").is_null()) {
                   link.created_at = body.at("created_at").get<long long>();
                 } else {
-                  link.created_at = now_epoch_seconds();
+                  link.created_at = support::now_epoch_seconds();
                 }
                 std::string validation_error;
                 if (!validate_link_target(db,
@@ -336,7 +330,7 @@ bool handle_card_routes(const std::string& path,
                   res = support::error_response(http::status::bad_request, "bad_request", validation_error);
                 } else {
                   repo.upsert_links(card.project_id, card.card_id, {link});
-                  card_store->update_links(card.card_id, now_epoch_seconds());
+                  card_store->update_links(card.card_id, support::now_epoch_seconds());
 
                   nlohmann::json payload;
                   payload["ok"] = true;
@@ -373,7 +367,7 @@ bool handle_card_routes(const std::string& path,
               } else {
                 repo.delete_links_from(card.project_id, card.card_id);
               }
-              card_store->update_links(card.card_id, now_epoch_seconds());
+              card_store->update_links(card.card_id, support::now_epoch_seconds());
 
               nlohmann::json payload;
               payload["ok"] = true;
@@ -435,7 +429,7 @@ bool handle_card_routes(const std::string& path,
                                "Method not allowed.");
         } else {
           try {
-            const long long updated_at = now_epoch_seconds();
+            const long long updated_at = support::now_epoch_seconds();
             card_store->restore(card_id, updated_at);
             nlohmann::json payload;
             payload["ok"] = true;
@@ -518,7 +512,7 @@ bool handle_card_routes(const std::string& path,
         }
       } else if (req.method() == http::verb::delete_) {
         try {
-          const long long deleted_at = now_epoch_seconds();
+          const long long deleted_at = support::now_epoch_seconds();
           card_store->trash(card_id, deleted_at);
           nlohmann::json payload;
           payload["ok"] = true;

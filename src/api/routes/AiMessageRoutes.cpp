@@ -1,5 +1,6 @@
 #include "api/routes/AiMessageRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
@@ -11,7 +12,6 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <optional>
 #include <string>
 
@@ -19,12 +19,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 bool should_include_link_target(holder::store::CardRepo& card_repo,
                                 holder::store::AiMessageRepo& msg_repo,
@@ -173,7 +167,7 @@ bool handle_ai_message_routes(const std::string& path,
         } else {
           const long long created_at = (body.contains("created_at") && !body.at("created_at").is_null())
                                            ? body.at("created_at").get<long long>()
-                                           : now_epoch_seconds();
+                                           : support::now_epoch_seconds();
 
           holder::store::AiThreadRepo thread_repo(db);
           if (thread_id.has_value()) {
@@ -332,7 +326,7 @@ bool handle_ai_message_routes(const std::string& path,
           msg.created_at = body.at("created_at").get<long long>();
         }
         if (msg.created_at <= 0) {
-          msg.created_at = now_epoch_seconds();
+          msg.created_at = support::now_epoch_seconds();
         }
 
         holder::store::AiMessageRepo repo(db, fts);
@@ -428,7 +422,7 @@ bool handle_ai_message_routes(const std::string& path,
                   if (body.contains("created_at") && !body.at("created_at").is_null()) {
                     link.created_at = body.at("created_at").get<long long>();
                   } else {
-                    link.created_at = now_epoch_seconds();
+                    link.created_at = support::now_epoch_seconds();
                   }
                   std::string validation_error;
                   if (!validate_link_target(db,
@@ -566,7 +560,7 @@ bool handle_ai_message_routes(const std::string& path,
       } else if (req.method() == http::verb::delete_) {
         try {
           holder::store::AiMessageRepo repo(db, fts);
-          const long long deleted_at = now_epoch_seconds();
+          const long long deleted_at = support::now_epoch_seconds();
           repo.trash(message_id, deleted_at);
           nlohmann::json payload;
           payload["ok"] = true;

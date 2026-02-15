@@ -1,24 +1,18 @@
 #include "api/routes/AiResourceRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "store/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <string>
 
 namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 } // namespace
 
@@ -89,7 +83,7 @@ bool handle_ai_resource_routes(const std::string& path,
           resource.updated_at = body.at("updated_at").get<long long>();
         }
         if (resource.created_at <= 0) {
-          resource.created_at = now_epoch_seconds();
+          resource.created_at = support::now_epoch_seconds();
         }
         if (resource.updated_at <= 0) {
           resource.updated_at = resource.created_at;

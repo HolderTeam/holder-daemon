@@ -1,5 +1,6 @@
 #include "api/routes/AiRunRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "api/support/CloudClient.h"
 #include "api/support/CloudConfig.h"
@@ -30,12 +31,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 std::string normalize_provider_name(const std::string& raw) {
   const std::string key = support::lowercase_ascii(support::trim_ascii(raw));
@@ -143,7 +138,7 @@ RouteDispatchResult handle_ai_run_routes(
             title = title.substr(0, 80);
           }
           thread.title = title;
-          thread.created_at = now_epoch_seconds();
+          thread.created_at = support::now_epoch_seconds();
           thread.updated_at = thread.created_at;
           thread_repo.create(thread);
           thread_id = thread.thread_id;
@@ -238,7 +233,7 @@ RouteDispatchResult handle_ai_run_routes(
                   run.context_json = context_json;
                 }
                 run.status = "started";
-                run.created_at = now_epoch_seconds();
+                run.created_at = support::now_epoch_seconds();
                 run.updated_at = run.created_at;
                 run_repo.create(run);
                 support::append_run_event(run.run_id,
@@ -297,7 +292,7 @@ RouteDispatchResult handle_ai_run_routes(
                     user_msg.model = requested_model;
                   }
                   user_msg.content = prompt;
-                  user_msg.created_at = now_epoch_seconds();
+                  user_msg.created_at = support::now_epoch_seconds();
                   msg_repo.append(user_msg);
                 }
 
@@ -310,7 +305,7 @@ RouteDispatchResult handle_ai_run_routes(
                   nlohmann::json attempt;
                   attempt["model"] = candidate->id;
 
-                  const long long now = now_epoch_seconds();
+                  const long long now = support::now_epoch_seconds();
                   const long long minute_start = now - 60;
                   const long long day_start = now - 86400;
                   const auto minute_usage = support::load_cloud_window_usage(
@@ -392,7 +387,7 @@ RouteDispatchResult handle_ai_run_routes(
                               {"error", final_error}});
                 }
 
-                const long long updated_at = now_epoch_seconds();
+                const long long updated_at = support::now_epoch_seconds();
                 if (!output.has_value() || !chosen_model_id.has_value()) {
                   policy_trace["result"] = {
                       {"status", "failed"},
@@ -558,7 +553,7 @@ RouteDispatchResult handle_ai_run_routes(
               run.router_model = router_model;
             }
             run.status = "started";
-            run.created_at = now_epoch_seconds();
+            run.created_at = support::now_epoch_seconds();
             run.updated_at = run.created_at;
             run_repo.create(run);
             support::append_run_event(run.run_id,
@@ -603,7 +598,7 @@ RouteDispatchResult handle_ai_run_routes(
               user_msg.role = "user";
               user_msg.source = "local";
               user_msg.content = prompt;
-              user_msg.created_at = now_epoch_seconds();
+              user_msg.created_at = support::now_epoch_seconds();
               msg_repo.append(user_msg);
             }
 
@@ -715,7 +710,7 @@ RouteDispatchResult handle_ai_run_routes(
               send_event("fallback", fallback_event);
             }
 
-            const long long updated_at = now_epoch_seconds();
+            const long long updated_at = support::now_epoch_seconds();
             if (!chosen_model.empty()) {
               send_event("done", {{"model", chosen_model}});
               std::optional<std::string> message_id;
@@ -846,7 +841,7 @@ RouteDispatchResult handle_ai_run_routes(
     };
 
     size_t cursor = 0;
-    const long long started = now_epoch_seconds();
+    const long long started = support::now_epoch_seconds();
     for (;;) {
       const auto stream = support::get_run_event_stream(run_id);
       if (stream.has_value()) {
@@ -876,7 +871,7 @@ RouteDispatchResult handle_ai_run_routes(
         return out;
       }
 
-      if (now_epoch_seconds() - started > 60) {
+      if (support::now_epoch_seconds() - started > 60) {
         nlohmann::json keepalive;
         keepalive["run_id"] = run_id;
         keepalive["status"] = "pending";

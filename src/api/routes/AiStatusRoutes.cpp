@@ -1,5 +1,6 @@
 #include "api/routes/AiStatusRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "api/support/LocalModelRouting.h"
 #include "store/AiProviderCredentialRepo.h"
@@ -10,7 +11,6 @@
 #include <nlohmann/json.hpp>
 #include <sqlite3.h>
 
-#include <chrono>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -24,12 +24,6 @@ std::string mask_api_key(const std::string& api_key) {
   if (api_key.empty()) return {};
   if (api_key.size() <= 8) return "****";
   return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
-}
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
 }
 
 long long count_started_runs(holder::store::Db& db) {
@@ -120,7 +114,7 @@ bool handle_ai_status_routes(const std::string& path,
     if (!runner) {
       data["runner_available"] = false;
       data["error"] = "Local model runner not configured.";
-      data["last_checked"] = now_epoch_seconds();
+      data["last_checked"] = support::now_epoch_seconds();
       data["models"] = nlohmann::json::array();
       if (machine_caste.has_value()) {
         const auto recommendations =
@@ -180,7 +174,7 @@ bool handle_ai_status_routes(const std::string& path,
 
   if (path == "/ai/status" && req.method() == http::verb::get) {
     nlohmann::json data;
-    data["checked_at"] = now_epoch_seconds();
+    data["checked_at"] = support::now_epoch_seconds();
 
     long long active_runs = 0;
     try {
@@ -193,7 +187,7 @@ bool handle_ai_status_routes(const std::string& path,
     if (!runner) {
       data["runner_available"] = false;
       data["runner_error"] = "Local model runner not configured.";
-      data["runner_last_checked"] = now_epoch_seconds();
+      data["runner_last_checked"] = support::now_epoch_seconds();
       data["active_pull_jobs"] = 0;
       data["pulls"] = nlohmann::json::array();
     } else {
@@ -389,7 +383,7 @@ bool handle_ai_status_routes(const std::string& path,
         const long long updated_at =
             (body.contains("updated_at") && !body.at("updated_at").is_null())
                 ? body.at("updated_at").get<long long>()
-                : now_epoch_seconds();
+                : support::now_epoch_seconds();
 
         holder::store::AiRouterConfigRepo repo(db);
         if (scope == "global") {

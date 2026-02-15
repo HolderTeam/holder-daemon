@@ -1,5 +1,6 @@
 #include "api/routes/AiProviderRoutes.h"
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
 #include "api/support/CloudConfig.h"
 #include "api/support/LocalModelRouting.h"
@@ -8,7 +9,6 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <cctype>
 #include <optional>
 #include <string>
@@ -18,12 +18,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-long long now_epoch_seconds() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 
 std::string normalize_provider_name(const std::string& raw) {
   const std::string key = support::lowercase_ascii(support::trim_ascii(raw));
@@ -181,7 +175,7 @@ bool handle_ai_provider_routes(const std::string& path,
       const long long ts =
           (body.contains("updated_at") && !body.at("updated_at").is_null())
               ? body.at("updated_at").get<long long>()
-              : now_epoch_seconds();
+              : support::now_epoch_seconds();
 
       holder::store::AiProviderCredentialRepo repo(db);
       const auto existing = repo.get(provider);
