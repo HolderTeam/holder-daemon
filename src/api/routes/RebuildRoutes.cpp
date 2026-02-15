@@ -1,36 +1,16 @@
 #include "api/routes/RebuildRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "store/ProjectRepo.h"
 #include "store/Rebuilder.h"
 
 #include <boost/beast/http.hpp>
-#include <nlohmann/json.hpp>
-
 #include <string>
 
 namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 } // namespace
 
@@ -46,7 +26,7 @@ bool handle_rebuild_routes(const std::string& path,
   try {
     const auto body = nlohmann::json::parse(req.body());
     if (!body.contains("project_id")) {
-      res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
 
@@ -54,7 +34,7 @@ bool handle_rebuild_routes(const std::string& path,
     holder::store::ProjectRepo repo(db);
     const auto project_opt = repo.get(project_id);
     if (!project_opt.has_value()) {
-      res = error_response(http::status::not_found, "not_found", "Project not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Project not found.");
       return true;
     }
 
@@ -69,9 +49,9 @@ bool handle_rebuild_routes(const std::string& path,
     nlohmann::json payload;
     payload["ok"] = true;
     payload["data"] = data;
-    res = json_response(http::status::ok, payload);
+    res = support::json_response(http::status::ok, payload);
   } catch (const std::exception& ex) {
-    res = error_response(http::status::bad_request, "bad_request", ex.what());
+    res = support::error_response(http::status::bad_request, "bad_request", ex.what());
   }
 
   return true;

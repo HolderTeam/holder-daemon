@@ -12,9 +12,9 @@
 #include "api/routes/RebuildRoutes.h"
 #include "api/routes/SearchRoutes.h"
 #include "api/routes/TrashRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
-#include <nlohmann/json.hpp>
 
 #include <string>
 
@@ -22,25 +22,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 } // namespace
 
@@ -105,7 +86,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     return {};
   }
 
-  res = error_response(http::status::not_found, "not_found", "Route not found.");
+  res = support::error_response(http::status::not_found, "not_found", "Route not found.");
   return {};
 }
 

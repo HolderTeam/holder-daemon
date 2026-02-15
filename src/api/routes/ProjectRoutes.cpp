@@ -1,4 +1,5 @@
 #include "api/routes/ProjectRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "core/ProjectPaths.h"
 #include "git/GitRepo.h"
@@ -17,25 +18,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -184,13 +166,13 @@ bool handle_project_routes(const std::string& path,
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
     } catch (const std::invalid_argument&) {
-      res = error_response(http::status::bad_request, "bad_request", "Invalid filter value.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Invalid filter value.");
     } catch (const std::out_of_range&) {
-      res = error_response(http::status::bad_request, "bad_request", "Filter value out of range.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Filter value out of range.");
     } catch (const std::exception& ex) {
-      res = error_response(http::status::internal_server_error, "error", ex.what());
+      res = support::error_response(http::status::internal_server_error, "error", ex.what());
     }
     return true;
   }
@@ -199,7 +181,7 @@ bool handle_project_routes(const std::string& path,
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("name")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
       } else {
         holder::model::Project project;
         if (body.contains("project_id") && !body.at("project_id").is_null()) {
@@ -254,10 +236,10 @@ bool handle_project_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
-        res = json_response(http::status::created, payload);
+        res = support::json_response(http::status::created, payload);
       }
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return true;
   }
@@ -265,13 +247,13 @@ bool handle_project_routes(const std::string& path,
   if (path.rfind("/projects/", 0) == 0) {
     const std::string project_id = path.substr(std::string("/projects/").size());
     if (project_id.empty()) {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Route not found.");
     } else if (req.method() == http::verb::get) {
       try {
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
-          res = error_response(http::status::not_found, "not_found", "Project not found.");
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
         } else {
           const auto& project = project_opt.value();
           nlohmann::json data;
@@ -290,16 +272,16 @@ bool handle_project_routes(const std::string& path,
           nlohmann::json payload;
           payload["ok"] = true;
           payload["data"] = data;
-          res = json_response(http::status::ok, payload);
+          res = support::json_response(http::status::ok, payload);
         }
       } catch (const std::exception& ex) {
-        res = error_response(http::status::internal_server_error, "error", ex.what());
+        res = support::error_response(http::status::internal_server_error, "error", ex.what());
       }
     } else if (req.method() == http::verb::patch) {
       try {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("updated_at")) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+          res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
         } else {
           const long long updated_at = body.at("updated_at").get<long long>();
           const bool has_name = body.contains("name") && !body.at("name").is_null();
@@ -307,12 +289,12 @@ bool handle_project_routes(const std::string& path,
           const bool has_git_remote = body.contains("git_remote_url");
           const bool has_git_provider = body.contains("git_provider");
           if (!has_name && !has_root && !has_git_remote && !has_git_provider) {
-            res = error_response(http::status::bad_request, "bad_request", "No fields to update.");
+            res = support::error_response(http::status::bad_request, "bad_request", "No fields to update.");
           } else {
             holder::store::ProjectRepo repo(db);
             const auto project_opt = repo.get(project_id);
             if (!project_opt.has_value()) {
-              res = error_response(http::status::not_found, "not_found", "Project not found.");
+              res = support::error_response(http::status::not_found, "not_found", "Project not found.");
             } else {
               if (has_name) {
                 repo.update_name(project_id, body.at("name").get<std::string>(), updated_at);
@@ -354,31 +336,31 @@ bool handle_project_routes(const std::string& path,
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};
-              res = json_response(http::status::ok, payload);
+              res = support::json_response(http::status::ok, payload);
             }
           }
         }
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else if (req.method() == http::verb::delete_) {
       try {
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
-          res = error_response(http::status::not_found, "not_found", "Project not found.");
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
         } else {
           repo.remove(project_id);
           nlohmann::json payload;
           payload["ok"] = true;
           payload["data"] = {{"project_id", project_id}};
-          res = json_response(http::status::ok, payload);
+          res = support::json_response(http::status::ok, payload);
         }
       } catch (const std::exception& ex) {
-        res = error_response(http::status::internal_server_error, "error", ex.what());
+        res = support::error_response(http::status::internal_server_error, "error", ex.what());
       }
     } else {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Route not found.");
     }
     return true;
   }

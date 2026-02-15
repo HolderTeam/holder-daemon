@@ -1,6 +1,8 @@
 #include "api/Session.h"
 #include "api/routes/AuthenticatedRoutes.h"
 #include "api/routes/StaticRoutes.h"
+#include "api/support/HttpAuth.h"
+#include "api/support/HttpResponses.h"
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -8,7 +10,6 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
-#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 #include <chrono>
@@ -21,38 +22,6 @@ namespace holder::api {
 namespace {
 
 namespace http = boost::beast::http;
-
-bool is_authorized(const http::request<http::string_body>& req, const std::string& token) {
-  const auto it = req.find(http::field::authorization);
-  if (it == req.end()) return false;
-
-  const auto value = it->value();
-  const std::string auth(value.data(), value.size());
-  constexpr char kPrefix[] = "Bearer ";
-  if (auth.rfind(kPrefix, 0) != 0) return false;
-
-  const std::string bearer = auth.substr(sizeof(kPrefix) - 1);
-  return bearer == token;
-}
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 std::string generate_uuid_v4() {
   if (const char* seed_env = std::getenv("HOLDER_UUID_SEED")) {
@@ -131,8 +100,10 @@ void Session::run() {
 
   if (routes::handle_static_routes(path, req, res)) {
     // handled
-  } else if (!is_authorized(req, auth_token_)) {
-    res = error_response(http::status::unauthorized, "unauthorized", "Missing or invalid token.");
+  } else if (!support::is_authorized_bearer(req, auth_token_)) {
+    res = support::error_response(http::status::unauthorized,
+                                  "unauthorized",
+                                  "Missing or invalid token.");
   } else if (router_.dispatch(req, res)) {
     // handled
   } else {
