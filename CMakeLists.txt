@@ -88,6 +88,8 @@ add_executable(holder
   src/api/routes/ai/AiDispatch.cpp
   src/api/routes/ai/AiMessageRoutes.cpp
   src/api/routes/AiResourceRoutes.cpp
+  src/api/routes/ai/runs/AiRunPostRoute.cpp
+  src/api/routes/ai/runs/AiRunQueryRoutes.cpp
   src/api/routes/ai/AiRunRoutes.cpp
   src/api/routes/ai/AiRunnerRoutes.cpp
   src/api/routes/ai/AiStatusRoutes.cpp
