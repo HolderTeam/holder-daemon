@@ -1,4 +1,6 @@
 #include "api/Session.h"
+#include "api/support/PathDiscovery.h"
+#include "api/support/RunEventStore.h"
 
 #include "caste.hpp"
 #include "core/CardPaths.h"
@@ -131,80 +133,6 @@ bool should_include_backlink_source(holder::store::CardRepo& card_repo,
     return !as_msg->deleted_at.has_value();
   }
   return false;
-}
-
-std::optional<std::filesystem::path> find_openapi_path() {
-  namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_OPENAPI_PATH")) {
-    fs::path p(env);
-    if (fs::exists(p)) return p;
-  }
-  fs::path p1 = fs::current_path() / "openapi.yaml";
-  if (fs::exists(p1)) return p1;
-  fs::path p2 = fs::current_path().parent_path() / "openapi.yaml";
-  if (fs::exists(p2)) return p2;
-  return std::nullopt;
-}
-
-std::optional<std::filesystem::path> find_models_path() {
-  namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_MODELS_PATH")) {
-    fs::path p(env);
-    if (fs::exists(p)) return p;
-  }
-  fs::path p1 = fs::current_path() / "config" / "models.yaml";
-  if (fs::exists(p1)) return p1;
-  return std::nullopt;
-}
-
-std::optional<std::filesystem::path> find_cloudproviders_path() {
-  namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_CLOUDPROVIDERS_PATH")) {
-    fs::path p(env);
-    if (fs::exists(p)) return p;
-  }
-  fs::path p1 = fs::current_path() / "config" / "cloudproviders.yaml";
-  if (fs::exists(p1)) return p1;
-  return std::nullopt;
-}
-
-std::optional<std::filesystem::path> find_docs_root() {
-  namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_DOCS_ROOT")) {
-    fs::path p(env);
-    if (fs::exists(p) && fs::is_directory(p)) return p;
-  }
-  fs::path p1 = fs::current_path() / "assets" / "swagger-ui";
-  if (fs::exists(p1) && fs::is_directory(p1)) return p1;
-  fs::path p2 = fs::current_path().parent_path() / "assets" / "swagger-ui";
-  if (fs::exists(p2) && fs::is_directory(p2)) return p2;
-  return std::nullopt;
-}
-
-bool is_safe_relpath(const std::filesystem::path& path) {
-  if (path.is_absolute()) return false;
-  for (const auto& part : path) {
-    if (part == "..") return false;
-  }
-  return true;
-}
-
-std::string content_type_for_extension(const std::string& ext) {
-  std::string lower;
-  lower.reserve(ext.size());
-  for (const char ch : ext) {
-    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-  }
-  if (lower == ".html") return "text/html; charset=utf-8";
-  if (lower == ".css") return "text/css; charset=utf-8";
-  if (lower == ".js") return "application/javascript";
-  if (lower == ".json") return "application/json";
-  if (lower == ".yaml" || lower == ".yml") return "application/yaml";
-  if (lower == ".svg") return "image/svg+xml";
-  if (lower == ".png") return "image/png";
-  if (lower == ".ico") return "image/x-icon";
-  if (lower == ".txt") return "text/plain; charset=utf-8";
-  return "application/octet-stream";
 }
 
 struct LocalModelMeta {
@@ -411,7 +339,7 @@ std::string url_encode_component(const std::string& in) {
 }
 
 std::optional<CloudProvidersConfig> load_cloudproviders_config() {
-  const auto path = find_cloudproviders_path();
+  const auto path = support::find_cloudproviders_path();
   if (!path.has_value()) return std::nullopt;
 
   CloudProvidersConfig cfg;
@@ -803,45 +731,6 @@ struct CasteInfo {
   std::string reason;
 };
 
-struct RunEvent {
-  std::string name;
-  nlohmann::json data;
-};
-
-struct RunEventStream {
-  std::vector<RunEvent> events;
-  bool finished = false;
-  long long updated_at = 0;
-};
-
-std::mutex g_run_events_mu;
-std::unordered_map<std::string, RunEventStream> g_run_events;
-
-void append_run_event(const std::string& run_id,
-                      std::string name,
-                      nlohmann::json data,
-                      bool finished) {
-  std::lock_guard<std::mutex> lock(g_run_events_mu);
-  auto& stream = g_run_events[run_id];
-  data["run_id"] = run_id;
-  stream.events.push_back({std::move(name), std::move(data)});
-  if (stream.events.size() > 512) {
-    stream.events.erase(stream.events.begin(),
-                        stream.events.begin() + static_cast<std::ptrdiff_t>(stream.events.size() - 512));
-  }
-  stream.finished = stream.finished || finished;
-  stream.updated_at = std::chrono::duration_cast<std::chrono::seconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
-}
-
-std::optional<RunEventStream> get_run_event_stream(const std::string& run_id) {
-  std::lock_guard<std::mutex> lock(g_run_events_mu);
-  const auto it = g_run_events.find(run_id);
-  if (it == g_run_events.end()) return std::nullopt;
-  return it->second;
-}
-
 std::optional<CasteInfo> detect_machine_caste() {
   try {
     const CasteResult result = detect_caste();
@@ -857,7 +746,7 @@ std::optional<CasteInfo> detect_machine_caste() {
 
 std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
   std::unordered_map<std::string, LocalModelMeta> meta;
-  const auto models_path = find_models_path();
+  const auto models_path = support::find_models_path();
   if (!models_path.has_value()) return meta;
   try {
     const YAML::Node root = YAML::LoadFile(models_path->string());
@@ -1076,14 +965,6 @@ bool validate_link_target(holder::store::Db& db,
   return false;
 }
 
-std::optional<std::string> read_file(const std::filesystem::path& path) {
-  std::ifstream file(path, std::ios::binary);
-  if (!file) return std::nullopt;
-  std::ostringstream out;
-  out << file.rdbuf();
-  return out.str();
-}
-
 long long count_started_runs(holder::store::Db& db) {
   static constexpr const char* SQL = "SELECT COUNT(*) FROM ai_runs WHERE status = 'started';";
   sqlite3_stmt* stmt = nullptr;
@@ -1187,13 +1068,13 @@ void Session::run() {
                           "Method not allowed.",
                           "text/plain; charset=utf-8");
     } else if (path == "/openapi.yaml") {
-      const auto openapi_path = find_openapi_path();
+      const auto openapi_path = support::find_openapi_path();
       if (!openapi_path.has_value()) {
         res = text_response(http::status::not_found,
                             "openapi.yaml not found.",
                             "text/plain; charset=utf-8");
       } else {
-        const auto content = read_file(openapi_path.value());
+        const auto content = support::read_file(openapi_path.value());
         if (!content.has_value()) {
           res = text_response(http::status::not_found,
                               "openapi.yaml not found.",
@@ -1201,17 +1082,17 @@ void Session::run() {
         } else {
           res = text_response(http::status::ok,
                               content.value(),
-                              content_type_for_extension(openapi_path->extension().string()));
+                              support::content_type_for_extension(openapi_path->extension().string()));
         }
       }
     } else if (path == "/models.yaml") {
-      const auto models_path = find_models_path();
+      const auto models_path = support::find_models_path();
       if (!models_path.has_value()) {
         res = text_response(http::status::not_found,
                             "models.yaml not found.",
                             "text/plain; charset=utf-8");
       } else {
-        const auto content = read_file(models_path.value());
+        const auto content = support::read_file(models_path.value());
         if (!content.has_value()) {
           res = text_response(http::status::not_found,
                               "models.yaml not found.",
@@ -1219,17 +1100,17 @@ void Session::run() {
         } else {
           res = text_response(http::status::ok,
                               content.value(),
-                              content_type_for_extension(models_path->extension().string()));
+                              support::content_type_for_extension(models_path->extension().string()));
         }
       }
     } else if (path == "/cloudproviders.yaml") {
-      const auto cloudproviders_path = find_cloudproviders_path();
+      const auto cloudproviders_path = support::find_cloudproviders_path();
       if (!cloudproviders_path.has_value()) {
         res = text_response(http::status::not_found,
                             "cloudproviders.yaml not found.",
                             "text/plain; charset=utf-8");
       } else {
-        const auto content = read_file(cloudproviders_path.value());
+        const auto content = support::read_file(cloudproviders_path.value());
         if (!content.has_value()) {
           res = text_response(http::status::not_found,
                               "cloudproviders.yaml not found.",
@@ -1237,11 +1118,11 @@ void Session::run() {
         } else {
           res = text_response(http::status::ok,
                               content.value(),
-                              content_type_for_extension(cloudproviders_path->extension().string()));
+                              support::content_type_for_extension(cloudproviders_path->extension().string()));
         }
       }
     } else {
-      const auto docs_root = find_docs_root();
+      const auto docs_root = support::find_docs_root();
       if (!docs_root.has_value()) {
         res = text_response(http::status::not_found,
                             "Docs assets not found.",
@@ -1253,13 +1134,13 @@ void Session::run() {
           if (rel.empty()) rel = "index.html";
         }
         std::filesystem::path rel_path(rel);
-        if (!is_safe_relpath(rel_path)) {
+        if (!support::is_safe_relpath(rel_path)) {
           res = text_response(http::status::not_found,
                               "Not found.",
                               "text/plain; charset=utf-8");
         } else {
           const auto full_path = docs_root.value() / rel_path;
-          const auto content = read_file(full_path);
+          const auto content = support::read_file(full_path);
           if (!content.has_value()) {
             res = text_response(http::status::not_found,
                                 "Not found.",
@@ -1267,7 +1148,7 @@ void Session::run() {
           } else {
             res = text_response(http::status::ok,
                                 content.value(),
-                                content_type_for_extension(full_path.extension().string()));
+                                support::content_type_for_extension(full_path.extension().string()));
           }
         }
       }
@@ -1921,7 +1802,7 @@ void Session::run() {
       res = json_response(http::status::ok, payload);
     } else if (path == "/ai/providers/catalog" && req.method() == http::verb::get) {
       try {
-        const auto cloudproviders_path = find_cloudproviders_path();
+        const auto cloudproviders_path = support::find_cloudproviders_path();
         if (!cloudproviders_path.has_value()) {
           res = error_response(http::status::bad_request,
                                "bad_request",
@@ -2428,7 +2309,7 @@ void Session::run() {
                   run.created_at = now_epoch_seconds();
                   run.updated_at = run.created_at;
                   run_repo.create(run);
-                  append_run_event(run.run_id,
+                  support::append_run_event(run.run_id,
                                    "run_started",
                                    {{"status", "started"}, {"created_at", run.created_at}},
                                    false);
@@ -2447,7 +2328,7 @@ void Session::run() {
 
                   auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
                     const bool is_terminal = (name == "done" || name == "failed");
-                    append_run_event(run.run_id, name, data, is_terminal);
+                    support::append_run_event(run.run_id, name, data, is_terminal);
                     std::string payload = "event: " + name + "\n";
                     nlohmann::json wire = data;
                     wire["run_id"] = run.run_id;
@@ -2751,7 +2632,7 @@ void Session::run() {
                 run.created_at = now_epoch_seconds();
                 run.updated_at = run.created_at;
                 run_repo.create(run);
-                append_run_event(run.run_id,
+                support::append_run_event(run.run_id,
                                  "run_started",
                                  {{"status", "started"}, {"created_at", run.created_at}},
                                  false);
@@ -2770,7 +2651,7 @@ void Session::run() {
 
               auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
                 const bool is_terminal = (name == "done" || name == "failed");
-                append_run_event(run.run_id, name, data, is_terminal);
+                support::append_run_event(run.run_id, name, data, is_terminal);
                 std::string payload = "event: " + name + "\n";
                 nlohmann::json wire = data;
                 wire["run_id"] = run.run_id;
@@ -3048,7 +2929,7 @@ void Session::run() {
           size_t cursor = 0;
           const long long started = now_epoch_seconds();
           for (;;) {
-            const auto stream = get_run_event_stream(run_id);
+            const auto stream = support::get_run_event_stream(run_id);
             if (stream.has_value()) {
               while (cursor < stream->events.size()) {
                 if (!write_sse(stream->events[cursor].name, stream->events[cursor].data)) {

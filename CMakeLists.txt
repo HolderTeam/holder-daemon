@@ -83,6 +83,8 @@ add_executable(holder
   src/llm/LocalModelRunner.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
+  src/api/support/PathDiscovery.cpp
+  src/api/support/RunEventStore.cpp
   src/api/Session.cpp
   src/api/Router.cpp
   src/store/ProjectRepo.cpp

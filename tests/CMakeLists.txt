@@ -91,6 +91,8 @@ add_executable(lockfile_tests
   ../src/llm/LocalModelRunner.cpp
   ../src/api/HttpServer.cpp
   ../src/api/Listener.cpp
+  ../src/api/support/PathDiscovery.cpp
+  ../src/api/support/RunEventStore.cpp
   ../src/api/Session.cpp
   ../src/api/Router.cpp
   ../src/git/GitRepo.cpp

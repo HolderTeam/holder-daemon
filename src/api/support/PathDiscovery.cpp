@@ -1,0 +1,92 @@
+#include "api/support/PathDiscovery.h"
+
+#include <cctype>
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+
+namespace holder::api::support {
+
+std::optional<std::filesystem::path> find_openapi_path() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_OPENAPI_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "openapi.yaml";
+  if (fs::exists(p1)) return p1;
+  fs::path p2 = fs::current_path().parent_path() / "openapi.yaml";
+  if (fs::exists(p2)) return p2;
+  return std::nullopt;
+}
+
+std::optional<std::filesystem::path> find_models_path() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_MODELS_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "config" / "models.yaml";
+  if (fs::exists(p1)) return p1;
+  return std::nullopt;
+}
+
+std::optional<std::filesystem::path> find_cloudproviders_path() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_CLOUDPROVIDERS_PATH")) {
+    fs::path p(env);
+    if (fs::exists(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "config" / "cloudproviders.yaml";
+  if (fs::exists(p1)) return p1;
+  return std::nullopt;
+}
+
+std::optional<std::filesystem::path> find_docs_root() {
+  namespace fs = std::filesystem;
+  if (const char* env = std::getenv("HOLDER_DOCS_ROOT")) {
+    fs::path p(env);
+    if (fs::exists(p) && fs::is_directory(p)) return p;
+  }
+  fs::path p1 = fs::current_path() / "assets" / "swagger-ui";
+  if (fs::exists(p1) && fs::is_directory(p1)) return p1;
+  fs::path p2 = fs::current_path().parent_path() / "assets" / "swagger-ui";
+  if (fs::exists(p2) && fs::is_directory(p2)) return p2;
+  return std::nullopt;
+}
+
+bool is_safe_relpath(const std::filesystem::path& path) {
+  if (path.is_absolute()) return false;
+  for (const auto& part : path) {
+    if (part == "..") return false;
+  }
+  return true;
+}
+
+std::string content_type_for_extension(const std::string& ext) {
+  std::string lower;
+  lower.reserve(ext.size());
+  for (const char ch : ext) {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+  }
+  if (lower == ".html") return "text/html; charset=utf-8";
+  if (lower == ".css") return "text/css; charset=utf-8";
+  if (lower == ".js") return "application/javascript";
+  if (lower == ".json") return "application/json";
+  if (lower == ".yaml" || lower == ".yml") return "application/yaml";
+  if (lower == ".svg") return "image/svg+xml";
+  if (lower == ".png") return "image/png";
+  if (lower == ".ico") return "image/x-icon";
+  if (lower == ".txt") return "text/plain; charset=utf-8";
+  return "application/octet-stream";
+}
+
+std::optional<std::string> read_file(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) return std::nullopt;
+  std::ostringstream out;
+  out << file.rdbuf();
+  return out.str();
+}
+
+} // namespace holder::api::support
