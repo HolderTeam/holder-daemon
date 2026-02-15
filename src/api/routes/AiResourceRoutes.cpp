@@ -1,4 +1,5 @@
 #include "api/routes/AiResourceRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "store/ResourceRepo.h"
 
@@ -12,25 +13,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -49,7 +31,7 @@ bool handle_ai_resource_routes(const std::string& path,
   if (path == "/resources" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         holder::store::ResourceRepo repo(db);
@@ -71,9 +53,9 @@ bool handle_ai_resource_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     }
     return true;
@@ -84,7 +66,7 @@ bool handle_ai_resource_routes(const std::string& path,
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("project_id") || !body.contains("kind") || !body.contains("uri") ||
           !body.contains("label")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
       } else {
         holder::model::Resource resource;
         if (body.contains("resource_id") && !body.at("resource_id").is_null()) {
@@ -119,14 +101,14 @@ bool handle_ai_resource_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = {{"resource_id", resource.resource_id}};
-        res = json_response(http::status::created, payload);
+        res = support::json_response(http::status::created, payload);
       }
     } catch (const std::exception& ex) {
       const std::string msg = ex.what();
       if (msg.rfind("conflict:", 0) == 0) {
-        res = error_response(http::status::conflict, "conflict", msg);
+        res = support::error_response(http::status::conflict, "conflict", msg);
       } else {
-        res = error_response(http::status::bad_request, "bad_request", msg);
+        res = support::error_response(http::status::bad_request, "bad_request", msg);
       }
     }
     return true;
@@ -135,17 +117,17 @@ bool handle_ai_resource_routes(const std::string& path,
   if (path.rfind("/resources/", 0) == 0) {
     const std::string resource_id = path.substr(std::string("/resources/").size());
     if (resource_id.empty()) {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Route not found.");
     } else if (req.method() == http::verb::patch) {
       try {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("updated_at")) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
+          res = support::error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
         } else {
           holder::store::ResourceRepo repo(db);
           const auto existing = repo.get(resource_id);
           if (!existing.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "Resource not found.");
+            res = support::error_response(http::status::not_found, "not_found", "Resource not found.");
           } else {
             auto resource = existing.value();
             if (body.contains("kind") && !body.at("kind").is_null()) {
@@ -170,11 +152,11 @@ bool handle_ai_resource_routes(const std::string& path,
             nlohmann::json payload;
             payload["ok"] = true;
             payload["data"] = {{"resource_id", resource_id}};
-            res = json_response(http::status::ok, payload);
+            res = support::json_response(http::status::ok, payload);
           }
         }
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else if (req.method() == http::verb::delete_) {
       try {
@@ -183,12 +165,12 @@ bool handle_ai_resource_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = {{"resource_id", resource_id}};
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     } else {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Route not found.");
     }
     return true;
   }

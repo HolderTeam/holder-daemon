@@ -1,4 +1,5 @@
 #include "api/routes/AiStatusRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "api/support/LocalModelRouting.h"
 #include "store/AiProviderCredentialRepo.h"
@@ -18,25 +19,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 std::string mask_api_key(const std::string& api_key) {
   if (api_key.empty()) return {};
@@ -192,7 +174,7 @@ bool handle_ai_status_routes(const std::string& path,
     nlohmann::json payload;
     payload["ok"] = true;
     payload["data"] = data;
-    res = json_response(http::status::ok, payload);
+    res = support::json_response(http::status::ok, payload);
     return true;
   }
 
@@ -265,13 +247,13 @@ bool handle_ai_status_routes(const std::string& path,
     nlohmann::json payload;
     payload["ok"] = true;
     payload["data"] = data;
-    res = json_response(http::status::ok, payload);
+    res = support::json_response(http::status::ok, payload);
     return true;
   }
 
   if (path == "/ai/runner/retry" && req.method() == http::verb::post) {
     if (!runner) {
-      res = error_response(http::status::not_implemented,
+      res = support::error_response(http::status::not_implemented,
                            "not_implemented",
                            "Local model runner not configured.");
       return true;
@@ -297,7 +279,7 @@ bool handle_ai_status_routes(const std::string& path,
     nlohmann::json payload;
     payload["ok"] = true;
     payload["data"] = data;
-    res = json_response(http::status::ok, payload);
+    res = support::json_response(http::status::ok, payload);
     return true;
   }
 
@@ -346,9 +328,9 @@ bool handle_ai_status_routes(const std::string& path,
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return true;
   }
@@ -357,13 +339,13 @@ bool handle_ai_status_routes(const std::string& path,
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("scope")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing scope.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing scope.");
         return true;
       }
 
       const std::string scope = body.at("scope").get<std::string>();
       if (scope != "global" && scope != "project") {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "scope must be global or project.");
         return true;
@@ -373,7 +355,7 @@ bool handle_ai_status_routes(const std::string& path,
       std::string project_id;
       if (scope == "project") {
         if (!body.contains("project_id") || body.at("project_id").is_null()) {
-          res = error_response(http::status::bad_request,
+          res = support::error_response(http::status::bad_request,
                                "bad_request",
                                "project_id required for project scope.");
           valid = false;
@@ -382,7 +364,7 @@ bool handle_ai_status_routes(const std::string& path,
           project_id = body.at("project_id").get<std::string>();
         }
         if (valid && project_id.empty()) {
-          res = error_response(http::status::bad_request,
+          res = support::error_response(http::status::bad_request,
                                "bad_request",
                                "project_id required for project scope.");
           valid = false;
@@ -390,7 +372,7 @@ bool handle_ai_status_routes(const std::string& path,
         if (valid) {
           holder::store::ProjectRepo projects(db);
           if (!projects.get(project_id).has_value()) {
-            res = error_response(http::status::not_found, "not_found", "Project not found.");
+            res = support::error_response(http::status::not_found, "not_found", "Project not found.");
             valid = false;
           }
         }
@@ -464,10 +446,10 @@ bool handle_ai_status_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       }
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return true;
   }

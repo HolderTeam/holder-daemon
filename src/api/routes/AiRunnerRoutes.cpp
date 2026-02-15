@@ -1,4 +1,5 @@
 #include "api/routes/AiRunnerRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -12,25 +13,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 } // namespace
 
@@ -50,7 +32,7 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
       req.method() == http::verb::get) {
     out.handled = true;
     if (!runner) {
-      res = error_response(http::status::not_implemented,
+      res = support::error_response(http::status::not_implemented,
                            "not_implemented",
                            "Local model runner not configured.");
       return out;
@@ -59,7 +41,7 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     const std::string suffix = "/events";
     const std::string job_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
     if (job_id.empty()) {
-      res = error_response(http::status::not_found, "not_found", "Pull job not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Pull job not found.");
       return out;
     }
 
@@ -136,7 +118,7 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
   if (path == "/ai/runner/pull" && req.method() == http::verb::post) {
     out.handled = true;
     if (!runner) {
-      res = error_response(http::status::not_implemented,
+      res = support::error_response(http::status::not_implemented,
                            "not_implemented",
                            "Local model runner not configured.");
       return out;
@@ -144,18 +126,18 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     try {
       const auto runner_status = runner->status();
       if (!runner_status.available) {
-        res = error_response(http::status::service_unavailable,
+        res = support::error_response(http::status::service_unavailable,
                              "runner_unavailable",
                              "Local model runner unavailable.");
       } else {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("model")) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing model.");
+          res = support::error_response(http::status::bad_request, "bad_request", "Missing model.");
         } else {
           const std::string model = body.at("model").get<std::string>();
           auto job = runner->start_pull(model);
           if (job.status == "failed") {
-            res = error_response(http::status::bad_request,
+            res = support::error_response(http::status::bad_request,
                                  "bad_request",
                                  job.error.empty() ? "Pull failed." : job.error);
           } else {
@@ -166,12 +148,12 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
             nlohmann::json payload;
             payload["ok"] = true;
             payload["data"] = data;
-            res = json_response(http::status::ok, payload);
+            res = support::json_response(http::status::ok, payload);
           }
         }
       }
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return out;
   }
@@ -179,20 +161,20 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
   if (path.rfind("/ai/runner/pull/", 0) == 0 && req.method() == http::verb::get) {
     out.handled = true;
     if (!runner) {
-      res = error_response(http::status::not_implemented,
+      res = support::error_response(http::status::not_implemented,
                            "not_implemented",
                            "Local model runner not configured.");
       return out;
     }
     const std::string job_id = path.substr(std::string("/ai/runner/pull/").size());
     if (job_id.empty()) {
-      res = error_response(http::status::not_found, "not_found", "Pull job not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Pull job not found.");
       return out;
     }
 
     const auto job = runner->get_pull(job_id);
     if (!job.has_value()) {
-      res = error_response(http::status::not_found, "not_found", "Pull job not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Pull job not found.");
       return out;
     }
 
@@ -211,7 +193,7 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     nlohmann::json payload;
     payload["ok"] = true;
     payload["data"] = data;
-    res = json_response(http::status::ok, payload);
+    res = support::json_response(http::status::ok, payload);
     return out;
   }
 

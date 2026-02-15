@@ -1,4 +1,5 @@
 #include "api/routes/TrashRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "store/AiMessageRepo.h"
 #include "store/CardRepo.h"
@@ -14,25 +15,6 @@ namespace {
 
 namespace http = boost::beast::http;
 
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
-
 } // namespace
 
 bool handle_trash_routes(const std::string& path,
@@ -46,7 +28,7 @@ bool handle_trash_routes(const std::string& path,
     const std::string project_id = param_get("project_id");
     const std::string type = param_get("type");
     if (project_id.empty()) {
-      res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         nlohmann::json data = nlohmann::json::array();
@@ -84,9 +66,9 @@ bool handle_trash_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     }
     return true;
@@ -96,7 +78,7 @@ bool handle_trash_routes(const std::string& path,
     const std::string project_id = param_get("project_id");
     const std::string type = param_get("type");
     if (project_id.empty()) {
-      res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         if ((type.empty() || type == "card" || type == "all") && card_store) {
@@ -117,9 +99,9 @@ bool handle_trash_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = {{"project_id", project_id}};
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     }
     return true;
@@ -129,17 +111,17 @@ bool handle_trash_routes(const std::string& path,
     const std::string rest = path.substr(std::string("/trash/").size());
     const auto slash = rest.find('/');
     if (slash == std::string::npos) {
-      res = error_response(http::status::not_found, "not_found", "Route not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Route not found.");
     } else {
       const std::string type = rest.substr(0, slash);
       const std::string id = rest.substr(slash + 1);
       if (id.empty()) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing id.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing id.");
       } else {
         try {
           if (type == "card") {
             if (!card_store) {
-              res = error_response(http::status::not_implemented,
+              res = support::error_response(http::status::not_implemented,
                                    "not_implemented",
                                    "Card store unavailable.");
             } else {
@@ -147,7 +129,7 @@ bool handle_trash_routes(const std::string& path,
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"card_id", id}};
-              res = json_response(http::status::ok, payload);
+              res = support::json_response(http::status::ok, payload);
             }
           } else if (type == "ai_message") {
             holder::store::AiMessageRepo msg_repo(db, fts);
@@ -155,12 +137,12 @@ bool handle_trash_routes(const std::string& path,
             nlohmann::json payload;
             payload["ok"] = true;
             payload["data"] = {{"message_id", id}};
-            res = json_response(http::status::ok, payload);
+            res = support::json_response(http::status::ok, payload);
           } else {
-            res = error_response(http::status::bad_request, "bad_request", "Unknown trash type.");
+            res = support::error_response(http::status::bad_request, "bad_request", "Unknown trash type.");
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       }
     }

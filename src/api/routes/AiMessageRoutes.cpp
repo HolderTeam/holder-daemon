@@ -1,4 +1,5 @@
 #include "api/routes/AiMessageRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
@@ -18,25 +19,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -163,7 +145,7 @@ bool handle_ai_message_routes(const std::string& path,
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("project_id") || !body.contains("prompt") || !body.contains("response")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
       } else {
         const std::string project_id = body.at("project_id").get<std::string>();
         const std::string prompt = body.at("prompt").get<std::string>();
@@ -187,7 +169,7 @@ bool handle_ai_message_routes(const std::string& path,
 
         holder::store::ProjectRepo project_repo(db);
         if (!project_repo.get(project_id).has_value()) {
-          res = error_response(http::status::not_found, "not_found", "Project not found.");
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
         } else {
           const long long created_at = (body.contains("created_at") && !body.at("created_at").is_null())
                                            ? body.at("created_at").get<long long>()
@@ -197,9 +179,9 @@ bool handle_ai_message_routes(const std::string& path,
           if (thread_id.has_value()) {
             const auto existing = thread_repo.get(thread_id.value());
             if (!existing.has_value()) {
-              res = error_response(http::status::not_found, "not_found", "AI thread not found.");
+              res = support::error_response(http::status::not_found, "not_found", "AI thread not found.");
             } else if (existing->project_id != project_id) {
-              res = error_response(http::status::bad_request,
+              res = support::error_response(http::status::bad_request,
                                    "bad_request",
                                    "Thread belongs to a different project.");
             }
@@ -256,15 +238,15 @@ bool handle_ai_message_routes(const std::string& path,
               {"user_message_id", user_msg.message_id},
               {"assistant_message_id", assistant_msg.message_id},
           };
-          res = json_response(http::status::created, payload);
+          res = support::json_response(http::status::created, payload);
         }
       }
     } catch (const std::exception& ex) {
       const std::string msg = ex.what();
       if (msg.rfind("conflict:", 0) == 0) {
-        res = error_response(http::status::conflict, "conflict", msg);
+        res = support::error_response(http::status::conflict, "conflict", msg);
       } else {
-        res = error_response(http::status::bad_request, "bad_request", msg);
+        res = support::error_response(http::status::bad_request, "bad_request", msg);
       }
     }
     return true;
@@ -274,7 +256,7 @@ bool handle_ai_message_routes(const std::string& path,
     const std::string thread_id = param_get("thread_id");
     const std::string include_deleted_raw = param_get("include_deleted");
     if (thread_id.empty()) {
-      res = error_response(http::status::bad_request, "bad_request", "Missing thread_id.");
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing thread_id.");
     } else {
       try {
         holder::store::AiMessageRepo repo(db, fts);
@@ -308,9 +290,9 @@ bool handle_ai_message_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
     }
     return true;
@@ -321,7 +303,7 @@ bool handle_ai_message_routes(const std::string& path,
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("thread_id") || !body.contains("role") || !body.contains("source") ||
           !body.contains("content")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
       } else {
         holder::model::AiMessage msg;
         if (body.contains("message_id") && !body.at("message_id").is_null()) {
@@ -359,14 +341,14 @@ bool handle_ai_message_routes(const std::string& path,
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = {{"message_id", msg.message_id}};
-        res = json_response(http::status::created, payload);
+        res = support::json_response(http::status::created, payload);
       }
     } catch (const std::exception& ex) {
       const std::string msg = ex.what();
       if (msg.rfind("conflict:", 0) == 0) {
-        res = error_response(http::status::conflict, "conflict", msg);
+        res = support::error_response(http::status::conflict, "conflict", msg);
       } else {
-        res = error_response(http::status::bad_request, "bad_request", msg);
+        res = support::error_response(http::status::bad_request, "bad_request", msg);
       }
     }
     return true;
@@ -379,18 +361,18 @@ bool handle_ai_message_routes(const std::string& path,
       const std::string message_id = rest.substr(0, slash);
       const std::string tail = rest.substr(slash);
       if (message_id.empty()) {
-        res = error_response(http::status::not_found, "not_found", "Route not found.");
+        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (tail == "/links") {
         try {
           holder::store::AiMessageRepo message_repo(db, fts);
           const auto msg_opt = message_repo.get(message_id);
           if (!msg_opt.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "AI message not found.");
+            res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
           } else {
             holder::store::AiThreadRepo thread_repo(db);
             const auto thread_opt = thread_repo.get(msg_opt->thread_id);
             if (!thread_opt.has_value()) {
-              res = error_response(http::status::bad_request, "bad_request", "Thread not found.");
+              res = support::error_response(http::status::bad_request, "bad_request", "Thread not found.");
             } else {
               const std::string project_id = thread_opt->project_id;
               holder::store::LinkRepo link_repo(db);
@@ -418,11 +400,11 @@ bool handle_ai_message_routes(const std::string& path,
                 nlohmann::json payload;
                 payload["ok"] = true;
                 payload["data"] = data;
-                res = json_response(http::status::ok, payload);
+                res = support::json_response(http::status::ok, payload);
               } else if (req.method() == http::verb::post) {
                 const auto body = nlohmann::json::parse(req.body());
                 if (!body.contains("to_card_id")) {
-                  res = error_response(http::status::bad_request, "bad_request", "Missing to_card_id.");
+                  res = support::error_response(http::status::bad_request, "bad_request", "Missing to_card_id.");
                 } else {
                   holder::model::CardLink link;
                   link.project_id = project_id;
@@ -454,7 +436,7 @@ bool handle_ai_message_routes(const std::string& path,
                                             link.to_card_id,
                                             link.to_type,
                                             validation_error)) {
-                    res = error_response(http::status::bad_request, "bad_request", validation_error);
+                    res = support::error_response(http::status::bad_request, "bad_request", validation_error);
                   } else {
                     link_repo.upsert_links(project_id, message_id, {link});
                     message_repo.update_links(message_id);
@@ -470,7 +452,7 @@ bool handle_ai_message_routes(const std::string& path,
                         {"label", link.label.has_value() ? nlohmann::json(link.label.value())
                                                           : nlohmann::json(nullptr)},
                     };
-                    res = json_response(http::status::created, payload);
+                    res = support::json_response(http::status::created, payload);
                   }
                 }
               } else if (req.method() == http::verb::delete_) {
@@ -499,32 +481,32 @@ bool handle_ai_message_routes(const std::string& path,
                 nlohmann::json payload;
                 payload["ok"] = true;
                 payload["data"] = {{"message_id", message_id}};
-                res = json_response(http::status::ok, payload);
+                res = support::json_response(http::status::ok, payload);
               } else {
-                res = error_response(http::status::method_not_allowed,
+                res = support::error_response(http::status::method_not_allowed,
                                      "method_not_allowed",
                                      "Method not allowed.");
               }
             }
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       } else if (tail == "/backlinks") {
         try {
           holder::store::AiMessageRepo message_repo(db, fts);
           const auto msg_opt = message_repo.get(message_id);
           if (!msg_opt.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "AI message not found.");
+            res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
           } else if (req.method() != http::verb::get) {
-            res = error_response(http::status::method_not_allowed,
+            res = support::error_response(http::status::method_not_allowed,
                                  "method_not_allowed",
                                  "Method not allowed.");
           } else {
             holder::store::AiThreadRepo thread_repo(db);
             const auto thread_opt = thread_repo.get(msg_opt->thread_id);
             if (!thread_opt.has_value()) {
-              res = error_response(http::status::bad_request, "bad_request", "Thread not found.");
+              res = support::error_response(http::status::bad_request, "bad_request", "Thread not found.");
             } else {
               const std::string project_id = thread_opt->project_id;
               holder::store::LinkRepo link_repo(db);
@@ -551,15 +533,15 @@ bool handle_ai_message_routes(const std::string& path,
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = data;
-              res = json_response(http::status::ok, payload);
+              res = support::json_response(http::status::ok, payload);
             }
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       } else if (tail == "/restore") {
         if (req.method() != http::verb::post) {
-          res = error_response(http::status::method_not_allowed,
+          res = support::error_response(http::status::method_not_allowed,
                                "method_not_allowed",
                                "Method not allowed.");
         } else {
@@ -569,18 +551,18 @@ bool handle_ai_message_routes(const std::string& path,
             nlohmann::json payload;
             payload["ok"] = true;
             payload["data"] = {{"message_id", message_id}};
-            res = json_response(http::status::ok, payload);
+            res = support::json_response(http::status::ok, payload);
           } catch (const std::exception& ex) {
-            res = error_response(http::status::bad_request, "bad_request", ex.what());
+            res = support::error_response(http::status::bad_request, "bad_request", ex.what());
           }
         }
       } else {
-        res = error_response(http::status::not_found, "not_found", "Route not found.");
+        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       }
     } else {
       const std::string message_id = rest;
       if (message_id.empty()) {
-        res = error_response(http::status::not_found, "not_found", "Route not found.");
+        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (req.method() == http::verb::delete_) {
         try {
           holder::store::AiMessageRepo repo(db, fts);
@@ -589,23 +571,23 @@ bool handle_ai_message_routes(const std::string& path,
           nlohmann::json payload;
           payload["ok"] = true;
           payload["data"] = {{"message_id", message_id}};
-          res = json_response(http::status::ok, payload);
+          res = support::json_response(http::status::ok, payload);
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       } else if (req.method() == http::verb::post && rest.size() > 0) {
-        res = error_response(http::status::not_found, "not_found", "Route not found.");
+        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (req.method() == http::verb::patch) {
         try {
           const auto body = nlohmann::json::parse(req.body());
           holder::store::AiMessageRepo repo(db, fts);
           const auto msg_opt = repo.get(message_id);
           if (!msg_opt.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "AI message not found.");
+            res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
           } else {
             auto msg = msg_opt.value();
             if (msg.deleted_at.has_value()) {
-              res = error_response(http::status::bad_request, "bad_request", "AI message is deleted.");
+              res = support::error_response(http::status::bad_request, "bad_request", "AI message is deleted.");
             } else {
               if (body.contains("role") && !body.at("role").is_null()) {
                 msg.role = body.at("role").get<std::string>();
@@ -652,22 +634,22 @@ bool handle_ai_message_routes(const std::string& path,
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"message_id", message_id}};
-              res = json_response(http::status::ok, payload);
+              res = support::json_response(http::status::ok, payload);
             }
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       } else {
         try {
           holder::store::AiMessageRepo repo(db, fts);
           const auto msg_opt = repo.get(message_id);
           if (!msg_opt.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "AI message not found.");
+            res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
           } else {
             const auto& msg = msg_opt.value();
             if (msg.deleted_at.has_value()) {
-              res = error_response(http::status::not_found, "not_found", "AI message not found.");
+              res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
             } else {
               nlohmann::json data;
               data["message_id"] = msg.message_id;
@@ -688,11 +670,11 @@ bool handle_ai_message_routes(const std::string& path,
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = data;
-              res = json_response(http::status::ok, payload);
+              res = support::json_response(http::status::ok, payload);
             }
           }
         } catch (const std::exception& ex) {
-          res = error_response(http::status::bad_request, "bad_request", ex.what());
+          res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
       }
     }

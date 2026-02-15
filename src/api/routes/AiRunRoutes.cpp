@@ -1,4 +1,5 @@
 #include "api/routes/AiRunRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "api/support/CloudClient.h"
 #include "api/support/CloudConfig.h"
@@ -29,25 +30,6 @@ namespace holder::api::routes {
 namespace {
 
 namespace http = boost::beast::http;
-
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
@@ -116,7 +98,7 @@ RouteDispatchResult handle_ai_run_routes(
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("prompt")) {
-        res = error_response(http::status::bad_request, "bad_request", "Missing prompt.");
+        res = support::error_response(http::status::bad_request, "bad_request", "Missing prompt.");
       } else {
         const std::string prompt = body.at("prompt").get<std::string>();
         std::string mode = "auto";
@@ -170,7 +152,7 @@ RouteDispatchResult handle_ai_run_routes(
         if (!local_runner_ready) {
           const auto cloud_cfg = support::load_cloudproviders_config();
           if (!cloud_cfg.has_value()) {
-            res = error_response(http::status::service_unavailable,
+            res = support::error_response(http::status::service_unavailable,
                                  "runner_unavailable",
                                  "No local runner and cloudproviders.yaml not found.");
           } else {
@@ -209,7 +191,7 @@ RouteDispatchResult handle_ai_run_routes(
               if (provider && try_select(*provider)) {
                 // selected by request
               } else {
-                res = error_response(http::status::service_unavailable,
+                res = support::error_response(http::status::service_unavailable,
                                      "cloud_not_configured",
                                      "Requested cloud provider is not enabled/configured.");
                 selection_failed = true;
@@ -232,7 +214,7 @@ RouteDispatchResult handle_ai_run_routes(
             }
 
             if (!selected_provider && !selection_failed) {
-              res = error_response(http::status::service_unavailable,
+              res = support::error_response(http::status::service_unavailable,
                                    "cloud_not_configured",
                                    "No enabled cloud provider with stored API key.");
             }
@@ -241,7 +223,7 @@ RouteDispatchResult handle_ai_run_routes(
               const auto candidate_models =
                   support::cloud_model_candidates(*selected_provider, requested_model);
               if (candidate_models.empty()) {
-                res = error_response(http::status::service_unavailable,
+                res = support::error_response(http::status::service_unavailable,
                                      "cloud_not_configured",
                                      "No cloud model configured for selected provider.");
               } else {
@@ -497,7 +479,7 @@ RouteDispatchResult handle_ai_run_routes(
               forced_model.empty() ||
               std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
           if (!forced_model_installed) {
-            res = error_response(http::status::bad_request,
+            res = support::error_response(http::status::bad_request,
                                  "bad_request",
                                  "Requested model is not installed.");
           } else if (forced_model.empty() && machine_caste.has_value()) {
@@ -776,7 +758,7 @@ RouteDispatchResult handle_ai_run_routes(
         }
       }
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return out;
   }
@@ -786,7 +768,7 @@ RouteDispatchResult handle_ai_run_routes(
     const std::string project_id = param_get("project_id");
     const std::string thread_id = param_get("thread_id");
     if (project_id.empty() && thread_id.empty()) {
-      res = error_response(http::status::bad_request,
+      res = support::error_response(http::status::bad_request,
                            "bad_request",
                            "Missing project_id or thread_id.");
       return out;
@@ -806,9 +788,9 @@ RouteDispatchResult handle_ai_run_routes(
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return out;
   }
@@ -826,7 +808,7 @@ RouteDispatchResult handle_ai_run_routes(
     const std::string run_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
     if (run_id.empty()) {
       out.streamed = false;
-      res = error_response(http::status::not_found, "not_found", "Run not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Run not found.");
       return out;
     }
 
@@ -839,7 +821,7 @@ RouteDispatchResult handle_ai_run_routes(
     }
     if (!run_record.has_value()) {
       out.streamed = false;
-      res = error_response(http::status::not_found, "not_found", "Run not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Run not found.");
       return out;
     }
 
@@ -910,22 +892,22 @@ RouteDispatchResult handle_ai_run_routes(
     out.handled = true;
     const std::string run_id = path.substr(std::string("/ai/runs/").size());
     if (run_id.empty()) {
-      res = error_response(http::status::not_found, "not_found", "Run not found.");
+      res = support::error_response(http::status::not_found, "not_found", "Run not found.");
       return out;
     }
     try {
       holder::store::AiRunRepo repo(db);
       const auto run = repo.get(run_id);
       if (!run.has_value()) {
-        res = error_response(http::status::not_found, "not_found", "Run not found.");
+        res = support::error_response(http::status::not_found, "not_found", "Run not found.");
       } else {
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = ai_run_to_json(run.value());
-        res = json_response(http::status::ok, payload);
+        res = support::json_response(http::status::ok, payload);
       }
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
     return out;
   }

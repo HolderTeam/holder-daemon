@@ -1,4 +1,5 @@
 #include "api/routes/AiProviderRoutes.h"
+#include "api/support/HttpResponses.h"
 
 #include "api/support/CloudConfig.h"
 #include "api/support/LocalModelRouting.h"
@@ -41,25 +42,6 @@ std::string mask_api_key(const std::string& api_key) {
   return api_key.substr(0, 4) + "..." + api_key.substr(api_key.size() - 2);
 }
 
-http::response<http::string_body> json_response(http::status status,
-                                                const nlohmann::json& payload) {
-  http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, "application/json");
-  res.keep_alive(false);
-  res.body() = payload.dump();
-  res.prepare_payload();
-  return res;
-}
-
-http::response<http::string_body> error_response(http::status status,
-                                                 std::string code,
-                                                 std::string message) {
-  nlohmann::json j;
-  j["ok"] = false;
-  j["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};
-  return json_response(status, j);
-}
-
 nlohmann::json model_to_json(const support::CloudModelConfig& model) {
   nlohmann::json out;
   out["id"] = model.id;
@@ -99,7 +81,7 @@ bool handle_ai_provider_routes(const std::string& path,
     try {
       const auto cloud_cfg = support::load_cloudproviders_config();
       if (!cloud_cfg.has_value()) {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "cloudproviders.yaml not found.");
         return true;
@@ -137,10 +119,10 @@ bool handle_ai_provider_routes(const std::string& path,
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = data;
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
       return true;
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       return true;
     }
   }
@@ -161,10 +143,10 @@ bool handle_ai_provider_routes(const std::string& path,
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = {{"providers", providers}};
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
       return true;
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       return true;
     }
   }
@@ -174,7 +156,7 @@ bool handle_ai_provider_routes(const std::string& path,
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("provider") || !body.contains("api_key") ||
           body.at("provider").is_null() || body.at("api_key").is_null()) {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "Missing provider or api_key.");
         return true;
@@ -182,7 +164,7 @@ bool handle_ai_provider_routes(const std::string& path,
 
       const std::string provider = normalize_provider_name(body.at("provider").get<std::string>());
       if (provider.empty()) {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "provider must be alphanumeric and may include '-', '_' or '.'.");
         return true;
@@ -190,7 +172,7 @@ bool handle_ai_provider_routes(const std::string& path,
 
       const std::string api_key = support::trim_ascii(body.at("api_key").get<std::string>());
       if (api_key.empty()) {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "api_key cannot be empty.");
         return true;
@@ -215,10 +197,10 @@ bool handle_ai_provider_routes(const std::string& path,
           {"created_at", created_at},
           {"updated_at", ts},
       };
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
       return true;
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       return true;
     }
   }
@@ -229,7 +211,7 @@ bool handle_ai_provider_routes(const std::string& path,
       const std::string provider = normalize_provider_name(
           path.substr(std::string("/ai/providers/credentials/").size()));
       if (provider.empty()) {
-        res = error_response(http::status::bad_request,
+        res = support::error_response(http::status::bad_request,
                              "bad_request",
                              "Invalid provider.");
         return true;
@@ -239,10 +221,10 @@ bool handle_ai_provider_routes(const std::string& path,
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = {{"provider", provider}};
-      res = json_response(http::status::ok, payload);
+      res = support::json_response(http::status::ok, payload);
       return true;
     } catch (const std::exception& ex) {
-      res = error_response(http::status::bad_request, "bad_request", ex.what());
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       return true;
     }
   }
