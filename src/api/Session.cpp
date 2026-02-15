@@ -5,6 +5,7 @@
 #include "api/routes/AiThreadRoutes.h"
 #include "api/routes/CardRoutes.h"
 #include "api/routes/ProjectRoutes.h"
+#include "api/routes/RebuildRoutes.h"
 #include "api/routes/SearchRoutes.h"
 #include "api/routes/TrashRoutes.h"
 #include "api/routes/StaticRoutes.h"
@@ -27,8 +28,6 @@
 #include "store/AiProviderCredentialRepo.h"
 #include "store/AiRouterConfigRepo.h"
 #include "store/AiRunRepo.h"
-#include "store/ProjectRepo.h"
-#include "store/Rebuilder.h"
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
@@ -193,35 +192,8 @@ void Session::run() {
                                       [&]() { return generate_uuid_v4(); },
                                       param)) {
       // handled
-    } else if (path == "/rebuild" && req.method() == http::verb::post) {
-      try {
-        const auto body = nlohmann::json::parse(req.body());
-        if (!body.contains("project_id")) {
-          res = error_response(http::status::bad_request, "bad_request", "Missing project_id.");
-        } else {
-          const std::string project_id = body.at("project_id").get<std::string>();
-          holder::store::ProjectRepo repo(db_);
-          const auto project_opt = repo.get(project_id);
-          if (!project_opt.has_value()) {
-            res = error_response(http::status::not_found, "not_found", "Project not found.");
-          } else {
-            holder::store::Rebuilder rebuilder(db_, fts_);
-            const auto stats = rebuilder.rebuild_project(project_opt.value());
-            nlohmann::json data;
-            data["project_id"] = project_id;
-            data["cards"] = stats.cards;
-            data["ai_messages"] = stats.ai_messages;
-            data["ai_threads"] = stats.ai_threads;
-            data["links"] = stats.links;
-            nlohmann::json payload;
-            payload["ok"] = true;
-            payload["data"] = data;
-            res = json_response(http::status::ok, payload);
-          }
-        }
-      } catch (const std::exception& ex) {
-        res = error_response(http::status::bad_request, "bad_request", ex.what());
-      }
+    } else if (routes::handle_rebuild_routes(path, req, res, db_, fts_)) {
+      // handled
     } else if (routes::handle_search_routes(path, req, res, fts_, param)) {
       // handled
     } else if (routes::handle_ai_status_routes(path, req, res, db_, runner_, param)) {
