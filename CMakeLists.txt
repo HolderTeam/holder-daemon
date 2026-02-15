@@ -91,6 +91,7 @@ add_executable(holder
   src/api/routes/AiStatusRoutes.cpp
   src/api/routes/AiThreadRoutes.cpp
   src/api/routes/CardRoutes.cpp
+  src/api/routes/ProjectRoutes.cpp
   src/api/routes/TrashRoutes.cpp
   src/api/routes/StaticRoutes.cpp
   src/api/support/PathDiscovery.cpp
