@@ -89,6 +89,9 @@ add_executable(holder
   src/api/routes/AuthenticatedRoutes.cpp
   src/api/routes/ai/AiDispatch.cpp
   src/api/routes/ai/AiMessageRoutes.cpp
+  src/api/routes/ai/messages/AiMessageCaptureRoutes.cpp
+  src/api/routes/ai/messages/AiMessageCrudRoutes.cpp
+  src/api/routes/ai/messages/AiMessageLinkRoutes.cpp
   src/api/routes/AiResourceRoutes.cpp
   src/api/routes/ai/runs/AiRunPostRoute.cpp
   src/api/routes/ai/runs/AiRunQueryRoutes.cpp
