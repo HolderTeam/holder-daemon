@@ -41,6 +41,9 @@ providers:
       - id: gemma-3-1b-it
         endpoint: /v1beta/models/gemma-3-1b-it:generateContent
         role: compact
+        cooldown:
+          base_seconds: 20
+          cap_seconds: 300
         limits:
           rpm: 30
           tpm: 15000
@@ -117,6 +120,9 @@ providers:
       header_name: Authorization
       bearer_prefix: Bearer
       credential_provider_key: switchyard
+    cooldown:
+      base_seconds: 60
+      cap_seconds: 1800
     models:
       - id: openrouter/auto
         endpoint: /api/v1/chat/completions

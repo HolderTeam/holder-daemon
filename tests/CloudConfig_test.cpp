@@ -59,6 +59,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "providers:\n";
   out << "  - id: chocolatefactory\n";
   out << "    enabled: true\n";
+  out << "    cooldown:\n";
+  out << "      base_seconds: 50\n";
+  out << "      cap_seconds: 700\n";
   out << "    api:\n";
   out << "      base_url: https://example.com\n";
   out << "      kind: chocolatefactory_generative_language\n";
@@ -68,6 +71,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "    models:\n";
   out << "      - id: gemma-3-12b-it\n";
   out << "        endpoint: /v1beta/models/gemma-3-12b-it:generateContent\n";
+  out << "        cooldown:\n";
+  out << "          base_seconds: 12\n";
+  out << "          cap_seconds: 180\n";
   out.close();
 
   EnvGuard env("HOLDER_CLOUDPROVIDERS_PATH", yaml_path.string());
@@ -79,4 +85,10 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   REQUIRE(cfg->summary_refresh.max_summary_chars == 4200);
   REQUIRE(cfg->cooldown.base_seconds == 45);
   REQUIRE(cfg->cooldown.cap_seconds == 600);
+  REQUIRE(cfg->providers.size() == 1);
+  REQUIRE(cfg->providers[0].cooldown_base_seconds == 50);
+  REQUIRE(cfg->providers[0].cooldown_cap_seconds == 700);
+  REQUIRE(cfg->providers[0].models.size() == 1);
+  REQUIRE(cfg->providers[0].models[0].cooldown_base_seconds == 12);
+  REQUIRE(cfg->providers[0].models[0].cooldown_cap_seconds == 180);
 }

@@ -13,6 +13,8 @@ struct CloudModelConfig {
   long long rpm = 0;
   long long tpm = 0;
   long long rpd = 0;
+  long long cooldown_base_seconds = 0; // 0 => use provider/global default
+  long long cooldown_cap_seconds = 0;  // 0 => use provider/global default
 };
 
 struct CloudProviderConfig {
@@ -26,6 +28,8 @@ struct CloudProviderConfig {
   std::string header_name;
   std::string bearer_prefix;
   std::string credential_provider_key;
+  long long cooldown_base_seconds = 0; // 0 => use global default
+  long long cooldown_cap_seconds = 0;  // 0 => use global default
   std::vector<CloudModelConfig> models;
 };
 

@@ -94,6 +94,14 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           provider.kind = provider_node["api"]["kind"].as<std::string>();
         }
       }
+      if (provider_node["cooldown"]) {
+        if (provider_node["cooldown"]["base_seconds"]) {
+          provider.cooldown_base_seconds = provider_node["cooldown"]["base_seconds"].as<long long>();
+        }
+        if (provider_node["cooldown"]["cap_seconds"]) {
+          provider.cooldown_cap_seconds = provider_node["cooldown"]["cap_seconds"].as<long long>();
+        }
+      }
       if (provider_node["auth"]) {
         if (provider_node["auth"]["type"]) {
           provider.auth_type = provider_node["auth"]["type"].as<std::string>();
@@ -131,6 +139,14 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
             }
             if (model_node["limits"]["rpd"]) {
               m.rpd = model_node["limits"]["rpd"].as<long long>();
+            }
+          }
+          if (model_node["cooldown"]) {
+            if (model_node["cooldown"]["base_seconds"]) {
+              m.cooldown_base_seconds = model_node["cooldown"]["base_seconds"].as<long long>();
+            }
+            if (model_node["cooldown"]["cap_seconds"]) {
+              m.cooldown_cap_seconds = model_node["cooldown"]["cap_seconds"].as<long long>();
             }
           }
           provider.models.push_back(std::move(m));

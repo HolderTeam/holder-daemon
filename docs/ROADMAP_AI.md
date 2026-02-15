@@ -111,9 +111,9 @@ Execution phases:
        - summariser-model-driven summary refresh (uses provider `role: compact` when context is large)
        - summary refresh thresholds/budgets now loaded from `cloudproviders.yaml` (`defaults.compaction.summary_refresh`)
        - cooldown backoff policy now loaded from `cloudproviders.yaml` (`defaults.cooldown`)
+       - provider/model cooldown overrides now supported (`providers[].cooldown`, `providers[].models[].cooldown`)
       - still to do:
         - compact-model refresh policy tuning (cadence/heuristics beyond current thresholds)
-       - optional provider-specific cooldown policy overrides (current policy is global defaults)
 
 3. Additional Providers (After Reliability)
    - implement adapters for `switchyard`, `chadjeopardy`, `mechatropic`

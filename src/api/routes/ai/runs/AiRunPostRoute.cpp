@@ -115,6 +115,19 @@ const support::CloudModelConfig* choose_compact_summary_model(
   return nullptr;
 }
 
+std::pair<long long, long long> effective_cooldown_policy(
+    const support::CloudProvidersConfig& cfg,
+    const support::CloudProviderConfig& provider,
+    const support::CloudModelConfig& model) {
+  long long base = cfg.cooldown.base_seconds;
+  long long cap = cfg.cooldown.cap_seconds;
+  if (provider.cooldown_base_seconds > 0) base = provider.cooldown_base_seconds;
+  if (provider.cooldown_cap_seconds > 0) cap = provider.cooldown_cap_seconds;
+  if (model.cooldown_base_seconds > 0) base = model.cooldown_base_seconds;
+  if (model.cooldown_cap_seconds > 0) cap = model.cooldown_cap_seconds;
+  return {base, cap};
+}
+
 RouteDispatchResult execute_cloud_post_path(
     const nlohmann::json& body,
     const std::string& prompt,
@@ -399,14 +412,16 @@ RouteDispatchResult execute_cloud_post_path(
               } else {
                 const std::string fail_error =
                     summary_error.empty() ? "summary refresh failed" : summary_error;
+                const auto [cooldown_base, cooldown_cap] =
+                    effective_cooldown_policy(*cloud_cfg, *selected_provider, *compact_model);
                 const auto cooldown = support::record_cloud_model_failure(
                     db,
                     selected_provider->id,
                     compact_model->id,
                     fail_error,
                     now,
-                    cloud_cfg->cooldown.base_seconds,
-                    cloud_cfg->cooldown.cap_seconds);
+                    cooldown_base,
+                    cooldown_cap);
                 compaction_trace["summary_refresh"] = {
                     {"status", "failed"},
                     {"model", compact_model->id},
@@ -525,14 +540,16 @@ RouteDispatchResult execute_cloud_post_path(
           break;
         }
         final_error = cloud_error.empty() ? "cloud call failed" : cloud_error;
+        const auto [cooldown_base, cooldown_cap] =
+            effective_cooldown_policy(*cloud_cfg, *selected_provider, *candidate);
         const auto cooldown = support::record_cloud_model_failure(
             db,
             selected_provider->id,
             candidate->id,
             final_error,
             support::now_epoch_seconds(),
-            cloud_cfg->cooldown.base_seconds,
-            cloud_cfg->cooldown.cap_seconds);
+            cooldown_base,
+            cooldown_cap);
         attempt["cooldown"] = {
             {"failure_count", cooldown.failure_count},
             {"cooldown_until", cooldown.cooldown_until},
