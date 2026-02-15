@@ -207,6 +207,25 @@ CREATE TABLE IF NOT EXISTS ai_provider_credentials (
 );
 
 -- ----------------------------
+-- Cloud quota usage events
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_cloud_usage_events (
+  event_id         TEXT PRIMARY KEY,     -- UUID
+  provider         TEXT NOT NULL,
+  model_id         TEXT NOT NULL,
+  prompt_tokens    INTEGER NOT NULL,
+  response_tokens  INTEGER NOT NULL,
+  total_tokens     INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_cloud_usage_provider_model_time
+  ON ai_cloud_usage_events(provider, model_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_cloud_usage_time
+  ON ai_cloud_usage_events(created_at);
+
+-- ----------------------------
 -- Full-text search (FTS5)
 -- ----------------------------
 -- Contentless FTS: server maintains rows explicitly.

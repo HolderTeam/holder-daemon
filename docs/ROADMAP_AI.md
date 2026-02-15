@@ -81,12 +81,31 @@ Planned config/state split:
 - YAML (`cloudproviders.yaml`): endpoints, auth style, model ids, limits, default caps, cost tier, feature flags.
 - DB: rolling quota counters, cooldown/error state, per-thread compaction state, per-run policy trace.
 
-Planned rollout:
+Execution phases:
 
-1. Add provider-agnostic request/response interface and YAML config loader.
-2. Implement ChocolateFactory adapter first (Gemma + Gemini endpoints).
-3. Add quota governor + compaction policy into `/ai/runs` path.
-4. Add optional adapters for other providers without changing core policy engine.
+1. Foundation (Done)
+   - provider-agnostic config loader (`config/cloudproviders.yaml`)
+   - credential setup/storage (`/ai/providers/credentials`, DB-backed)
+   - provider catalog for clients (`/ai/providers/catalog`)
+   - `/ai/runs` cloud fallback path using configured credentials
+   - first cloud adapter: `chocolatefactory` (`generateContent`)
+
+2. Reliability Controls (Next)
+   - quota governor in `/ai/runs` (RPM/TPM/RPD checks from config + DB counters)
+   - context compactor (sliding window + rolling summary + pinned facts)
+   - deterministic degradation policy under pressure (model downshift / summarise-first / temporary cooldown)
+   - run-level policy trace metadata (why provider/model/context strategy was chosen)
+   - status: in progress
+     - baseline implemented:
+       - DB-backed cloud usage events
+       - RPM/TPM/RPD gate checks in cloud `/ai/runs` path
+       - context compaction (tail window) before cloud call
+       - policy trace persisted on run metadata
+
+3. Additional Providers (After Reliability)
+   - implement adapters for `switchyard`, `chadjeopardy`, `mechatropic`
+   - keep the same internal execution contract and policy engine
+   - avoid schema redesign when adding providers
 
 Acceptance criteria:
 

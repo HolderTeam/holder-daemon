@@ -333,6 +333,9 @@ struct CloudModelConfig {
   std::string id;
   std::string endpoint;
   std::string role;
+  long long rpm = 0;
+  long long tpm = 0;
+  long long rpd = 0;
 };
 
 struct CloudProviderConfig {
@@ -465,6 +468,17 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           m.id = model_node["id"].as<std::string>();
           m.endpoint = model_node["endpoint"].as<std::string>();
           m.role = model_node["role"] ? model_node["role"].as<std::string>() : "";
+          if (model_node["limits"]) {
+            if (model_node["limits"]["rpm"]) {
+              m.rpm = model_node["limits"]["rpm"].as<long long>();
+            }
+            if (model_node["limits"]["tpm"]) {
+              m.tpm = model_node["limits"]["tpm"].as<long long>();
+            }
+            if (model_node["limits"]["rpd"]) {
+              m.rpd = model_node["limits"]["rpd"].as<long long>();
+            }
+          }
           provider.models.push_back(std::move(m));
         }
       }
@@ -494,6 +508,125 @@ const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
   }
   if (!provider.models.empty()) return &provider.models.front();
   return nullptr;
+}
+
+const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
+                                         const std::string& model_id) {
+  for (const auto& model : provider.models) {
+    if (model.id == model_id) return &model;
+  }
+  return nullptr;
+}
+
+std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
+                                                            const std::string& requested_model) {
+  std::vector<const CloudModelConfig*> out;
+  std::unordered_set<std::string> seen;
+  auto push = [&](const CloudModelConfig* model) {
+    if (!model) return;
+    if (seen.insert(model->id).second) {
+      out.push_back(model);
+    }
+  };
+
+  if (!requested_model.empty()) {
+    push(find_cloud_model(provider, requested_model));
+  }
+  push(choose_cloud_model(provider, ""));
+  for (const auto& model : provider.models) {
+    if (model.role == "compact") push(&model);
+  }
+  for (const auto& model : provider.models) {
+    push(&model);
+  }
+  return out;
+}
+
+long long estimate_tokens_from_text(const std::string& text) {
+  if (text.empty()) return 0;
+  return static_cast<long long>((text.size() + 3) / 4);
+}
+
+std::string compact_context_tail(const std::string& context_json,
+                                 long long allowed_context_tokens,
+                                 bool* compacted) {
+  if (compacted) *compacted = false;
+  if (allowed_context_tokens <= 0) {
+    if (compacted) *compacted = !context_json.empty();
+    return {};
+  }
+  const long long max_bytes = allowed_context_tokens * 4;
+  if (max_bytes <= 0 || static_cast<long long>(context_json.size()) <= max_bytes) {
+    return context_json;
+  }
+  if (compacted) *compacted = true;
+  const std::size_t keep = static_cast<std::size_t>(max_bytes);
+  return std::string("[context_compacted]\n") + context_json.substr(context_json.size() - keep);
+}
+
+struct CloudQuotaWindowUsage {
+  long long requests = 0;
+  long long tokens = 0;
+};
+
+CloudQuotaWindowUsage load_cloud_window_usage(holder::store::Db& db,
+                                              const std::string& provider,
+                                              const std::string& model_id,
+                                              long long since_epoch_seconds) {
+  static constexpr const char* SQL =
+      "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) "
+      "FROM ai_cloud_usage_events "
+      "WHERE provider = ? AND model_id = ? AND created_at >= ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw std::runtime_error("prepare cloud usage query failed");
+  }
+  sqlite3_bind_text(stmt, 1, provider.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, model_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 3, since_epoch_seconds);
+
+  CloudQuotaWindowUsage usage;
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    usage.requests = sqlite3_column_int64(stmt, 0);
+    usage.tokens = sqlite3_column_int64(stmt, 1);
+  }
+  sqlite3_finalize(stmt);
+  return usage;
+}
+
+void record_cloud_usage_event(holder::store::Db& db,
+                              const std::string& provider,
+                              const std::string& model_id,
+                              long long prompt_tokens,
+                              long long response_tokens,
+                              long long created_at) {
+  static constexpr const char* SQL =
+      "INSERT INTO ai_cloud_usage_events("
+      "event_id, provider, model_id, prompt_tokens, response_tokens, total_tokens, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?);";
+
+  const std::string event_id =
+      "cloud-" + std::to_string(created_at) + "-" +
+      std::to_string(static_cast<unsigned long long>(std::rand()));
+  const long long total_tokens = prompt_tokens + response_tokens;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw std::runtime_error("prepare cloud usage insert failed");
+  }
+  sqlite3_bind_text(stmt, 1, event_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, provider.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, model_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 4, prompt_tokens);
+  sqlite3_bind_int64(stmt, 5, response_tokens);
+  sqlite3_bind_int64(stmt, 6, total_tokens);
+  sqlite3_bind_int64(stmt, 7, created_at);
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw std::runtime_error("insert cloud usage event failed");
+  }
 }
 
 bool https_post_json(const std::string& base_url,
@@ -2274,8 +2407,9 @@ void Session::run() {
               }
 
               if (selected_provider && selected_cred) {
-                const auto* selected_model = choose_cloud_model(*selected_provider, requested_model);
-                if (!selected_model) {
+                const auto candidate_models =
+                    cloud_model_candidates(*selected_provider, requested_model);
+                if (candidate_models.empty()) {
                   res = error_response(http::status::service_unavailable,
                                        "cloud_not_configured",
                                        "No cloud model configured for selected provider.");
@@ -2323,10 +2457,20 @@ void Session::run() {
                     return !send_ec;
                   };
 
+                  nlohmann::json policy_trace;
+                  policy_trace["path"] = "cloud";
+                  policy_trace["provider"] = selected_provider->id;
+                  policy_trace["selection"] = {
+                      {"requested_provider", requested_provider.empty() ? nlohmann::json(nullptr)
+                                                                       : nlohmann::json(requested_provider)},
+                      {"requested_model", requested_model.empty() ? nlohmann::json(nullptr)
+                                                                   : nlohmann::json(requested_model)},
+                  };
+                  policy_trace["attempts"] = nlohmann::json::array();
+
                   send_event("progress",
                              {{"message", "Using cloud provider"},
-                              {"provider", selected_provider->id},
-                              {"model", selected_model->id}});
+                              {"provider", selected_provider->id}});
 
                   if (thread_id.has_value()) {
                     holder::store::AiMessageRepo msg_repo(db_, fts_);
@@ -2336,47 +2480,146 @@ void Session::run() {
                     user_msg.role = "user";
                     user_msg.source = "cloud";
                     user_msg.provider = selected_provider->id;
-                    user_msg.model = selected_model->id;
+                    if (!requested_model.empty()) {
+                      user_msg.model = requested_model;
+                    }
                     user_msg.content = prompt;
                     user_msg.created_at = now_epoch_seconds();
                     msg_repo.append(user_msg);
                   }
 
-                  std::string prompt_full = prompt;
-                  if (!context_json.empty()) {
-                    prompt_full += "\n\nContext:\n";
-                    prompt_full += context_json;
+                  std::optional<std::string> chosen_model_id;
+                  std::optional<std::string> output;
+                  std::string output_prompt_full;
+                  long long output_prompt_tokens = 0;
+                  std::string final_error = "All cloud model attempts failed.";
+
+                  for (const auto* candidate : candidate_models) {
+                    nlohmann::json attempt;
+                    attempt["model"] = candidate->id;
+
+                    const long long now = now_epoch_seconds();
+                    const long long minute_start = now - 60;
+                    const long long day_start = now - 86400;
+                    const auto minute_usage =
+                        load_cloud_window_usage(db_, selected_provider->id, candidate->id, minute_start);
+                    const auto day_usage =
+                        load_cloud_window_usage(db_, selected_provider->id, candidate->id, day_start);
+
+                    const long long prompt_tokens = estimate_tokens_from_text(prompt);
+                    const long long model_input_budget =
+                        (candidate->tpm > 0) ? std::max(256LL, (candidate->tpm * 7) / 10) : 6000LL;
+                    const long long context_budget = std::max(0LL, model_input_budget - prompt_tokens - 64LL);
+                    bool compacted = false;
+                    std::string compacted_context = compact_context_tail(context_json, context_budget, &compacted);
+                    std::string prompt_full = prompt;
+                    if (!compacted_context.empty()) {
+                      prompt_full += "\n\nContext:\n";
+                      prompt_full += compacted_context;
+                    }
+                    const long long prompt_full_tokens = estimate_tokens_from_text(prompt_full);
+                    const long long reserved_response_tokens = 512;
+                    const long long projected_tokens = prompt_full_tokens + reserved_response_tokens;
+
+                    attempt["quota"] = {
+                        {"rpm_limit", candidate->rpm},
+                        {"tpm_limit", candidate->tpm},
+                        {"rpd_limit", candidate->rpd},
+                        {"minute_requests", minute_usage.requests},
+                        {"minute_tokens", minute_usage.tokens},
+                        {"day_requests", day_usage.requests},
+                        {"projected_tokens", projected_tokens},
+                    };
+                    attempt["context_compacted"] = compacted;
+                    attempt["input_tokens"] = prompt_full_tokens;
+
+                    if (candidate->rpm > 0 && minute_usage.requests + 1 > candidate->rpm) {
+                      attempt["decision"] = "rejected";
+                      attempt["reason"] = "rpm_exceeded";
+                      policy_trace["attempts"].push_back(attempt);
+                      continue;
+                    }
+                    if (candidate->rpd > 0 && day_usage.requests + 1 > candidate->rpd) {
+                      attempt["decision"] = "rejected";
+                      attempt["reason"] = "rpd_exceeded";
+                      policy_trace["attempts"].push_back(attempt);
+                      continue;
+                    }
+                    if (candidate->tpm > 0 && minute_usage.tokens + projected_tokens > candidate->tpm) {
+                      attempt["decision"] = "rejected";
+                      attempt["reason"] = "tpm_exceeded";
+                      policy_trace["attempts"].push_back(attempt);
+                      continue;
+                    }
+
+                    attempt["decision"] = "selected";
+                    policy_trace["attempts"].push_back(attempt);
+                    send_event("progress",
+                               {{"message", "Trying cloud model"},
+                                {"provider", selected_provider->id},
+                                {"model", candidate->id},
+                                {"context_compacted", compacted}});
+
+                    std::string cloud_error;
+                    const auto candidate_output = run_cloud_model(*selected_provider,
+                                                                  *candidate,
+                                                                  selected_cred->api_key,
+                                                                  prompt_full,
+                                                                  &cloud_error);
+                    if (candidate_output.has_value()) {
+                      chosen_model_id = candidate->id;
+                      output = candidate_output.value();
+                      output_prompt_full = prompt_full;
+                      output_prompt_tokens = prompt_full_tokens;
+                      break;
+                    }
+                    final_error = cloud_error.empty() ? "cloud call failed" : cloud_error;
+                    send_event("fallback",
+                               {{"provider", selected_provider->id},
+                                {"model", candidate->id},
+                                {"error", final_error}});
                   }
 
-                  std::string cloud_error;
-                  const auto output = run_cloud_model(*selected_provider,
-                                                      *selected_model,
-                                                      selected_cred->api_key,
-                                                      prompt_full,
-                                                      &cloud_error);
                   const long long updated_at = now_epoch_seconds();
-                  if (!output.has_value()) {
+                  if (!output.has_value() || !chosen_model_id.has_value()) {
+                    policy_trace["result"] = {
+                        {"status", "failed"},
+                        {"error", final_error},
+                    };
                     send_event("failed",
-                               {{"error", cloud_error.empty() ? "Cloud call failed." : cloud_error},
-                                {"provider", selected_provider->id},
-                                {"model", selected_model->id}});
+                               {{"error", final_error},
+                                {"provider", selected_provider->id}});
                     run_repo.update_status(run.run_id,
                                            "failed",
-                                           cloud_error.empty() ? std::optional<std::string>("cloud call failed")
-                                                               : std::optional<std::string>(cloud_error),
+                                           std::optional<std::string>(final_error),
                                            std::nullopt,
-                                           std::optional<std::string>(selected_provider->id + ":" +
-                                                                      selected_model->id),
                                            std::nullopt,
+                                           std::optional<std::string>(policy_trace.dump()),
                                            updated_at);
                   } else {
+                    const long long response_tokens = estimate_tokens_from_text(output.value());
+                    record_cloud_usage_event(db_,
+                                             selected_provider->id,
+                                             chosen_model_id.value(),
+                                             output_prompt_tokens,
+                                             response_tokens,
+                                             updated_at);
+
+                    policy_trace["result"] = {
+                        {"status", "completed"},
+                        {"provider", selected_provider->id},
+                        {"model", chosen_model_id.value()},
+                        {"prompt_tokens", output_prompt_tokens},
+                        {"response_tokens", response_tokens},
+                    };
+
                     send_event("chunk",
                                {{"provider", selected_provider->id},
-                                {"model", selected_model->id},
+                                {"model", chosen_model_id.value()},
                                 {"delta", output.value()}});
                     send_event("done",
                                {{"provider", selected_provider->id},
-                                {"model", selected_model->id}});
+                                {"model", chosen_model_id.value()}});
 
                     std::optional<std::string> message_id;
                     if (thread_id.has_value()) {
@@ -2387,7 +2630,7 @@ void Session::run() {
                       assistant_msg.role = "assistant";
                       assistant_msg.source = "cloud";
                       assistant_msg.provider = selected_provider->id;
-                      assistant_msg.model = selected_model->id;
+                      assistant_msg.model = chosen_model_id.value();
                       assistant_msg.content = output.value();
                       assistant_msg.created_at = updated_at;
                       msg_repo.append(assistant_msg);
@@ -2399,8 +2642,8 @@ void Session::run() {
                                            std::nullopt,
                                            message_id,
                                            std::optional<std::string>(selected_provider->id + ":" +
-                                                                      selected_model->id),
-                                           std::nullopt,
+                                                                      chosen_model_id.value()),
+                                           std::optional<std::string>(policy_trace.dump()),
                                            updated_at);
                   }
                   return;
