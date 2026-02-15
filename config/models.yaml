@@ -99,10 +99,17 @@ schema:
   CloudEntry:
     required:
     - provider
+    - provider_id
+    - credential_key
     - engine
-    - api
-    - auth
+    - endpoint
+    - api_key_required
     optional:
+    - default_model_id
+    - setup_url
+    - docs_url
+    - api_key_label
+    - api_key_hint
     - pricing
     - notes
 model_rubric:
@@ -757,51 +764,71 @@ Models:
     homepage: TODO
     notes: TODO
   Cloud:
-  - provider: Google
-    engine: Gemini
-    endpoint: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent
+  - provider: ChocolateFactory
+    provider_id: chocolatefactory
+    credential_key: chocolatefactory
+    engine: Gemma / Gemini API
+    endpoint: https://generativelanguage.googleapis.com
+    default_model_id: gemma-3-12b-it
+    setup_url: https://aistudio.google.com/apikey
+    docs_url: https://ai.google.dev/gemini-api/docs
     api_key_required: true
-    notes: '- Free tier
+    api_key_label: ChocolateFactory API key
+    api_key_hint: Paste your API key from AI Studio.
+    notes: '- Free-tier first provider for low-powered machines
 
-      - So support this first
+      - Backend routes to configured Gemma models over REST
+
+      - Recommended first cloud setup path
 
       '
-  - provider: OpenAI
+  - provider: Switchyard
+    provider_id: switchyard
+    credential_key: switchyard
+    engine: OpenRouter Route
+    endpoint: https://openrouter.ai/api/v1/chat/completions
+    default_model_id: openrouter/auto
+    setup_url: https://openrouter.ai/settings/keys
+    docs_url: https://openrouter.ai/docs
+    api_key_required: true
+    api_key_label: Switchyard API key
+    api_key_hint: Paste your OpenRouter API key.
+    notes: '- Free route available
+
+      - Baseline free allowance: 50 requests/day
+
+      - With one-time $10 credit: up to 1000 requests/day
+
+      '
+  - provider: ChadJeopardy
+    provider_id: chadjeopardy
+    credential_key: chadjeopardy
     engine: GPT
-    endpoint: https://api.openai.com/v1
+    endpoint: https://api.openai.com/v1/responses
+    default_model_id: gpt-5.2
+    setup_url: https://platform.openai.com/api-keys
+    docs_url: https://platform.openai.com/docs
     api_key_required: true
-    notes: '- General-purpose multimodal cloud model
+    api_key_label: ChadJeopardy API key
+    api_key_hint: Paste your API key for this provider.
+    notes: '- OpenAI-style API path
 
-      - Widely supported across tooling and SDKs
-
-      - Usage-based pricing via API
-
-      - 0.1: Just use web/cli and copy-pasta
+      - Usually paid usage; optional setup
 
       '
-  - provider: Anthropic
+  - provider: Mechatropic
+    provider_id: mechatropic
+    credential_key: mechatropic
     engine: Claude
-    endpoint: https://api.anthropic.com/v1
+    endpoint: https://api.anthropic.com/v1/messages
+    default_model_id: claude-opus-4-6
+    setup_url: https://console.anthropic.com/settings/keys
+    docs_url: https://docs.anthropic.com/
     api_key_required: true
-    notes: '- Strong reasoning and writing model
+    api_key_label: Mechatropic API key
+    api_key_hint: Paste your API key for this provider.
+    notes: '- Anthropic-style API path
 
-      - Popular for long-context and document-heavy tasks
-
-      - API access required for programmatic use
-
-      - 0.1: Just use web/cli and copy-pasta
-
-      '
-  - provider: Groq
-    engine: Llama
-    endpoint: https://api.groq.com/openai/v1
-    api_key_required: true
-    notes: '- Extremely fast inference
-
-      - OpenAI-compatible API surface
-
-      - Best suited for latency-sensitive workloads
-
-      - 0.1: Just use web/cli and copy-pasta
+      - Usually paid usage; optional setup
 
       '
