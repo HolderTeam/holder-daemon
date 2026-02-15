@@ -107,6 +107,14 @@ void ensure_ai_run_thread(AiRunPostInput& input,
   input.thread_id = thread.thread_id;
 }
 
+const support::CloudModelConfig* choose_compact_summary_model(
+    const support::CloudProviderConfig& provider) {
+  for (const auto& model : provider.models) {
+    if (model.role == "compact") return &model;
+  }
+  return nullptr;
+}
+
 RouteDispatchResult execute_cloud_post_path(
     const nlohmann::json& body,
     const std::string& prompt,
@@ -277,8 +285,125 @@ RouteDispatchResult execute_cloud_post_path(
       long long output_prompt_tokens = 0;
       std::string final_error = "All cloud model attempts failed.";
       std::optional<support::ThreadCompactionState> compaction_state;
+      bool summary_refreshed = false;
       if (thread_id.has_value()) {
         compaction_state = support::load_thread_compaction_state(db, thread_id.value());
+      }
+      if (thread_id.has_value() && !context_json.empty()) {
+        nlohmann::json compaction_trace;
+        compaction_trace["strategy"] = "summary_plus_pinned_plus_tail";
+        compaction_trace["summary_refresh"] = {{"status", "skipped"}};
+
+        const long long context_tokens = support::estimate_tokens_from_text(context_json);
+        const long long refresh_threshold_tokens = 1200;
+        const auto* compact_model = choose_compact_summary_model(*selected_provider);
+        if (!compact_model) {
+          compaction_trace["summary_refresh"]["reason"] = "no_compact_model";
+        } else if (context_tokens < refresh_threshold_tokens) {
+          compaction_trace["summary_refresh"]["reason"] = "below_threshold";
+          compaction_trace["summary_refresh"]["context_tokens"] = context_tokens;
+        } else {
+          const long long now = support::now_epoch_seconds();
+          const auto cooldown_state =
+              support::load_cloud_model_cooldown(db, selected_provider->id, compact_model->id);
+          if (cooldown_state.has_value() && cooldown_state->cooldown_until > now) {
+            compaction_trace["summary_refresh"]["reason"] = "cooldown_active";
+            compaction_trace["summary_refresh"]["cooldown_until"] = cooldown_state->cooldown_until;
+          } else {
+            const long long minute_start = now - 60;
+            const long long day_start = now - 86400;
+            const auto minute_usage = support::load_cloud_window_usage(
+                db, selected_provider->id, compact_model->id, minute_start);
+            const auto day_usage =
+                support::load_cloud_window_usage(db, selected_provider->id, compact_model->id, day_start);
+
+            bool src_compacted = false;
+            const std::string summary_source =
+                support::compact_context_tail(context_json, 2000, &src_compacted);
+            std::string summarize_prompt =
+                "Summarize the context for future turns.\n"
+                "Return plain text only.\n"
+                "Focus on durable decisions, constraints, and unresolved tasks.\n";
+            if (compaction_state.has_value() && compaction_state->rolling_summary.has_value() &&
+                !compaction_state->rolling_summary->empty()) {
+              summarize_prompt += "\nCurrent summary:\n";
+              summarize_prompt += compaction_state->rolling_summary.value();
+              summarize_prompt += "\n";
+            }
+            summarize_prompt += "\nNew context:\n";
+            summarize_prompt += summary_source;
+            const long long summary_prompt_tokens = support::estimate_tokens_from_text(summarize_prompt);
+            const long long summary_projected_tokens = summary_prompt_tokens + 256;
+
+            bool quota_reject = false;
+            if (compact_model->rpm > 0 && minute_usage.requests + 1 > compact_model->rpm) {
+              quota_reject = true;
+              compaction_trace["summary_refresh"]["reason"] = "rpm_exceeded";
+            } else if (compact_model->rpd > 0 && day_usage.requests + 1 > compact_model->rpd) {
+              quota_reject = true;
+              compaction_trace["summary_refresh"]["reason"] = "rpd_exceeded";
+            } else if (compact_model->tpm > 0 &&
+                       minute_usage.tokens + summary_projected_tokens > compact_model->tpm) {
+              quota_reject = true;
+              compaction_trace["summary_refresh"]["reason"] = "tpm_exceeded";
+            }
+
+            if (!quota_reject) {
+              send_event("progress",
+                         {{"message", "Refreshing rolling summary"},
+                          {"provider", selected_provider->id},
+                          {"model", compact_model->id}});
+              std::string summary_error;
+              const auto summary_output = support::run_cloud_model(
+                  *selected_provider, *compact_model, selected_cred->api_key, summarize_prompt, &summary_error);
+              if (summary_output.has_value()) {
+                std::string summary = summary_output.value();
+                if (summary.size() > 5000) {
+                  summary = summary.substr(0, 5000);
+                }
+                support::ThreadCompactionState next_state;
+                if (compaction_state.has_value()) {
+                  next_state = compaction_state.value();
+                }
+                next_state.thread_id = thread_id.value();
+                next_state.rolling_summary = summary;
+                next_state.updated_at = now;
+                support::upsert_thread_compaction_state(db, next_state);
+                compaction_state = next_state;
+                summary_refreshed = true;
+                support::clear_cloud_model_cooldown(db, selected_provider->id, compact_model->id, now);
+                const long long summary_response_tokens =
+                    support::estimate_tokens_from_text(summary_output.value());
+                support::record_cloud_usage_event(db,
+                                                  selected_provider->id,
+                                                  compact_model->id,
+                                                  summary_prompt_tokens,
+                                                  summary_response_tokens,
+                                                  now,
+                                                  run.run_id + "-summary");
+                compaction_trace["summary_refresh"] = {
+                    {"status", "completed"},
+                    {"model", compact_model->id},
+                    {"source_compacted", src_compacted},
+                    {"prompt_tokens", summary_prompt_tokens},
+                    {"response_tokens", summary_response_tokens},
+                };
+              } else {
+                const std::string fail_error =
+                    summary_error.empty() ? "summary refresh failed" : summary_error;
+                const auto cooldown = support::record_cloud_model_failure(
+                    db, selected_provider->id, compact_model->id, fail_error, now);
+                compaction_trace["summary_refresh"] = {
+                    {"status", "failed"},
+                    {"model", compact_model->id},
+                    {"error", fail_error},
+                    {"cooldown_until", cooldown.cooldown_until},
+                };
+              }
+            }
+          }
+        }
+        policy_trace["compaction"] = compaction_trace;
       }
 
       for (const auto* candidate : candidate_models) {
@@ -407,7 +532,7 @@ RouteDispatchResult execute_cloud_post_path(
 
       const long long updated_at = support::now_epoch_seconds();
       if (!output.has_value() || !chosen_model_id.has_value()) {
-        if (thread_id.has_value() && !context_json.empty()) {
+        if (thread_id.has_value() && !context_json.empty() && !summary_refreshed) {
           support::roll_thread_compaction_state(db, thread_id.value(), context_json, updated_at);
         }
         policy_trace["result"] = {
@@ -425,7 +550,7 @@ RouteDispatchResult execute_cloud_post_path(
                                updated_at);
       } else {
         const long long response_tokens = support::estimate_tokens_from_text(output.value());
-        if (thread_id.has_value() && !context_json.empty()) {
+        if (thread_id.has_value() && !context_json.empty() && !summary_refreshed) {
           support::roll_thread_compaction_state(db, thread_id.value(), context_json, updated_at);
         }
         support::record_cloud_usage_event(db,

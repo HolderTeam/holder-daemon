@@ -108,8 +108,9 @@ Execution phases:
        - dedicated `policy_trace_json` persistence on runs + structured `policy_trace` in run API payloads
        - per-thread compaction state persistence (`rolling_summary`, `pinned_facts_json`)
        - cloud context builder now uses rolling summary + pinned facts + tail-window
-     - still to do:
-       - summariser-model-driven summary refresh (current rolling summary is deterministic text compaction)
+       - summariser-model-driven summary refresh (uses provider `role: compact` when context is large)
+      - still to do:
+       - compact-model refresh policy tuning (thresholds, cadence, token budgets)
        - optional cooldown policy tuning from config (`cloudproviders.yaml`)
 
 3. Additional Providers (After Reliability)
