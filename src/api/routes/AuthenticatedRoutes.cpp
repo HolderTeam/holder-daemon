@@ -12,6 +12,7 @@
 #include "api/routes/RebuildRoutes.h"
 #include "api/routes/SearchRoutes.h"
 #include "api/routes/TrashRoutes.h"
+#include "api/support/HttpQuery.h"
 #include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
@@ -38,12 +39,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4) {
   auto param = [&](const std::string& key) -> std::string {
-    const std::string needle = key + "=";
-    const auto pos = query_string.find(needle);
-    if (pos == std::string::npos) return {};
-    const auto start = pos + needle.size();
-    const auto end = query_string.find('&', start);
-    return query_string.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    return support::query_param_value(query_string, key);
   };
 
   if (handle_project_routes(path, req, res, db, git_ops, uuid_v4, param)) {
