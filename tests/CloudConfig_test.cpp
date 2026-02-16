@@ -49,6 +49,9 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "defaults:\n";
   out << "  route_policy:\n";
   out << "    default_provider: chocolatefactory\n";
+  out << "    provider_order:\n";
+  out << "      - chocolatefactory\n";
+  out << "      - switchyard\n";
   out << "  cooldown:\n";
   out << "    base_seconds: 45\n";
   out << "    cap_seconds: 600\n";
@@ -64,6 +67,7 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "providers:\n";
   out << "  - id: chocolatefactory\n";
   out << "    enabled: true\n";
+  out << "    cost_tier: free\n";
   out << "    cooldown:\n";
   out << "      base_seconds: 50\n";
   out << "      cap_seconds: 700\n";
@@ -76,6 +80,8 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   out << "    models:\n";
   out << "      - id: gemma-3-12b-it\n";
   out << "        endpoint: /v1beta/models/gemma-3-12b-it:generateContent\n";
+  out << "        cost_tier: free\n";
+  out << "        default_for_low_budget: true\n";
   out << "        cooldown:\n";
   out << "          base_seconds: 12\n";
   out << "          cap_seconds: 180\n";
@@ -96,9 +102,15 @@ TEST_CASE("CloudConfig parses summary refresh defaults", "[cloud_config]") {
   REQUIRE(cfg->providers.size() == 1);
   REQUIRE(cfg->providers[0].cooldown_base_seconds == 50);
   REQUIRE(cfg->providers[0].cooldown_cap_seconds == 700);
+  REQUIRE(cfg->providers[0].cost_tier == "free");
   REQUIRE(cfg->providers[0].models.size() == 1);
+  REQUIRE(cfg->providers[0].models[0].cost_tier == "free");
+  REQUIRE(cfg->providers[0].models[0].default_for_low_budget == true);
   REQUIRE(cfg->providers[0].models[0].cooldown_base_seconds == 12);
   REQUIRE(cfg->providers[0].models[0].cooldown_cap_seconds == 180);
+  REQUIRE(cfg->provider_order.size() == 2);
+  REQUIRE(cfg->provider_order[0] == "chocolatefactory");
+  REQUIRE(cfg->provider_order[1] == "switchyard");
 }
 
 TEST_CASE("CloudConfig rejects unknown provider api.kind", "[cloud_config]") {
@@ -120,4 +132,38 @@ TEST_CASE("CloudConfig rejects unknown provider api.kind", "[cloud_config]") {
   EnvGuard env("HOLDER_CLOUDPROVIDERS_PATH", yaml_path.string());
   REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
                       Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
+}
+
+TEST_CASE("CloudConfig orders providers by configured order then cost tier", "[cloud_config]") {
+  holder::api::support::CloudProvidersConfig cfg;
+  cfg.provider_order = {"switchyard"};
+  holder::api::support::CloudProviderConfig p1;
+  p1.id = "chocolatefactory";
+  p1.enabled = true;
+  p1.cost_tier = "free";
+  cfg.providers.push_back(p1);
+
+  holder::api::support::CloudProviderConfig p2;
+  p2.id = "switchyard";
+  p2.enabled = true;
+  p2.cost_tier = "low";
+  cfg.providers.push_back(p2);
+
+  holder::api::support::CloudProviderConfig p3;
+  p3.id = "mechatropic";
+  p3.enabled = true;
+  p3.cost_tier = "paid";
+  cfg.providers.push_back(p3);
+
+  holder::api::support::CloudProviderConfig p4;
+  p4.id = "unknown";
+  p4.enabled = true;
+  cfg.providers.push_back(p4);
+
+  const auto ordered = holder::api::support::ordered_cloud_providers(cfg);
+  REQUIRE(ordered.size() == 4);
+  REQUIRE(ordered[0]->id == "switchyard");
+  REQUIRE(ordered[1]->id == "chocolatefactory");
+  REQUIRE(ordered[2]->id == "mechatropic");
+  REQUIRE(ordered[3]->id == "unknown");
 }

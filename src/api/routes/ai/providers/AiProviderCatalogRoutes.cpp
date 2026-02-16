@@ -22,6 +22,8 @@ nlohmann::json model_to_json(const support::CloudModelConfig& model) {
   out["id"] = model.id;
   out["endpoint"] = model.endpoint;
   out["role"] = model.role.empty() ? nlohmann::json(nullptr) : nlohmann::json(model.role);
+  out["cost_tier"] = model.cost_tier.empty() ? nlohmann::json(nullptr) : nlohmann::json(model.cost_tier);
+  out["default_for_low_budget"] = model.default_for_low_budget;
   out["limits"] = {
       {"rpm", model.rpm},
       {"tpm", model.tpm},
@@ -89,6 +91,8 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
       const auto enabled_it = enabled_by_provider.find(provider.id);
       item["enabled"] = (enabled_it != enabled_by_provider.end()) ? enabled_it->second : provider.enabled;
       item["configured"] = configured_ids.find(provider.id) != configured_ids.end();
+      item["cost_tier"] =
+          provider.cost_tier.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.cost_tier);
       item["api"] = api_to_json(provider);
       item["auth"] = auth_to_json(provider);
       nlohmann::json models = nlohmann::json::array();

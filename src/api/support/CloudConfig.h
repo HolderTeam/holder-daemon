@@ -10,6 +10,8 @@ struct CloudModelConfig {
   std::string id;
   std::string endpoint;
   std::string role;
+  std::string cost_tier;      // e.g. free, low, paid
+  bool default_for_low_budget = false;
   long long rpm = 0;
   long long tpm = 0;
   long long rpd = 0;
@@ -21,6 +23,7 @@ struct CloudProviderConfig {
   std::string id;
   std::string display_name;
   bool enabled = false;
+  std::string cost_tier; // e.g. free, low, paid
   std::string base_url;
   std::string kind;
   std::string auth_type;
@@ -49,6 +52,7 @@ struct CloudProvidersConfig {
   };
 
   std::string default_provider;
+  std::vector<std::string> provider_order;
   SummaryRefreshConfig summary_refresh;
   CooldownConfig cooldown;
   std::vector<CloudProviderConfig> providers;
@@ -63,5 +67,6 @@ const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
                                          const std::string& model_id);
 std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
                                                             const std::string& requested_model);
+std::vector<const CloudProviderConfig*> ordered_cloud_providers(const CloudProvidersConfig& cfg);
 
 } // namespace holder::api::support

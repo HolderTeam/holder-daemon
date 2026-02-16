@@ -6,6 +6,7 @@
 
 #include <cctype>
 #include <stdexcept>
+#include <algorithm>
 #include <unordered_set>
 
 namespace holder::api::support {
@@ -36,6 +37,14 @@ std::string normalize_provider_name(const std::string& raw) {
   return key;
 }
 
+int cost_tier_rank(const std::string& cost_tier) {
+  const auto tier = lowercase_ascii(trim_ascii(cost_tier));
+  if (tier == "free") return 0;
+  if (tier == "low") return 1;
+  if (tier == "paid") return 2;
+  return 3;
+}
+
 bool is_supported_provider_kind(const std::string& kind) {
   return kind == "chocolatefactory_generative_language" || kind == "generic_chat" ||
          kind == "generic_responses" || kind == "mechatropic_messages";
@@ -53,6 +62,16 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       root["defaults"]["route_policy"]["default_provider"]) {
     cfg.default_provider = normalize_provider_name(
         root["defaults"]["route_policy"]["default_provider"].as<std::string>());
+  }
+  if (root["defaults"] && root["defaults"]["route_policy"] &&
+      root["defaults"]["route_policy"]["provider_order"] &&
+      root["defaults"]["route_policy"]["provider_order"].IsSequence()) {
+    for (const auto& provider_id : root["defaults"]["route_policy"]["provider_order"]) {
+      const std::string normalized = normalize_provider_name(provider_id.as<std::string>());
+      if (!normalized.empty()) {
+        cfg.provider_order.push_back(normalized);
+      }
+    }
   }
   if (root["defaults"] && root["defaults"]["compaction"] &&
       root["defaults"]["compaction"]["summary_refresh"]) {
@@ -102,6 +121,9 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
                                   ? provider_node["display_name"].as<std::string>()
                                   : provider.id;
       provider.enabled = provider_node["enabled"] ? provider_node["enabled"].as<bool>() : false;
+      if (provider_node["cost_tier"]) {
+        provider.cost_tier = provider_node["cost_tier"].as<std::string>();
+      }
       if (provider_node["api"]) {
         if (provider_node["api"]["base_url"]) {
           provider.base_url = provider_node["api"]["base_url"].as<std::string>();
@@ -150,6 +172,12 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           m.id = model_node["id"].as<std::string>();
           m.endpoint = model_node["endpoint"].as<std::string>();
           m.role = model_node["role"] ? model_node["role"].as<std::string>() : "";
+          if (model_node["cost_tier"]) {
+            m.cost_tier = model_node["cost_tier"].as<std::string>();
+          }
+          if (model_node["default_for_low_budget"]) {
+            m.default_for_low_budget = model_node["default_for_low_budget"].as<bool>();
+          }
           if (model_node["limits"]) {
             if (model_node["limits"]["rpm"]) {
               m.rpm = model_node["limits"]["rpm"].as<long long>();
@@ -228,6 +256,38 @@ std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderC
   }
   for (const auto& model : provider.models) {
     push(&model);
+  }
+  return out;
+}
+
+std::vector<const CloudProviderConfig*> ordered_cloud_providers(const CloudProvidersConfig& cfg) {
+  std::vector<const CloudProviderConfig*> out;
+  std::unordered_set<std::string> seen;
+  auto push = [&](const CloudProviderConfig* provider) {
+    if (!provider) return;
+    if (seen.insert(provider->id).second) {
+      out.push_back(provider);
+    }
+  };
+
+  for (const auto& id : cfg.provider_order) {
+    push(find_cloud_provider(cfg, id));
+  }
+
+  std::vector<const CloudProviderConfig*> remaining;
+  for (const auto& provider : cfg.providers) {
+    if (seen.find(provider.id) == seen.end()) {
+      remaining.push_back(&provider);
+    }
+  }
+  std::stable_sort(remaining.begin(), remaining.end(), [](const auto* a, const auto* b) {
+    const int rank_a = cost_tier_rank(a->cost_tier);
+    const int rank_b = cost_tier_rank(b->cost_tier);
+    if (rank_a != rank_b) return rank_a < rank_b;
+    return a->id < b->id;
+  });
+  for (const auto* provider : remaining) {
+    push(provider);
   }
   return out;
 }

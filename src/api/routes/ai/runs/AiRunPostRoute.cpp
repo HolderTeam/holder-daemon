@@ -203,16 +203,10 @@ RouteDispatchResult execute_cloud_post_path(
   }
 
   if (!selected_provider && !selection_failed) {
-    if (!cloud_cfg->default_provider.empty()) {
-      const auto* provider = support::find_cloud_provider(cloud_cfg.value(), cloud_cfg->default_provider);
-      if (provider) {
-        try_select(*provider);
+    for (const auto* provider_cfg : support::ordered_cloud_providers(cloud_cfg.value())) {
+      if (provider_cfg && try_select(*provider_cfg)) {
+        break;
       }
-    }
-  }
-  if (!selected_provider && !selection_failed) {
-    for (const auto& provider_cfg : cloud_cfg->providers) {
-      if (try_select(provider_cfg)) break;
     }
   }
 
