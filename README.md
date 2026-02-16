@@ -57,4 +57,5 @@ Holder is intended to be cross-platform, but Ubuntu has the smoothest setup toda
 ./make.sh Debug           # debug build
 ./build/holder --help
 ./build/holder --reindex
+./scripts/cloud-smoke.sh --provider switchyard --token "$HOLDER_TOKEN" --api-key "$SWITCHYARD_API_KEY"
 ```

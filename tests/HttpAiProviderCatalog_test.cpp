@@ -73,6 +73,42 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   }
   REQUIRE(configured_chocolatefactory);
 
+  bool switchyard_enabled_before = true;
+  for (const auto& provider : before["data"]["providers"]) {
+    if (provider["id"] == "switchyard") {
+      switchyard_enabled_before = provider["enabled"].get<bool>();
+    }
+  }
+  REQUIRE(switchyard_enabled_before == false);
+
+  const auto put_switchyard = http_json_request(bound.bind,
+                                                bound.port,
+                                                token,
+                                                boost::beast::http::verb::put,
+                                                "/ai/providers/credentials",
+                                                nlohmann::json{{"provider", "switchyard"},
+                                                               {"api_key", "sw_test_key_abc"}},
+                                                boost::beast::http::status::ok);
+  REQUIRE(put_switchyard["ok"] == true);
+
+  const auto after_switchyard = http_json_request(bound.bind,
+                                                  bound.port,
+                                                  token,
+                                                  boost::beast::http::verb::get,
+                                                  "/ai/providers/catalog",
+                                                  nlohmann::json{},
+                                                  boost::beast::http::status::ok);
+  bool switchyard_configured = false;
+  bool switchyard_enabled = false;
+  for (const auto& provider : after_switchyard["data"]["providers"]) {
+    if (provider["id"] == "switchyard") {
+      switchyard_configured = provider["configured"].get<bool>();
+      switchyard_enabled = provider["enabled"].get<bool>();
+    }
+  }
+  REQUIRE(switchyard_configured == true);
+  REQUIRE(switchyard_enabled == true);
+
   std::raise(SIGTERM);
   server_thread.join();
 }

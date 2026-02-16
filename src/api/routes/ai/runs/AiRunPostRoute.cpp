@@ -11,6 +11,7 @@
 #include "api/support/Time.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiProviderCredentialRepo.h"
+#include "store/AiProviderSettingRepo.h"
 #include "store/AiRouterConfigRepo.h"
 #include "store/AiRunRepo.h"
 #include "store/AiThreadRepo.h"
@@ -167,13 +168,21 @@ RouteDispatchResult execute_cloud_post_path(
   for (const auto& credential : credentials) {
     creds_by_key[credential.provider] = credential;
   }
+  holder::store::AiProviderSettingRepo setting_repo(db);
+  std::unordered_map<std::string, bool> enabled_by_provider;
+  for (const auto& setting : setting_repo.list()) {
+    enabled_by_provider[setting.provider] = setting.enabled;
+  }
 
   const support::CloudProviderConfig* selected_provider = nullptr;
   const holder::model::AiProviderCredential* selected_cred = nullptr;
   bool selection_failed = false;
 
   auto try_select = [&](const support::CloudProviderConfig& provider) -> bool {
-    if (!provider.enabled) return false;
+    const auto enabled_it = enabled_by_provider.find(provider.id);
+    const bool effective_enabled =
+        (enabled_it != enabled_by_provider.end()) ? enabled_it->second : provider.enabled;
+    if (!effective_enabled) return false;
     const auto it = creds_by_key.find(provider.credential_provider_key);
     if (it == creds_by_key.end()) return false;
     selected_provider = &provider;
@@ -1013,6 +1022,9 @@ RouteDispatchResult handle_ai_runs_post_route(
     auto& project_id = input.project_id;
     auto& thread_id = input.thread_id;
     const std::string& context_json = input.context_json;
+    const bool cloud_provider_requested =
+        body.contains("provider") && !body.at("provider").is_null() &&
+        !support::normalize_provider_name(body.at("provider").get<std::string>()).empty();
 
     holder::llm::RunnerStatus runner_status;
     const bool has_runner = (runner != nullptr);
@@ -1023,7 +1035,7 @@ RouteDispatchResult handle_ai_runs_post_route(
 
     ensure_ai_run_thread(input, db, uuid_v4);
 
-    if (!local_runner_ready) {
+    if (!local_runner_ready || cloud_provider_requested) {
       return execute_cloud_post_path(
           body, prompt, mode, project_id, thread_id, context_json, uuid_v4, socket, res, db, fts);
     }

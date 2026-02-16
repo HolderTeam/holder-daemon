@@ -4,6 +4,7 @@
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
 #include "store/AiProviderCredentialRepo.h"
+#include "store/AiProviderSettingRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -21,6 +22,92 @@ bool handle_ai_provider_credential_routes(const std::string& path,
                                           const http::request<http::string_body>& req,
                                           http::response<http::string_body>& res,
                                           holder::store::Db& db) {
+  if (path == "/ai/providers/settings" && req.method() == http::verb::get) {
+    try {
+      holder::store::AiProviderSettingRepo repo(db);
+      nlohmann::json providers = nlohmann::json::array();
+      for (const auto& setting : repo.list()) {
+        providers.push_back({
+            {"provider", setting.provider},
+            {"enabled", setting.enabled},
+            {"updated_at", setting.updated_at},
+        });
+      }
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = {{"providers", providers}};
+      res = support::json_response(http::status::ok, payload);
+      return true;
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      return true;
+    }
+  }
+
+  if (path == "/ai/providers/settings" && req.method() == http::verb::put) {
+    try {
+      const auto body = nlohmann::json::parse(req.body());
+      if (!body.contains("provider") || !body.contains("enabled") || body.at("provider").is_null() ||
+          body.at("enabled").is_null()) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      "Missing provider or enabled.");
+        return true;
+      }
+
+      const std::string provider =
+          support::normalize_provider_name(body.at("provider").get<std::string>());
+      if (provider.empty()) {
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "provider must be alphanumeric and may include '-', '_' or '.'.");
+        return true;
+      }
+      const bool enabled = body.at("enabled").get<bool>();
+      const long long ts = (body.contains("updated_at") && !body.at("updated_at").is_null())
+                               ? body.at("updated_at").get<long long>()
+                               : support::now_epoch_seconds();
+
+      holder::store::AiProviderSettingRepo repo(db);
+      repo.upsert(provider, enabled, ts);
+
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = {
+          {"provider", provider},
+          {"enabled", enabled},
+          {"updated_at", ts},
+      };
+      res = support::json_response(http::status::ok, payload);
+      return true;
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      return true;
+    }
+  }
+
+  if (path.rfind("/ai/providers/settings/", 0) == 0 && req.method() == http::verb::delete_) {
+    try {
+      const std::string provider = support::normalize_provider_name(
+          path.substr(std::string("/ai/providers/settings/").size()));
+      if (provider.empty()) {
+        res = support::error_response(http::status::bad_request, "bad_request", "Invalid provider.");
+        return true;
+      }
+      holder::store::AiProviderSettingRepo repo(db);
+      repo.remove(provider);
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = {{"provider", provider}};
+      res = support::json_response(http::status::ok, payload);
+      return true;
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      return true;
+    }
+  }
+
   if (path == "/ai/providers/credentials" && req.method() == http::verb::get) {
     try {
       holder::store::AiProviderCredentialRepo repo(db);
@@ -81,6 +168,8 @@ bool handle_ai_provider_credential_routes(const std::string& path,
       const auto existing = repo.get(provider);
       const long long created_at = existing.has_value() ? existing->created_at : ts;
       repo.upsert(provider, api_key, created_at, ts);
+      holder::store::AiProviderSettingRepo setting_repo(db);
+      setting_repo.upsert(provider, true, ts);
 
       nlohmann::json payload;
       payload["ok"] = true;
@@ -109,6 +198,8 @@ bool handle_ai_provider_credential_routes(const std::string& path,
       }
       holder::store::AiProviderCredentialRepo repo(db);
       repo.remove(provider);
+      holder::store::AiProviderSettingRepo setting_repo(db);
+      setting_repo.upsert(provider, false, support::now_epoch_seconds());
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = {{"provider", provider}};

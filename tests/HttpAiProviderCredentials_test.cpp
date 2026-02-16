@@ -59,6 +59,31 @@ TEST_CASE("HTTP ai provider credentials put/get/delete", "[http]") {
   REQUIRE(status["data"]["cloud"].is_array());
   REQUIRE(status["data"]["cloud_configured_providers"] == 1);
 
+  const auto settings_put = http_json_request(bound.bind,
+                                              bound.port,
+                                              token,
+                                              boost::beast::http::verb::put,
+                                              "/ai/providers/settings",
+                                              nlohmann::json{{"provider", "chocolatefactory"},
+                                                             {"enabled", false}},
+                                              boost::beast::http::status::ok);
+  REQUIRE(settings_put["ok"] == true);
+  REQUIRE(settings_put["data"]["provider"] == "chocolatefactory");
+  REQUIRE(settings_put["data"]["enabled"] == false);
+
+  const auto settings_list = http_json_request(bound.bind,
+                                               bound.port,
+                                               token,
+                                               boost::beast::http::verb::get,
+                                               "/ai/providers/settings",
+                                               nlohmann::json{},
+                                               boost::beast::http::status::ok);
+  REQUIRE(settings_list["ok"] == true);
+  REQUIRE(settings_list["data"]["providers"].is_array());
+  REQUIRE(settings_list["data"]["providers"].size() == 1);
+  REQUIRE(settings_list["data"]["providers"][0]["provider"] == "chocolatefactory");
+  REQUIRE(settings_list["data"]["providers"][0]["enabled"] == false);
+
   const auto removed = http_json_request(bound.bind,
                                          bound.port,
                                          token,
@@ -67,6 +92,19 @@ TEST_CASE("HTTP ai provider credentials put/get/delete", "[http]") {
                                          nlohmann::json{},
                                          boost::beast::http::status::ok);
   REQUIRE(removed["ok"] == true);
+
+  const auto settings_after_remove = http_json_request(bound.bind,
+                                                       bound.port,
+                                                       token,
+                                                       boost::beast::http::verb::get,
+                                                       "/ai/providers/settings",
+                                                       nlohmann::json{},
+                                                       boost::beast::http::status::ok);
+  REQUIRE(settings_after_remove["ok"] == true);
+  REQUIRE(settings_after_remove["data"]["providers"].is_array());
+  REQUIRE(settings_after_remove["data"]["providers"].size() == 1);
+  REQUIRE(settings_after_remove["data"]["providers"][0]["provider"] == "chocolatefactory");
+  REQUIRE(settings_after_remove["data"]["providers"][0]["enabled"] == false);
 
   std::raise(SIGTERM);
   server_thread.join();

@@ -208,6 +208,15 @@ CREATE TABLE IF NOT EXISTS ai_provider_credentials (
 );
 
 -- ----------------------------
+-- Cloud provider runtime settings
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_provider_settings (
+  provider   TEXT PRIMARY KEY,          -- provider key, e.g. chocolatefactory
+  enabled    INTEGER NOT NULL,          -- 0/1 runtime toggle for provider availability
+  updated_at INTEGER NOT NULL
+);
+
+-- ----------------------------
 -- Cloud quota usage events
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS ai_cloud_usage_events (

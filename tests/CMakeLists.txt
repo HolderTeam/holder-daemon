@@ -66,6 +66,7 @@ add_executable(lockfile_tests
   AiRunRepo_test.cpp
   AiRouterConfigRepo_test.cpp
   AiProviderCredentialRepo_test.cpp
+  AiProviderSettingRepo_test.cpp
   Migrations_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
@@ -144,6 +145,7 @@ add_executable(lockfile_tests
   ../src/store/AiRunRepo.cpp
   ../src/store/AiRouterConfigRepo.cpp
   ../src/store/AiProviderCredentialRepo.cpp
+  ../src/store/AiProviderSettingRepo.cpp
   ../src/store/Rebuilder.cpp
   ../src/store/Migrations.cpp
   ../src/store/CardStore.cpp

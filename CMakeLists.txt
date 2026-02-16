@@ -130,6 +130,7 @@ add_executable(holder
   src/store/AiRunRepo.cpp
   src/store/AiRouterConfigRepo.cpp
   src/store/AiProviderCredentialRepo.cpp
+  src/store/AiProviderSettingRepo.cpp
   src/store/Rebuilder.cpp
   src/store/CardStore.cpp
   src/store/Db.cpp
