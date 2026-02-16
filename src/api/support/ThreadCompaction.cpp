@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <set>
 #include <stdexcept>
+#include <unordered_map>
+#include <vector>
 
 namespace holder::api::support {
 namespace {
@@ -30,6 +32,54 @@ void throw_sqlite(sqlite3* db, const std::string& msg) {
 std::string truncate_bytes_tail(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
   return text.substr(text.size() - max_bytes);
+}
+
+std::string trim_ascii(std::string s) {
+  auto not_space = [](unsigned char c) { return !std::isspace(c); };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+  return s;
+}
+
+std::vector<std::string> split_lines_trimmed(const std::string& text) {
+  std::vector<std::string> lines;
+  std::string current;
+  for (const char ch : text) {
+    if (ch == '\n') {
+      const std::string line = trim_ascii(current);
+      if (!line.empty()) lines.push_back(line);
+      current.clear();
+      continue;
+    }
+    if (ch != '\r') current.push_back(ch);
+  }
+  const std::string tail = trim_ascii(current);
+  if (!tail.empty()) lines.push_back(tail);
+  return lines;
+}
+
+std::string lowercase_ascii(std::string s) {
+  for (char& ch : s) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return s;
+}
+
+std::string normalize_section_key(const std::string& line) {
+  std::string key = line;
+  while (!key.empty() && key.front() == '#') key.erase(key.begin());
+  key = trim_ascii(lowercase_ascii(key));
+  return key;
+}
+
+std::string bulletize(const std::string& line) {
+  if (line.empty()) return {};
+  if (line.rfind("- ", 0) == 0 || line.rfind("* ", 0) == 0) return line;
+  if (line.size() >= 3 && std::isdigit(static_cast<unsigned char>(line[0])) && line[1] == '.' &&
+      line[2] == ' ') {
+    return "- " + line.substr(3);
+  }
+  return "- " + line;
 }
 
 std::vector<std::string> parse_pinned_facts(const std::optional<std::string>& raw_json) {
@@ -261,6 +311,143 @@ void roll_thread_compaction_state(holder::store::Db& db,
   next.pinned_facts_json = merge_pinned_facts_json(next.pinned_facts_json, incoming_facts);
 
   upsert_thread_compaction_state(db, next);
+}
+
+std::string build_structured_summary_refresh_prompt(
+    const std::optional<std::string>& current_summary,
+    const std::string& new_context) {
+  std::string prompt =
+      "Refresh the rolling summary for future turns.\n"
+      "Return plain text only in this exact structure:\n"
+      "## Decisions\n"
+      "- ...\n"
+      "## Constraints\n"
+      "- ...\n"
+      "## Open Questions\n"
+      "- ...\n"
+      "## Next Actions\n"
+      "- ...\n"
+      "Keep bullet points concise and durable.\n";
+  if (current_summary.has_value() && !current_summary->empty()) {
+    prompt += "\nCurrent summary:\n";
+    prompt += current_summary.value();
+    prompt += "\n";
+  }
+  prompt += "\nNew context:\n";
+  prompt += new_context;
+  return prompt;
+}
+
+SummaryValidationResult normalize_and_validate_rolling_summary(
+    const std::string& candidate_summary,
+    const std::optional<std::string>& previous_summary,
+    long long max_summary_chars) {
+  SummaryValidationResult result;
+  const std::string trimmed = trim_ascii(candidate_summary);
+  if (trimmed.size() < 40) {
+    result.reason = "too_short";
+    return result;
+  }
+
+  const std::vector<std::string> lines = split_lines_trimmed(trimmed);
+  if (lines.empty()) {
+    result.reason = "empty_lines";
+    return result;
+  }
+
+  const std::vector<std::pair<std::string, std::string>> sections = {
+      {"decisions", "## Decisions"},
+      {"constraints", "## Constraints"},
+      {"open questions", "## Open Questions"},
+      {"next actions", "## Next Actions"},
+  };
+  std::unordered_map<std::string, std::vector<std::string>> buckets;
+  std::string current_key;
+  int non_empty_items = 0;
+  int section_headers_found = 0;
+
+  for (const auto& line : lines) {
+    if (!line.empty() && line[0] == '#') {
+      const std::string key = normalize_section_key(line);
+      bool matched = false;
+      for (const auto& [section_key, _heading] : sections) {
+        if (key == section_key) {
+          current_key = section_key;
+          matched = true;
+          ++section_headers_found;
+          break;
+        }
+      }
+      if (matched) continue;
+    }
+    if (current_key.empty()) continue;
+    const std::string bullet = bulletize(line);
+    if (!bullet.empty()) {
+      buckets[current_key].push_back(bullet);
+      ++non_empty_items;
+    }
+  }
+
+  bool used_fallback = false;
+  if (non_empty_items < 2 || section_headers_found < 2) {
+    used_fallback = true;
+    std::vector<std::string> content_lines;
+    content_lines.reserve(lines.size());
+    for (const auto& line : lines) {
+      if (!line.empty() && line[0] == '#') continue;
+      const std::string bullet = bulletize(line);
+      if (!bullet.empty()) {
+        content_lines.push_back(bullet);
+      }
+    }
+    if (content_lines.size() < 2) {
+      result.reason = "low_signal";
+      return result;
+    }
+    size_t idx = 0;
+    for (const auto& [section_key, _heading] : sections) {
+      int emitted = 0;
+      while (idx < content_lines.size() && emitted < 3) {
+        buckets[section_key].push_back(content_lines[idx++]);
+        ++emitted;
+      }
+    }
+    non_empty_items = static_cast<int>(content_lines.size());
+  }
+
+  std::string normalized;
+  for (const auto& [section_key, heading] : sections) {
+    normalized += heading + "\n";
+    const auto it = buckets.find(section_key);
+    if (it == buckets.end() || it->second.empty()) {
+      normalized += "- (none)\n\n";
+      continue;
+    }
+    int emitted = 0;
+    for (const auto& line : it->second) {
+      if (emitted >= 6) break;
+      normalized += line + "\n";
+      ++emitted;
+    }
+    normalized += "\n";
+  }
+
+  if (max_summary_chars > 0 && normalized.size() > static_cast<size_t>(max_summary_chars)) {
+    normalized = normalized.substr(0, static_cast<size_t>(max_summary_chars));
+  }
+
+  const bool has_previous = previous_summary.has_value() && !previous_summary->empty();
+  const size_t prev_len = has_previous ? previous_summary->size() : 0;
+  if (has_previous && normalized.size() < std::min<size_t>(120, prev_len / 2)) {
+    result.reason = "regressive_shrink";
+    return result;
+  }
+
+  result.accepted = true;
+  result.summary = normalized;
+  result.extracted_items = non_empty_items;
+  result.used_fallback_sections = used_fallback;
+  return result;
 }
 
 } // namespace holder::api::support

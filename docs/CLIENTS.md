@@ -79,6 +79,29 @@ Persisted run history:
 - `GET /ai/runs/{run_id}`
 - `GET /ai/runs/{run_id}/events` (SSE reconnect stream)
 
+Cloud runs expose structured routing/compaction trace in:
+
+- `data.policy_trace`
+- `data.policy_trace_json` (string form)
+
+Compaction trace fields to render in clients:
+
+- `policy_trace.compaction.strategy` (currently `summary_plus_pinned_plus_tail`)
+- `policy_trace.compaction.summary_refresh.status`
+  - `completed`
+  - `skipped`
+  - `failed`
+- `policy_trace.compaction.summary_refresh.reason` (when skipped/failed), including:
+  - `below_threshold`
+  - `min_interval_not_elapsed`
+  - `min_delta_not_met`
+  - `cooldown_active`
+  - `rpm_exceeded` / `rpd_exceeded` / `tpm_exceeded`
+  - `quality_guard_failed`
+- `policy_trace.compaction.summary_refresh.quality_reason` (present when `reason=quality_guard_failed`)
+- `policy_trace.compaction.summary_refresh.quality_items`
+- `policy_trace.compaction.summary_refresh.quality_fallback_sections`
+
 Thread/message APIs:
 
 - `GET/POST /ai/threads`

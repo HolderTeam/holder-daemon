@@ -108,6 +108,22 @@ Reconnect to run events:
 
 `GET /ai/runs/{run_id}/events`
 
+For cloud runs, inspect compaction/quality decisions in:
+
+- `data.policy_trace.compaction.summary_refresh.status`
+- `data.policy_trace.compaction.summary_refresh.reason`
+- `data.policy_trace.compaction.summary_refresh.quality_reason` (when quality guard skips refresh)
+
+Typical quality-guard skip shape:
+
+```json
+{
+  "status": "skipped",
+  "reason": "quality_guard_failed",
+  "quality_reason": "low_signal"
+}
+```
+
 ## 7) View AI Threads and Messages
 
 - `GET /ai/threads?project_id=<project_id>`

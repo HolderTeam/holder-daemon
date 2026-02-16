@@ -113,8 +113,11 @@ Execution phases:
        - summary refresh cadence heuristics now applied (min interval, min delta, force-refresh threshold)
        - cooldown backoff policy now loaded from `cloudproviders.yaml` (`defaults.cooldown`)
        - provider/model cooldown overrides now supported (`providers[].cooldown`, `providers[].models[].cooldown`)
+       - structured summary refresh prompt (decisions/constraints/open questions/next actions)
+       - summary quality guard + normalization before persistence
+       - quality-guard skip signal in policy trace (`summary_refresh.reason=quality_guard_failed`)
       - still to do:
-        - compact-model refresh quality tuning (prompt/summary format and future thread-level analytics)
+        - compact-model refresh analytics tuning (thread-level counters and prompt variant experimentation)
 
 Quality tuning scope:
 

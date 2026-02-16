@@ -370,18 +370,10 @@ RouteDispatchResult execute_cloud_post_path(
               bool src_compacted = false;
               const std::string summary_source =
                   support::compact_context_tail(context_json, summary_source_tokens, &src_compacted);
-              std::string summarize_prompt =
-                  "Summarize the context for future turns.\n"
-                  "Return plain text only.\n"
-                  "Focus on durable decisions, constraints, and unresolved tasks.\n";
-              if (compaction_state.has_value() && compaction_state->rolling_summary.has_value() &&
-                  !compaction_state->rolling_summary->empty()) {
-                summarize_prompt += "\nCurrent summary:\n";
-                summarize_prompt += compaction_state->rolling_summary.value();
-                summarize_prompt += "\n";
-              }
-              summarize_prompt += "\nNew context:\n";
-              summarize_prompt += summary_source;
+              const std::optional<std::string> current_summary =
+                  (compaction_state.has_value() ? compaction_state->rolling_summary : std::nullopt);
+              const std::string summarize_prompt =
+                  support::build_structured_summary_refresh_prompt(current_summary, summary_source);
               const long long summary_prompt_tokens = support::estimate_tokens_from_text(summarize_prompt);
               const long long summary_projected_tokens =
                   summary_prompt_tokens + summary_response_tokens_budget;
@@ -411,20 +403,6 @@ RouteDispatchResult execute_cloud_post_path(
                                                                      summarize_prompt,
                                                                      &summary_error);
                 if (summary_output.has_value()) {
-                  std::string summary = summary_output.value();
-                  if (summary.size() > static_cast<size_t>(max_summary_chars)) {
-                    summary = summary.substr(0, static_cast<size_t>(max_summary_chars));
-                  }
-                  support::ThreadCompactionState next_state;
-                  if (compaction_state.has_value()) {
-                    next_state = compaction_state.value();
-                  }
-                  next_state.thread_id = thread_id.value();
-                  next_state.rolling_summary = summary;
-                  next_state.updated_at = now;
-                  support::upsert_thread_compaction_state(db, next_state);
-                  compaction_state = next_state;
-                  summary_refreshed = true;
                   support::clear_cloud_model_cooldown(db, selected_provider->id, compact_model->id, now);
                   const long long summary_response_tokens =
                       support::estimate_tokens_from_text(summary_output.value());
@@ -435,14 +413,41 @@ RouteDispatchResult execute_cloud_post_path(
                                                     summary_response_tokens,
                                                     now,
                                                     run.run_id + "-summary");
-                  compaction_trace["summary_refresh"] = {
-                      {"status", "completed"},
-                      {"model", compact_model->id},
-                      {"forced", forced_refresh},
-                      {"source_compacted", src_compacted},
-                      {"prompt_tokens", summary_prompt_tokens},
-                      {"response_tokens", summary_response_tokens},
-                  };
+                  const auto normalized = support::normalize_and_validate_rolling_summary(
+                      summary_output.value(), current_summary, max_summary_chars);
+                  if (normalized.accepted) {
+                    support::ThreadCompactionState next_state;
+                    if (compaction_state.has_value()) {
+                      next_state = compaction_state.value();
+                    }
+                    next_state.thread_id = thread_id.value();
+                    next_state.rolling_summary = normalized.summary;
+                    next_state.updated_at = now;
+                    support::upsert_thread_compaction_state(db, next_state);
+                    compaction_state = next_state;
+                    summary_refreshed = true;
+                    compaction_trace["summary_refresh"] = {
+                        {"status", "completed"},
+                        {"model", compact_model->id},
+                        {"forced", forced_refresh},
+                        {"source_compacted", src_compacted},
+                        {"prompt_tokens", summary_prompt_tokens},
+                        {"response_tokens", summary_response_tokens},
+                        {"quality_items", normalized.extracted_items},
+                        {"quality_fallback_sections", normalized.used_fallback_sections},
+                    };
+                  } else {
+                    compaction_trace["summary_refresh"] = {
+                        {"status", "skipped"},
+                        {"reason", "quality_guard_failed"},
+                        {"quality_reason", normalized.reason},
+                        {"model", compact_model->id},
+                        {"forced", forced_refresh},
+                        {"source_compacted", src_compacted},
+                        {"prompt_tokens", summary_prompt_tokens},
+                        {"response_tokens", summary_response_tokens},
+                    };
+                  }
                 } else {
                   const std::string fail_error =
                       summary_error.empty() ? "summary refresh failed" : summary_error;

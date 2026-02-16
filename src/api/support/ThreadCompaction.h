@@ -16,6 +16,14 @@ struct ThreadCompactionState {
   long long updated_at = 0;
 };
 
+struct SummaryValidationResult {
+  bool accepted = false;
+  std::string summary;
+  std::string reason;
+  int extracted_items = 0;
+  bool used_fallback_sections = false;
+};
+
 std::optional<ThreadCompactionState> load_thread_compaction_state(holder::store::Db& db,
                                                                   const std::string& thread_id);
 
@@ -32,5 +40,14 @@ void roll_thread_compaction_state(holder::store::Db& db,
                                   const std::string& thread_id,
                                   const std::string& context_json,
                                   long long updated_at);
+
+std::string build_structured_summary_refresh_prompt(
+    const std::optional<std::string>& current_summary,
+    const std::string& new_context);
+
+SummaryValidationResult normalize_and_validate_rolling_summary(
+    const std::string& candidate_summary,
+    const std::optional<std::string>& previous_summary,
+    long long max_summary_chars);
 
 } // namespace holder::api::support

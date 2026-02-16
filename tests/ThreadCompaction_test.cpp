@@ -60,3 +60,44 @@ TEST_CASE("ThreadCompaction state round-trip and build context", "[thread_compac
   REQUIRE(rolled->pinned_facts_json.has_value());
   REQUIRE(rolled->pinned_facts_json->find("Keep responses concise") != std::string::npos);
 }
+
+TEST_CASE("ThreadCompaction normalizes structured summary and accepts quality", "[thread_compaction]") {
+  const std::string candidate =
+      "## Decisions\n"
+      "- Keep cloud-first fallback for low-end devices\n"
+      "## Constraints\n"
+      "- Avoid user editing yaml files\n"
+      "## Open Questions\n"
+      "- Should provider order be user-customizable?\n"
+      "## Next Actions\n"
+      "- Add client-facing bootstrap endpoint\n";
+
+  const auto out = holder::api::support::normalize_and_validate_rolling_summary(
+      candidate, std::nullopt, 2000);
+  REQUIRE(out.accepted);
+  REQUIRE(out.summary.find("## Decisions") != std::string::npos);
+  REQUIRE(out.summary.find("## Constraints") != std::string::npos);
+  REQUIRE(out.summary.find("## Open Questions") != std::string::npos);
+  REQUIRE(out.summary.find("## Next Actions") != std::string::npos);
+}
+
+TEST_CASE("ThreadCompaction quality guard rejects low-signal summary", "[thread_compaction]") {
+  const auto out = holder::api::support::normalize_and_validate_rolling_summary(
+      "ok", std::optional<std::string>("previous summary with substantial details"), 2000);
+  REQUIRE_FALSE(out.accepted);
+  REQUIRE_FALSE(out.reason.empty());
+}
+
+TEST_CASE("ThreadCompaction can fallback-section unstructured summary", "[thread_compaction]") {
+  const std::string candidate =
+      "Keep cloud-first fallback.\n"
+      "Do not require yaml edits by users.\n"
+      "Track quota_exceeded separately from rate_limited.\n"
+      "Add clearer setup status in clients.\n";
+
+  const auto out = holder::api::support::normalize_and_validate_rolling_summary(
+      candidate, std::nullopt, 2000);
+  REQUIRE(out.accepted);
+  REQUIRE(out.used_fallback_sections);
+  REQUIRE(out.summary.find("## Decisions") != std::string::npos);
+}
