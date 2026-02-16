@@ -43,6 +43,22 @@ TEST_CASE("CloudClient maps HTTP 429 to rate_limited", "[cloud_client]") {
   REQUIRE_FALSE(parsed.error_message.empty());
 }
 
+TEST_CASE("CloudClient maps generic responses insufficient_quota to quota_exceeded", "[cloud_client]") {
+  const std::string body =
+      R"({"error":{"message":"quota","type":"insufficient_quota","code":"insufficient_quota"}})";
+  const auto parsed = holder::api::support::parse_cloud_response("generic_responses", 429, body);
+  REQUIRE_FALSE(parsed.text.has_value());
+  REQUIRE(parsed.error_code == "quota_exceeded");
+}
+
+TEST_CASE("CloudClient maps mechatropic low credits to quota_exceeded", "[cloud_client]") {
+  const std::string body =
+      R"({"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}})";
+  const auto parsed = holder::api::support::parse_cloud_response("mechatropic_messages", 400, body);
+  REQUIRE_FALSE(parsed.text.has_value());
+  REQUIRE(parsed.error_code == "quota_exceeded");
+}
+
 TEST_CASE("CloudClient maps malformed success body", "[cloud_client]") {
   const std::string body = R"({"unexpected":"shape"})";
   const auto parsed = holder::api::support::parse_cloud_response("generic_chat", 200, body);

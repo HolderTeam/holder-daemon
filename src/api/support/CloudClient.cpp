@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <openssl/ssl.h>
 
+#include <cctype>
 #include <mutex>
 #include <utility>
 
@@ -146,6 +147,64 @@ std::string status_error_code(int status) {
   return "provider_error";
 }
 
+std::string lowercase_ascii(std::string s) {
+  for (char& ch : s) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return s;
+}
+
+bool contains_insensitive(const std::string& haystack, const std::string& needle) {
+  return lowercase_ascii(haystack).find(lowercase_ascii(needle)) != std::string::npos;
+}
+
+std::optional<std::string> classify_error_from_body(const std::string& provider_kind,
+                                                    int status,
+                                                    const std::string& response_body) {
+  if (status == 401 || status == 403) return std::string("auth_failed");
+  if (status == 408 || status == 504) return std::string("provider_timeout");
+  if (status >= 500) return std::string("provider_unavailable");
+
+  // Default mappings from status if body does not provide stronger signal.
+  std::string code = (status == 429) ? "rate_limited" : "provider_error";
+
+  try {
+    const auto parsed = nlohmann::json::parse(response_body);
+
+    if (provider_kind == "generic_responses") {
+      if (parsed.contains("error") && parsed["error"].is_object()) {
+        const auto& err = parsed["error"];
+        if (err.contains("code") && err["code"].is_string() &&
+            err["code"].get<std::string>() == "insufficient_quota") {
+          return std::string("quota_exceeded");
+        }
+        if (err.contains("type") && err["type"].is_string() &&
+            err["type"].get<std::string>() == "insufficient_quota") {
+          return std::string("quota_exceeded");
+        }
+      }
+    }
+
+    if (provider_kind == "mechatropic_messages") {
+      if (parsed.contains("error") && parsed["error"].is_object()) {
+        const auto& err = parsed["error"];
+        if (err.contains("message") && err["message"].is_string()) {
+          const std::string msg = err["message"].get<std::string>();
+          if (contains_insensitive(msg, "credit balance is too low") ||
+              contains_insensitive(msg, "purchase credits") ||
+              contains_insensitive(msg, "plans & billing")) {
+            return std::string("quota_exceeded");
+          }
+        }
+      }
+    }
+  } catch (const std::exception&) {
+    // Keep status-based fallback mapping.
+  }
+
+  return code;
+}
+
 std::optional<std::string> parse_chocolatefactory_text(const nlohmann::json& parsed) {
   if (!parsed.contains("candidates") || !parsed["candidates"].is_array() || parsed["candidates"].empty()) {
     return std::nullopt;
@@ -237,7 +296,8 @@ CloudResponseParse parse_cloud_response(const std::string& provider_kind,
                                         const std::string& response_body) {
   CloudResponseParse out;
   if (status < 200 || status >= 300) {
-    out.error_code = status_error_code(status);
+    out.error_code = classify_error_from_body(provider_kind, status, response_body)
+                         .value_or(status_error_code(status));
     out.error_message = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
     return out;
   }
