@@ -57,8 +57,15 @@ holder::model::Project CardStore::require_project(const std::string& project_id)
   return project_opt.value();
 }
 
-void CardStore::create(holder::model::Card card, const std::string& content) {
+void CardStore::create(holder::model::Card card,
+                       const std::string& content,
+                       const std::optional<double>& explicit_sort_key) {
   require_project(card.project_id);
+  if (explicit_sort_key.has_value()) {
+    card.sort_key = explicit_sort_key.value();
+  } else {
+    card.sort_key = card_repo_.next_sort_key(card.project_id, card.parent_card_id);
+  }
 
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path.empty()) {
@@ -162,7 +169,12 @@ void CardStore::move(const std::string& card_id,
   }
 
   const std::optional<std::string> next_parent = has_parent_card_id ? parent_card_id : card.parent_card_id;
-  const double next_sort = sort_key.has_value() ? sort_key.value() : card.sort_key;
+  double next_sort = card.sort_key;
+  if (sort_key.has_value()) {
+    next_sort = sort_key.value();
+  } else if (has_parent_card_id && next_parent != card.parent_card_id) {
+    next_sort = card_repo_.next_sort_key(card.project_id, next_parent);
+  }
 
   const bool changed = (next_parent != card.parent_card_id) || (next_sort != card.sort_key);
   if (!changed) {

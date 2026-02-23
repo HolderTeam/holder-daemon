@@ -216,6 +216,40 @@ std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_i
   return out;
 }
 
+double CardRepo::next_sort_key(const std::string& project_id,
+                               const std::optional<std::string>& parent_card_id) const {
+  static constexpr const char* SQL_ROOT =
+      "SELECT COALESCE(MAX(sort_key), -1.0) + 1.0 "
+      "FROM cards WHERE project_id = ? AND parent_card_id IS NULL AND deleted_at IS NULL;";
+  static constexpr const char* SQL_CHILDREN =
+      "SELECT COALESCE(MAX(sort_key), -1.0) + 1.0 "
+      "FROM cards WHERE project_id = ? AND parent_card_id = ? AND deleted_at IS NULL;";
+
+  const char* sql = parent_card_id.has_value() ? SQL_CHILDREN : SQL_ROOT;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare next sort_key failed");
+  }
+
+  bind_text(stmt, 1, project_id);
+  if (parent_card_id.has_value()) {
+    bind_text(stmt, 2, parent_card_id.value());
+  }
+
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    const double next = sqlite3_column_double(stmt, 0);
+    sqlite3_finalize(stmt);
+    return next;
+  }
+
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "next sort_key query failed");
+  }
+  return 0.0;
+}
+
 void CardRepo::update_title(const std::string& card_id, const std::string& title, long long updated_at) {
   static constexpr const char* SQL =
       "UPDATE cards SET title = ?, updated_at = ? WHERE card_id = ?;";

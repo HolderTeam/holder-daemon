@@ -353,3 +353,162 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
 
   REQUIRE_THROWS(store.create(card, "one"));
 }
+
+TEST_CASE("CardStore create appends to end of sibling scope when sort omitted", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card root_a;
+  root_a.card_id = "root-a";
+  root_a.project_id = "proj-1";
+  root_a.title = "Root A";
+  root_a.created_at = 10;
+  root_a.updated_at = 10;
+  store.create(root_a, "a");
+
+  holder::model::Card root_b;
+  root_b.card_id = "root-b";
+  root_b.project_id = "proj-1";
+  root_b.title = "Root B";
+  root_b.created_at = 11;
+  root_b.updated_at = 11;
+  store.create(root_b, "b");
+
+  holder::model::Card parent;
+  parent.card_id = "parent-a";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.created_at = 12;
+  parent.updated_at = 12;
+  store.create(parent, "p");
+
+  holder::model::Card child_a;
+  child_a.card_id = "child-a";
+  child_a.project_id = "proj-1";
+  child_a.parent_card_id = parent.card_id;
+  child_a.title = "Child A";
+  child_a.created_at = 13;
+  child_a.updated_at = 13;
+  store.create(child_a, "ca");
+
+  holder::model::Card child_b;
+  child_b.card_id = "child-b";
+  child_b.project_id = "proj-1";
+  child_b.parent_card_id = parent.card_id;
+  child_b.title = "Child B";
+  child_b.created_at = 14;
+  child_b.updated_at = 14;
+  store.create(child_b, "cb");
+
+  holder::store::CardRepo card_repo(db);
+  const auto got_root_a = card_repo.get("root-a");
+  const auto got_root_b = card_repo.get("root-b");
+  const auto got_parent = card_repo.get("parent-a");
+  const auto got_child_a = card_repo.get("child-a");
+  const auto got_child_b = card_repo.get("child-b");
+  REQUIRE(got_root_a.has_value());
+  REQUIRE(got_root_b.has_value());
+  REQUIRE(got_parent.has_value());
+  REQUIRE(got_child_a.has_value());
+  REQUIRE(got_child_b.has_value());
+
+  REQUIRE(got_root_a->sort_key == 0.0);
+  REQUIRE(got_root_b->sort_key == 1.0);
+  REQUIRE(got_parent->sort_key == 2.0);
+  REQUIRE(got_child_a->sort_key == 0.0);
+  REQUIRE(got_child_b->sort_key == 1.0);
+}
+
+TEST_CASE("CardStore create preserves explicit sort_key", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card card;
+  card.card_id = "explicit-1";
+  card.project_id = "proj-1";
+  card.title = "Explicit";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  store.create(card, "body", std::optional<double>(42.5));
+
+  holder::store::CardRepo card_repo(db);
+  const auto fetched = card_repo.get(card.card_id);
+  REQUIRE(fetched.has_value());
+  REQUIRE(fetched->sort_key == 42.5);
+}
+
+TEST_CASE("CardStore move across parent appends when sort omitted", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card parent_a;
+  parent_a.card_id = "parent-a";
+  parent_a.project_id = "proj-1";
+  parent_a.title = "Parent A";
+  parent_a.created_at = 10;
+  parent_a.updated_at = 10;
+  store.create(parent_a, "pa");
+
+  holder::model::Card parent_b;
+  parent_b.card_id = "parent-b";
+  parent_b.project_id = "proj-1";
+  parent_b.title = "Parent B";
+  parent_b.created_at = 11;
+  parent_b.updated_at = 11;
+  store.create(parent_b, "pb");
+
+  holder::model::Card b_child_1;
+  b_child_1.card_id = "b-child-1";
+  b_child_1.project_id = "proj-1";
+  b_child_1.parent_card_id = parent_b.card_id;
+  b_child_1.title = "B Child 1";
+  b_child_1.created_at = 12;
+  b_child_1.updated_at = 12;
+  store.create(b_child_1, "b1");
+
+  holder::model::Card moving;
+  moving.card_id = "moving-1";
+  moving.project_id = "proj-1";
+  moving.parent_card_id = parent_a.card_id;
+  moving.title = "Moving";
+  moving.created_at = 13;
+  moving.updated_at = 13;
+  store.create(moving, "m1");
+
+  store.move(moving.card_id, true, std::optional<std::string>(parent_b.card_id), std::nullopt, 20);
+
+  holder::store::CardRepo card_repo(db);
+  const auto moved = card_repo.get(moving.card_id);
+  REQUIRE(moved.has_value());
+  REQUIRE(moved->parent_card_id.has_value());
+  REQUIRE(moved->parent_card_id.value() == parent_b.card_id);
+  REQUIRE(moved->sort_key == 1.0);
+}

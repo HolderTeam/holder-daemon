@@ -21,7 +21,9 @@ public:
             holder::core::Fs* fs = nullptr,
             holder::git::GitOps* git = nullptr);
 
-  void create(holder::model::Card card, const std::string& content);
+  void create(holder::model::Card card,
+              const std::string& content,
+              const std::optional<double>& explicit_sort_key = std::nullopt);
   void update_content(const std::string& card_id,
                       const std::string& content,
                       const std::optional<std::string>& title,

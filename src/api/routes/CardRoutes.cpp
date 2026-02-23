@@ -246,7 +246,8 @@ bool handle_card_routes(const std::string& path,
           if (body.contains("parent_card_id") && !body.at("parent_card_id").is_null()) {
             card.parent_card_id = body.at("parent_card_id").get<std::string>();
           }
-          if (body.contains("sort_key")) {
+          const bool has_sort_key = body.contains("sort_key");
+          if (has_sort_key) {
             card.sort_key = body.at("sort_key").get<double>();
           }
           if (body.contains("rel_path") && !body.at("rel_path").is_null()) {
@@ -257,7 +258,11 @@ bool handle_card_routes(const std::string& path,
           if (card.rel_path.empty()) {
             card.rel_path = holder::core::card_rel_path(card.card_id);
           }
-          card_store->create(card, content);
+          std::optional<double> explicit_sort_key;
+          if (has_sort_key) {
+            explicit_sort_key = card.sort_key;
+          }
+          card_store->create(card, content, explicit_sort_key);
 
           nlohmann::json data;
           data["card_id"] = card.card_id;
