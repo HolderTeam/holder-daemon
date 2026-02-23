@@ -1702,10 +1702,19 @@ paths:
           schema:
             type: string
         - in: query
+          name: scope
+          required: false
+          schema:
+            type: string
+            enum: [root, children, all]
+            default: root
+          description: Card list scope. root shows only top-level cards, children requires parent_card_id, all returns all cards in project.
+        - in: query
           name: parent_card_id
           required: false
           schema:
             type: string
+          description: Required when scope=children. Must be omitted for scope=root/all.
         - in: query
           name: include_deleted
           required: false

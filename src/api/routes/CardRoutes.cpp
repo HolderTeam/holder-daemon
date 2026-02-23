@@ -139,17 +139,47 @@ bool handle_card_routes(const std::string& path,
   if (path == "/cards" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
+    const std::string scope_raw = param_get("scope");
     const std::string include_deleted_raw = param_get("include_deleted");
     if (project_id.empty()) {
       res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         holder::store::CardRepo repo(db);
-        std::optional<std::string> parent;
-        if (!parent_raw.empty()) {
-          parent = parent_raw;
+        const std::string scope = scope_raw.empty() ? "root" : scope_raw;
+
+        std::vector<holder::model::Card> cards;
+        if (scope == "root") {
+          if (!parent_raw.empty()) {
+            res = support::error_response(http::status::bad_request,
+                                          "bad_request",
+                                          "parent_card_id is not allowed when scope=root.");
+            return true;
+          }
+          cards = repo.list_roots(project_id);
+        } else if (scope == "children") {
+          if (parent_raw.empty()) {
+            res = support::error_response(http::status::bad_request,
+                                          "bad_request",
+                                          "parent_card_id is required when scope=children.");
+            return true;
+          }
+          cards = repo.list_children(project_id, parent_raw);
+        } else if (scope == "all") {
+          if (!parent_raw.empty()) {
+            res = support::error_response(http::status::bad_request,
+                                          "bad_request",
+                                          "parent_card_id is not allowed when scope=all.");
+            return true;
+          }
+          cards = repo.list_all(project_id);
+        } else {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "Invalid scope. Expected root, children, or all.");
+          return true;
         }
-        const auto cards = repo.list(project_id, parent);
+
         nlohmann::json data = nlohmann::json::array();
         for (const auto& card : cards) {
           if (!include_deleted_raw.empty() && include_deleted_raw != "0") {

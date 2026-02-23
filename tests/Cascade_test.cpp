@@ -136,7 +136,7 @@ TEST_CASE("Deleting project cascades to dependent rows", "[cascade]") {
 
   project_repo.remove("proj-1");
 
-  REQUIRE(card_repo.list("proj-1", std::nullopt).empty());
+  REQUIRE(card_repo.list_all("proj-1").empty());
   REQUIRE(link_repo.list_outgoing("proj-1", "card-a").empty());
   REQUIRE(resource_repo.list("proj-1").empty());
   REQUIRE(thread_repo.list("proj-1").empty());

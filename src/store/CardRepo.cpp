@@ -132,31 +132,17 @@ std::optional<holder::model::Card> CardRepo::get(const std::string& card_id) con
   return std::nullopt;
 }
 
-std::vector<holder::model::Card> CardRepo::list(
-    const std::string& project_id,
-    const std::optional<std::string>& parent_card_id) const {
-  const bool with_parent = parent_card_id.has_value();
-  const char* SQL_WITH_PARENT =
-      "SELECT card_id, project_id, title, rel_path, parent_card_id, sort_key, "
-      "created_at, updated_at, deleted_at "
-      "FROM cards WHERE project_id = ? AND parent_card_id = ? "
-      "ORDER BY sort_key ASC, updated_at DESC;";
-  const char* SQL_NO_PARENT =
+std::vector<holder::model::Card> CardRepo::list_roots(const std::string& project_id) const {
+  static constexpr const char* SQL =
       "SELECT card_id, project_id, title, rel_path, parent_card_id, sort_key, "
       "created_at, updated_at, deleted_at "
       "FROM cards WHERE project_id = ? AND parent_card_id IS NULL "
       "ORDER BY sort_key ASC, updated_at DESC;";
-
   sqlite3_stmt* stmt = nullptr;
-  const char* sql = with_parent ? SQL_WITH_PARENT : SQL_NO_PARENT;
-  if (sqlite3_prepare_v2(db_.handle(), sql, -1, &stmt, nullptr) != SQLITE_OK) {
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw_sqlite(db_.handle(), "prepare list cards failed");
   }
-
   bind_text(stmt, 1, project_id);
-  if (with_parent) {
-    bind_text(stmt, 2, parent_card_id.value());
-  }
 
   std::vector<holder::model::Card> out;
   while (true) {
@@ -170,6 +156,62 @@ std::vector<holder::model::Card> CardRepo::list(
     throw_sqlite(db_.handle(), "list cards failed");
   }
 
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+std::vector<holder::model::Card> CardRepo::list_children(const std::string& project_id,
+                                                         const std::string& parent_card_id) const {
+  static constexpr const char* SQL =
+      "SELECT card_id, project_id, title, rel_path, parent_card_id, sort_key, "
+      "created_at, updated_at, deleted_at "
+      "FROM cards WHERE project_id = ? AND parent_card_id = ? "
+      "ORDER BY sort_key ASC, updated_at DESC;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list child cards failed");
+  }
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, parent_card_id);
+
+  std::vector<holder::model::Card> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_card(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list child cards failed");
+  }
+  sqlite3_finalize(stmt);
+  return out;
+}
+
+std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_id) const {
+  static constexpr const char* SQL =
+      "SELECT card_id, project_id, title, rel_path, parent_card_id, sort_key, "
+      "created_at, updated_at, deleted_at "
+      "FROM cards WHERE project_id = ? "
+      "ORDER BY sort_key ASC, updated_at DESC;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare list all cards failed");
+  }
+  bind_text(stmt, 1, project_id);
+
+  std::vector<holder::model::Card> out;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      out.push_back(read_card(stmt));
+      continue;
+    }
+    if (rc == SQLITE_DONE) break;
+    sqlite3_finalize(stmt);
+    throw_sqlite(db_.handle(), "list all cards failed");
+  }
   sqlite3_finalize(stmt);
   return out;
 }

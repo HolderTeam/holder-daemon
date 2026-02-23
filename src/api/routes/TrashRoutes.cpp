@@ -34,7 +34,7 @@ bool handle_trash_routes(const std::string& path,
         nlohmann::json data = nlohmann::json::array();
         if (type.empty() || type == "card" || type == "all") {
           holder::store::CardRepo card_repo(db);
-          const auto cards = card_repo.list(project_id, std::nullopt);
+          const auto cards = card_repo.list_all(project_id);
           for (const auto& card : cards) {
             if (!card.deleted_at.has_value()) continue;
             nlohmann::json item;
@@ -83,7 +83,7 @@ bool handle_trash_routes(const std::string& path,
       try {
         if ((type.empty() || type == "card" || type == "all") && card_store) {
           holder::store::CardRepo card_repo(db);
-          const auto cards = card_repo.list(project_id, std::nullopt);
+          const auto cards = card_repo.list_all(project_id);
           for (const auto& card : cards) {
             if (!card.deleted_at.has_value()) continue;
             card_store->hard_delete(card.card_id);

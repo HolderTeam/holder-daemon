@@ -101,6 +101,15 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(found_first);
   REQUIRE(found_auto);
 
+  const auto children_empty = http_json_request(bound.bind, bound.port, token,
+                                                boost::beast::http::verb::get,
+                                                "/cards?project_id=proj-1&scope=children&parent_card_id=abcd1234",
+                                                nlohmann::json::object(),
+                                                boost::beast::http::status::ok);
+  REQUIRE(children_empty["ok"] == true);
+  REQUIRE(children_empty["data"].is_array());
+  REQUIRE(children_empty["data"].empty());
+
   nlohmann::json update_body = {
       {"title", "First Updated"},
       {"content", "hello world"},
@@ -144,6 +153,33 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(fetched_moved["data"]["sort_key"].get<double>() == 777.0);
   REQUIRE(fetched_moved["data"]["updated_at"] == 30);
 
+  const auto listed_all = http_json_request(bound.bind, bound.port, token,
+                                            boost::beast::http::verb::get,
+                                            "/cards?project_id=proj-1&scope=all",
+                                            nlohmann::json::object(),
+                                            boost::beast::http::status::ok);
+  bool found_nested_in_all = false;
+  for (const auto& item : listed_all["data"]) {
+    if (item["card_id"] == "abcd1234") {
+      found_nested_in_all = true;
+      REQUIRE(item["parent_card_id"] == auto_id);
+    }
+  }
+  REQUIRE(found_nested_in_all);
+
+  const auto listed_root = http_json_request(bound.bind, bound.port, token,
+                                             boost::beast::http::verb::get,
+                                             "/cards?project_id=proj-1&scope=root",
+                                             nlohmann::json::object(),
+                                             boost::beast::http::status::ok);
+  bool found_nested_in_root = false;
+  for (const auto& item : listed_root["data"]) {
+    if (item["card_id"] == "abcd1234") {
+      found_nested_in_root = true;
+    }
+  }
+  REQUIRE(!found_nested_in_root);
+
   nlohmann::json reparent_root_body = {
       {"parent_card_id", nullptr},
       {"updated_at", 31}
@@ -163,6 +199,20 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
                                                     boost::beast::http::status::ok);
   REQUIRE(fetched_reparented["data"]["parent_card_id"].is_null());
   REQUIRE(fetched_reparented["data"]["updated_at"] == 31);
+
+  const auto scope_children_missing_parent = http_json_request(bound.bind, bound.port, token,
+                                                               boost::beast::http::verb::get,
+                                                               "/cards?project_id=proj-1&scope=children",
+                                                               nlohmann::json::object(),
+                                                               boost::beast::http::status::bad_request);
+  REQUIRE(scope_children_missing_parent["ok"] == false);
+
+  const auto scope_all_with_parent = http_json_request(bound.bind, bound.port, token,
+                                                       boost::beast::http::verb::get,
+                                                       "/cards?project_id=proj-1&scope=all&parent_card_id=abcd1234",
+                                                       nlohmann::json::object(),
+                                                       boost::beast::http::status::bad_request);
+  REQUIRE(scope_all_with_parent["ok"] == false);
 
   const auto deleted = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::delete_,

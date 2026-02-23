@@ -87,7 +87,7 @@ TEST_CASE("CardRepo CRUD", "[cardrepo]") {
   REQUIRE(fetched->title == "First");
   REQUIRE(fetched->parent_card_id.has_value() == false);
 
-  auto list_root = repo.list("proj-1", std::nullopt);
+  auto list_root = repo.list_roots("proj-1");
   REQUIRE(list_root.size() == 1);
 
   holder::model::Card child;
@@ -101,10 +101,10 @@ TEST_CASE("CardRepo CRUD", "[cardrepo]") {
   child.updated_at = 11;
   repo.create(child);
 
-  list_root = repo.list("proj-1", std::nullopt);
+  list_root = repo.list_roots("proj-1");
   REQUIRE(list_root.size() == 1);
 
-  auto list_child = repo.list("proj-1", std::optional<std::string>("card-1"));
+  auto list_child = repo.list_children("proj-1", "card-1");
   REQUIRE(list_child.size() == 1);
   REQUIRE(list_child[0].card_id == "card-2");
 
@@ -115,7 +115,7 @@ TEST_CASE("CardRepo CRUD", "[cardrepo]") {
   REQUIRE(renamed->updated_at == 20);
 
   repo.move("card-2", std::nullopt, 3.0, 30);
-  list_root = repo.list("proj-1", std::nullopt);
+  list_root = repo.list_roots("proj-1");
   REQUIRE(list_root.size() == 2);
 
   repo.soft_delete("card-2", 40, 41);
