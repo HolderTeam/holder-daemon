@@ -144,6 +144,58 @@ void CardStore::update_content(const std::string& card_id,
   }
 }
 
+void CardStore::move(const std::string& card_id,
+                     bool has_parent_card_id,
+                     const std::optional<std::string>& parent_card_id,
+                     const std::optional<double>& sort_key,
+                     long long updated_at) {
+  const auto card_opt = card_repo_.get(card_id);
+  if (!card_opt.has_value()) {
+    throw std::runtime_error("card not found: " + card_id);
+  }
+
+  auto card = card_opt.value();
+  require_project(card.project_id);
+  const std::string expected = holder::core::card_rel_path(card.card_id);
+  if (card.rel_path != expected) {
+    throw std::runtime_error("card rel_path does not match card_id");
+  }
+
+  const std::optional<std::string> next_parent = has_parent_card_id ? parent_card_id : card.parent_card_id;
+  const double next_sort = sort_key.has_value() ? sort_key.value() : card.sort_key;
+
+  const bool changed = (next_parent != card.parent_card_id) || (next_sort != card.sort_key);
+  if (!changed) {
+    return;
+  }
+
+  const auto full_path = git_->repo_dir() / card.rel_path;
+  if (!fs_->exists(full_path)) {
+    throw std::runtime_error("card content missing");
+  }
+
+  const auto raw = fs_->read_file(full_path);
+  const auto parsed = holder::core::parse_card_file(raw);
+  const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+
+  card.parent_card_id = next_parent;
+  card.sort_key = next_sort;
+  card.updated_at = updated_at;
+  const auto updated_raw = holder::core::render_card_front_matter(card, links) + parsed.body;
+
+  if (updated_raw == raw) {
+    return;
+  }
+
+  git_->write_file(card.rel_path, updated_raw);
+  card_repo_.move(card_id, next_parent, next_sort, updated_at);
+  if (fts_) {
+    fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
+  }
+  git_->stage_path(card.rel_path);
+  git_->commit("Move card " + card.title);
+}
+
 void CardStore::update_links(const std::string& card_id, long long updated_at) {
   const auto card_opt = card_repo_.get(card_id);
   if (!card_opt.has_value()) {

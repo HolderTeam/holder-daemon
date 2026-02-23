@@ -490,17 +490,48 @@ bool handle_card_routes(const std::string& path,
       } else if (req.method() == http::verb::patch) {
         try {
           const auto body = nlohmann::json::parse(req.body());
-          if (!body.contains("content") || !body.contains("updated_at")) {
+          if (!body.contains("updated_at")) {
             res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
           } else {
+            const bool has_content = body.contains("content");
+            const bool has_title = body.contains("title");
+            const bool has_parent_card_id = body.contains("parent_card_id");
+            const bool has_sort_key = body.contains("sort_key");
+            if (!has_content && !has_title && !has_parent_card_id && !has_sort_key) {
+              res = support::error_response(http::status::bad_request,
+                                            "bad_request",
+                                            "No updatable fields supplied.");
+              return true;
+            }
+
             std::optional<std::string> title;
-            if (body.contains("title") && !body.at("title").is_null()) {
+            if (has_title && !body.at("title").is_null()) {
               title = body.at("title").get<std::string>();
             }
-            const std::string content = body.at("content").get<std::string>();
             const long long updated_at = body.at("updated_at").get<long long>();
 
-            card_store->update_content(card_id, content, title, updated_at);
+            if (has_content || has_title) {
+              if (!has_content) {
+                res = support::error_response(http::status::bad_request,
+                                              "bad_request",
+                                              "content is required when updating title.");
+                return true;
+              }
+              const std::string content = body.at("content").get<std::string>();
+              card_store->update_content(card_id, content, title, updated_at);
+            }
+
+            if (has_parent_card_id || has_sort_key) {
+              std::optional<std::string> parent_card_id;
+              if (has_parent_card_id && !body.at("parent_card_id").is_null()) {
+                parent_card_id = body.at("parent_card_id").get<std::string>();
+              }
+              std::optional<double> sort_key;
+              if (has_sort_key) {
+                sort_key = body.at("sort_key").get<double>();
+              }
+              card_store->move(card_id, has_parent_card_id, parent_card_id, sort_key, updated_at);
+            }
 
             nlohmann::json payload;
             payload["ok"] = true;

@@ -122,6 +122,48 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(fetched_after["data"]["title"] == "First Updated");
   REQUIRE(fetched_after["data"]["content"] == "hello world");
 
+  nlohmann::json move_body = {
+      {"parent_card_id", auto_id},
+      {"sort_key", 777.0},
+      {"updated_at", 30}
+  };
+
+  const auto moved = http_json_request(bound.bind, bound.port, token,
+                                       boost::beast::http::verb::patch,
+                                       "/cards/abcd1234",
+                                       move_body,
+                                       boost::beast::http::status::ok);
+  REQUIRE(moved["ok"] == true);
+
+  const auto fetched_moved = http_json_request(bound.bind, bound.port, token,
+                                               boost::beast::http::verb::get,
+                                               "/cards/abcd1234",
+                                               nlohmann::json::object(),
+                                               boost::beast::http::status::ok);
+  REQUIRE(fetched_moved["data"]["parent_card_id"] == auto_id);
+  REQUIRE(fetched_moved["data"]["sort_key"].get<double>() == 777.0);
+  REQUIRE(fetched_moved["data"]["updated_at"] == 30);
+
+  nlohmann::json reparent_root_body = {
+      {"parent_card_id", nullptr},
+      {"updated_at", 31}
+  };
+
+  const auto reparented = http_json_request(bound.bind, bound.port, token,
+                                            boost::beast::http::verb::patch,
+                                            "/cards/abcd1234",
+                                            reparent_root_body,
+                                            boost::beast::http::status::ok);
+  REQUIRE(reparented["ok"] == true);
+
+  const auto fetched_reparented = http_json_request(bound.bind, bound.port, token,
+                                                    boost::beast::http::verb::get,
+                                                    "/cards/abcd1234",
+                                                    nlohmann::json::object(),
+                                                    boost::beast::http::status::ok);
+  REQUIRE(fetched_reparented["data"]["parent_card_id"].is_null());
+  REQUIRE(fetched_reparented["data"]["updated_at"] == 31);
+
   const auto deleted = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::delete_,
                                          "/cards/abcd1234",

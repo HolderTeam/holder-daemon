@@ -250,6 +250,60 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   REQUIRE(after == before + 1);
 }
 
+TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card parent;
+  parent.card_id = "parent01";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.created_at = 10;
+  parent.updated_at = 10;
+  store.create(parent, "parent body");
+
+  holder::model::Card child;
+  child.card_id = "child001";
+  child.project_id = "proj-1";
+  child.title = "Child";
+  child.created_at = 11;
+  child.updated_at = 11;
+  store.create(child, "child body");
+
+  const int before = count_commits(project_root);
+  store.move(child.card_id, true, std::optional<std::string>(parent.card_id), std::optional<double>(42.5), 20);
+  const int after = count_commits(project_root);
+  REQUIRE(after == before + 1);
+
+  holder::store::CardRepo card_repo(db);
+  const auto moved = card_repo.get(child.card_id);
+  REQUIRE(moved.has_value());
+  REQUIRE(moved->parent_card_id.has_value());
+  REQUIRE(moved->parent_card_id.value() == parent.card_id);
+  REQUIRE(moved->sort_key == 42.5);
+  REQUIRE(moved->updated_at == 20);
+
+  const auto rel_path = holder::core::card_rel_path(child.card_id);
+  const auto full_path = project_root / rel_path;
+  const auto raw = read_file(full_path);
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE(parsed.has_front_matter);
+  REQUIRE(parsed.card.parent_card_id.has_value());
+  REQUIRE(parsed.card.parent_card_id.value() == parent.card_id);
+  REQUIRE(parsed.card.sort_key == 42.5);
+  REQUIRE(parsed.card.updated_at == 20);
+  REQUIRE(parsed.body == "child body");
+}
+
 TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";

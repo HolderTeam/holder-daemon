@@ -26,6 +26,11 @@ public:
                       const std::string& content,
                       const std::optional<std::string>& title,
                       long long updated_at);
+  void move(const std::string& card_id,
+            bool has_parent_card_id,
+            const std::optional<std::string>& parent_card_id,
+            const std::optional<double>& sort_key,
+            long long updated_at);
   void update_links(const std::string& card_id, long long updated_at);
   void trash(const std::string& card_id, long long deleted_at);
   void restore(const std::string& card_id, long long updated_at);

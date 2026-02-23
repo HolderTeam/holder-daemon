@@ -593,7 +593,7 @@ components:
               type: string
     CardUpdateRequest:
       type: object
-      required: [content, updated_at]
+      required: [updated_at]
       properties:
         content:
           type: string
@@ -603,6 +603,12 @@ components:
         title:
           type: string
           nullable: true
+        parent_card_id:
+          type: string
+          nullable: true
+        sort_key:
+          type: number
+          format: double
     CardData:
       type: object
       required:
