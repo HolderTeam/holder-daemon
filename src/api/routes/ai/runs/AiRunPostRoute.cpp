@@ -148,7 +148,7 @@ RouteDispatchResult execute_cloud_post_path(
   if (!cloud_cfg.has_value()) {
     res = support::error_response(http::status::service_unavailable,
                                   "runner_unavailable",
-                                  "No local runner and cloudproviders.yaml not found.");
+                                  "No local runner and ai_catalog.yaml models runtime/catalog not found.");
     return out;
   }
 

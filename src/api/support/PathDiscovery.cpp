@@ -20,24 +20,24 @@ std::optional<std::filesystem::path> find_openapi_path() {
   return std::nullopt;
 }
 
-std::optional<std::filesystem::path> find_models_path() {
+std::optional<std::filesystem::path> find_ai_catalog_path() {
   namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_MODELS_PATH")) {
+  if (const char* env = std::getenv("HOLDER_AI_CATALOG_PATH")) {
     fs::path p(env);
     if (fs::exists(p)) return p;
   }
-  fs::path p1 = fs::current_path() / "config" / "models.yaml";
+  fs::path p1 = fs::current_path() / "config" / "ai_catalog.yaml";
   if (fs::exists(p1)) return p1;
   return std::nullopt;
 }
 
-std::optional<std::filesystem::path> find_cloudproviders_path() {
+std::optional<std::filesystem::path> find_git_providers_path() {
   namespace fs = std::filesystem;
-  if (const char* env = std::getenv("HOLDER_CLOUDPROVIDERS_PATH")) {
+  if (const char* env = std::getenv("HOLDER_GIT_PROVIDERS_PATH")) {
     fs::path p(env);
     if (fs::exists(p)) return p;
   }
-  fs::path p1 = fs::current_path() / "config" / "cloudproviders.yaml";
+  fs::path p1 = fs::current_path() / "config" / "git_providers.yaml";
   if (fs::exists(p1)) return p1;
   return std::nullopt;
 }

@@ -362,8 +362,16 @@ components:
             additionalProperties: true
         setup_url:
           type: string
+          nullable: true
         docs_url:
           type: string
+          nullable: true
+        api_key_label:
+          type: string
+          nullable: true
+        api_key_hint:
+          type: string
+          nullable: true
     AiProviderCatalogResponse:
       type: object
       required: [ok, data]
@@ -1441,9 +1449,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /models.yaml:
+  /ai_catalog.yaml:
     get:
-      summary: Download the default model catalog
+      summary: Download canonical AI catalog config (models + cloud)
       security: []
       responses:
         "200":
@@ -1458,9 +1466,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /cloudproviders.yaml:
+  /ai_catalog.json:
     get:
-      summary: Download cloud provider runtime config
+      summary: Download canonical AI catalog config as JSON
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /git_providers.yaml:
+    get:
+      summary: Download git provider UI/runtime config
       security: []
       responses:
         "200":
@@ -1469,6 +1495,24 @@ paths:
             application/yaml:
               schema:
                 type: string
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /git_providers.json:
+    get:
+      summary: Download git provider UI/runtime config as JSON
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
         "404":
           description: Not found
           content:
@@ -2774,12 +2818,6 @@ paths:
                 $ref: "#/components/schemas/ResourceDeleteResponse"
         "401":
           description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Not found
           content:
             application/json:
               schema:

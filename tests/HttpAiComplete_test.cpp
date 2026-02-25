@@ -122,28 +122,28 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  const auto cloud_cfg_path = dir / "cloudproviders.yaml";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   {
     std::ofstream out(cloud_cfg_path);
     REQUIRE(out.is_open());
-    out << "defaults:\n";
-    out << "  route_policy:\n";
-    out << "    default_provider: switchyard\n";
-    out << "providers:\n";
-    out << "  - id: switchyard\n";
-    out << "    enabled: true\n";
-    out << "    api:\n";
-    out << "      base_url: https://127.0.0.1:1\n";
-    out << "      kind: generic_chat\n";
-    out << "    auth:\n";
-    out << "      type: bearer_header\n";
-    out << "      credential_provider_key: switchyard\n";
-    out << "    models:\n";
-    out << "      - id: openrouter/auto\n";
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: openrouter/auto\n";
     out << "        endpoint: /api/v1/chat/completions\n";
     out << "        role: default\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
   }
-  holder::test::EnvGuard cloud_cfg_env("HOLDER_CLOUDPROVIDERS_PATH", cloud_cfg_path.string());
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::store::Db db = holder::test::open_db_with_schema(db_path);
   const auto repo_dir = dir / "repo";

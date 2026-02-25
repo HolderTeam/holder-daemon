@@ -137,36 +137,35 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  const auto cloud_cfg_path = dir / "cloudproviders.yaml";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
 
   {
     std::ofstream out(cloud_cfg_path);
     REQUIRE(out.is_open());
-    out << "defaults:\n";
-    out << "  route_policy:\n";
-    out << "    default_provider: switchyard\n";
-    out << "providers:\n";
-    out << "  - id: switchyard\n";
-    out << "    display_name: Switchyard\n";
-    out << "    enabled: true\n";
-    out << "    api:\n";
-    out << "      base_url: https://127.0.0.1:1\n";
-    out << "      kind: generic_chat\n";
-    out << "    auth:\n";
-    out << "      type: bearer_header\n";
-    out << "      header_name: Authorization\n";
-    out << "      bearer_prefix: Bearer\n";
-    out << "      credential_provider_key: switchyard\n";
-    out << "    models:\n";
-    out << "      - id: openrouter/auto\n";
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        header_name: Authorization\n";
+    out << "        bearer_prefix: Bearer\n";
+    out << "        model_id: openrouter/auto\n";
     out << "        endpoint: /api/v1/chat/completions\n";
     out << "        role: default\n";
     out << "        limits:\n";
     out << "          rpm: 0\n";
     out << "          tpm: 0\n";
     out << "          rpd: 0\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
   }
-  holder::test::EnvGuard cloud_cfg_env("HOLDER_CLOUDPROVIDERS_PATH", cloud_cfg_path.string());
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -260,36 +259,35 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  const auto cloud_cfg_path = dir / "cloudproviders.yaml";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
 
   {
     std::ofstream out(cloud_cfg_path);
     REQUIRE(out.is_open());
-    out << "defaults:\n";
-    out << "  route_policy:\n";
-    out << "    default_provider: chadjeopardy\n";
-    out << "providers:\n";
-    out << "  - id: chadjeopardy\n";
-    out << "    display_name: ChadJeopardy\n";
-    out << "    enabled: true\n";
-    out << "    api:\n";
-    out << "      base_url: https://127.0.0.1:1\n";
-    out << "      kind: generic_responses\n";
-    out << "    auth:\n";
-    out << "      type: bearer_header\n";
-    out << "      header_name: Authorization\n";
-    out << "      bearer_prefix: Bearer\n";
-    out << "      credential_provider_key: chadjeopardy\n";
-    out << "    models:\n";
-    out << "      - id: gpt-5.2\n";
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: ChadJeopardy\n";
+    out << "        provider_id: chadjeopardy\n";
+    out << "        credential_key: chadjeopardy\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_responses\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        header_name: Authorization\n";
+    out << "        bearer_prefix: Bearer\n";
+    out << "        model_id: gpt-5.2\n";
     out << "        endpoint: /v1/responses\n";
     out << "        role: default\n";
     out << "        limits:\n";
     out << "          rpm: 0\n";
     out << "          tpm: 0\n";
     out << "          rpd: 0\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: chadjeopardy\n";
   }
-  holder::test::EnvGuard cloud_cfg_env("HOLDER_CLOUDPROVIDERS_PATH", cloud_cfg_path.string());
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -383,35 +381,34 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  const auto cloud_cfg_path = dir / "cloudproviders.yaml";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
 
   {
     std::ofstream out(cloud_cfg_path);
     REQUIRE(out.is_open());
-    out << "defaults:\n";
-    out << "  route_policy:\n";
-    out << "    default_provider: mechatropic\n";
-    out << "providers:\n";
-    out << "  - id: mechatropic\n";
-    out << "    display_name: Mechatropic\n";
-    out << "    enabled: true\n";
-    out << "    api:\n";
-    out << "      base_url: https://127.0.0.1:1\n";
-    out << "      kind: mechatropic_messages\n";
-    out << "    auth:\n";
-    out << "      type: header_key\n";
-    out << "      header_name: x-api-key\n";
-    out << "      credential_provider_key: mechatropic\n";
-    out << "    models:\n";
-    out << "      - id: claude-opus-4-6\n";
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Mechatropic\n";
+    out << "        provider_id: mechatropic\n";
+    out << "        credential_key: mechatropic\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: mechatropic_messages\n";
+    out << "        auth_type: header_key\n";
+    out << "        header_name: x-api-key\n";
+    out << "        model_id: claude-opus-4-6\n";
     out << "        endpoint: /v1/messages\n";
     out << "        role: default\n";
     out << "        limits:\n";
     out << "          rpm: 0\n";
     out << "          tpm: 0\n";
     out << "          rpd: 0\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: mechatropic\n";
   }
-  holder::test::EnvGuard cloud_cfg_env("HOLDER_CLOUDPROVIDERS_PATH", cloud_cfg_path.string());
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "

@@ -22,6 +22,10 @@ struct CloudModelConfig {
 struct CloudProviderConfig {
   std::string id;
   std::string display_name;
+  std::string setup_url;
+  std::string docs_url;
+  std::string api_key_label;
+  std::string api_key_hint;
   bool enabled = false;
   std::string cost_tier; // e.g. free, low, paid
   std::string base_url;

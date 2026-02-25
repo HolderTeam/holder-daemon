@@ -3,16 +3,16 @@
 using holder::test::http_request_raw;
 using holder::test::make_temp_dir;
 
-TEST_CASE("HTTP cloudproviders.yaml is served without auth", "[http]") {
+TEST_CASE("HTTP ai_catalog.yaml is served without auth (cloud test alias)", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
   holder::store::Db db;
   db.open(db_path);
 
-  const auto cloudproviders_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /
-                                   "config" / "cloudproviders.yaml";
-  holder::test::EnvGuard cloudproviders_env("HOLDER_CLOUDPROVIDERS_PATH", cloudproviders_path.string());
+  const auto ai_catalog_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /
+                               "config" / "ai_catalog.yaml";
+  holder::test::EnvGuard ai_catalog_env("HOLDER_AI_CATALOG_PATH", ai_catalog_path.string());
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -32,7 +32,7 @@ TEST_CASE("HTTP cloudproviders.yaml is served without auth", "[http]") {
                                     bound.port,
                                     std::string(),
                                     boost::beast::http::verb::get,
-                                    "/cloudproviders.yaml");
+                                    "/ai_catalog.yaml");
   REQUIRE(res.status == boost::beast::http::status::ok);
   REQUIRE(res.content_type.find("application/yaml") != std::string::npos);
 

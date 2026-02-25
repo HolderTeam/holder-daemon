@@ -1,0 +1,569 @@
+schema_version: 1
+
+# Provider metadata for Holder Git remotes.
+# Goals:
+# - Machine-usable capabilities (transports/auth/url examples)
+# - UI-renderable instructions ("recipes") without hardcoding provider quirks in code
+# - Lightweight hostname detection from pasted URLs
+
+providers:
+  - id: github
+    name: GitHub
+    kind: hosted
+    detect:
+      hostnames: ["github.com"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["pat"] # Personal Access Token
+      examples:
+        ssh: "git@github.com:{owner}/{repo}.git"
+        https: "https://github.com/{owner}/{repo}.git"
+    ui:
+      quick_links:
+        - id: ssh_keys
+          label: "Add SSH key"
+          url: "https://github.com/settings/keys"
+        - id: tokens
+          label: "Create token (PAT)"
+          url: "https://github.com/settings/tokens"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: checklist
+              title: "On GitHub"
+              items:
+                - "Create a private repository"
+                - "Add your SSH public key (Settings → SSH and GPG keys)"
+            - type: code
+              title: "Clone URL format"
+              body: "git@github.com:{owner}/{repo}.git"
+            - type: note
+              body: "Tip: test your key with `ssh -T git@github.com`."
+        - id: https
+          title: "HTTPS + token setup"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "For HTTPS Git operations, use a Personal Access Token (PAT) as the password."
+            - type: link
+              label: "Create a PAT"
+              url: "https://github.com/settings/tokens"
+            - type: code
+              title: "Clone URL format"
+              body: "https://github.com/{owner}/{repo}.git"
+
+  - id: gitlab
+    name: GitLab
+    kind: hosted_or_self_hosted
+    detect:
+      hostnames: ["gitlab.com"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["pat"]
+      examples:
+        ssh: "git@gitlab.com:{owner}/{repo}.git"
+        https: "https://gitlab.com/{owner}/{repo}.git"
+    ui:
+      quick_links:
+        - id: ssh_docs
+          label: "SSH keys docs"
+          url: "https://docs.gitlab.com/user/ssh/"
+        - id: tokens_docs
+          label: "Access tokens docs"
+          url: "https://docs.gitlab.com/user/profile/personal_access_tokens.html"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: checklist
+              title: "On GitLab"
+              items:
+                - "Create a private project"
+                - "Add your SSH public key (User Settings → SSH Keys)"
+            - type: code
+              title: "Clone URL format"
+              body: "git@gitlab.com:{owner}/{repo}.git"
+            - type: note
+              body: "Tip: test your key with `ssh -T git@gitlab.com`."
+        - id: https
+          title: "HTTPS + token setup"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "Use a Personal Access Token for HTTPS Git operations."
+            - type: link
+              label: "Create a token (docs)"
+              url: "https://docs.gitlab.com/user/profile/personal_access_tokens.html"
+            - type: code
+              title: "Clone URL format"
+              body: "https://gitlab.com/{owner}/{repo}.git"
+
+  - id: bitbucket
+    name: Bitbucket Cloud
+    kind: hosted
+    detect:
+      hostnames: ["bitbucket.org"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["app_password", "api_token"]
+      examples:
+        ssh: "git@bitbucket.org:{workspace}/{repo}.git"
+        https: "https://bitbucket.org/{workspace}/{repo}.git"
+    ui:
+      quick_links:
+        - id: app_password_docs
+          label: "Create App password (docs)"
+          url: "https://support.atlassian.com/bitbucket-cloud/docs/create-an-app-password/"
+        - id: ssh_docs
+          label: "SSH setup (docs)"
+          url: "https://support.atlassian.com/bitbucket-cloud/docs/set-up-an-ssh-key/"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: checklist
+              title: "On Bitbucket"
+              items:
+                - "Create a private repository"
+                - "Add your SSH public key (Personal settings → SSH keys)"
+            - type: code
+              title: "Clone URL format"
+              body: "git@bitbucket.org:{workspace}/{repo}.git"
+        - id: https
+          title: "HTTPS + App password"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "For HTTPS Git, Bitbucket uses App passwords / API tokens. Use your Bitbucket username + the generated secret."
+            - type: link
+              label: "Create an App password"
+              url: "https://support.atlassian.com/bitbucket-cloud/docs/create-an-app-password/"
+            - type: code
+              title: "Clone URL format"
+              body: "https://bitbucket.org/{workspace}/{repo}.git"
+
+  - id: codeberg
+    name: Codeberg
+    kind: hosted
+    detect:
+      hostnames: ["codeberg.org"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["access_token"]
+      examples:
+        ssh: "git@codeberg.org:{owner}/{repo}.git"
+        https: "https://codeberg.org/{owner}/{repo}.git"
+    ui:
+      quick_links:
+        - id: token_docs
+          label: "Generate access token (docs)"
+          url: "https://docs.codeberg.org/advanced/access-token/"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: checklist
+              title: "On Codeberg"
+              items:
+                - "Create a private repository"
+                - "Add your SSH public key in account settings"
+            - type: code
+              title: "Clone URL format"
+              body: "git@codeberg.org:{owner}/{repo}.git"
+        - id: https
+          title: "HTTPS + access token"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "Use an access token for HTTPS Git operations."
+            - type: link
+              label: "Generate an access token"
+              url: "https://docs.codeberg.org/advanced/access-token/"
+            - type: code
+              title: "Clone URL format"
+              body: "https://codeberg.org/{owner}/{repo}.git"
+
+  - id: sourcehut
+    name: SourceHut
+    kind: hosted
+    detect:
+      hostnames: ["sr.ht", "git.sr.ht"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["access_token"]
+      examples:
+        ssh: "git@git.sr.ht:~{user}/{repo}"
+        https: "https://git.sr.ht/~{user}/{repo}"
+    ui:
+      quick_links:
+        - id: ssh_docs
+          label: "SSH (docs)"
+          url: "https://man.sr.ht/git.sr.ht/"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "SourceHut repos use a `~user` namespace."
+            - type: checklist
+              title: "On SourceHut"
+              items:
+                - "Create a private repo"
+                - "Add your SSH public key to your account"
+            - type: code
+              title: "Clone URL format"
+              body: "git@git.sr.ht:~{user}/{repo}"
+        - id: https
+          title: "HTTPS setup"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "HTTPS is supported; some workflows prefer SSH. Follow the SourceHut Git docs for your preferred authentication method."
+            - type: link
+              label: "SourceHut Git docs"
+              url: "https://man.sr.ht/git.sr.ht/"
+            - type: code
+              title: "Clone URL format"
+              body: "https://git.sr.ht/~{user}/{repo}"
+
+  - id: gitea
+    name: Gitea (self-hosted)
+    kind: self_hosted
+    detect:
+      hostnames: []
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["password", "pat"]
+      examples:
+        ssh: "git@{host}:{owner}/{repo}.git"
+        https: "https://{host}/{owner}/{repo}.git"
+    ui:
+      recipes:
+        - id: ssh
+          title: "SSH setup (typical)"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "Gitea instances vary by domain; ask your admin for the correct host and port."
+            - type: code
+              title: "Common SSH clone format"
+              body: "git@{host}:{owner}/{repo}.git"
+        - id: https
+          title: "HTTPS setup (token or password)"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "Some Gitea instances allow passwords over HTTPS; many prefer tokens."
+            - type: code
+              title: "Common HTTPS clone format"
+              body: "https://{host}/{owner}/{repo}.git"
+
+  - id: forgejo
+    name: Forgejo (self-hosted)
+    kind: self_hosted
+    detect:
+      hostnames: []
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["password", "pat"]
+      examples:
+        ssh: "git@{host}:{owner}/{repo}.git"
+        https: "https://{host}/{owner}/{repo}.git"
+    ui:
+      recipes:
+        - id: ssh
+          title: "SSH setup (typical)"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "Forgejo is Gitea-like: standard Git over SSH/HTTPS."
+            - type: code
+              title: "Common SSH clone format"
+              body: "git@{host}:{owner}/{repo}.git"
+        - id: https
+          title: "HTTPS setup (token or password)"
+          when: { transport: "https" }
+          steps:
+            - type: code
+              title: "Common HTTPS clone format"
+              body: "https://{host}/{owner}/{repo}.git"
+
+  - id: gogs
+    name: Gogs (self-hosted)
+    kind: self_hosted
+    detect:
+      hostnames: []
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["password", "pat"]
+      examples:
+        ssh: "git@{host}:{owner}/{repo}.git"
+        https: "https://{host}/{owner}/{repo}.git"
+    ui:
+      recipes:
+        - id: ssh
+          title: "SSH setup (typical)"
+          when: { transport: "ssh" }
+          steps:
+            - type: code
+              title: "Common SSH clone format"
+              body: "git@{host}:{owner}/{repo}.git"
+        - id: https
+          title: "HTTPS setup (token or password)"
+          when: { transport: "https" }
+          steps:
+            - type: code
+              title: "Common HTTPS clone format"
+              body: "https://{host}/{owner}/{repo}.git"
+
+  - id: launchpad
+    name: Launchpad
+    kind: hosted
+    detect:
+      hostnames: ["launchpad.net", "git.launchpad.net"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["token", "password"]
+      examples:
+        ssh: "git+ssh://git.launchpad.net/{repo}"
+        https: "https://git.launchpad.net/{repo}"
+    ui:
+      quick_links:
+        - id: home
+          label: "Launchpad"
+          url: "https://launchpad.net"
+      recipes:
+        - id: ssh
+          title: "SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "Launchpad uses SSH keys associated with your Launchpad account."
+            - type: code
+              title: "Clone URL format"
+              body: "git+ssh://git.launchpad.net/{repo}"
+        - id: https
+          title: "HTTPS setup"
+          when: { transport: "https" }
+          steps:
+            - type: code
+              title: "Clone URL format"
+              body: "https://git.launchpad.net/{repo}"
+
+  - id: azure_devops
+    name: Azure DevOps (Azure Repos)
+    kind: hosted
+    detect:
+      hostnames: ["dev.azure.com", "ssh.dev.azure.com", "visualstudio.com"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["pat"]
+      examples:
+        # Azure's SSH format is distinctive and worth first-classing.
+        ssh: "git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+        https: "https://dev.azure.com/{org}/{project}/_git/{repo}"
+    ui:
+      quick_links:
+        - id: ssh_docs
+          label: "SSH keys (docs)"
+          url: "https://learn.microsoft.com/en-us/azure/devops/repos/git/use-ssh-keys-to-authenticate?view=azure-devops"
+        - id: clone_docs
+          label: "Clone repo (docs)"
+          url: "https://learn.microsoft.com/en-us/azure/devops/repos/git/clone?view=azure-devops"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: checklist
+              title: "On Azure DevOps"
+              items:
+                - "Create a private repo in Azure Repos"
+                - "Add your SSH public key (User settings → SSH public keys)"
+            - type: code
+              title: "SSH clone URL format"
+              body: "git@ssh.dev.azure.com:v3/{org}/{project}/{repo}"
+            - type: note
+              body: "Azure’s SSH URL format is different from GitHub/GitLab — keep it exactly as shown."
+        - id: https
+          title: "HTTPS + PAT setup"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "Use a Personal Access Token (PAT) for HTTPS authentication."
+            - type: link
+              label: "Azure Repos clone docs"
+              url: "https://learn.microsoft.com/en-us/azure/devops/repos/git/clone?view=azure-devops"
+            - type: code
+              title: "HTTPS clone URL format"
+              body: "https://dev.azure.com/{org}/{project}/_git/{repo}"
+
+  - id: aws_codecommit
+    name: AWS CodeCommit
+    kind: hosted
+    detect:
+      hostnames: ["git-codecommit.amazonaws.com"]
+    defaults:
+      preferred_transport: https
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        https: ["iam_git_credentials", "aws_cli_credential_helper"]
+        ssh: ["ssh_key"] # supported, but many users use HTTPS Git credentials
+      examples:
+        https: "https://git-codecommit.{region}.amazonaws.com/v1/repos/{repo}"
+        ssh: "ssh://git-codecommit.{region}.amazonaws.com/v1/repos/{repo}"
+    ui:
+      quick_links:
+        - id: https_setup
+          label: "HTTPS Git credentials (docs)"
+          url: "https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-gc.html"
+      recipes:
+        - id: https
+          title: "Recommended: HTTPS with IAM Git credentials"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "Simplest setup is IAM 'Git credentials' (a static username+password for Git over HTTPS)."
+            - type: link
+              label: "Setup guide"
+              url: "https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-gc.html"
+            - type: code
+              title: "HTTPS clone URL format"
+              body: "https://git-codecommit.{region}.amazonaws.com/v1/repos/{repo}"
+        - id: ssh
+          title: "SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "SSH is supported, but many orgs prefer HTTPS Git credentials or the AWS CLI credential helper."
+            - type: code
+              title: "SSH clone URL format"
+              body: "ssh://git-codecommit.{region}.amazonaws.com/v1/repos/{repo}"
+
+  - id: google_cloud_source_repos
+    name: Google Cloud Source Repositories
+    kind: hosted
+    detect:
+      hostnames: ["source.developers.google.com"]
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["gcloud", "manual_credentials"]
+      examples:
+        # Note the port (commonly 2022) in SSH URLs.
+        ssh: "ssh://{user}@source.developers.google.com:2022/p/{project}/r/{repo}"
+        https: "https://source.developers.google.com/p/{project}/r/{repo}"
+    ui:
+      quick_links:
+        - id: clone_docs
+          label: "Cloning repos (docs)"
+          url: "https://docs.cloud.google.com/source-repositories/docs/cloning-repositories"
+      recipes:
+        - id: ssh
+          title: "Recommended: SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "Cloud Source Repositories SSH commonly uses port 2022."
+            - type: link
+              label: "Cloning repos (SSH tab)"
+              url: "https://docs.cloud.google.com/source-repositories/docs/cloning-repositories"
+            - type: code
+              title: "SSH clone URL format"
+              body: "ssh://{user}@source.developers.google.com:2022/p/{project}/r/{repo}"
+        - id: https
+          title: "HTTPS setup (gcloud or manual credentials)"
+          when: { transport: "https" }
+          steps:
+            - type: link
+              label: "Cloning repos (docs)"
+              url: "https://docs.cloud.google.com/source-repositories/docs/cloning-repositories"
+            - type: code
+              title: "HTTPS clone URL format"
+              body: "https://source.developers.google.com/p/{project}/r/{repo}"
+
+  - id: custom
+    name: Custom / Self-hosted Git server
+    kind: generic
+    detect:
+      hostnames: []
+    defaults:
+      preferred_transport: ssh
+    git:
+      transports: ["ssh", "https"]
+      auth:
+        ssh: ["ssh_key"]
+        https: ["token", "password"]
+      examples:
+        ssh: "git@{host}:{path}.git"
+        https: "https://{host}/{path}.git"
+    ui:
+      recipes:
+        - id: ssh
+          title: "SSH setup"
+          when: { transport: "ssh" }
+          steps:
+            - type: text
+              body: "Paste the SSH clone URL from your server (may include a custom port)."
+            - type: code
+              title: "Example"
+              body: "git@{host}:{path}.git"
+        - id: https
+          title: "HTTPS setup"
+          when: { transport: "https" }
+          steps:
+            - type: text
+              body: "If your server requires a token, use it as the password. Some servers use basic username+password."
+            - type: code
+              title: "Example"
+              body: "https://{host}/{path}.git"

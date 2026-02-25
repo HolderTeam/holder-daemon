@@ -10,8 +10,8 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
 
   auto db = open_db_with_schema(db_path);
   const auto cloudproviders_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /
-                                   "config" / "cloudproviders.yaml";
-  holder::test::EnvGuard cloudproviders_env("HOLDER_CLOUDPROVIDERS_PATH", cloudproviders_path.string());
+                                   "config" / "ai_catalog.yaml";
+  holder::test::EnvGuard cloudproviders_env("HOLDER_AI_CATALOG_PATH", cloudproviders_path.string());
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -41,6 +41,9 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
     if (provider["id"] == "chocolatefactory") {
       found_chocolatefactory = true;
       REQUIRE(provider["configured"] == false);
+      REQUIRE(provider["setup_url"] == "https://aistudio.google.com/apikey");
+      REQUIRE(provider["docs_url"] == "https://ai.google.dev/gemini-api/docs");
+      REQUIRE(provider["api_key_label"] == "ChocolateFactory API key");
     }
   }
   REQUIRE(found_chocolatefactory);

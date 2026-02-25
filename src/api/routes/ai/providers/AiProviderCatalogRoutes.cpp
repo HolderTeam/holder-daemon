@@ -63,7 +63,7 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
     if (!cloud_cfg.has_value()) {
       res = support::error_response(http::status::bad_request,
                                     "bad_request",
-                                    "cloudproviders.yaml not found.");
+                                    "ai_catalog.yaml models runtime/catalog not found.");
       return true;
     }
 
@@ -93,6 +93,14 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
       item["configured"] = configured_ids.find(provider.id) != configured_ids.end();
       item["cost_tier"] =
           provider.cost_tier.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.cost_tier);
+      item["setup_url"] =
+          provider.setup_url.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.setup_url);
+      item["docs_url"] =
+          provider.docs_url.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.docs_url);
+      item["api_key_label"] = provider.api_key_label.empty() ? nlohmann::json(nullptr)
+                                                              : nlohmann::json(provider.api_key_label);
+      item["api_key_hint"] = provider.api_key_hint.empty() ? nlohmann::json(nullptr)
+                                                            : nlohmann::json(provider.api_key_hint);
       item["api"] = api_to_json(provider);
       item["auth"] = auth_to_json(provider);
       nlohmann::json models = nlohmann::json::array();

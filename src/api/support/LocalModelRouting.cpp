@@ -125,12 +125,14 @@ std::optional<CasteInfo> detect_machine_caste() {
 
 std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
   std::unordered_map<std::string, LocalModelMeta> meta;
-  const auto models_path = find_models_path();
-  if (!models_path.has_value()) return meta;
+  const auto ai_catalog_path = find_ai_catalog_path();
+  if (!ai_catalog_path.has_value()) return meta;
   try {
-    const YAML::Node root = YAML::LoadFile(models_path->string());
-    if (!root["Models"] || !root["Models"]["Local"]) return meta;
-    for (const auto& node : root["Models"]["Local"]) {
+    const YAML::Node root = YAML::LoadFile(ai_catalog_path->string());
+    if (!root["models"] || !root["models"]["Models"] || !root["models"]["Models"]["Local"]) {
+      return meta;
+    }
+    for (const auto& node : root["models"]["Models"]["Local"]) {
       if (!node || !node["tag"]) continue;
       const std::string tag = node["tag"].as<std::string>();
       LocalModelMeta entry;
