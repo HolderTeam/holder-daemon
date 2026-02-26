@@ -3,7 +3,7 @@
 #include "api/support/Time.h"
 
 #include "core/ProjectPaths.h"
-#include "git/GitRepo.h"
+#include "privacy/ProjectPrivacy.h"
 #include "store/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
@@ -24,6 +24,34 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
   return git ? *git : real_git;
 }
 
+bool is_valid_privacy_mode(const std::string& mode) {
+  return mode == "encrypted_git" || mode == "plain";
+}
+
+http::response<http::string_body> privacy_error_response(
+    const holder::privacy::PrivacyError& ex) {
+  http::status status = http::status::bad_request;
+  switch (ex.code()) {
+    case holder::privacy::PrivacyErrorCode::KeyringUnavailable:
+      status = http::status::service_unavailable;
+      break;
+    case holder::privacy::PrivacyErrorCode::KeyMaterialMissing:
+    case holder::privacy::PrivacyErrorCode::CryptMetadataMissing:
+      status = http::status::internal_server_error;
+      break;
+    case holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid:
+    case holder::privacy::PrivacyErrorCode::EnvelopeInvalid:
+    case holder::privacy::PrivacyErrorCode::EnvelopeMetadataMismatch:
+    case holder::privacy::PrivacyErrorCode::EncryptionSafetyCheckFailed:
+    case holder::privacy::PrivacyErrorCode::PrivacyCryptoFailed:
+      status = http::status::bad_request;
+      break;
+  }
+  return support::error_response(status,
+                                 holder::privacy::privacy_error_code_name(ex.code()),
+                                 ex.what());
+}
+
 } // namespace
 
 bool handle_project_routes(const std::string& path,
@@ -33,6 +61,102 @@ bool handle_project_routes(const std::string& path,
                            holder::git::GitOps* git_ops,
                            const std::function<std::string()>& uuid_v4,
                            const std::function<std::string(const std::string&)>& param_get) {
+  if (path == "/recovery-token/import" && req.method() == http::verb::post) {
+    try {
+      const auto body = nlohmann::json::parse(req.body());
+      if (!body.contains("pin") || body.at("pin").is_null() ||
+          !body.contains("recovery_token") || body.at("recovery_token").is_null()) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      "Missing required fields.");
+        return true;
+      }
+
+      const std::string pin = body.at("pin").get<std::string>();
+      const std::string recovery_token = body.at("recovery_token").get<std::string>();
+      const auto metadata = holder::privacy::inspect_recovery_token(pin, recovery_token);
+
+      holder::store::ProjectRepo repo(db);
+      const long long now = support::now_epoch_seconds();
+      bool project_created = false;
+      auto project_opt = repo.get(metadata.project_id);
+      if (!project_opt.has_value()) {
+        holder::model::Project project;
+        project.project_id = metadata.project_id;
+        project.name = metadata.project_name.has_value() && !metadata.project_name->empty()
+                           ? metadata.project_name.value()
+                           : "Recovered Project";
+        project.privacy_mode = "encrypted_git";
+        project.created_at = now;
+        project.updated_at = now;
+        const auto base_root = holder::core::default_projects_root();
+        const auto slug = holder::core::slugify(project.name);
+        project.root_path = holder::core::unique_project_root(base_root, slug, repo.list());
+        repo.create(project);
+        project_created = true;
+        project_opt = repo.get(metadata.project_id);
+      }
+
+      holder::privacy::import_recovery_token(
+          repo,
+          metadata.project_id,
+          pin,
+          recovery_token,
+          now);
+
+      const bool remote_hint_present =
+          metadata.git_remote_url.has_value() && !metadata.git_remote_url->empty();
+      bool remote_configured = false;
+      std::string pull_status = "not_attempted";
+      std::string remote_error;
+      std::string pull_error;
+      if (remote_hint_present) {
+        auto& git = resolve_git(git_ops);
+        const auto refreshed = repo.get(metadata.project_id);
+        if (refreshed.has_value()) {
+          git.open_or_init(refreshed->root_path);
+          try {
+            git.set_remote("origin", metadata.git_remote_url.value());
+            remote_configured = true;
+          } catch (const std::exception& ex) {
+            remote_error = ex.what();
+          }
+
+          if (remote_configured) {
+            try {
+              git.pull_remote_ff_only("origin");
+              pull_status = "succeeded";
+            } catch (const std::exception& ex) {
+              pull_status = "failed";
+              pull_error = ex.what();
+            }
+          }
+        }
+      }
+
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = {
+          {"project_id", metadata.project_id},
+          {"project_created", project_created},
+          {"remote_hint_present", remote_hint_present},
+          {"remote_configured", remote_configured},
+          {"remote_error", remote_error.empty() ? nlohmann::json(nullptr)
+                                                : nlohmann::json(remote_error)},
+          {"pull_status", pull_status},
+          {"pull_error", pull_error.empty() ? nlohmann::json(nullptr)
+                                            : nlohmann::json(pull_error)},
+      };
+      res = support::json_response(project_created ? http::status::created : http::status::ok,
+                                   payload);
+    } catch (const holder::privacy::PrivacyError& ex) {
+      res = privacy_error_response(ex);
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+    }
+    return true;
+  }
+
   if (path == "/projects" && req.method() == http::verb::get) {
     try {
       holder::store::ProjectRepo repo(db);
@@ -153,6 +277,10 @@ bool handle_project_routes(const std::string& path,
             {"git_provider", project.git_provider.has_value()
                                  ? nlohmann::json(project.git_provider.value())
                                  : nlohmann::json(nullptr)},
+            {"privacy_mode", project.privacy_mode},
+            {"project_key_id", project.project_key_id.has_value()
+                                   ? nlohmann::json(project.project_key_id.value())
+                                   : nlohmann::json(nullptr)},
             {"created_at", project.created_at},
             {"updated_at", project.updated_at},
         });
@@ -204,6 +332,22 @@ bool handle_project_routes(const std::string& path,
             project.git_provider = body.at("git_provider").get<std::string>();
           }
         }
+        if (body.contains("privacy_mode") && !body.at("privacy_mode").is_null()) {
+          project.privacy_mode = body.at("privacy_mode").get<std::string>();
+        }
+        if (!is_valid_privacy_mode(project.privacy_mode)) {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "privacy_mode must be encrypted_git or plain.");
+          return true;
+        }
+        if (body.contains("project_key_id")) {
+          if (body.at("project_key_id").is_null()) {
+            project.project_key_id.reset();
+          } else {
+            project.project_key_id = body.at("project_key_id").get<std::string>();
+          }
+        }
         if (project.created_at <= 0) {
           project.created_at = support::now_epoch_seconds();
         }
@@ -219,19 +363,48 @@ bool handle_project_routes(const std::string& path,
         }
         repo.create(project);
 
+        auto& git = resolve_git(git_ops);
         if (project.git_remote_url.has_value()) {
-          holder::git::GitRepo git_repo;
-          git_repo.open_or_init(project.root_path);
-          git_repo.set_remote("origin", project.git_remote_url.value());
+          git.open_or_init(project.root_path);
+          git.set_remote("origin", project.git_remote_url.value());
+        }
+        if (project.privacy_mode == "encrypted_git") {
+          holder::privacy::ensure_encrypted_project_ready(
+              git,
+              repo,
+              project.project_id,
+              project.root_path,
+              project.project_key_id,
+              project.updated_at,
+              uuid_v4);
+        }
+        if (const auto persisted = repo.get(project.project_id); persisted.has_value()) {
+          project = persisted.value();
         }
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
+        data["name"] = project.name;
+        data["root_path"] = project.root_path;
+        data["git_remote_url"] = project.git_remote_url.has_value()
+                                     ? nlohmann::json(project.git_remote_url.value())
+                                     : nlohmann::json(nullptr);
+        data["git_provider"] = project.git_provider.has_value()
+                                   ? nlohmann::json(project.git_provider.value())
+                                   : nlohmann::json(nullptr);
+        data["privacy_mode"] = project.privacy_mode;
+        data["project_key_id"] = project.project_key_id.has_value()
+                                     ? nlohmann::json(project.project_key_id.value())
+                                     : nlohmann::json(nullptr);
+        data["created_at"] = project.created_at;
+        data["updated_at"] = project.updated_at;
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
         res = support::json_response(http::status::created, payload);
       }
+    } catch (const holder::privacy::PrivacyError& ex) {
+      res = privacy_error_response(ex);
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
@@ -239,10 +412,140 @@ bool handle_project_routes(const std::string& path,
   }
 
   if (path.rfind("/projects/", 0) == 0) {
-    const std::string project_id = path.substr(std::string("/projects/").size());
+    const std::string suffix = path.substr(std::string("/projects/").size());
+    const auto slash_pos = suffix.find('/');
+    const std::string project_id = slash_pos == std::string::npos ? suffix : suffix.substr(0, slash_pos);
+    const std::string subpath = slash_pos == std::string::npos ? "" : suffix.substr(slash_pos);
     if (project_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-    } else if (req.method() == http::verb::get) {
+    } else if (subpath == "/encryption-check" && req.method() == http::verb::get) {
+      try {
+        holder::store::ProjectRepo repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found,
+                                        "not_found",
+                                        "Project not found.");
+          return true;
+        }
+        const auto& project = project_opt.value();
+
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"]["project_id"] = project_id;
+        payload["data"]["privacy_mode"] = project.privacy_mode;
+
+        if (project.privacy_mode != "encrypted_git") {
+          payload["data"]["check"] = {
+              {"ok", true},
+              {"checked_files", 0},
+              {"unsafe_files", 0},
+              {"unsafe_paths", nlohmann::json::array()},
+              {"message", "Project is plain mode; privacy check not required."},
+          };
+          res = support::json_response(http::status::ok, payload);
+          return true;
+        }
+
+        const auto check = holder::privacy::run_encryption_safety_check(project.root_path);
+        payload["data"]["check"] = {
+            {"ok", check.ok},
+            {"checked_files", check.checked_files},
+            {"unsafe_files", check.unsafe_paths.size()},
+            {"unsafe_paths", check.unsafe_paths},
+            {"message", check.message},
+        };
+        res = support::json_response(http::status::ok, payload);
+      } catch (const holder::privacy::PrivacyError& ex) {
+        res = privacy_error_response(ex);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      ex.what());
+      }
+    } else if (subpath == "/recovery-token/export" && req.method() == http::verb::post) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("pin") || body.at("pin").is_null()) {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "Missing required fields.");
+          return true;
+        }
+        holder::store::ProjectRepo repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found,
+                                        "not_found",
+                                        "Project not found.");
+          return true;
+        }
+        if (!project_opt->project_key_id.has_value()) {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "Project has no key material configured.");
+          return true;
+        }
+        const std::string token = holder::privacy::export_recovery_token(
+            project_id,
+            project_opt->project_key_id.value(),
+            body.at("pin").get<std::string>(),
+            project_opt->name,
+            project_opt->git_remote_url);
+
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = {
+            {"project_id", project_id},
+            {"key_id", project_opt->project_key_id.value()},
+            {"recovery_token", token},
+        };
+        res = support::json_response(http::status::ok, payload);
+      } catch (const holder::privacy::PrivacyError& ex) {
+        res = privacy_error_response(ex);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      ex.what());
+      }
+    } else if (subpath == "/recovery-token/import" && req.method() == http::verb::post) {
+      try {
+        const auto body = nlohmann::json::parse(req.body());
+        if (!body.contains("pin") || body.at("pin").is_null() ||
+            !body.contains("recovery_token") || body.at("recovery_token").is_null()) {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "Missing required fields.");
+          return true;
+        }
+        holder::store::ProjectRepo repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found,
+                                        "not_found",
+                                        "Project not found.");
+          return true;
+        }
+
+        holder::privacy::import_recovery_token(
+            repo,
+            project_id,
+            body.at("pin").get<std::string>(),
+            body.at("recovery_token").get<std::string>(),
+            support::now_epoch_seconds());
+
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = {{"project_id", project_id}};
+        res = support::json_response(http::status::ok, payload);
+      } catch (const holder::privacy::PrivacyError& ex) {
+        res = privacy_error_response(ex);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      ex.what());
+      }
+    } else if (subpath.empty() && req.method() == http::verb::get) {
       try {
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
@@ -260,6 +563,10 @@ bool handle_project_routes(const std::string& path,
           data["git_provider"] = project.git_provider.has_value()
                                      ? nlohmann::json(project.git_provider.value())
                                      : nlohmann::json(nullptr);
+          data["privacy_mode"] = project.privacy_mode;
+          data["project_key_id"] = project.project_key_id.has_value()
+                                       ? nlohmann::json(project.project_key_id.value())
+                                       : nlohmann::json(nullptr);
           data["created_at"] = project.created_at;
           data["updated_at"] = project.updated_at;
 
@@ -271,7 +578,7 @@ bool handle_project_routes(const std::string& path,
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::internal_server_error, "error", ex.what());
       }
-    } else if (req.method() == http::verb::patch) {
+    } else if (subpath.empty() && req.method() == http::verb::patch) {
       try {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("updated_at")) {
@@ -282,7 +589,10 @@ bool handle_project_routes(const std::string& path,
           const bool has_root = body.contains("root_path") && !body.at("root_path").is_null();
           const bool has_git_remote = body.contains("git_remote_url");
           const bool has_git_provider = body.contains("git_provider");
-          if (!has_name && !has_root && !has_git_remote && !has_git_provider) {
+          const bool has_privacy_mode = body.contains("privacy_mode") && !body.at("privacy_mode").is_null();
+          const bool has_project_key_id = body.contains("project_key_id");
+          if (!has_name && !has_root && !has_git_remote && !has_git_provider && !has_privacy_mode &&
+              !has_project_key_id) {
             res = support::error_response(http::status::bad_request, "bad_request", "No fields to update.");
           } else {
             holder::store::ProjectRepo repo(db);
@@ -316,6 +626,26 @@ bool handle_project_routes(const std::string& path,
                                            updated_at);
                 }
               }
+              if (has_privacy_mode) {
+                const auto mode = body.at("privacy_mode").get<std::string>();
+                if (!is_valid_privacy_mode(mode)) {
+                  res = support::error_response(http::status::bad_request,
+                                                "bad_request",
+                                                "privacy_mode must be encrypted_git or plain.");
+                  return true;
+                }
+                repo.update_privacy_mode(project_id, mode, updated_at);
+              }
+              if (has_project_key_id) {
+                if (body.at("project_key_id").is_null()) {
+                  repo.update_project_key_id(project_id, std::nullopt, updated_at);
+                } else {
+                  repo.update_project_key_id(project_id,
+                                             std::optional<std::string>(
+                                                 body.at("project_key_id").get<std::string>()),
+                                             updated_at);
+                }
+              }
               if (has_git_remote) {
                 const std::string repo_root =
                     has_root ? body.at("root_path").get<std::string>() : project_opt->root_path;
@@ -327,6 +657,28 @@ bool handle_project_routes(const std::string& path,
                   git.set_remote("origin", body.at("git_remote_url").get<std::string>());
                 }
               }
+              const std::string effective_privacy_mode = has_privacy_mode
+                                                             ? body.at("privacy_mode").get<std::string>()
+                                                             : project_opt->privacy_mode;
+              const std::optional<std::string> effective_project_key_id =
+                  has_project_key_id
+                      ? (body.at("project_key_id").is_null()
+                             ? std::optional<std::string>{}
+                             : std::optional<std::string>(body.at("project_key_id").get<std::string>()))
+                      : project_opt->project_key_id;
+              if (effective_privacy_mode == "encrypted_git") {
+                const std::string repo_root =
+                    has_root ? body.at("root_path").get<std::string>() : project_opt->root_path;
+                auto& git = resolve_git(git_ops);
+                holder::privacy::ensure_encrypted_project_ready(
+                    git,
+                    repo,
+                    project_id,
+                    repo_root,
+                    effective_project_key_id,
+                    updated_at,
+                    uuid_v4);
+              }
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};
@@ -334,10 +686,12 @@ bool handle_project_routes(const std::string& path,
             }
           }
         }
+      } catch (const holder::privacy::PrivacyError& ex) {
+        res = privacy_error_response(ex);
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
-    } else if (req.method() == http::verb::delete_) {
+    } else if (subpath.empty() && req.method() == http::verb::delete_) {
       try {
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);

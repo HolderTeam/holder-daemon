@@ -29,6 +29,7 @@ public:
   void remove_remote(const std::string&) override {
     if (fail_remove_remote) throw std::runtime_error("remove remote failed");
   }
+  void pull_remote_ff_only(const std::string&) override {}
   std::filesystem::path repo_dir() const override { return repo_dir_; }
 };
 
@@ -138,4 +139,96 @@ TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
 
   std::raise(SIGTERM);
   server_thread.join();
+}
+
+TEST_CASE("Global recovery import keeps success when git remote setup fails", "[git][http]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::test::ensure_uuid_seeded();
+
+  const auto projects_root = dir / "projects_root";
+  std::filesystem::create_directories(projects_root);
+  holder::test::EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
+
+  const std::string token = "testtoken";
+
+  // First server exports a token with remote hint.
+  {
+    holder::api::HttpServer export_server("127.0.0.1", 0, db, token, nullptr, nullptr);
+    holder::api::HttpServer::BoundInfo bound;
+    try {
+      bound = export_server.start();
+    } catch (const std::exception& ex) {
+      SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+    }
+
+    holder::core::SignalHandler signals;
+    std::thread server_thread([&export_server, &signals]() { export_server.run(signals); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    holder::test::http_json_request(bound.bind,
+                                    bound.port,
+                                    token,
+                                    boost::beast::http::verb::post,
+                                    "/projects",
+                                    {{"project_id", "proj-1"},
+                                     {"name", "Project"},
+                                     {"git_remote_url", "https://example.com/recovered.git"}},
+                                    boost::beast::http::status::created);
+
+    const auto exported = holder::test::http_json_request(bound.bind,
+                                                          bound.port,
+                                                          token,
+                                                          boost::beast::http::verb::post,
+                                                          "/projects/proj-1/recovery-token/export",
+                                                          {{"pin", "1234"}},
+                                                          boost::beast::http::status::ok);
+    const std::string recovery_token = exported["data"]["recovery_token"].get<std::string>();
+
+    holder::test::http_json_request(bound.bind,
+                                    bound.port,
+                                    token,
+                                    boost::beast::http::verb::delete_,
+                                    "/projects/proj-1",
+                                    nlohmann::json::object(),
+                                    boost::beast::http::status::ok);
+
+    std::raise(SIGTERM);
+    server_thread.join();
+
+    // Second server forces set_remote failure during import.
+    FailingGitOps git;
+    git.fail_set_remote = true;
+    holder::api::HttpServer import_server("127.0.0.1", 0, db, token, nullptr, nullptr, &git);
+    holder::api::HttpServer::BoundInfo import_bound;
+    try {
+      import_bound = import_server.start();
+    } catch (const std::exception& ex) {
+      SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+    }
+
+    holder::core::SignalHandler import_signals;
+    std::thread import_thread([&import_server, &import_signals]() { import_server.run(import_signals); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    const auto imported = holder::test::http_json_request(import_bound.bind,
+                                                          import_bound.port,
+                                                          token,
+                                                          boost::beast::http::verb::post,
+                                                          "/recovery-token/import",
+                                                          {{"pin", "1234"}, {"recovery_token", recovery_token}},
+                                                          boost::beast::http::status::created);
+    REQUIRE(imported["ok"] == true);
+    REQUIRE(imported["data"]["project_id"] == "proj-1");
+    REQUIRE(imported["data"]["project_created"] == true);
+    REQUIRE(imported["data"]["remote_hint_present"] == true);
+    REQUIRE(imported["data"]["remote_configured"] == false);
+    REQUIRE(imported["data"]["remote_error"].is_string());
+    REQUIRE(imported["data"]["pull_status"] == "not_attempted");
+    REQUIRE(imported["data"]["pull_error"].is_null());
+
+    std::raise(SIGTERM);
+    import_thread.join();
+  }
 }

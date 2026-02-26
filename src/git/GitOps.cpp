@@ -31,6 +31,10 @@ void RealGitOps::remove_remote(const std::string& name) {
   repo_.remove_remote(name);
 }
 
+void RealGitOps::pull_remote_ff_only(const std::string& name) {
+  repo_.pull_remote_ff_only(name);
+}
+
 std::filesystem::path RealGitOps::repo_dir() const {
   return repo_.repo_dir();
 }

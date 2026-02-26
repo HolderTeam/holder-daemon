@@ -4,6 +4,7 @@
 #include "core/CardPaths.h"
 #include "core/Fs.h"
 #include "git/GitOps.h"
+#include "privacy/ProjectPrivacy.h"
 #include "store/LinkRepo.h"
 
 #include <yaml-cpp/yaml.h>
@@ -24,11 +25,45 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
 }
 
 void write_card_file(holder::git::GitOps& repo,
+                     const holder::model::Project& project,
                      const holder::model::Card& card,
                      const std::vector<holder::model::CardLink>& links,
                      const std::string& content) {
-  const auto front_matter = holder::core::render_card_front_matter(card, links);
-  repo.write_file(card.rel_path, front_matter + content);
+  const auto plain = holder::core::render_card_front_matter(card, links) + content;
+  if (project.privacy_mode == "encrypted_git") {
+    if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
+      throw std::runtime_error("encrypted project missing project_key_id");
+    }
+    repo.write_file(card.rel_path,
+                    holder::privacy::encrypt_project_blob(
+                        project.project_id,
+                        project.project_key_id.value(),
+                        plain));
+    return;
+  }
+  repo.write_file(card.rel_path, plain);
+}
+
+std::string decode_card_blob(const holder::model::Project& project,
+                             const std::string& blob) {
+  if (project.privacy_mode != "encrypted_git") {
+    return blob;
+  }
+  if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
+    throw std::runtime_error("encrypted project missing project_key_id");
+  }
+  return holder::privacy::decrypt_project_blob(
+      project.project_id,
+      project.project_key_id.value(),
+      blob);
+}
+
+void assert_project_staged_blobs_safe(const holder::model::Project& project,
+                                      const std::vector<std::string>& relative_paths) {
+  if (project.privacy_mode != "encrypted_git") {
+    return;
+  }
+  holder::privacy::assert_encryption_index_paths_safe(project.root_path, relative_paths);
 }
 
 } // namespace
@@ -60,7 +95,7 @@ holder::model::Project CardStore::require_project(const std::string& project_id)
 void CardStore::create(holder::model::Card card,
                        const std::string& content,
                        const std::optional<double>& explicit_sort_key) {
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   if (explicit_sort_key.has_value()) {
     card.sort_key = explicit_sort_key.value();
   } else {
@@ -84,7 +119,10 @@ void CardStore::create(holder::model::Card card,
   }
 
   const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
-  write_card_file(*git_, card, links, content);
+  write_card_file(*git_, project, card, links, content);
+
+  git_->stage_path(card.rel_path);
+  assert_project_staged_blobs_safe(project, {card.rel_path});
 
   try {
     card_repo_.create(card);
@@ -97,7 +135,6 @@ void CardStore::create(holder::model::Card card,
     fts_->upsert_card(card.card_id, card.project_id, card.title, content);
   }
 
-  git_->stage_path(card.rel_path);
   git_->commit("Add card " + card.title);
 }
 
@@ -111,7 +148,7 @@ void CardStore::update_content(const std::string& card_id,
   }
 
   const auto& card = card_opt.value();
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -120,17 +157,23 @@ void CardStore::update_content(const std::string& card_id,
   const auto full_path = git_->repo_dir() / card.rel_path;
   bool unchanged = false;
   if (fs_->exists(full_path)) {
-    unchanged = (holder::core::parse_card_file(fs_->read_file(full_path)).body == content);
+    const auto plain = decode_card_blob(project, fs_->read_file(full_path));
+    unchanged = (holder::core::parse_card_file(plain).body == content);
   }
 
   if (!unchanged) {
     auto updated_card = card;
     if (title.has_value()) {
-      updated_card.title = title.value();
-    }
-    updated_card.updated_at = updated_at;
-    const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
-    write_card_file(*git_, updated_card, links, content);
+    updated_card.title = title.value();
+  }
+  updated_card.updated_at = updated_at;
+  const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+  write_card_file(*git_, project, updated_card, links, content);
+  }
+
+  if (!unchanged) {
+    git_->stage_path(card.rel_path);
+    assert_project_staged_blobs_safe(project, {card.rel_path});
   }
 
   if (title.has_value()) {
@@ -145,7 +188,6 @@ void CardStore::update_content(const std::string& card_id,
   }
 
   if (!unchanged) {
-    git_->stage_path(card.rel_path);
     const std::string commit_title = title.has_value() ? title.value() : card.title;
     git_->commit("Update card " + commit_title);
   }
@@ -162,7 +204,7 @@ void CardStore::move(const std::string& card_id,
   }
 
   auto card = card_opt.value();
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -187,24 +229,31 @@ void CardStore::move(const std::string& card_id,
   }
 
   const auto raw = fs_->read_file(full_path);
-  const auto parsed = holder::core::parse_card_file(raw);
+  const auto plain = decode_card_blob(project, raw);
+  const auto parsed = holder::core::parse_card_file(plain);
   const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
 
   card.parent_card_id = next_parent;
   card.sort_key = next_sort;
   card.updated_at = updated_at;
-  const auto updated_raw = holder::core::render_card_front_matter(card, links) + parsed.body;
+  const auto updated_plain = holder::core::render_card_front_matter(card, links) + parsed.body;
+  const auto updated_raw = (project.privacy_mode == "encrypted_git")
+                               ? holder::privacy::encrypt_project_blob(project.project_id,
+                                                                        project.project_key_id.value(),
+                                                                        updated_plain)
+                               : updated_plain;
 
   if (updated_raw == raw) {
     return;
   }
 
   git_->write_file(card.rel_path, updated_raw);
+  git_->stage_path(card.rel_path);
+  assert_project_staged_blobs_safe(project, {card.rel_path});
   card_repo_.move(card_id, next_parent, next_sort, updated_at);
   if (fts_) {
     fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
   }
-  git_->stage_path(card.rel_path);
   git_->commit("Move card " + card.title);
 }
 
@@ -215,7 +264,7 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   }
 
   auto card = card_opt.value();
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -227,19 +276,26 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   }
 
   const auto raw = fs_->read_file(full_path);
-  const auto parsed = holder::core::parse_card_file(raw);
+  const auto plain = decode_card_blob(project, raw);
+  const auto parsed = holder::core::parse_card_file(plain);
   const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
 
   card.updated_at = updated_at;
-  const auto updated_raw = holder::core::render_card_front_matter(card, links) + parsed.body;
+  const auto updated_plain = holder::core::render_card_front_matter(card, links) + parsed.body;
+  const auto updated_raw = (project.privacy_mode == "encrypted_git")
+                               ? holder::privacy::encrypt_project_blob(project.project_id,
+                                                                        project.project_key_id.value(),
+                                                                        updated_plain)
+                               : updated_plain;
 
   if (updated_raw == raw) {
     return;
   }
 
   git_->write_file(card.rel_path, updated_raw);
-  card_repo_.touch_updated(card_id, updated_at);
   git_->stage_path(card.rel_path);
+  assert_project_staged_blobs_safe(project, {card.rel_path});
+  card_repo_.touch_updated(card_id, updated_at);
   git_->commit("Update links for " + card.title);
 }
 
@@ -253,7 +309,7 @@ void CardStore::trash(const std::string& card_id, long long deleted_at) {
     throw std::runtime_error("card already deleted");
   }
 
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -288,7 +344,7 @@ void CardStore::restore(const std::string& card_id, long long updated_at) {
     throw std::runtime_error("card is not deleted");
   }
 
-  require_project(card.project_id);
+  const auto project = require_project(card.project_id);
   const std::string expected = holder::core::card_rel_path(card.card_id);
   if (card.rel_path != expected) {
     throw std::runtime_error("card rel_path does not match card_id");
@@ -304,14 +360,16 @@ void CardStore::restore(const std::string& card_id, long long updated_at) {
   fs_->create_directories(dst_path.parent_path());
   fs_->rename(src_path, dst_path);
 
+  git_->stage_path(card.rel_path);
+  assert_project_staged_blobs_safe(project, {card.rel_path});
+
   card_repo_.restore(card_id, updated_at);
   if (fts_) {
     const auto raw = fs_->read_file(dst_path);
-    const auto parsed = holder::core::parse_card_file(raw);
+    const auto parsed = holder::core::parse_card_file(decode_card_blob(project, raw));
     fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
   }
   git_->remove_path(trash_rel);
-  git_->stage_path(card.rel_path);
   git_->commit("Restore card " + card.title);
 }
 
@@ -360,7 +418,9 @@ std::optional<std::string> CardStore::get_content(const holder::model::Card& car
     return std::nullopt;
   }
 
-  return holder::core::parse_card_file(fs_->read_file(full_path)).body;
+  const auto raw = fs_->read_file(full_path);
+  const auto plain = decode_card_blob(project_opt.value(), raw);
+  return holder::core::parse_card_file(plain).body;
 }
 
 } // namespace holder::store

@@ -49,6 +49,8 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
 
   if (resource == "projects") {
     if (handle_project_routes(path, req, res, db, git_ops, uuid_v4, param)) return {};
+  } else if (resource == "recovery-token") {
+    if (handle_project_routes(path, req, res, db, git_ops, uuid_v4, param)) return {};
   } else if (resource == "rebuild") {
     if (handle_rebuild_routes(path, req, res, db, fts)) return {};
   } else if (resource == "search") {

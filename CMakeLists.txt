@@ -6,6 +6,7 @@ project(card_server VERSION 0.1.0 LANGUAGES CXX)
 # ----------------------------
 option(CARD_SERVER_ENABLE_MD4C "Enable markdown parsing via md4c" ON)
 option(CARD_SERVER_ENABLE_LIBGIT2 "Enable git support via libgit2" ON)
+option(HOLDER_ENABLE_ENCRYPTED_GIT "Enable encrypted_git feature paths" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,6 +42,7 @@ find_package(XdgUtils CONFIG REQUIRED COMPONENTS BaseDir)
 
 # sqlite3 via pkg-config (robust on Linux)
 pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
+pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
 
 # libgit2 via pkg-config
 if(CARD_SERVER_ENABLE_LIBGIT2)
@@ -51,6 +53,9 @@ endif()
 if(CARD_SERVER_ENABLE_MD4C)
   pkg_check_modules(MD4C REQUIRED IMPORTED_TARGET md4c)
 endif()
+
+# optional keyring integration (apt: libsecret-1-dev)
+pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
 
 # Holder depends on caste for hardware capability classification.
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/caste/CMakeLists.txt")
@@ -112,6 +117,7 @@ add_executable(holder
   src/api/routes/SearchRoutes.cpp
   src/api/routes/TrashRoutes.cpp
   src/api/routes/StaticRoutes.cpp
+  src/api/support/Health.cpp
   src/api/support/PathDiscovery.cpp
   src/api/support/CloudConfig.cpp
   src/api/support/CloudClient.cpp
@@ -138,6 +144,8 @@ add_executable(holder
   src/store/Migrations.cpp
   src/git/GitRepo.cpp
   src/git/GitOps.cpp
+  src/privacy/ProjectPrivacy.cpp
+  src/privacy/CryptoService.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp
@@ -153,6 +161,13 @@ target_include_directories(holder PRIVATE
 target_compile_definitions(holder PRIVATE
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
 )
+if(HOLDER_ENABLE_ENCRYPTED_GIT)
+  target_compile_definitions(holder PRIVATE
+    HOLDER_ENABLE_ENCRYPTED_GIT=1
+  )
+else()
+  target_compile_definitions(holder PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
+endif()
 
 # Warnings (GNU/Clang)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -170,6 +185,7 @@ target_link_libraries(holder PRIVATE
   OpenSSL::SSL
   OpenSSL::Crypto
   PkgConfig::SQLITE3
+  PkgConfig::SODIUM
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   XdgUtils::BaseDir
@@ -190,6 +206,13 @@ if(CARD_SERVER_ENABLE_MD4C)
   target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=1)
 else()
   target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=0)
+endif()
+
+if(LIBSECRET_FOUND)
+  target_link_libraries(holder PRIVATE PkgConfig::LIBSECRET)
+  target_compile_definitions(holder PRIVATE HOLDER_HAVE_LIBSECRET=1)
+else()
+  target_compile_definitions(holder PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
 
 # ----------------------------

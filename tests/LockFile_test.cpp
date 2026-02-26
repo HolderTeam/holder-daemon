@@ -72,6 +72,19 @@ TEST_CASE("LockFile acquires and releases", "[lock]") {
   lock2.release();
 }
 
+TEST_CASE("LockFile creates backing file on first acquire", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+  REQUIRE_FALSE(std::filesystem::exists(lock_path));
+
+  holder::core::LockFile lock(lock_path);
+  REQUIRE(lock.try_acquire());
+  REQUIRE(std::filesystem::exists(lock_path));
+
+  lock.release();
+  REQUIRE(std::filesystem::exists(lock_path));
+}
+
 TEST_CASE("LockFile blocks other process while held", "[lock]") {
   const auto dir = make_temp_dir();
   const auto lock_path = dir / "holder.lock";
@@ -131,4 +144,30 @@ TEST_CASE("LockFile rejects parallel attempts while held", "[lock]") {
   }
 
   lock.release();
+}
+
+TEST_CASE("LockFile destructor releases lock for next process", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+  const auto helper = std::filesystem::path(LOCK_HELPER_PATH);
+
+  {
+    holder::core::LockFile lock(lock_path);
+    REQUIRE(lock.try_acquire());
+    const int rc = run_helper(helper, lock_path);
+    REQUIRE(rc == 1);
+  }
+
+  const int rc_after = run_helper(helper, lock_path);
+  REQUIRE(rc_after == 0);
+}
+
+TEST_CASE("LockFile release is safe when never acquired", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+
+  holder::core::LockFile lock(lock_path);
+  REQUIRE_FALSE(lock.is_locked());
+  REQUIRE_NOTHROW(lock.release());
+  REQUIRE_FALSE(lock.is_locked());
 }

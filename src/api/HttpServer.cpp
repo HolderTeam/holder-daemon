@@ -1,13 +1,12 @@
 #include "api/HttpServer.h"
 
 #include "api/Listener.h"
-#include "core/ServerInfo.h"
+#include "api/support/Health.h"
 
 #include <boost/beast/http.hpp>
 
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -39,27 +38,9 @@ HttpServer::HttpServer(std::string bind,
       runner_(runner) {
   router_.add(http::verb::get, "/health",
               [this](const Router::Request&, Router::Response& res) {
-                bool db_ok = true;
-                try {
-                  db_.exec("SELECT 1;");
-                } catch (...) {
-                  db_ok = false;
-                }
-
-                const auto uptime_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                           std::chrono::steady_clock::now() - started_at_)
-                                           .count();
-
-                nlohmann::json data;
-                data["db_ok"] = db_ok;
-                data["uptime_ms"] = uptime_ms;
-                data["api_version"] = "0.1";
-                data["server_version"] = CARD_SERVER_VERSION;
-                data["pid"] = holder::core::current_pid();
-
                 nlohmann::json payload;
                 payload["ok"] = true;
-                payload["data"] = data;
+                payload["data"] = support::build_health_data(db_, started_at_);
 
                 http::response<http::string_body> response{http::status::ok, 11};
                 response.set(http::field::content_type, "application/json");

@@ -8,17 +8,28 @@
 #include "core/Signal.h"
 #include "api/HttpServer.h"
 #include "store/CardStore.h"
+#include "store/ProjectRepo.h"
+#include "model/Card.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
 #include "llm/LocalModelRunner.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
+#include "core/ProjectPaths.h"
+#include "privacy/ProjectPrivacy.h"
+#include "git/GitOps.h"
 
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <optional>
 #include <filesystem>
 #include <chrono>
 #include <memory>
 #include <exception>
 #include <string>
+#include <fstream>
+#include <sstream>
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -32,6 +43,96 @@ static std::filesystem::path find_schema_sql() {
   if (fs::exists(p2)) return p2;
 
   throw std::runtime_error("Cannot find schema/schema.sql from current directory.");
+}
+
+static std::string generate_uuid_v4() {
+  boost::uuids::random_generator gen;
+  return boost::uuids::to_string(gen());
+}
+
+static std::filesystem::path find_welcome_markdown() {
+  namespace fs = std::filesystem;
+
+  fs::path p1 = fs::current_path() / "config" / "WELCOME.md";
+  if (fs::exists(p1)) return p1;
+
+  fs::path p2 = fs::current_path().parent_path() / "config" / "WELCOME.md";
+  if (fs::exists(p2)) return p2;
+
+  throw std::runtime_error("Cannot find config/WELCOME.md from current directory.");
+}
+
+static std::string load_welcome_markdown_body() {
+  std::ifstream in(find_welcome_markdown());
+  if (!in) {
+    throw std::runtime_error("Failed to open config/WELCOME.md");
+  }
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+static std::string derive_title_from_markdown_first_line(const std::string& body,
+                                                         const std::string& fallback) {
+  std::string line;
+  for (char ch : body) {
+    if (ch == '\n') break;
+    line.push_back(ch);
+  }
+  const auto non_space = line.find_first_not_of(" \t\r");
+  if (non_space == std::string::npos) {
+    return fallback;
+  }
+  auto first = line.substr(non_space);
+  if (!first.empty() && first[0] == '#') {
+    const auto title_start = first.find_first_not_of("# \t");
+    if (title_start != std::string::npos) {
+      return first.substr(title_start);
+    }
+  }
+  return fallback;
+}
+
+static std::optional<holder::model::Project> ensure_default_home_project(holder::store::Db& db) {
+  holder::store::ProjectRepo repo(db);
+  auto projects = repo.list();
+  if (!projects.empty()) {
+    return std::nullopt;
+  }
+
+  holder::model::Project home;
+  home.project_id = generate_uuid_v4();
+  home.name = "Home";
+  home.privacy_mode = "encrypted_git";
+  home.project_key_id.reset();
+  home.created_at = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+  home.updated_at = home.created_at;
+
+  const auto base_root = holder::core::default_projects_root();
+  const auto slug = holder::core::slugify(home.name);
+  home.root_path = holder::core::unique_project_root(base_root, slug, projects);
+
+  repo.create(home);
+  spdlog::info("Bootstrapped default Home project ({})", home.project_id);
+  return home;
+}
+
+static void ensure_default_welcome_card(holder::store::CardStore& card_store,
+                                        const holder::model::Project& home) {
+  const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+  const std::string content = load_welcome_markdown_body();
+  holder::model::Card welcome;
+  welcome.card_id = generate_uuid_v4();
+  welcome.project_id = home.project_id;
+  welcome.title = derive_title_from_markdown_first_line(content, "Welcome");
+  welcome.created_at = now;
+  welcome.updated_at = now;
+  card_store.create(welcome, content);
+  spdlog::info("Bootstrapped welcome card ({}) in Home project", welcome.card_id);
 }
 
 int main(int argc, char* argv[]) {
@@ -55,30 +156,6 @@ int main(int argc, char* argv[]) {
   spdlog::info("data_dir:   {}", paths.data_dir.string());
   spdlog::info("db_path:    {}", paths.db_path().string());
   spdlog::info("log_path:   {}", log_path.string());
-
-  holder::core::SignalHandler signals;
-
-  holder::core::LockFile lock(paths.lock_path());
-  if (!lock.try_acquire()) {
-    spdlog::error("Another holder instance appears to be running (lock busy: {}).",
-                  paths.lock_path().string());
-    return 2;
-  }
-
-  holder::store::Db db;
-  db.open(paths.db_path());
-
-  const auto schema_path = find_schema_sql();
-  holder::store::Migrations::ensure_schema(db, schema_path);
-  holder::store::Migrations::ensure_schema_version(db, 1);
-
-  holder::core::ServerInfo info;
-  info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
-                        .count();
-  info.api_version = "0.1";
-  info.server_version = CARD_SERVER_VERSION;
-  info.auth_token = holder::core::generate_auth_token();
 
   std::string bind = "127.0.0.1";
   unsigned short port = 11499;
@@ -110,9 +187,48 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  holder::core::SignalHandler signals;
+
+  holder::core::LockFile lock(paths.lock_path());
+  if (!lock.try_acquire()) {
+    spdlog::error("Another holder instance appears to be running (lock busy: {}).",
+                  paths.lock_path().string());
+    return 2;
+  }
+
+  holder::store::Db db;
+  db.open(paths.db_path());
+
+  const auto schema_path = find_schema_sql();
+  holder::store::Migrations::ensure_schema(db, schema_path);
+  holder::store::Migrations::ensure_schema_version(db, 1);
+  const auto bootstrapped_home = ensure_default_home_project(db);
+
+  holder::core::ServerInfo info;
+  info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+  info.api_version = "0.1";
+  info.server_version = CARD_SERVER_VERSION;
+  info.auth_token = holder::core::generate_auth_token();
+
   spdlog::info("holder boot complete.");
 
   holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+  if (bootstrapped_home.has_value()) {
+    holder::store::ProjectRepo repo(db);
+    holder::git::RealGitOps git;
+    holder::privacy::ensure_encrypted_project_ready(
+        git,
+        repo,
+        bootstrapped_home->project_id,
+        bootstrapped_home->root_path,
+        bootstrapped_home->project_key_id,
+        bootstrapped_home->updated_at,
+        generate_uuid_v4);
+    ensure_default_welcome_card(card_store, bootstrapped_home.value());
+  }
   if (reindex_only) {
     spdlog::info("Running full reindex...");
     holder::index::Reindexer reindexer(db);
@@ -121,7 +237,6 @@ int main(int argc, char* argv[]) {
     spdlog::shutdown();
     return 0;
   }
-  holder::store::CardStore card_store(db, &fts);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
   holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner);

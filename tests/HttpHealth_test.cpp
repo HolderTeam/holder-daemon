@@ -28,6 +28,9 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["db_ok"] == true);
   REQUIRE(payload["data"]["api_version"] == "0.1");
+  REQUIRE(payload["data"]["privacy"].is_object());
+  REQUIRE(payload["data"]["privacy"]["backend"] == "libsodium_xchacha20poly1305_ietf");
+  REQUIRE(payload["data"]["privacy"]["project_mode_supported"] == true);
 
   std::raise(SIGTERM);
   server_thread.join();
@@ -58,6 +61,9 @@ TEST_CASE("HTTP /health reports db_ok false when DB is closed", "[http]") {
   const auto payload = get_health(bound.bind, bound.port, token);
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["db_ok"] == false);
+  REQUIRE(payload["data"]["privacy"].is_object());
+  REQUIRE(payload["data"]["privacy"]["backend"] == "libsodium_xchacha20poly1305_ietf");
+  REQUIRE(payload["data"]["privacy"]["project_mode_supported"] == true);
 
   std::raise(SIGTERM);
   server_thread.join();

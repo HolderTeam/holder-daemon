@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <sstream>
 
 namespace {
 
@@ -50,4 +51,27 @@ TEST_CASE("GitRepo stage_path throws on missing file", "[git]") {
   repo.open_or_init(dir);
 
   REQUIRE_THROWS(repo.stage_path("missing.txt"));
+}
+
+TEST_CASE("GitRepo pull_remote_ff_only pulls from local remote", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "hello");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.set_remote("origin", remote_dir.string());
+  local_repo.pull_remote_ff_only("origin");
+
+  std::ifstream in(local_dir / "cards" / "a.md", std::ios::binary);
+  REQUIRE(in.is_open());
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  REQUIRE(buffer.str() == "hello");
 }

@@ -3,6 +3,7 @@
 #include "api/support/Time.h"
 
 #include "core/CardPaths.h"
+#include "privacy/PrivacyError.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
@@ -124,6 +125,17 @@ bool validate_link_target(holder::store::Db& db,
 
   error = "Unsupported to_type.";
   return false;
+}
+
+http::response<http::string_body> privacy_error_response(
+    const holder::privacy::PrivacyError& ex) {
+  http::status status = http::status::bad_request;
+  if (ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable) {
+    status = http::status::service_unavailable;
+  }
+  return support::error_response(status,
+                                 holder::privacy::privacy_error_code_name(ex.code()),
+                                 ex.what());
 }
 
 } // namespace
@@ -272,6 +284,8 @@ bool handle_card_routes(const std::string& path,
           payload["data"] = data;
           res = support::json_response(http::status::created, payload);
         }
+      } catch (const holder::privacy::PrivacyError& ex) {
+        res = privacy_error_response(ex);
       } catch (const std::exception& ex) {
         const std::string msg = ex.what();
         if (msg.rfind("conflict:", 0) == 0) {
@@ -414,6 +428,8 @@ bool handle_card_routes(const std::string& path,
                                    "Method not allowed.");
             }
           }
+        } catch (const holder::privacy::PrivacyError& ex) {
+          res = privacy_error_response(ex);
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
@@ -454,6 +470,8 @@ bool handle_card_routes(const std::string& path,
             payload["data"] = data;
             res = support::json_response(http::status::ok, payload);
           }
+        } catch (const holder::privacy::PrivacyError& ex) {
+          res = privacy_error_response(ex);
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
@@ -470,6 +488,8 @@ bool handle_card_routes(const std::string& path,
             payload["ok"] = true;
             payload["data"] = {{"card_id", card_id}};
             res = support::json_response(http::status::ok, payload);
+          } catch (const holder::privacy::PrivacyError& ex) {
+            res = privacy_error_response(ex);
           } catch (const std::exception& ex) {
             res = support::error_response(http::status::bad_request, "bad_request", ex.what());
           }
@@ -573,6 +593,8 @@ bool handle_card_routes(const std::string& path,
             payload["data"] = {{"card_id", card_id}};
             res = support::json_response(http::status::ok, payload);
           }
+        } catch (const holder::privacy::PrivacyError& ex) {
+          res = privacy_error_response(ex);
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
@@ -584,6 +606,8 @@ bool handle_card_routes(const std::string& path,
           payload["ok"] = true;
           payload["data"] = {{"card_id", card_id}};
           res = support::json_response(http::status::ok, payload);
+        } catch (const holder::privacy::PrivacyError& ex) {
+          res = privacy_error_response(ex);
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }

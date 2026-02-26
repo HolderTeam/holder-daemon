@@ -1,7 +1,43 @@
 #if __has_include(<catch2/catch_session.hpp>)
 #include <catch2/catch_session.hpp>
 
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+
+#ifndef _WIN32
+#include <unistd.h>
+#else
+#include <windows.h>
+#endif
+
+namespace {
+
+void ensure_test_keystore_env() {
+  if (std::getenv("HOLDER_TEST_KEYSTORE_DIR")) {
+    return;
+  }
+
+  std::filesystem::path dir = std::filesystem::temp_directory_path() / "holder_test_keystore";
+#ifdef _WIN32
+  const int pid = static_cast<int>(GetCurrentProcessId());
+#else
+  const int pid = static_cast<int>(::getpid());
+#endif
+  dir /= std::to_string(pid);
+  std::filesystem::create_directories(dir);
+
+#ifdef _WIN32
+  _putenv_s("HOLDER_TEST_KEYSTORE_DIR", dir.string().c_str());
+#else
+  setenv("HOLDER_TEST_KEYSTORE_DIR", dir.string().c_str(), 1);
+#endif
+}
+
+} // namespace
+
 int main(int argc, char* argv[]) {
+  ensure_test_keystore_env();
   return Catch::Session().run(argc, argv);
 }
 #else

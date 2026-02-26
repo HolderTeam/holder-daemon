@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS projects (
   root_path   TEXT NOT NULL,             -- absolute path on disk
   git_remote_url TEXT NULL,              -- optional git remote (origin)
   git_provider   TEXT NULL,              -- optional provider label
+  privacy_mode   TEXT NOT NULL DEFAULT 'encrypted_git', -- 'encrypted_git' | 'plain'
+  project_key_id TEXT NULL,              -- keyring identifier (no secret bytes in DB)
   created_at  INTEGER NOT NULL,          -- unix epoch seconds (or ms, but be consistent)
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  CHECK(privacy_mode IN ('encrypted_git', 'plain'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_updated

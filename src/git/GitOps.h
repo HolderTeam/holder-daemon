@@ -19,6 +19,7 @@ public:
   virtual void commit(const std::string& message) = 0;
   virtual void set_remote(const std::string& name, const std::string& url) = 0;
   virtual void remove_remote(const std::string& name) = 0;
+  virtual void pull_remote_ff_only(const std::string& name) = 0;
   virtual std::filesystem::path repo_dir() const = 0;
 };
 
@@ -32,6 +33,7 @@ public:
   void commit(const std::string& message) override;
   void set_remote(const std::string& name, const std::string& url) override;
   void remove_remote(const std::string& name) override;
+  void pull_remote_ff_only(const std::string& name) override;
   std::filesystem::path repo_dir() const override;
 
 private:

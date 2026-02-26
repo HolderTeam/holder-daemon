@@ -4,11 +4,14 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "http_test_helpers.h"
 #include "core/CardPaths.h"
 #include "core/CardFrontMatter.h"
 #include "git/GitRepo.h"
+#include "git/GitOps.h"
 #include "model/Card.h"
 #include "model/Project.h"
+#include "privacy/ProjectPrivacy.h"
 #include "store/CardRepo.h"
 #include "store/CardStore.h"
 #include "store/Db.h"
@@ -20,7 +23,11 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -62,6 +69,8 @@ void create_project(holder::store::Db& db,
   project.project_id = project_id;
   project.name = "Project";
   project.root_path = root_path;
+  project.privacy_mode = "plain";
+  project.project_key_id.reset();
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
@@ -72,6 +81,19 @@ std::string read_file(const std::filesystem::path& path) {
   REQUIRE(in.is_open());
   std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   return data;
+}
+
+std::string make_large_body(std::size_t bytes) {
+  const std::string chunk = "TOP_SECRET_MARKER_12345 lorem ipsum dolor sit amet, consectetur adipiscing elit.\n";
+  std::string out;
+  out.reserve(bytes);
+  while (out.size() + chunk.size() <= bytes) {
+    out += chunk;
+  }
+  if (out.size() < bytes) {
+    out.append(bytes - out.size(), 'x');
+  }
+  return out;
 }
 
 int count_commits(const std::filesystem::path& repo_dir) {
@@ -98,6 +120,32 @@ int count_commits(const std::filesystem::path& repo_dir) {
   git_repository_free(repo);
   return count;
 }
+
+class PlaintextForcingGitOps final : public holder::git::GitOps {
+public:
+  void open_or_init(const std::filesystem::path& repo_dir) override { real_.open_or_init(repo_dir); }
+  void write_file(const std::filesystem::path& relative_path,
+                  const std::string&) override {
+    // Intentionally wrong: stage plaintext regardless of requested content.
+    real_.write_file(relative_path, "# forced-plaintext\n");
+  }
+  void stage_path(const std::filesystem::path& relative_path) override {
+    real_.stage_path(relative_path);
+  }
+  void remove_path(const std::filesystem::path& relative_path) override {
+    real_.remove_path(relative_path);
+  }
+  void commit(const std::string& message) override { real_.commit(message); }
+  void set_remote(const std::string& name, const std::string& url) override {
+    real_.set_remote(name, url);
+  }
+  void remove_remote(const std::string& name) override { real_.remove_remote(name); }
+  void pull_remote_ff_only(const std::string& name) override { real_.pull_remote_ff_only(name); }
+  std::filesystem::path repo_dir() const override { return real_.repo_dir(); }
+
+private:
+  holder::git::RealGitOps real_;
+};
 
 } // namespace
 
@@ -248,6 +296,262 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   const int after = count_commits(project_root);
 
   REQUIRE(after == before + 1);
+}
+
+TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+
+  holder::store::ProjectRepo project_repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-enc";
+  project.name = "Encrypted";
+  project.root_path = project_root.string();
+  project.privacy_mode = "encrypted_git";
+  project.project_key_id.reset();
+  project.created_at = 1;
+  project.updated_at = 1;
+  project_repo.create(project);
+
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::git::RealGitOps bootstrap_git;
+  holder::privacy::ensure_encrypted_project_ready(
+      bootstrap_git,
+      project_repo,
+      project.project_id,
+      project.root_path,
+      std::nullopt,
+      2,
+      []() { return std::string("key-enc"); });
+
+  holder::index::FtsIndexer fts(db);
+  PlaintextForcingGitOps broken_git;
+  holder::store::CardStore store(db, &fts, nullptr, &broken_git);
+
+  holder::model::Card card;
+  card.card_id = "abcd1111";
+  card.project_id = "proj-enc";
+  card.title = "Should fail";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  REQUIRE_THROWS_AS(store.create(card, "secret"),
+                    holder::privacy::PrivacyError);
+}
+
+TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+
+  holder::store::ProjectRepo project_repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-large";
+  project.name = "Encrypted Large";
+  project.root_path = project_root.string();
+  project.privacy_mode = "encrypted_git";
+  project.project_key_id.reset();
+  project.created_at = 1;
+  project.updated_at = 1;
+  project_repo.create(project);
+
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::git::RealGitOps bootstrap_git;
+  holder::privacy::ensure_encrypted_project_ready(
+      bootstrap_git,
+      project_repo,
+      project.project_id,
+      project.root_path,
+      std::nullopt,
+      2,
+      []() { return std::string("key-large"); });
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card card;
+  card.card_id = "lgcd0001";
+  card.project_id = "proj-large";
+  card.title = "Large";
+  card.created_at = 10;
+  card.updated_at = 10;
+
+  const auto body = make_large_body(5 * 1024 * 1024);
+  store.create(card, body);
+
+  const auto saved = store.get(card.card_id);
+  REQUIRE(saved.has_value());
+  const auto loaded = store.get_content(saved.value());
+  REQUIRE(loaded.has_value());
+  REQUIRE(loaded.value().size() == body.size());
+  REQUIRE(loaded.value() == body);
+
+  const auto full_path = project_root / holder::core::card_rel_path(card.card_id);
+  const auto raw = read_file(full_path);
+  REQUIRE(raw.rfind("HolderPriv1\n", 0) == 0);
+  REQUIRE(raw.find("TOP_SECRET_MARKER_12345") == std::string::npos);
+}
+
+TEST_CASE("CardStore encrypted project rejects tampered envelope", "[cardstore]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+
+  holder::store::ProjectRepo project_repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-tamper";
+  project.name = "Encrypted Tamper";
+  project.root_path = project_root.string();
+  project.privacy_mode = "encrypted_git";
+  project.project_key_id.reset();
+  project.created_at = 1;
+  project.updated_at = 1;
+  project_repo.create(project);
+
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::git::RealGitOps bootstrap_git;
+  holder::privacy::ensure_encrypted_project_ready(
+      bootstrap_git,
+      project_repo,
+      project.project_id,
+      project.root_path,
+      std::nullopt,
+      2,
+      []() { return std::string("key-tamper"); });
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  holder::model::Card card;
+  card.card_id = "tmpr0001";
+  card.project_id = "proj-tamper";
+  card.title = "Tamper";
+  card.created_at = 10;
+  card.updated_at = 10;
+  store.create(card, "original body");
+
+  const auto full_path = project_root / holder::core::card_rel_path(card.card_id);
+  auto raw = read_file(full_path);
+  REQUIRE(raw.size() > 32);
+  raw[raw.size() - 1] = (raw.back() == 'A') ? 'B' : 'A';
+  {
+    std::ofstream out(full_path, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+    out << raw;
+  }
+
+  const auto saved = store.get(card.card_id);
+  REQUIRE(saved.has_value());
+  REQUIRE_THROWS_AS((void)store.get_content(saved.value()), holder::privacy::PrivacyError);
+}
+
+TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
+  struct PerfRow {
+    std::size_t bytes = 0;
+    double create_ms = 0.0;
+    double update_ms = 0.0;
+    double read_ms = 0.0;
+  };
+
+  const std::vector<std::size_t> sizes = {
+      10 * 1024,
+      100 * 1024,
+      1024 * 1024,
+      5 * 1024 * 1024,
+  };
+  std::vector<PerfRow> rows;
+  rows.reserve(sizes.size());
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::store::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+
+  holder::store::ProjectRepo project_repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-perf";
+  project.name = "Encrypted Perf";
+  project.root_path = project_root.string();
+  project.privacy_mode = "encrypted_git";
+  project.project_key_id.reset();
+  project.created_at = 1;
+  project.updated_at = 1;
+  project_repo.create(project);
+
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::git::RealGitOps bootstrap_git;
+  holder::privacy::ensure_encrypted_project_ready(
+      bootstrap_git,
+      project_repo,
+      project.project_id,
+      project.root_path,
+      std::nullopt,
+      2,
+      []() { return std::string("key-perf"); });
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore store(db, &fts);
+
+  for (std::size_t i = 0; i < sizes.size(); ++i) {
+    const auto bytes = sizes[i];
+    const auto body = make_large_body(bytes);
+    auto body2 = body;
+    body2.push_back('\n');
+    body2 += "updated";
+
+    holder::model::Card card;
+    card.card_id = "pf" + std::to_string(1000000 + i);
+    card.project_id = "proj-perf";
+    card.title = "Perf";
+    card.created_at = 10 + static_cast<long long>(i);
+    card.updated_at = 10 + static_cast<long long>(i);
+
+    const auto t0 = std::chrono::steady_clock::now();
+    store.create(card, body);
+    const auto t1 = std::chrono::steady_clock::now();
+    store.update_content(card.card_id, body2, std::nullopt, 20 + static_cast<long long>(i));
+    const auto t2 = std::chrono::steady_clock::now();
+    const auto saved = store.get(card.card_id);
+    REQUIRE(saved.has_value());
+    const auto loaded = store.get_content(saved.value());
+    const auto t3 = std::chrono::steady_clock::now();
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded.value() == body2);
+
+    PerfRow row;
+    row.bytes = bytes;
+    row.create_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    row.update_ms = std::chrono::duration<double, std::milli>(t2 - t1).count();
+    row.read_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+    rows.push_back(row);
+  }
+
+  std::cout << "\nprivacy-card-perf\n";
+  std::cout << std::left << std::setw(10) << "size_kb"
+            << std::right << std::setw(12) << "create_ms"
+            << std::setw(12) << "update_ms"
+            << std::setw(10) << "read_ms" << "\n";
+  for (const auto& row : rows) {
+    std::cout << std::left << std::setw(10) << (row.bytes / 1024)
+              << std::right << std::setw(12) << std::fixed << std::setprecision(2) << row.create_ms
+              << std::setw(12) << row.update_ms
+              << std::setw(10) << row.read_ms << "\n";
+  }
 }
 
 TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {

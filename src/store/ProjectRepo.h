@@ -25,6 +25,12 @@ public:
   void update_git_provider(const std::string& project_id,
                            const std::optional<std::string>& git_provider,
                            long long updated_at);
+  void update_privacy_mode(const std::string& project_id,
+                           const std::string& privacy_mode,
+                           long long updated_at);
+  void update_project_key_id(const std::string& project_id,
+                             const std::optional<std::string>& project_key_id,
+                             long long updated_at);
   void touch_updated(const std::string& project_id, long long updated_at);
   void remove(const std::string& project_id);
 

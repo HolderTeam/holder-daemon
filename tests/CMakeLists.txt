@@ -38,6 +38,8 @@ add_executable(lockfile_tests
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
+  HttpProjectRecoveryToken_test.cpp
+  HttpProjectEncryptionCheck_test.cpp
   HttpDocs_test.cpp
   HttpProjectGitFailure_test.cpp
   HttpBadJson_test.cpp
@@ -56,9 +58,11 @@ add_executable(lockfile_tests
   HttpSearchDisabled_test.cpp
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
+  PrivacyCryptoService_test.cpp
   Router_test.cpp
   Cli_test.cpp
   ProjectRepo_test.cpp
+  ProjectPrivacy_test.cpp
   CardRepo_test.cpp
   LinkRepo_test.cpp
   ResourceRepo_test.cpp
@@ -126,6 +130,7 @@ add_executable(lockfile_tests
   ../src/api/routes/SearchRoutes.cpp
   ../src/api/routes/TrashRoutes.cpp
   ../src/api/routes/StaticRoutes.cpp
+  ../src/api/support/Health.cpp
   ../src/api/support/PathDiscovery.cpp
   ../src/api/support/CloudConfig.cpp
   ../src/api/support/CloudClient.cpp
@@ -137,6 +142,8 @@ add_executable(lockfile_tests
   ../src/api/Router.cpp
   ../src/git/GitRepo.cpp
   ../src/git/GitOps.cpp
+  ../src/privacy/ProjectPrivacy.cpp
+  ../src/privacy/CryptoService.cpp
   ../src/store/ProjectRepo.cpp
   ../src/store/CardRepo.cpp
   ../src/store/LinkRepo.cpp
@@ -171,12 +178,21 @@ target_compile_definitions(lockfile_tests PRIVATE
   HOLDER_BIN_PATH="$<TARGET_FILE:holder>"
 )
 
+if(HOLDER_ENABLE_ENCRYPTED_GIT)
+  target_compile_definitions(lockfile_tests PRIVATE
+    HOLDER_ENABLE_ENCRYPTED_GIT=1
+  )
+else()
+  target_compile_definitions(lockfile_tests PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
+endif()
+
 target_link_libraries(lockfile_tests PRIVATE
   Boost::system
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
   PkgConfig::SQLITE3
+  PkgConfig::SODIUM
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   XdgUtils::BaseDir
@@ -186,6 +202,16 @@ target_link_libraries(lockfile_tests PRIVATE
 
 if(TARGET PkgConfig::LIBGIT2)
   target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBGIT2)
+  target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
+else()
+  target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
+endif()
+
+if(TARGET PkgConfig::LIBSECRET)
+  target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBSECRET)
+  target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=1)
+else()
+  target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
 
 if(COMMAND catch_discover_tests)

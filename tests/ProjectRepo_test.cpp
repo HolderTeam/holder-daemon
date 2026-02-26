@@ -71,6 +71,8 @@ TEST_CASE("ProjectRepo CRUD", "[projectrepo]") {
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->name == "Alpha");
   REQUIRE(fetched->root_path == "/tmp/alpha");
+  REQUIRE(fetched->privacy_mode == "encrypted_git");
+  REQUIRE_FALSE(fetched->project_key_id.has_value());
 
   auto list = repo.list();
   REQUIRE(list.size() == 1);
@@ -104,10 +106,23 @@ TEST_CASE("ProjectRepo CRUD", "[projectrepo]") {
   REQUIRE_FALSE(cleared_git->git_remote_url.has_value());
   REQUIRE_FALSE(cleared_git->git_provider.has_value());
 
-  repo.touch_updated("proj-1", 40);
+  repo.update_privacy_mode("proj-1", "plain", 39);
+  repo.update_project_key_id("proj-1", std::optional<std::string>("proj-key-1"), 40);
+  const auto updated_privacy = repo.get("proj-1");
+  REQUIRE(updated_privacy.has_value());
+  REQUIRE(updated_privacy->privacy_mode == "plain");
+  REQUIRE(updated_privacy->project_key_id.has_value());
+  REQUIRE(updated_privacy->project_key_id.value() == "proj-key-1");
+
+  repo.update_project_key_id("proj-1", std::nullopt, 41);
+  const auto cleared_key = repo.get("proj-1");
+  REQUIRE(cleared_key.has_value());
+  REQUIRE_FALSE(cleared_key->project_key_id.has_value());
+
+  repo.touch_updated("proj-1", 42);
   const auto touched = repo.get("proj-1");
   REQUIRE(touched.has_value());
-  REQUIRE(touched->updated_at == 40);
+  REQUIRE(touched->updated_at == 42);
 
   repo.remove("proj-1");
   REQUIRE_FALSE(repo.get("proj-1").has_value());

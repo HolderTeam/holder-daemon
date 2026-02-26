@@ -33,6 +33,9 @@ public:
   // Remove a remote if it exists.
   void remove_remote(const std::string& name);
 
+  // Pull from remote into current branch (fast-forward only).
+  void pull_remote_ff_only(const std::string& name);
+
   std::filesystem::path repo_dir() const { return repo_dir_; }
 
 private:

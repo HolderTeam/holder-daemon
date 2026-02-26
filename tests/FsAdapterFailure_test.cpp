@@ -54,6 +54,8 @@ void create_project(holder::store::Db& db,
   project.project_id = project_id;
   project.name = "Project";
   project.root_path = root_path;
+  project.privacy_mode = "plain";
+  project.project_key_id.reset();
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);

@@ -51,8 +51,14 @@ holder::model::Project read_project(sqlite3_stmt* stmt) {
   } else {
     p.git_provider.reset();
   }
-  p.created_at = sqlite3_column_int64(stmt, 5);
-  p.updated_at = sqlite3_column_int64(stmt, 6);
+  p.privacy_mode = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+  if (sqlite3_column_type(stmt, 6) != SQLITE_NULL) {
+    p.project_key_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+  } else {
+    p.project_key_id.reset();
+  }
+  p.created_at = sqlite3_column_int64(stmt, 7);
+  p.updated_at = sqlite3_column_int64(stmt, 8);
   return p;
 }
 
@@ -63,8 +69,8 @@ ProjectRepo::ProjectRepo(Db& db) : db_(db) {}
 void ProjectRepo::create(const holder::model::Project& project) {
   static constexpr const char* SQL =
       "INSERT INTO projects(project_id, name, root_path, git_remote_url, git_provider, "
-      "created_at, updated_at) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?);";
+      "privacy_mode, project_key_id, created_at, updated_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -76,8 +82,10 @@ void ProjectRepo::create(const holder::model::Project& project) {
   bind_text(stmt, 3, project.root_path);
   bind_text_optional(stmt, 4, project.git_remote_url);
   bind_text_optional(stmt, 5, project.git_provider);
-  bind_int64(stmt, 6, project.created_at);
-  bind_int64(stmt, 7, project.updated_at);
+  bind_text(stmt, 6, project.privacy_mode);
+  bind_text_optional(stmt, 7, project.project_key_id);
+  bind_int64(stmt, 8, project.created_at);
+  bind_int64(stmt, 9, project.updated_at);
 
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -88,7 +96,8 @@ void ProjectRepo::create(const holder::model::Project& project) {
 
 std::optional<holder::model::Project> ProjectRepo::get(const std::string& project_id) const {
   static constexpr const char* SQL =
-      "SELECT project_id, name, root_path, git_remote_url, git_provider, created_at, updated_at "
+      "SELECT project_id, name, root_path, git_remote_url, git_provider, privacy_mode, "
+      "project_key_id, created_at, updated_at "
       "FROM projects WHERE project_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -114,7 +123,8 @@ std::optional<holder::model::Project> ProjectRepo::get(const std::string& projec
 
 std::vector<holder::model::Project> ProjectRepo::list() const {
   static constexpr const char* SQL =
-      "SELECT project_id, name, root_path, git_remote_url, git_provider, created_at, updated_at "
+      "SELECT project_id, name, root_path, git_remote_url, git_provider, privacy_mode, "
+      "project_key_id, created_at, updated_at "
       "FROM projects ORDER BY updated_at DESC;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -223,6 +233,50 @@ void ProjectRepo::update_git_provider(const std::string& project_id,
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
     throw_sqlite(db_.handle(), "update git provider failed");
+  }
+}
+
+void ProjectRepo::update_privacy_mode(const std::string& project_id,
+                                      const std::string& privacy_mode,
+                                      long long updated_at) {
+  static constexpr const char* SQL =
+      "UPDATE projects SET privacy_mode = ?, updated_at = ? WHERE project_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare update privacy mode failed");
+  }
+
+  bind_text(stmt, 1, privacy_mode);
+  bind_int64(stmt, 2, updated_at);
+  bind_text(stmt, 3, project_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "update privacy mode failed");
+  }
+}
+
+void ProjectRepo::update_project_key_id(const std::string& project_id,
+                                        const std::optional<std::string>& project_key_id,
+                                        long long updated_at) {
+  static constexpr const char* SQL =
+      "UPDATE projects SET project_key_id = ?, updated_at = ? WHERE project_id = ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare update project key id failed");
+  }
+
+  bind_text_optional(stmt, 1, project_key_id);
+  bind_int64(stmt, 2, updated_at);
+  bind_text(stmt, 3, project_id);
+
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "update project key id failed");
   }
 }
 

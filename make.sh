@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BUILD_TYPE="${1:-RelWithDebInfo}"
+MODE="${1:-default}"
+BUILD_TYPE="${2:-RelWithDebInfo}"
 CASTE_DIR="third_party/caste"
 CASTE_COMMIT="4bd5d90075f1f2d26127fe0ba27fedd7bd450da9"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
@@ -55,13 +56,30 @@ if [[ ! -f "${CASTE_DIR}/CMakeLists.txt" ]]; then
   exit 1
 fi
 
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
-if command -v nproc >/dev/null 2>&1; then
-  JOBS="$(nproc)"
-else
-  JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-fi
-cmake --build build -- -j "${JOBS}"
-ctest --test-dir build --output-on-failure
+build_all() {
+  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE="${1}"
+  if command -v nproc >/dev/null 2>&1; then
+    JOBS="$(nproc)"
+  else
+    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  fi
+  cmake --build build -- -j "${JOBS}"
+}
 
-./build/holder
+case "${MODE}" in
+  default)
+    build_all "RelWithDebInfo"
+    ctest --test-dir build --output-on-failure
+    ./build/holder
+    ;;
+  perf-privacy)
+    build_all "${BUILD_TYPE}"
+    ./build/tests/lockfile_tests "CardStore encrypted project perf profile (manual)"
+    ;;
+  *)
+    # Backward-compatible: treat first arg as build type in default flow.
+    build_all "${MODE}"
+    ctest --test-dir build --output-on-failure
+    ./build/holder
+    ;;
+esac

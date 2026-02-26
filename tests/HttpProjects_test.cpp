@@ -1,6 +1,7 @@
 #include "http_test_helpers.h"
 
 #include <git2.h>
+#include <fstream>
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -121,6 +122,9 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                                          boost::beast::http::status::ok);
   REQUIRE(fetched["ok"] == true);
   REQUIRE(fetched["data"]["name"] == "Project One");
+  REQUIRE(fetched["data"]["privacy_mode"] == "encrypted_git");
+  REQUIRE(fetched["data"]["project_key_id"].is_string());
+  REQUIRE(fetched["data"]["project_key_id"].get<std::string>().size() > 0);
 
   nlohmann::json update_body = {
       {"name", "Project Uno"},
@@ -147,6 +151,16 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   const auto remote_set = get_remote_url(project_root, "origin");
   REQUIRE(remote_set.has_value());
   REQUIRE(remote_set.value() == "git@github.com:me/demo.git");
+  {
+    const auto meta_path = project_root / ".holder" / "privacy.json";
+    std::ifstream meta(meta_path);
+    REQUIRE(meta.good());
+    const auto body = nlohmann::json::parse(meta);
+    REQUIRE(body["version"] == 1);
+    REQUIRE(body["project_id"] == "proj-1");
+    REQUIRE(body["key_id"] == fetched_after["data"]["project_key_id"]);
+    REQUIRE(body["mode"] == "encrypted_git");
+  }
 
   holder::git::GitRepo git_repo;
   git_repo.open_or_init("/tmp/project");
@@ -173,6 +187,25 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(fetched_cleared["data"]["git_provider"].is_null());
   const auto remote_cleared = get_remote_url(project_root, "origin");
   REQUIRE_FALSE(remote_cleared.has_value());
+
+  nlohmann::json privacy_patch = {
+      {"privacy_mode", "plain"},
+      {"project_key_id", "key-123"},
+      {"updated_at", 22}
+  };
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::patch,
+                    "/projects/proj-1",
+                    privacy_patch,
+                    boost::beast::http::status::ok);
+
+  const auto fetched_privacy = http_json_request(bound.bind, bound.port, token,
+                                                 boost::beast::http::verb::get,
+                                                 "/projects/proj-1",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::ok);
+  REQUIRE(fetched_privacy["data"]["privacy_mode"] == "plain");
+  REQUIRE(fetched_privacy["data"]["project_key_id"] == "key-123");
 
   git_repo.open_or_init("/tmp/project");
   git_repo.remove_remote("origin");
@@ -201,7 +234,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
 
   const auto filtered_by_updated = http_json_request(bound.bind, bound.port, token,
                                                      boost::beast::http::verb::get,
-                                                     "/projects?updated_after=22&updated_before=35",
+                                                     "/projects?updated_after=23&updated_before=35",
                                                      nlohmann::json::object(),
                                                      boost::beast::http::status::ok);
   REQUIRE(filtered_by_updated["data"].size() == 1);

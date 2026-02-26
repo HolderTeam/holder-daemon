@@ -1,5 +1,7 @@
 #include "http_test_helpers.h"
 
+#include <fstream>
+
 using holder::test::create_project;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -248,6 +250,84 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
                                                   nlohmann::json::object(),
                                                   boost::beast::http::status::ok);
   REQUIRE(fetched_restored["data"]["title"] == "First Updated");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  ensure_uuid_seeded();
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto project_root = dir / "enc_project_repo";
+  const auto created_project = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects",
+      {
+          {"project_id", "proj-enc"},
+          {"name", "Encrypted Project"},
+          {"root_path", project_root.string()},
+      },
+      boost::beast::http::status::created);
+  REQUIRE(created_project["ok"] == true);
+  REQUIRE(created_project["data"]["privacy_mode"] == "encrypted_git");
+  REQUIRE(created_project["data"]["project_key_id"].is_string());
+
+  const auto created_card = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      {
+          {"card_id", "efgh1234"},
+          {"project_id", "proj-enc"},
+          {"title", "Encrypted Card"},
+          {"content", "this is secret plaintext"},
+          {"created_at", 10},
+          {"updated_at", 10},
+      },
+      boost::beast::http::status::created);
+  REQUIRE(created_card["ok"] == true);
+
+  const auto fetched = http_json_request(bound.bind,
+                                         bound.port,
+                                         token,
+                                         boost::beast::http::verb::get,
+                                         "/cards/efgh1234",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(fetched["data"]["content"] == "this is secret plaintext");
+
+  const auto rel_path = std::string(created_card["data"]["rel_path"]);
+  const auto full_path = project_root / rel_path;
+  std::ifstream in(full_path, std::ios::binary);
+  REQUIRE(in.is_open());
+  const std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  REQUIRE(raw.rfind("HolderPriv1\n", 0) == 0);
+  REQUIRE(raw.find("this is secret plaintext") == std::string::npos);
 
   std::raise(SIGTERM);
   server_thread.join();

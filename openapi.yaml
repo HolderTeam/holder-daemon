@@ -33,7 +33,7 @@ components:
           $ref: "#/components/schemas/Error"
     HealthData:
       type: object
-      required: [db_ok, uptime_ms, api_version, server_version, pid]
+      required: [db_ok, uptime_ms, api_version, server_version, pid, crypt_filter]
       properties:
         db_ok:
           type: boolean
@@ -46,6 +46,16 @@ components:
           type: string
         pid:
           type: integer
+        crypt_filter:
+          type: object
+          required: [path, exists, executable]
+          properties:
+            path:
+              type: string
+            exists:
+              type: boolean
+            executable:
+              type: boolean
     HealthResponse:
       type: object
       required: [ok, data]
@@ -1099,7 +1109,7 @@ components:
           $ref: "#/components/schemas/AiMessage"
     Project:
       type: object
-      required: [project_id, name, root_path, created_at, updated_at]
+      required: [project_id, name, root_path, privacy_mode, created_at, updated_at]
       properties:
         project_id:
           type: string
@@ -1111,6 +1121,12 @@ components:
           type: string
           nullable: true
         git_provider:
+          type: string
+          nullable: true
+        privacy_mode:
+          type: string
+          enum: [encrypted_git, plain]
+        project_key_id:
           type: string
           nullable: true
         created_at:
@@ -1137,6 +1153,14 @@ components:
         git_provider:
           type: string
           nullable: true
+        privacy_mode:
+          type: string
+          enum: [encrypted_git, plain]
+          description: Optional; defaults to encrypted_git.
+        project_key_id:
+          type: string
+          nullable: true
+          description: Optional keyring identifier (metadata only).
         created_at:
           type: integer
           format: int64
@@ -1194,6 +1218,13 @@ components:
         git_provider:
           type: string
           nullable: true
+        privacy_mode:
+          type: string
+          enum: [encrypted_git, plain]
+          nullable: true
+        project_key_id:
+          type: string
+          nullable: true
         updated_at:
           type: integer
           format: int64
@@ -1223,6 +1254,116 @@ components:
           properties:
             project_id:
               type: string
+    ProjectRecoveryTokenExportRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          type: string
+          description: User-provided PIN used to wrap the project key.
+    ProjectRecoveryTokenExportResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, key_id, recovery_token]
+          properties:
+            project_id:
+              type: string
+            key_id:
+              type: string
+            recovery_token:
+              type: string
+              description: Serialized `.hrk` recovery token JSON payload.
+    ProjectRecoveryTokenImportRequest:
+      type: object
+      required: [pin, recovery_token]
+      properties:
+        pin:
+          type: string
+        recovery_token:
+          type: string
+          description: Serialized `.hrk` recovery token JSON payload.
+    ProjectRecoveryTokenImportResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id]
+          properties:
+            project_id:
+              type: string
+    RecoveryTokenImportAutoResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required:
+            [project_id, project_created, remote_hint_present, remote_configured, pull_status]
+          properties:
+            project_id:
+              type: string
+            project_created:
+              type: boolean
+            remote_hint_present:
+              type: boolean
+            remote_configured:
+              type: boolean
+            remote_error:
+              type: string
+              nullable: true
+            pull_status:
+              type: string
+              enum: [not_attempted, succeeded, failed]
+            pull_error:
+              type: string
+              nullable: true
+    ProjectEncryptionCheck:
+      type: object
+      required: [ok, checked_files, unsafe_files, unsafe_paths, message]
+      properties:
+        ok:
+          type: boolean
+        checked_files:
+          type: integer
+        unsafe_files:
+          type: integer
+        unsafe_paths:
+          type: array
+          items:
+            type: string
+        message:
+          type: string
+    ProjectEncryptionCheckResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, privacy_mode, check]
+          properties:
+            project_id:
+              type: string
+            privacy_mode:
+              type: string
+              enum: [encrypted_git, plain]
+            check:
+              $ref: "#/components/schemas/ProjectEncryptionCheck"
     Resource:
       type: object
       required: [resource_id, project_id, kind, uri, label, created_at, updated_at]
@@ -1724,6 +1865,154 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDeleteResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/recovery-token/export:
+    post:
+      summary: Export project recovery token
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRecoveryTokenExportRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRecoveryTokenExportResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/recovery-token/import:
+    post:
+      summary: Import project recovery token
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRecoveryTokenImportRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectRecoveryTokenImportResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /recovery-token/import:
+    post:
+      summary: Import recovery token and auto-match/create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectRecoveryTokenImportRequest"
+      responses:
+        "200":
+          description: Imported and matched an existing local project_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryTokenImportAutoResponse"
+        "201":
+          description: Imported and created a new local project_id from token metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecoveryTokenImportAutoResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Keyring unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/encryption-check:
+    get:
+      summary: Check encrypted project card blobs before push/sync
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectEncryptionCheckResponse"
         "401":
           description: Unauthorized
           content:

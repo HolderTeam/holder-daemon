@@ -21,6 +21,53 @@ static std::runtime_error git_err(const std::string& what, int rc) {
   return std::runtime_error(msg);
 }
 
+static std::string trim_ref_prefix(const std::string& refname, const std::string& prefix) {
+  if (refname.rfind(prefix, 0) == 0) {
+    return refname.substr(prefix.size());
+  }
+  return refname;
+}
+
+static bool reference_exists(git_repository* repo, const std::string& refname) {
+  git_reference* ref = nullptr;
+  const int rc = git_reference_lookup(&ref, repo, refname.c_str());
+  if (rc == 0) {
+    git_reference_free(ref);
+    return true;
+  }
+  return false;
+}
+
+static git_oid remote_branch_target_oid_or_throw(git_repository* repo,
+                                                 const std::string& remote_name,
+                                                 const std::string& branch) {
+  const std::string refname = "refs/remotes/" + remote_name + "/" + branch;
+  git_reference* ref = nullptr;
+  const int rc = git_reference_lookup(&ref, repo, refname.c_str());
+  if (rc != 0) throw git_err("git_reference_lookup failed for " + refname, rc);
+  const git_oid* oid = git_reference_target(ref);
+  if (!oid) {
+    git_reference_free(ref);
+    throw std::runtime_error("Remote reference has no target: " + refname);
+  }
+  git_oid out{};
+  git_oid_cpy(&out, oid);
+  git_reference_free(ref);
+  return out;
+}
+
+static void checkout_commit_oid(git_repository* repo, const git_oid& oid) {
+  git_object* commit_obj = nullptr;
+  int rc = git_object_lookup(&commit_obj, repo, &oid, GIT_OBJECT_COMMIT);
+  if (rc != 0) throw git_err("git_object_lookup failed", rc);
+
+  git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
+  checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_RECREATE_MISSING;
+  rc = git_checkout_tree(repo, commit_obj, &checkout_opts);
+  git_object_free(commit_obj);
+  if (rc != 0) throw git_err("git_checkout_tree failed", rc);
+}
+
 GitRepo::GitRepo() {
   git_libgit2_init();
 }
@@ -285,6 +332,99 @@ void GitRepo::remove_remote(const std::string& name) {
   }
   if (rc != 0) throw git_err("git_remote_delete failed", rc);
   spdlog::info("Removed git remote {}", name);
+}
+
+void GitRepo::pull_remote_ff_only(const std::string& name) {
+  ensure_open();
+  auto* repo = reinterpret_cast<git_repository*>(repo_);
+
+  git_remote* remote = nullptr;
+  int rc = git_remote_lookup(&remote, repo, name.c_str());
+  if (rc != 0) throw git_err("git_remote_lookup failed", rc);
+
+  git_fetch_options fetch_opts = GIT_FETCH_OPTIONS_INIT;
+  rc = git_remote_fetch(remote, nullptr, &fetch_opts, nullptr);
+  if (rc != 0) {
+    git_remote_free(remote);
+    throw git_err("git_remote_fetch failed", rc);
+  }
+
+  std::string remote_branch;
+  git_buf default_branch_buf = GIT_BUF_INIT;
+  rc = git_remote_default_branch(&default_branch_buf, remote);
+  if (rc == 0 && default_branch_buf.ptr && default_branch_buf.size > 0) {
+    remote_branch = trim_ref_prefix(default_branch_buf.ptr, "refs/heads/");
+  }
+  git_buf_dispose(&default_branch_buf);
+  git_remote_free(remote);
+
+  if (remote_branch.empty()) {
+    if (reference_exists(repo, "refs/remotes/" + name + "/main")) {
+      remote_branch = "main";
+    } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) {
+      remote_branch = "master";
+    } else {
+      throw std::runtime_error("Unable to determine remote default branch for " + name);
+    }
+  }
+
+  const git_oid remote_oid = remote_branch_target_oid_or_throw(repo, name, remote_branch);
+
+  git_reference* head = nullptr;
+  rc = git_repository_head(&head, repo);
+  if (rc == GIT_EUNBORNBRANCH || rc == GIT_ENOTFOUND) {
+    const std::string local_ref = "refs/heads/" + remote_branch;
+    git_reference* created = nullptr;
+    rc = git_reference_create(&created, repo, local_ref.c_str(), &remote_oid, 1, "pull bootstrap");
+    if (rc != 0) throw git_err("git_reference_create failed", rc);
+    git_reference_free(created);
+
+    rc = git_repository_set_head(repo, local_ref.c_str());
+    if (rc != 0) throw git_err("git_repository_set_head failed", rc);
+
+    checkout_commit_oid(repo, remote_oid);
+    spdlog::info("Pulled {} (initialized branch {})", name, remote_branch);
+    return;
+  }
+  if (rc != 0) throw git_err("git_repository_head failed", rc);
+
+  git_reference* head_resolved = nullptr;
+  rc = git_reference_resolve(&head_resolved, head);
+  git_reference_free(head);
+  if (rc != 0) throw git_err("git_reference_resolve failed", rc);
+
+  const git_oid* local_oid_ptr = git_reference_target(head_resolved);
+  if (!local_oid_ptr) {
+    git_reference_free(head_resolved);
+    throw std::runtime_error("HEAD has no target OID");
+  }
+  git_oid local_oid{};
+  git_oid_cpy(&local_oid, local_oid_ptr);
+
+  if (git_oid_equal(&local_oid, &remote_oid) != 0) {
+    git_reference_free(head_resolved);
+    spdlog::info("Pull {} skipped (already up to date)", name);
+    return;
+  }
+
+  const int ff_ok = git_graph_descendant_of(repo, &remote_oid, &local_oid);
+  if (ff_ok != 1) {
+    git_reference_free(head_resolved);
+    throw std::runtime_error("Non-fast-forward pull is not supported");
+  }
+
+  git_reference* updated = nullptr;
+  rc = git_reference_set_target(&updated, head_resolved, &remote_oid, "pull: fast-forward");
+  git_reference_free(head_resolved);
+  if (rc != 0) throw git_err("git_reference_set_target failed", rc);
+
+  const char* updated_name = git_reference_name(updated);
+  rc = git_repository_set_head(repo, updated_name);
+  git_reference_free(updated);
+  if (rc != 0) throw git_err("git_repository_set_head failed", rc);
+
+  checkout_commit_oid(repo, remote_oid);
+  spdlog::info("Pulled {} (fast-forward)", name);
 }
 
 } // namespace holder::git
