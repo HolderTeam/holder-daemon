@@ -86,6 +86,20 @@ TEST_CASE("Project git push returns remote_unset when no remote configured", "[g
   REQUIRE(pushed["data"]["error_code"] == "remote_unset");
   REQUIRE(pushed["data"]["next_action"].is_null());
 
+  const auto sync = holder::test::http_json_request(bound.bind,
+                                                    bound.port,
+                                                    token,
+                                                    boost::beast::http::verb::get,
+                                                    "/projects/proj-1/git/sync-status",
+                                                    nlohmann::json::object(),
+                                                    boost::beast::http::status::ok);
+  REQUIRE(sync["ok"] == true);
+  REQUIRE(sync["data"]["project_id"] == "proj-1");
+  REQUIRE(sync["data"]["sync"]["last_push_status"] == "remote_unset");
+  REQUIRE(sync["data"]["sync"]["retry_count"] == 1);
+  REQUIRE(sync["data"]["sync"]["next_retry_at"].is_number_integer());
+  REQUIRE(sync["data"]["sync"]["last_sync_error"].is_string());
+
   std::raise(SIGTERM);
   server_thread.join();
 }
@@ -142,7 +156,19 @@ TEST_CASE("Project git push returns structured non_fast_forward result", "[git][
   REQUIRE(git.pushed_branch == "main");
   REQUIRE(git.pushed_set_upstream == false);
 
+  const auto sync = holder::test::http_json_request(bound.bind,
+                                                    bound.port,
+                                                    token,
+                                                    boost::beast::http::verb::get,
+                                                    "/projects/proj-1/git/sync-status",
+                                                    nlohmann::json::object(),
+                                                    boost::beast::http::status::ok);
+  REQUIRE(sync["ok"] == true);
+  REQUIRE(sync["data"]["sync"]["last_push_status"] == "non_fast_forward");
+  REQUIRE(sync["data"]["sync"]["retry_count"] == 1);
+  REQUIRE(sync["data"]["sync"]["next_retry_at"].is_number_integer());
+  REQUIRE(sync["data"]["sync"]["last_sync_error"] == "non-fast-forward");
+
   std::raise(SIGTERM);
   server_thread.join();
 }
-

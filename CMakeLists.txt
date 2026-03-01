@@ -128,6 +128,7 @@ add_executable(holder
   src/api/Session.cpp
   src/api/Router.cpp
   src/store/ProjectRepo.cpp
+  src/store/ProjectSyncRepo.cpp
   src/store/CardRepo.cpp
   src/store/LinkRepo.cpp
   src/store/ResourceRepo.cpp
@@ -144,8 +145,11 @@ add_executable(holder
   src/store/Migrations.cpp
   src/git/GitRepo.cpp
   src/git/GitOps.cpp
+  src/git/RepoSyncMetrics.cpp
   src/privacy/ProjectPrivacy.cpp
   src/privacy/CryptoService.cpp
+  src/sync/ProjectSyncPolicy.cpp
+  src/sync/ProjectSyncWorker.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp

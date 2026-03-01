@@ -3,8 +3,10 @@
 #include "api/support/Time.h"
 
 #include "core/ProjectPaths.h"
+#include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
 #include "store/ProjectRepo.h"
+#include "store/ProjectSyncRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -102,6 +104,45 @@ nlohmann::json git_push_payload(const std::string& project_id,
   return payload;
 }
 
+nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSyncState>& sync_opt) {
+  const auto as_json_or_null = [](const auto& value) -> nlohmann::json {
+    return value.has_value() ? nlohmann::json(value.value()) : nlohmann::json(nullptr);
+  };
+
+  if (!sync_opt.has_value()) {
+    return {
+        {"last_commit_at", nullptr},
+        {"last_push_at", nullptr},
+        {"last_pull_at", nullptr},
+        {"uncommitted_changes_count", 0},
+        {"unpushed_commits_count", 0},
+        {"last_push_status", nullptr},
+        {"last_pull_status", nullptr},
+        {"last_sync_error", nullptr},
+        {"last_sync_error_at", nullptr},
+        {"retry_count", 0},
+        {"next_retry_at", nullptr},
+        {"updated_at", nullptr},
+    };
+  }
+
+  const auto& sync = sync_opt.value();
+  return {
+      {"last_commit_at", as_json_or_null(sync.last_commit_at)},
+      {"last_push_at", as_json_or_null(sync.last_push_at)},
+      {"last_pull_at", as_json_or_null(sync.last_pull_at)},
+      {"uncommitted_changes_count", sync.uncommitted_changes_count},
+      {"unpushed_commits_count", sync.unpushed_commits_count},
+      {"last_push_status", as_json_or_null(sync.last_push_status)},
+      {"last_pull_status", as_json_or_null(sync.last_pull_status)},
+      {"last_sync_error", as_json_or_null(sync.last_sync_error)},
+      {"last_sync_error_at", as_json_or_null(sync.last_sync_error_at)},
+      {"retry_count", sync.retry_count},
+      {"next_retry_at", as_json_or_null(sync.next_retry_at)},
+      {"updated_at", sync.updated_at > 0 ? nlohmann::json(sync.updated_at) : nlohmann::json(nullptr)},
+  };
+}
+
 http::response<http::string_body> privacy_error_response(
     const holder::privacy::PrivacyError& ex) {
   http::status status = http::status::bad_request;
@@ -151,6 +192,7 @@ bool handle_project_routes(const std::string& path,
       const auto metadata = holder::privacy::inspect_recovery_token(pin, recovery_token);
 
       holder::store::ProjectRepo repo(db);
+      holder::store::ProjectSyncRepo sync_repo(db);
       const long long now = support::now_epoch_seconds();
       bool project_created = false;
       auto project_opt = repo.get(metadata.project_id);
@@ -200,10 +242,32 @@ bool handle_project_routes(const std::string& path,
             try {
               git.pull_remote_ff_only("origin");
               pull_status = "succeeded";
+              sync_repo.record_pull_result(
+                  metadata.project_id,
+                  pull_status,
+                  true,
+                  std::nullopt,
+                  now);
             } catch (const std::exception& ex) {
               pull_status = "failed";
               pull_error = ex.what();
+              sync_repo.record_pull_result(
+                  metadata.project_id,
+                  pull_status,
+                  false,
+                  pull_error,
+                  now);
             }
+          }
+          try {
+            const auto metrics = holder::git::inspect_repo_sync_metrics(refreshed->root_path, "origin");
+            sync_repo.update_activity_counts(
+                metadata.project_id,
+                metrics.uncommitted_changes_count,
+                metrics.unpushed_commits_count,
+                now);
+          } catch (const std::exception&) {
+            // Best-effort only.
           }
         }
       }
@@ -234,6 +298,7 @@ bool handle_project_routes(const std::string& path,
   if (path == "/projects" && req.method() == http::verb::get) {
     try {
       holder::store::ProjectRepo repo(db);
+      holder::store::ProjectSyncRepo sync_repo(db);
       auto projects = repo.list();
       const std::string name_filter = param_get("name");
       const std::string updated_after_raw = param_get("updated_after");
@@ -357,6 +422,7 @@ bool handle_project_routes(const std::string& path,
                                    : nlohmann::json(nullptr)},
             {"created_at", project.created_at},
             {"updated_at", project.updated_at},
+            {"sync", project_sync_to_json(sync_repo.get(project.project_id))},
         });
       }
       nlohmann::json payload;
@@ -430,6 +496,7 @@ bool handle_project_routes(const std::string& path,
         }
 
         holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
         if (project.root_path.empty()) {
           const auto base_root = holder::core::default_projects_root();
           const auto slug = holder::core::slugify(project.name);
@@ -472,6 +539,7 @@ bool handle_project_routes(const std::string& path,
                                      : nlohmann::json(nullptr);
         data["created_at"] = project.created_at;
         data["updated_at"] = project.updated_at;
+        data["sync"] = project_sync_to_json(sync_repo.get(project.project_id));
         nlohmann::json payload;
         payload["ok"] = true;
         payload["data"] = data;
@@ -498,7 +566,7 @@ bool handle_project_routes(const std::string& path,
         const std::string branch =
             body.contains("branch") && !body.at("branch").is_null()
                 ? body.at("branch").get<std::string>()
-                : "main";
+                : "";
 
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
@@ -524,7 +592,7 @@ bool handle_project_routes(const std::string& path,
         if (!remote_url.has_value() || remote_url->empty()) {
           const auto payload = git_test_remote_payload(project_id,
                                                        remote_url,
-                                                       branch,
+                                                       branch.empty() ? "local_default" : branch,
                                                        holder::git::RemoteProbeStatus::RemoteUnset,
                                                        false,
                                                        "Remote URL is not configured.");
@@ -538,7 +606,7 @@ bool handle_project_routes(const std::string& path,
         const auto probe = git.probe_remote("origin");
         const auto payload = git_test_remote_payload(project_id,
                                                      remote_url,
-                                                     branch,
+                                                     branch.empty() ? "local_default" : branch,
                                                      probe.status,
                                                      probe.remote_has_head,
                                                      probe.error_message.empty()
@@ -554,13 +622,14 @@ bool handle_project_routes(const std::string& path,
         const std::string branch =
             body.contains("branch") && !body.at("branch").is_null()
                 ? body.at("branch").get<std::string>()
-                : "main";
+                : "";
         const bool set_upstream =
             body.contains("set_upstream") && !body.at("set_upstream").is_null()
                 ? body.at("set_upstream").get<bool>()
                 : true;
 
         holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -568,9 +637,14 @@ bool handle_project_routes(const std::string& path,
         }
         const auto& project = project_opt.value();
         if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
+          sync_repo.record_push_result(project_id,
+                                       holder::git::push_status_name(holder::git::PushStatus::RemoteUnset),
+                                       false,
+                                       std::optional<std::string>{"Remote URL is not configured."},
+                                       support::now_epoch_seconds());
           const auto payload = git_push_payload(project_id,
                                                 project.git_remote_url,
-                                                branch,
+                                                branch.empty() ? "local_default" : branch,
                                                 holder::git::PushStatus::RemoteUnset,
                                                 0,
                                                 0,
@@ -583,9 +657,28 @@ bool handle_project_routes(const std::string& path,
         git.open_or_init(project.root_path);
         git.set_remote("origin", project.git_remote_url.value());
         const auto push = git.push_branch("origin", branch, set_upstream);
+        const bool push_ok = push.status == holder::git::PushStatus::Pushed ||
+                             push.status == holder::git::PushStatus::UpToDate;
+        sync_repo.record_push_result(
+            project_id,
+            holder::git::push_status_name(push.status),
+            push_ok,
+            push.error_message.empty() ? std::optional<std::string>()
+                                       : std::optional<std::string>(push.error_message),
+            support::now_epoch_seconds());
+        try {
+          const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
+          sync_repo.update_activity_counts(
+              project_id,
+              metrics.uncommitted_changes_count,
+              metrics.unpushed_commits_count,
+              support::now_epoch_seconds());
+        } catch (const std::exception&) {
+          // Best-effort only.
+        }
         const auto payload = git_push_payload(project_id,
                                               project.git_remote_url,
-                                              branch,
+                                              branch.empty() ? "local_default" : branch,
                                               push.status,
                                               push.ahead_count,
                                               push.behind_count,
@@ -596,9 +689,29 @@ bool handle_project_routes(const std::string& path,
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
+    } else if (subpath == "/git/sync-status" && req.method() == http::verb::get) {
+      try {
+        holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = {
+            {"project_id", project_id},
+            {"sync", project_sync_to_json(sync_repo.get(project_id))},
+        };
+        res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      }
     } else if (subpath == "/encryption-check" && req.method() == http::verb::get) {
       try {
         holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found,
@@ -726,6 +839,7 @@ bool handle_project_routes(const std::string& path,
     } else if (subpath.empty() && req.method() == http::verb::get) {
       try {
         holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -747,6 +861,7 @@ bool handle_project_routes(const std::string& path,
                                        : nlohmann::json(nullptr);
           data["created_at"] = project.created_at;
           data["updated_at"] = project.updated_at;
+          data["sync"] = project_sync_to_json(sync_repo.get(project.project_id));
 
           nlohmann::json payload;
           payload["ok"] = true;
@@ -872,11 +987,13 @@ bool handle_project_routes(const std::string& path,
     } else if (subpath.empty() && req.method() == http::verb::delete_) {
       try {
         holder::store::ProjectRepo repo(db);
+        holder::store::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
         } else {
           repo.remove(project_id);
+          sync_repo.remove(project_id);
           nlohmann::json payload;
           payload["ok"] = true;
           payload["data"] = {{"project_id", project_id}};

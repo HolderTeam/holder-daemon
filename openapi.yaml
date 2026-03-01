@@ -1109,7 +1109,7 @@ components:
           $ref: "#/components/schemas/AiMessage"
     Project:
       type: object
-      required: [project_id, name, root_path, privacy_mode, created_at, updated_at]
+      required: [project_id, name, root_path, privacy_mode, created_at, updated_at, sync]
       properties:
         project_id:
           type: string
@@ -1135,6 +1135,56 @@ components:
         updated_at:
           type: integer
           format: int64
+        sync:
+          $ref: "#/components/schemas/ProjectSync"
+    ProjectSync:
+      type: object
+      required:
+        [
+          uncommitted_changes_count,
+          unpushed_commits_count,
+          retry_count
+        ]
+      properties:
+        last_commit_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_push_at:
+          type: integer
+          format: int64
+          nullable: true
+        last_pull_at:
+          type: integer
+          format: int64
+          nullable: true
+        uncommitted_changes_count:
+          type: integer
+        unpushed_commits_count:
+          type: integer
+        last_push_status:
+          type: string
+          nullable: true
+        last_pull_status:
+          type: string
+          nullable: true
+        last_sync_error:
+          type: string
+          nullable: true
+        last_sync_error_at:
+          type: integer
+          format: int64
+          nullable: true
+        retry_count:
+          type: integer
+        next_retry_at:
+          type: integer
+          format: int64
+          nullable: true
+        updated_at:
+          type: integer
+          format: int64
+          nullable: true
     ProjectCreateRequest:
       type: object
       required: [name]
@@ -1251,7 +1301,7 @@ components:
         branch:
           type: string
           nullable: true
-          description: Optional branch hint for UI defaults. Defaults to main.
+          description: Optional branch hint. If omitted, server resolves local default branch from HEAD/init.defaultBranch.
     ProjectGitTestRemoteResponse:
       type: object
       required: [ok, data]
@@ -1288,7 +1338,7 @@ components:
         branch:
           type: string
           nullable: true
-          description: Optional branch to push. Defaults to main.
+          description: Optional branch to push. If omitted, server resolves local default branch from HEAD/init.defaultBranch.
         set_upstream:
           type: boolean
           nullable: true

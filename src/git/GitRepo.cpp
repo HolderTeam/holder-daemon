@@ -4,7 +4,9 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
 #include <system_error>
@@ -77,6 +79,109 @@ static PushStatus classify_push_error(const std::string& message) {
     return PushStatus::NetworkError;
   }
   return PushStatus::UnknownError;
+}
+
+static std::string home_dir_or_empty() {
+  const char* home = std::getenv("HOME");
+  return home ? std::string(home) : std::string();
+}
+
+static std::string configured_default_branch_name() {
+  const char* env_branch = std::getenv("GIT_DEFAULT_BRANCH");
+  if (env_branch && env_branch[0] != '\0') {
+    return std::string(env_branch);
+  }
+
+  git_config* cfg = nullptr;
+  if (git_config_open_default(&cfg) != 0 || cfg == nullptr) {
+    return {};
+  }
+
+  git_buf value = GIT_BUF_INIT;
+  const int rc = git_config_get_string_buf(&value, cfg, "init.defaultBranch");
+  std::string out;
+  if (rc == 0 && value.ptr && value.size > 0) {
+    out.assign(value.ptr, value.size);
+  }
+  git_buf_dispose(&value);
+  git_config_free(cfg);
+  return out;
+}
+
+static std::string local_head_symbolic_branch_name(git_repository* repo) {
+  git_reference* head_ref = nullptr;
+  const int rc = git_reference_lookup(&head_ref, repo, "HEAD");
+  if (rc != 0 || head_ref == nullptr) {
+    return {};
+  }
+
+  const char* sym_target = git_reference_symbolic_target(head_ref);
+  std::string out;
+  if (sym_target != nullptr) {
+    static constexpr const char* kHeadsPrefix = "refs/heads/";
+    const std::string target(sym_target);
+    if (target.rfind(kHeadsPrefix, 0) == 0) {
+      out = target.substr(std::char_traits<char>::length(kHeadsPrefix));
+    } else {
+      out = target;
+    }
+  }
+  git_reference_free(head_ref);
+  return out;
+}
+
+static std::string resolve_branch_name(git_repository* repo, const std::string& requested_branch) {
+  if (!requested_branch.empty()) return requested_branch;
+
+  const auto head_branch = local_head_symbolic_branch_name(repo);
+  if (!head_branch.empty()) return head_branch;
+
+  const auto configured = configured_default_branch_name();
+  if (!configured.empty()) return configured;
+
+  // Holder fallback branch when no local/default Git branch is discoverable.
+  return "cards";
+}
+
+static int git_credential_acquire_cb(git_credential** out,
+                                     const char* url,
+                                     const char* username_from_url,
+                                     unsigned int allowed_types,
+                                     void* payload) {
+  (void)payload;
+  (void)url;
+
+  if ((allowed_types & GIT_CREDENTIAL_SSH_KEY) != 0U ||
+      (allowed_types & GIT_CREDENTIAL_SSH_MEMORY) != 0U) {
+    const char* user = username_from_url && username_from_url[0] != '\0' ? username_from_url : "git";
+    int rc = git_credential_ssh_key_from_agent(out, user);
+    if (rc == 0) return 0;
+
+    const auto home = home_dir_or_empty();
+    if (!home.empty() && (allowed_types & GIT_CREDENTIAL_SSH_KEY) != 0U) {
+      const std::array<std::pair<std::string, std::string>, 2> keypairs = {
+          std::make_pair(home + "/.ssh/id_ed25519.pub", home + "/.ssh/id_ed25519"),
+          std::make_pair(home + "/.ssh/id_rsa.pub", home + "/.ssh/id_rsa"),
+      };
+      for (const auto& keypair : keypairs) {
+        rc = git_credential_ssh_key_new(out,
+                                        user,
+                                        keypair.first.c_str(),
+                                        keypair.second.c_str(),
+                                        "");
+        if (rc == 0) return 0;
+      }
+    }
+  }
+
+  // No supported credential path found for this request.
+  return GIT_PASSTHROUGH;
+}
+
+static git_remote_callbacks make_remote_callbacks() {
+  git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
+  callbacks.credentials = git_credential_acquire_cb;
+  return callbacks;
 }
 
 static std::string trim_ref_prefix(const std::string& refname, const std::string& prefix) {
@@ -413,7 +518,8 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
     };
   }
 
-  const int connect_rc = git_remote_connect(remote, GIT_DIRECTION_FETCH, nullptr, nullptr, nullptr);
+  auto callbacks = make_remote_callbacks();
+  const int connect_rc = git_remote_connect(remote, GIT_DIRECTION_FETCH, &callbacks, nullptr, nullptr);
   if (connect_rc != 0) {
     const std::string error = git_error_message_or_default("git_remote_connect failed");
     const auto status = classify_remote_probe_error(error);
@@ -452,6 +558,15 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
 PushResult GitRepo::push_branch(const std::string& name, const std::string& branch, bool set_upstream) {
   ensure_open();
   auto* repo = reinterpret_cast<git_repository*>(repo_);
+  const auto resolved_branch = resolve_branch_name(repo, branch);
+  if (resolved_branch.empty()) {
+    return {
+        .status = PushStatus::UnknownError,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = "No branch configured. Set GIT_DEFAULT_BRANCH or git config init.defaultBranch.",
+    };
+  }
 
   git_remote* remote = nullptr;
   const int lookup = git_remote_lookup(&remote, repo, name.c_str());
@@ -495,10 +610,13 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
   }
   git_reference_free(head);
 
-  const std::string refspec_text = "refs/heads/" + branch + ":refs/heads/" + branch;
+  // Push current local HEAD to the resolved remote branch. This avoids failures
+  // when local and remote branch names differ.
+  const std::string refspec_text = "HEAD:refs/heads/" + resolved_branch;
   char* strings[] = {const_cast<char*>(refspec_text.c_str())};
   git_strarray refspecs{strings, 1};
   git_push_options push_opts = GIT_PUSH_OPTIONS_INIT;
+  push_opts.callbacks = make_remote_callbacks();
   rc = git_remote_push(remote, &refspecs, &push_opts);
   if (rc != 0) {
     const std::string error = git_error_message_or_default("git_remote_push failed");
@@ -513,9 +631,9 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
 
   if (set_upstream) {
     git_reference* local_branch = nullptr;
-    const std::string local_ref_name = "refs/heads/" + branch;
+    const std::string local_ref_name = "refs/heads/" + resolved_branch;
     if (git_reference_lookup(&local_branch, repo, local_ref_name.c_str()) == 0) {
-      const std::string upstream = name + "/" + branch;
+      const std::string upstream = name + "/" + resolved_branch;
       // Best-effort: ignore failure here; push already succeeded.
       (void)git_branch_set_upstream(local_branch, upstream.c_str());
       git_reference_free(local_branch);
@@ -540,6 +658,7 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
   if (rc != 0) throw git_err("git_remote_lookup failed", rc);
 
   git_fetch_options fetch_opts = GIT_FETCH_OPTIONS_INIT;
+  fetch_opts.callbacks = make_remote_callbacks();
   rc = git_remote_fetch(remote, nullptr, &fetch_opts, nullptr);
   if (rc != 0) {
     git_remote_free(remote);
@@ -556,7 +675,13 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
   git_remote_free(remote);
 
   if (remote_branch.empty()) {
-    if (reference_exists(repo, "refs/remotes/" + name + "/main")) {
+    const auto configured = configured_default_branch_name();
+    if (!configured.empty() &&
+        reference_exists(repo, "refs/remotes/" + name + "/" + configured)) {
+      remote_branch = configured;
+    } else if (reference_exists(repo, "refs/remotes/" + name + "/cards")) {
+      remote_branch = "cards";
+    } else if (reference_exists(repo, "refs/remotes/" + name + "/main")) {
       remote_branch = "main";
     } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) {
       remote_branch = "master";
