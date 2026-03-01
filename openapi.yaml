@@ -1251,7 +1251,7 @@ components:
         branch:
           type: string
           nullable: true
-          description: Optional branch hint for UI defaults. Defaults to main.
+          description: Optional branch hint. If omitted, server resolves local default branch from HEAD/init.defaultBranch.
     ProjectGitTestRemoteResponse:
       type: object
       required: [ok, data]
@@ -1288,7 +1288,7 @@ components:
         branch:
           type: string
           nullable: true
-          description: Optional branch to push. Defaults to main.
+          description: Optional branch to push. If omitted, server resolves local default branch from HEAD/init.defaultBranch.
         set_upstream:
           type: boolean
           nullable: true

@@ -498,7 +498,7 @@ bool handle_project_routes(const std::string& path,
         const std::string branch =
             body.contains("branch") && !body.at("branch").is_null()
                 ? body.at("branch").get<std::string>()
-                : "main";
+                : "";
 
         holder::store::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
@@ -524,7 +524,7 @@ bool handle_project_routes(const std::string& path,
         if (!remote_url.has_value() || remote_url->empty()) {
           const auto payload = git_test_remote_payload(project_id,
                                                        remote_url,
-                                                       branch,
+                                                       branch.empty() ? "local_default" : branch,
                                                        holder::git::RemoteProbeStatus::RemoteUnset,
                                                        false,
                                                        "Remote URL is not configured.");
@@ -538,7 +538,7 @@ bool handle_project_routes(const std::string& path,
         const auto probe = git.probe_remote("origin");
         const auto payload = git_test_remote_payload(project_id,
                                                      remote_url,
-                                                     branch,
+                                                     branch.empty() ? "local_default" : branch,
                                                      probe.status,
                                                      probe.remote_has_head,
                                                      probe.error_message.empty()
@@ -554,7 +554,7 @@ bool handle_project_routes(const std::string& path,
         const std::string branch =
             body.contains("branch") && !body.at("branch").is_null()
                 ? body.at("branch").get<std::string>()
-                : "main";
+                : "";
         const bool set_upstream =
             body.contains("set_upstream") && !body.at("set_upstream").is_null()
                 ? body.at("set_upstream").get<bool>()
@@ -570,7 +570,7 @@ bool handle_project_routes(const std::string& path,
         if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
           const auto payload = git_push_payload(project_id,
                                                 project.git_remote_url,
-                                                branch,
+                                                branch.empty() ? "local_default" : branch,
                                                 holder::git::PushStatus::RemoteUnset,
                                                 0,
                                                 0,
@@ -585,7 +585,7 @@ bool handle_project_routes(const std::string& path,
         const auto push = git.push_branch("origin", branch, set_upstream);
         const auto payload = git_push_payload(project_id,
                                               project.git_remote_url,
-                                              branch,
+                                              branch.empty() ? "local_default" : branch,
                                               push.status,
                                               push.ahead_count,
                                               push.behind_count,
