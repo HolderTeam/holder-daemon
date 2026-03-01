@@ -35,6 +35,16 @@ void RealGitOps::pull_remote_ff_only(const std::string& name) {
   repo_.pull_remote_ff_only(name);
 }
 
+RemoteProbeResult RealGitOps::probe_remote(const std::string& name) {
+  return repo_.probe_remote(name);
+}
+
+PushResult RealGitOps::push_branch(const std::string& name,
+                                   const std::string& branch,
+                                   bool set_upstream) {
+  return repo_.push_branch(name, branch, set_upstream);
+}
+
 std::filesystem::path RealGitOps::repo_dir() const {
   return repo_.repo_dir();
 }

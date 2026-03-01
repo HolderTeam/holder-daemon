@@ -28,6 +28,80 @@ bool is_valid_privacy_mode(const std::string& mode) {
   return mode == "encrypted_git" || mode == "plain";
 }
 
+nlohmann::json git_test_remote_payload(const std::string& project_id,
+                                       const std::optional<std::string>& remote_url,
+                                       const std::string& branch,
+                                       holder::git::RemoteProbeStatus status,
+                                       bool remote_has_head,
+                                       const std::optional<std::string>& error_message) {
+  const bool reachable = status == holder::git::RemoteProbeStatus::Reachable;
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = {
+      {"project_id", project_id},
+      {"remote_url", remote_url.has_value() ? nlohmann::json(remote_url.value())
+                                            : nlohmann::json(nullptr)},
+      {"branch", branch},
+      {"status", holder::git::remote_probe_status_name(status)},
+      {"remote_has_head", remote_has_head},
+      {"error_code", reachable ? nlohmann::json(nullptr)
+                               : nlohmann::json(holder::git::remote_probe_status_name(status))},
+      {"error_message", error_message.has_value() && !error_message->empty()
+                            ? nlohmann::json(error_message.value())
+                            : nlohmann::json(nullptr)},
+  };
+  return payload;
+}
+
+nlohmann::json git_push_payload(const std::string& project_id,
+                                const std::optional<std::string>& remote_url,
+                                const std::string& branch,
+                                holder::git::PushStatus status,
+                                int ahead_count,
+                                int behind_count,
+                                const std::optional<std::string>& error_message) {
+  const bool ok = status == holder::git::PushStatus::Pushed ||
+                  status == holder::git::PushStatus::UpToDate;
+  std::optional<std::string> next_action;
+  switch (status) {
+    case holder::git::PushStatus::NonFastForward:
+      next_action = "pull_then_retry";
+      break;
+    case holder::git::PushStatus::AuthFailed:
+      next_action = "fix_auth_then_retry";
+      break;
+    case holder::git::PushStatus::NotFound:
+      next_action = "fix_remote_url_then_retry";
+      break;
+    case holder::git::PushStatus::NetworkError:
+    case holder::git::PushStatus::UnknownError:
+      next_action = "retry";
+      break;
+    default:
+      break;
+  }
+
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = {
+      {"project_id", project_id},
+      {"remote_url", remote_url.has_value() ? nlohmann::json(remote_url.value())
+                                            : nlohmann::json(nullptr)},
+      {"branch", branch},
+      {"status", holder::git::push_status_name(status)},
+      {"ahead_count", ahead_count},
+      {"behind_count", behind_count},
+      {"error_code", ok ? nlohmann::json(nullptr)
+                        : nlohmann::json(holder::git::push_status_name(status))},
+      {"error_message", error_message.has_value() && !error_message->empty()
+                            ? nlohmann::json(error_message.value())
+                            : nlohmann::json(nullptr)},
+      {"next_action", next_action.has_value() ? nlohmann::json(next_action.value())
+                                              : nlohmann::json(nullptr)},
+  };
+  return payload;
+}
+
 http::response<http::string_body> privacy_error_response(
     const holder::privacy::PrivacyError& ex) {
   http::status status = http::status::bad_request;
@@ -418,6 +492,110 @@ bool handle_project_routes(const std::string& path,
     const std::string subpath = slash_pos == std::string::npos ? "" : suffix.substr(slash_pos);
     if (project_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
+    } else if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
+      try {
+        const auto body = req.body().empty() ? nlohmann::json::object() : nlohmann::json::parse(req.body());
+        const std::string branch =
+            body.contains("branch") && !body.at("branch").is_null()
+                ? body.at("branch").get<std::string>()
+                : "main";
+
+        holder::store::ProjectRepo repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        auto project = project_opt.value();
+
+        std::optional<std::string> remote_url = project.git_remote_url;
+        if (body.contains("remote_url")) {
+          if (body.at("remote_url").is_null()) {
+            remote_url = std::nullopt;
+          } else {
+            remote_url = body.at("remote_url").get<std::string>();
+          }
+
+          // Optional override in this call also updates persisted project remote.
+          repo.update_git_remote(project_id, remote_url, support::now_epoch_seconds());
+          project = repo.get(project_id).value_or(project);
+        }
+
+        if (!remote_url.has_value() || remote_url->empty()) {
+          const auto payload = git_test_remote_payload(project_id,
+                                                       remote_url,
+                                                       branch,
+                                                       holder::git::RemoteProbeStatus::RemoteUnset,
+                                                       false,
+                                                       "Remote URL is not configured.");
+          res = support::json_response(http::status::ok, payload);
+          return true;
+        }
+
+        auto& git = resolve_git(git_ops);
+        git.open_or_init(project.root_path);
+        git.set_remote("origin", remote_url.value());
+        const auto probe = git.probe_remote("origin");
+        const auto payload = git_test_remote_payload(project_id,
+                                                     remote_url,
+                                                     branch,
+                                                     probe.status,
+                                                     probe.remote_has_head,
+                                                     probe.error_message.empty()
+                                                         ? std::optional<std::string>()
+                                                         : std::optional<std::string>(probe.error_message));
+        res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if (subpath == "/git/push" && req.method() == http::verb::post) {
+      try {
+        const auto body = req.body().empty() ? nlohmann::json::object() : nlohmann::json::parse(req.body());
+        const std::string branch =
+            body.contains("branch") && !body.at("branch").is_null()
+                ? body.at("branch").get<std::string>()
+                : "main";
+        const bool set_upstream =
+            body.contains("set_upstream") && !body.at("set_upstream").is_null()
+                ? body.at("set_upstream").get<bool>()
+                : true;
+
+        holder::store::ProjectRepo repo(db);
+        const auto project_opt = repo.get(project_id);
+        if (!project_opt.has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        const auto& project = project_opt.value();
+        if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
+          const auto payload = git_push_payload(project_id,
+                                                project.git_remote_url,
+                                                branch,
+                                                holder::git::PushStatus::RemoteUnset,
+                                                0,
+                                                0,
+                                                "Remote URL is not configured.");
+          res = support::json_response(http::status::ok, payload);
+          return true;
+        }
+
+        auto& git = resolve_git(git_ops);
+        git.open_or_init(project.root_path);
+        git.set_remote("origin", project.git_remote_url.value());
+        const auto push = git.push_branch("origin", branch, set_upstream);
+        const auto payload = git_push_payload(project_id,
+                                              project.git_remote_url,
+                                              branch,
+                                              push.status,
+                                              push.ahead_count,
+                                              push.behind_count,
+                                              push.error_message.empty()
+                                                  ? std::optional<std::string>()
+                                                  : std::optional<std::string>(push.error_message));
+        res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      }
     } else if (subpath == "/encryption-check" && req.method() == http::verb::get) {
       try {
         holder::store::ProjectRepo repo(db);

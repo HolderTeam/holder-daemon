@@ -42,6 +42,8 @@ add_executable(lockfile_tests
   HttpProjectEncryptionCheck_test.cpp
   HttpDocs_test.cpp
   HttpProjectGitFailure_test.cpp
+  HttpProjectGitTestRemote_test.cpp
+  HttpProjectGitPush_test.cpp
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
   HttpModels_test.cpp

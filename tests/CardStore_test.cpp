@@ -141,6 +141,14 @@ public:
   }
   void remove_remote(const std::string& name) override { real_.remove_remote(name); }
   void pull_remote_ff_only(const std::string& name) override { real_.pull_remote_ff_only(name); }
+  holder::git::RemoteProbeResult probe_remote(const std::string& name) override {
+    return real_.probe_remote(name);
+  }
+  holder::git::PushResult push_branch(const std::string& name,
+                                      const std::string& branch,
+                                      bool set_upstream) override {
+    return real_.push_branch(name, branch, set_upstream);
+  }
   std::filesystem::path repo_dir() const override { return real_.repo_dir(); }
 
 private:

@@ -1241,6 +1241,93 @@ components:
           properties:
             project_id:
               type: string
+    ProjectGitTestRemoteRequest:
+      type: object
+      properties:
+        remote_url:
+          type: string
+          nullable: true
+          description: Optional remote URL override. If provided, project git_remote_url is updated.
+        branch:
+          type: string
+          nullable: true
+          description: Optional branch hint for UI defaults. Defaults to main.
+    ProjectGitTestRemoteResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, branch, status, remote_has_head]
+          properties:
+            project_id:
+              type: string
+            remote_url:
+              type: string
+              nullable: true
+            branch:
+              type: string
+            status:
+              type: string
+              enum:
+                [reachable, auth_failed, not_found, network_error, invalid_remote_url, remote_unset, unknown_error]
+            remote_has_head:
+              type: boolean
+            error_code:
+              type: string
+              nullable: true
+            error_message:
+              type: string
+              nullable: true
+    ProjectGitPushRequest:
+      type: object
+      properties:
+        branch:
+          type: string
+          nullable: true
+          description: Optional branch to push. Defaults to main.
+        set_upstream:
+          type: boolean
+          nullable: true
+          description: Optional; defaults to true.
+    ProjectGitPushResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, branch, status, ahead_count, behind_count]
+          properties:
+            project_id:
+              type: string
+            remote_url:
+              type: string
+              nullable: true
+            branch:
+              type: string
+            status:
+              type: string
+              enum:
+                [pushed, up_to_date, auth_failed, not_found, network_error, non_fast_forward, remote_unset, unknown_error]
+            ahead_count:
+              type: integer
+            behind_count:
+              type: integer
+            error_code:
+              type: string
+              nullable: true
+            error_message:
+              type: string
+              nullable: true
+            next_action:
+              type: string
+              nullable: true
     ProjectDeleteResponse:
       type: object
       required: [ok, data]
@@ -1865,6 +1952,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDeleteResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/test-remote:
+    post:
+      summary: Test project remote reachability/auth
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectGitTestRemoteRequest"
+      responses:
+        "200":
+          description: Probe completed with structured status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitTestRemoteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/push:
+    post:
+      summary: Push project repository to remote
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectGitPushRequest"
+      responses:
+        "200":
+          description: Push attempted with structured status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitPushResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Unauthorized
           content:

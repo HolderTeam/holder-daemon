@@ -1,4 +1,7 @@
 #pragma once
+#include "git/PushResult.h"
+#include "git/RemoteProbe.h"
+
 #include <filesystem>
 #include <string>
 
@@ -35,6 +38,10 @@ public:
 
   // Pull from remote into current branch (fast-forward only).
   void pull_remote_ff_only(const std::string& name);
+  // Probe remote reachability and whether it has a default HEAD.
+  RemoteProbeResult probe_remote(const std::string& name);
+  // Push local branch to remote.
+  PushResult push_branch(const std::string& name, const std::string& branch, bool set_upstream);
 
   std::filesystem::path repo_dir() const { return repo_dir_; }
 

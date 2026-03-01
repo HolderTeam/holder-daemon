@@ -30,6 +30,12 @@ public:
     if (fail_remove_remote) throw std::runtime_error("remove remote failed");
   }
   void pull_remote_ff_only(const std::string&) override {}
+  holder::git::RemoteProbeResult probe_remote(const std::string&) override {
+    return {.status = holder::git::RemoteProbeStatus::Reachable, .remote_has_head = true, .error_message = {}};
+  }
+  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    return {.status = holder::git::PushStatus::Pushed, .ahead_count = 0, .behind_count = 0, .error_message = {}};
+  }
   std::filesystem::path repo_dir() const override { return repo_dir_; }
 };
 

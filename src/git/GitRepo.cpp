@@ -3,6 +3,8 @@
 #include <git2.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <stdexcept>
 #include <system_error>
@@ -19,6 +21,62 @@ static std::runtime_error git_err(const std::string& what, int rc) {
     msg += e->message;
   }
   return std::runtime_error(msg);
+}
+
+static std::string git_error_message_or_default(const std::string& fallback) {
+  const git_error* e = git_error_last();
+  if (e && e->message) return std::string(e->message);
+  return fallback;
+}
+
+static bool contains_icase(const std::string& haystack, const std::string& needle) {
+  std::string h = haystack;
+  std::string n = needle;
+  std::transform(h.begin(), h.end(), h.begin(), [](unsigned char c) { return std::tolower(c); });
+  std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return std::tolower(c); });
+  return h.find(n) != std::string::npos;
+}
+
+static RemoteProbeStatus classify_remote_probe_error(const std::string& message) {
+  if (contains_icase(message, "authentication") || contains_icase(message, "permission denied") ||
+      contains_icase(message, "publickey") || contains_icase(message, "access denied")) {
+    return RemoteProbeStatus::AuthFailed;
+  }
+  if (contains_icase(message, "repository not found") || contains_icase(message, "not found")) {
+    return RemoteProbeStatus::NotFound;
+  }
+  if (contains_icase(message, "unsupported url protocol") || contains_icase(message, "invalid url") ||
+      contains_icase(message, "malformed")) {
+    return RemoteProbeStatus::InvalidRemoteUrl;
+  }
+  if (contains_icase(message, "could not resolve host") ||
+      contains_icase(message, "failed to resolve address") ||
+      contains_icase(message, "connection refused") || contains_icase(message, "failed to connect") ||
+      contains_icase(message, "timed out") || contains_icase(message, "timeout")) {
+    return RemoteProbeStatus::NetworkError;
+  }
+  return RemoteProbeStatus::UnknownError;
+}
+
+static PushStatus classify_push_error(const std::string& message) {
+  if (contains_icase(message, "authentication") || contains_icase(message, "permission denied") ||
+      contains_icase(message, "publickey") || contains_icase(message, "access denied")) {
+    return PushStatus::AuthFailed;
+  }
+  if (contains_icase(message, "repository not found") || contains_icase(message, "not found")) {
+    return PushStatus::NotFound;
+  }
+  if (contains_icase(message, "non-fast-forward") || contains_icase(message, "non fast forward") ||
+      contains_icase(message, "fetch first")) {
+    return PushStatus::NonFastForward;
+  }
+  if (contains_icase(message, "could not resolve host") ||
+      contains_icase(message, "failed to resolve address") ||
+      contains_icase(message, "connection refused") || contains_icase(message, "failed to connect") ||
+      contains_icase(message, "timed out") || contains_icase(message, "timeout")) {
+    return PushStatus::NetworkError;
+  }
+  return PushStatus::UnknownError;
 }
 
 static std::string trim_ref_prefix(const std::string& refname, const std::string& prefix) {
@@ -332,6 +390,145 @@ void GitRepo::remove_remote(const std::string& name) {
   }
   if (rc != 0) throw git_err("git_remote_delete failed", rc);
   spdlog::info("Removed git remote {}", name);
+}
+
+RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
+  ensure_open();
+  auto* repo = reinterpret_cast<git_repository*>(repo_);
+
+  git_remote* remote = nullptr;
+  const int lookup = git_remote_lookup(&remote, repo, name.c_str());
+  if (lookup == GIT_ENOTFOUND) {
+    return {
+        .status = RemoteProbeStatus::RemoteUnset,
+        .remote_has_head = false,
+        .error_message = "Remote not configured: " + name,
+    };
+  }
+  if (lookup != 0) {
+    return {
+        .status = RemoteProbeStatus::UnknownError,
+        .remote_has_head = false,
+        .error_message = git_error_message_or_default("git_remote_lookup failed"),
+    };
+  }
+
+  const int connect_rc = git_remote_connect(remote, GIT_DIRECTION_FETCH, nullptr, nullptr, nullptr);
+  if (connect_rc != 0) {
+    const std::string error = git_error_message_or_default("git_remote_connect failed");
+    const auto status = classify_remote_probe_error(error);
+    git_remote_free(remote);
+    return {
+        .status = status,
+        .remote_has_head = false,
+        .error_message = error,
+    };
+  }
+
+  const git_remote_head** heads = nullptr;
+  size_t heads_len = 0;
+  const int ls_rc = git_remote_ls(&heads, &heads_len, remote);
+  if (ls_rc != 0) {
+    const std::string error = git_error_message_or_default("git_remote_ls failed");
+    const auto status = classify_remote_probe_error(error);
+    git_remote_disconnect(remote);
+    git_remote_free(remote);
+    return {
+        .status = status,
+        .remote_has_head = false,
+        .error_message = error,
+    };
+  }
+
+  git_remote_disconnect(remote);
+  git_remote_free(remote);
+  return {
+      .status = RemoteProbeStatus::Reachable,
+      .remote_has_head = heads_len > 0,
+      .error_message = {},
+  };
+}
+
+PushResult GitRepo::push_branch(const std::string& name, const std::string& branch, bool set_upstream) {
+  ensure_open();
+  auto* repo = reinterpret_cast<git_repository*>(repo_);
+
+  git_remote* remote = nullptr;
+  const int lookup = git_remote_lookup(&remote, repo, name.c_str());
+  if (lookup == GIT_ENOTFOUND) {
+    return {
+        .status = PushStatus::RemoteUnset,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = "Remote not configured: " + name,
+    };
+  }
+  if (lookup != 0) {
+    return {
+        .status = PushStatus::UnknownError,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = git_error_message_or_default("git_remote_lookup failed"),
+    };
+  }
+
+  git_reference* head = nullptr;
+  int rc = git_repository_head(&head, repo);
+  if (rc == GIT_EUNBORNBRANCH || rc == GIT_ENOTFOUND) {
+    git_remote_free(remote);
+    return {
+        .status = PushStatus::UpToDate,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = {},
+    };
+  }
+  if (rc != 0) {
+    const std::string error = git_error_message_or_default("git_repository_head failed");
+    git_remote_free(remote);
+    return {
+        .status = classify_push_error(error),
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = error,
+    };
+  }
+  git_reference_free(head);
+
+  const std::string refspec_text = "refs/heads/" + branch + ":refs/heads/" + branch;
+  char* strings[] = {const_cast<char*>(refspec_text.c_str())};
+  git_strarray refspecs{strings, 1};
+  git_push_options push_opts = GIT_PUSH_OPTIONS_INIT;
+  rc = git_remote_push(remote, &refspecs, &push_opts);
+  if (rc != 0) {
+    const std::string error = git_error_message_or_default("git_remote_push failed");
+    git_remote_free(remote);
+    return {
+        .status = classify_push_error(error),
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = error,
+    };
+  }
+
+  if (set_upstream) {
+    git_reference* local_branch = nullptr;
+    const std::string local_ref_name = "refs/heads/" + branch;
+    if (git_reference_lookup(&local_branch, repo, local_ref_name.c_str()) == 0) {
+      const std::string upstream = name + "/" + branch;
+      // Best-effort: ignore failure here; push already succeeded.
+      (void)git_branch_set_upstream(local_branch, upstream.c_str());
+      git_reference_free(local_branch);
+    }
+  }
+
+  git_remote_free(remote);
+  return {
+      .status = PushStatus::Pushed,
+      .ahead_count = 0,
+      .behind_count = 0,
+      .error_message = {},
+  };
 }
 
 void GitRepo::pull_remote_ff_only(const std::string& name) {
