@@ -64,6 +64,8 @@ add_executable(lockfile_tests
   Router_test.cpp
   Cli_test.cpp
   ProjectRepo_test.cpp
+  ProjectSyncRepo_test.cpp
+  ProjectSyncPolicy_test.cpp
   ProjectPrivacy_test.cpp
   CardRepo_test.cpp
   LinkRepo_test.cpp
@@ -144,9 +146,13 @@ add_executable(lockfile_tests
   ../src/api/Router.cpp
   ../src/git/GitRepo.cpp
   ../src/git/GitOps.cpp
+  ../src/git/RepoSyncMetrics.cpp
   ../src/privacy/ProjectPrivacy.cpp
   ../src/privacy/CryptoService.cpp
+  ../src/sync/ProjectSyncPolicy.cpp
+  ../src/sync/ProjectSyncWorker.cpp
   ../src/store/ProjectRepo.cpp
+  ../src/store/ProjectSyncRepo.cpp
   ../src/store/CardRepo.cpp
   ../src/store/LinkRepo.cpp
   ../src/store/ResourceRepo.cpp

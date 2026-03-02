@@ -18,6 +18,7 @@
 #include "core/ProjectPaths.h"
 #include "privacy/ProjectPrivacy.h"
 #include "git/GitOps.h"
+#include "sync/ProjectSyncWorker.h"
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -242,6 +243,11 @@ int main(int argc, char* argv[]) {
   holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner);
   const auto bound = server.start();
 
+  holder::sync::ProjectSyncWorker sync_worker(paths.db_path());
+  std::thread sync_thread([&sync_worker, &signals]() {
+    sync_worker.run(signals);
+  });
+
   info.pid = holder::core::current_pid();
   info.bind = bound.bind;
   info.port = bound.port;
@@ -255,6 +261,9 @@ int main(int argc, char* argv[]) {
 
   server.run(signals);
   runner.stop();
+  if (sync_thread.joinable()) {
+    sync_thread.join();
+  }
 
   if (signals.is_requested()) {
     const int sig = signals.last_signal();
