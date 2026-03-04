@@ -333,6 +333,129 @@ TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[
   server_thread.join();
 }
 
+TEST_CASE("HTTP card move intent endpoint", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  ensure_uuid_seeded();
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto create_card = [&](const std::string& id, const std::string& title, int t) {
+    return http_json_request(bound.bind,
+                             bound.port,
+                             token,
+                             boost::beast::http::verb::post,
+                             "/cards",
+                             {
+                                 {"card_id", id},
+                                 {"project_id", "proj-1"},
+                                 {"title", title},
+                                 {"content", title},
+                                 {"created_at", t},
+                                 {"updated_at", t},
+                             },
+                             boost::beast::http::status::created);
+  };
+
+  REQUIRE(create_card("11111111-1111-4111-8111-111111111111", "A", 10)["ok"] == true);
+  REQUIRE(create_card("22222222-2222-4222-8222-222222222222", "B", 11)["ok"] == true);
+  REQUIRE(create_card("33333333-3333-4333-8333-333333333333", "C", 12)["ok"] == true);
+  REQUIRE(create_card("44444444-4444-4444-8444-444444444444", "D", 13)["ok"] == true);
+
+  const auto moved_into = http_json_request(bound.bind,
+                                            bound.port,
+                                            token,
+                                            boost::beast::http::verb::post,
+                                            "/cards/11111111-1111-4111-8111-111111111111/move",
+                                            {{"project_id", "proj-1"},
+                                             {"intent", "into"},
+                                             {"target_card_id", "22222222-2222-4222-8222-222222222222"}},
+                                            boost::beast::http::status::ok);
+  REQUIRE(moved_into["ok"] == true);
+  REQUIRE(moved_into["data"]["parent_card_id"] == "22222222-2222-4222-8222-222222222222");
+  REQUIRE(moved_into["data"]["moved_into_title"] == "B");
+
+  const auto cycle = http_json_request(bound.bind,
+                                       bound.port,
+                                       token,
+                                       boost::beast::http::verb::post,
+                                       "/cards/22222222-2222-4222-8222-222222222222/move",
+                                       {{"project_id", "proj-1"},
+                                        {"intent", "into"},
+                                        {"target_card_id", "11111111-1111-4111-8111-111111111111"}},
+                                       boost::beast::http::status::unprocessable_entity);
+  REQUIRE(cycle["ok"] == false);
+  REQUIRE(cycle["error"]["code"] == "move_would_create_cycle");
+
+  const auto moved_before = http_json_request(bound.bind,
+                                              bound.port,
+                                              token,
+                                              boost::beast::http::verb::post,
+                                              "/cards/44444444-4444-4444-8444-444444444444/move",
+                                              {{"project_id", "proj-1"},
+                                               {"intent", "before"},
+                                               {"target_card_id", "33333333-3333-4333-8333-333333333333"}},
+                                              boost::beast::http::status::ok);
+  REQUIRE(moved_before["ok"] == true);
+  REQUIRE(moved_before["data"]["parent_card_id"].is_null());
+
+  const auto all = http_json_request(bound.bind,
+                                     bound.port,
+                                     token,
+                                     boost::beast::http::verb::get,
+                                     "/cards?project_id=proj-1&scope=all",
+                                     nlohmann::json::object(),
+                                     boost::beast::http::status::ok);
+  double c_sort = 0.0;
+  double d_sort = 0.0;
+  bool found_c = false;
+  bool found_d = false;
+  for (const auto& item : all["data"]) {
+    if (item["card_id"] == "33333333-3333-4333-8333-333333333333") {
+      found_c = true;
+      c_sort = item["sort_key"].get<double>();
+    }
+    if (item["card_id"] == "44444444-4444-4444-8444-444444444444") {
+      found_d = true;
+      d_sort = item["sort_key"].get<double>();
+    }
+  }
+  REQUIRE(found_c);
+  REQUIRE(found_d);
+  REQUIRE(d_sort < c_sort);
+
+  const auto move_up = http_json_request(bound.bind,
+                                         bound.port,
+                                         token,
+                                         boost::beast::http::verb::post,
+                                         "/cards/11111111-1111-4111-8111-111111111111/move",
+                                         {{"project_id", "proj-1"}, {"intent", "up_level"}},
+                                         boost::beast::http::status::ok);
+  REQUIRE(move_up["ok"] == true);
+  REQUIRE(move_up["data"]["parent_card_id"].is_null());
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";

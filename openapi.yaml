@@ -720,6 +720,57 @@ components:
           properties:
             card_id:
               type: string
+    CardMoveIntent:
+      type: string
+      enum: [into, before, after, to_start, to_end, up_level]
+    CardMoveRequest:
+      type: object
+      required: [project_id, intent]
+      properties:
+        project_id:
+          type: string
+        intent:
+          $ref: "#/components/schemas/CardMoveIntent"
+        target_card_id:
+          type: string
+          nullable: true
+          description: Required for intents into/before/after.
+        parent_card_id:
+          type: string
+          nullable: true
+          description: Required for intents to_start/to_end. Null means project root.
+        if_revision:
+          type: integer
+          format: int64
+          nullable: true
+          description: Optional optimistic-concurrency revision guard.
+    CardMoveResult:
+      type: object
+      required: [card_id, parent_card_id, sort_key, revision]
+      properties:
+        card_id:
+          type: string
+        parent_card_id:
+          type: string
+          nullable: true
+        sort_key:
+          type: number
+          format: double
+        revision:
+          type: integer
+          format: int64
+        moved_into_title:
+          type: string
+          nullable: true
+    CardMoveResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardMoveResult"
     CardLink:
       type: object
       required: [from_card_id, to_card_id, to_type, kind, created_at]
@@ -2347,6 +2398,58 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/move:
+    post:
+      summary: Move/reparent/reorder a card using flowboard intent
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardMoveRequest"
+      responses:
+        "200":
+          description: Move applied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardMoveResponse"
+        "400":
+          description: Bad request (missing/invalid intent fields)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card or target not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Stale revision (if_revision mismatch)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Invalid move (cycle/cross-project/invalid target)
           content:
             application/json:
               schema:

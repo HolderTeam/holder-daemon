@@ -13,8 +13,10 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 namespace holder::api::routes {
 namespace {
@@ -136,6 +138,77 @@ http::response<http::string_body> privacy_error_response(
   return support::error_response(status,
                                  holder::privacy::privacy_error_code_name(ex.code()),
                                  ex.what());
+}
+
+std::optional<std::string> normalize_parent_id(const std::optional<std::string>& parent_card_id) {
+  if (!parent_card_id.has_value()) {
+    return std::nullopt;
+  }
+  const std::string& raw = parent_card_id.value();
+  const auto start = raw.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto end = raw.find_last_not_of(" \t\r\n");
+  return raw.substr(start, end - start + 1);
+}
+
+std::optional<std::string> normalize_parent_id(const nlohmann::json& value) {
+  if (value.is_null()) {
+    return std::nullopt;
+  }
+  return normalize_parent_id(std::optional<std::string>(value.get<std::string>()));
+}
+
+bool is_descendant_of(const std::unordered_map<std::string, holder::model::Card>& cards_by_id,
+                      std::optional<std::string> candidate_parent_card_id,
+                      const std::string& card_id) {
+  int guard = 0;
+  while (candidate_parent_card_id.has_value() && guard < 1024) {
+    if (candidate_parent_card_id.value() == card_id) {
+      return true;
+    }
+    const auto it = cards_by_id.find(candidate_parent_card_id.value());
+    if (it == cards_by_id.end()) {
+      return false;
+    }
+    candidate_parent_card_id = normalize_parent_id(it->second.parent_card_id);
+    guard++;
+  }
+  return false;
+}
+
+double sort_key_around_target(const std::vector<holder::model::Card>& siblings,
+                              const std::string& target_card_id,
+                              bool after) {
+  size_t target_index = 0;
+  bool found = false;
+  for (size_t i = 0; i < siblings.size(); ++i) {
+    if (siblings[i].card_id == target_card_id) {
+      target_index = i;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw std::runtime_error("invalid_target");
+  }
+
+  double left = 0.0;
+  double right = 0.0;
+  if (after) {
+    left = siblings[target_index].sort_key;
+    right = (target_index + 1 < siblings.size())
+                ? siblings[target_index + 1].sort_key
+                : left + 1.0;
+  } else {
+    right = siblings[target_index].sort_key;
+    left = (target_index > 0U) ? siblings[target_index - 1].sort_key : right - 1.0;
+  }
+  if (right - left < 0.0001) {
+    return after ? right + 1.0 : left - 1.0;
+  }
+  return (left + right) / 2.0;
 }
 
 } // namespace
@@ -308,6 +381,203 @@ bool handle_card_routes(const std::string& path,
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (!card_store) {
         res = support::error_response(http::status::not_implemented, "not_implemented", "Card store unavailable.");
+      } else if (tail == "/move") {
+        if (req.method() != http::verb::post) {
+          res = support::error_response(http::status::method_not_allowed,
+                                        "method_not_allowed",
+                                        "Method not allowed.");
+        } else {
+          try {
+            const auto body = nlohmann::json::parse(req.body());
+            if (!body.contains("project_id") || !body.contains("intent")) {
+              res = support::error_response(http::status::bad_request,
+                                            "bad_request",
+                                            "Missing required fields.");
+              return true;
+            }
+
+            const std::string project_id = body.at("project_id").get<std::string>();
+            const std::string intent = body.at("intent").get<std::string>();
+
+            const auto source_opt = card_store->get(card_id);
+            if (!source_opt.has_value() || source_opt->deleted_at.has_value()) {
+              res = support::error_response(http::status::not_found, "not_found", "Card not found.");
+              return true;
+            }
+            const auto source = source_opt.value();
+            if (source.project_id != project_id) {
+              res = support::error_response(http::status::unprocessable_entity,
+                                            "cross_project_move_forbidden",
+                                            "Source card is in a different project.");
+              return true;
+            }
+
+            holder::store::CardRepo card_repo(db);
+            const auto cards = card_repo.list_all(project_id);
+            std::unordered_map<std::string, holder::model::Card> cards_by_id;
+            cards_by_id.reserve(cards.size());
+            for (const auto& c : cards) {
+              cards_by_id[c.card_id] = c;
+            }
+
+            auto siblings_for_parent = [&](const std::optional<std::string>& parent,
+                                           const std::string& exclude_card_id) {
+              std::vector<holder::model::Card> siblings;
+              for (const auto& c : cards) {
+                if (c.deleted_at.has_value()) {
+                  continue;
+                }
+                if (c.card_id == exclude_card_id) {
+                  continue;
+                }
+                if (normalize_parent_id(c.parent_card_id) == normalize_parent_id(parent)) {
+                  siblings.push_back(c);
+                }
+              }
+              std::sort(siblings.begin(), siblings.end(), [](const auto& a, const auto& b) {
+                if (a.sort_key < b.sort_key) return true;
+                if (a.sort_key > b.sort_key) return false;
+                if (a.updated_at > b.updated_at) return true;
+                if (a.updated_at < b.updated_at) return false;
+                return a.title < b.title;
+              });
+              return siblings;
+            };
+
+            std::optional<std::string> next_parent = normalize_parent_id(source.parent_card_id);
+            std::optional<double> next_sort_key;
+            std::optional<std::string> moved_into_title;
+
+            if (intent == "into" || intent == "before" || intent == "after") {
+              if (!body.contains("target_card_id") || body.at("target_card_id").is_null()) {
+                res = support::error_response(http::status::bad_request,
+                                              "missing_target_card_id",
+                                              "target_card_id is required for this intent.");
+                return true;
+              }
+              const std::string target_card_id = body.at("target_card_id").get<std::string>();
+              const auto it = cards_by_id.find(target_card_id);
+              if (it == cards_by_id.end() || it->second.deleted_at.has_value()) {
+                res = support::error_response(http::status::not_found, "target_not_found", "Target card not found.");
+                return true;
+              }
+              const auto& target = it->second;
+              if (target.project_id != project_id) {
+                res = support::error_response(http::status::unprocessable_entity,
+                                              "cross_project_move_forbidden",
+                                              "Target card is in a different project.");
+                return true;
+              }
+
+              if (intent == "into") {
+                next_parent = target.card_id;
+                if (is_descendant_of(cards_by_id, next_parent, source.card_id)) {
+                  res = support::error_response(http::status::unprocessable_entity,
+                                                "move_would_create_cycle",
+                                                "Move would create a cycle.");
+                  return true;
+                }
+                next_sort_key = card_repo.next_sort_key(project_id, next_parent);
+                moved_into_title = target.title;
+              } else {
+                next_parent = normalize_parent_id(target.parent_card_id);
+                const auto siblings = siblings_for_parent(next_parent, source.card_id);
+                next_sort_key = sort_key_around_target(siblings, target.card_id, intent == "after");
+              }
+            } else if (intent == "to_start" || intent == "to_end") {
+              if (!body.contains("parent_card_id")) {
+                res = support::error_response(http::status::bad_request,
+                                              "missing_parent_card_id",
+                                              "parent_card_id is required for this intent.");
+                return true;
+              }
+              next_parent = normalize_parent_id(body.at("parent_card_id"));
+              if (next_parent.has_value()) {
+                const auto parent_it = cards_by_id.find(next_parent.value());
+                if (parent_it == cards_by_id.end() || parent_it->second.deleted_at.has_value()) {
+                  res = support::error_response(http::status::not_found,
+                                                "target_not_found",
+                                                "Parent card not found.");
+                  return true;
+                }
+              }
+              const auto siblings = siblings_for_parent(next_parent, source.card_id);
+              if (siblings.empty()) {
+                next_sort_key = 0.0;
+              } else if (intent == "to_start") {
+                next_sort_key = siblings.front().sort_key - 1.0;
+              } else {
+                next_sort_key = siblings.back().sort_key + 1.0;
+              }
+            } else if (intent == "up_level") {
+              const auto current_parent = normalize_parent_id(source.parent_card_id);
+              if (!current_parent.has_value()) {
+                res = support::error_response(http::status::unprocessable_entity,
+                                              "invalid_move_intent",
+                                              "Card is already at project root.");
+                return true;
+              }
+              const auto parent_it = cards_by_id.find(current_parent.value());
+              if (parent_it == cards_by_id.end() || parent_it->second.deleted_at.has_value()) {
+                next_parent = std::nullopt;
+              } else {
+                next_parent = normalize_parent_id(parent_it->second.parent_card_id);
+              }
+              next_sort_key = card_repo.next_sort_key(project_id, next_parent);
+              if (next_parent.has_value()) {
+                const auto dest_parent_it = cards_by_id.find(next_parent.value());
+                if (dest_parent_it != cards_by_id.end() && !dest_parent_it->second.deleted_at.has_value()) {
+                  moved_into_title = dest_parent_it->second.title;
+                }
+              }
+            } else {
+              res = support::error_response(http::status::bad_request,
+                                            "invalid_move_intent",
+                                            "Unknown move intent.");
+              return true;
+            }
+
+            if (!next_sort_key.has_value()) {
+              next_sort_key = card_repo.next_sort_key(project_id, next_parent);
+            }
+            const long long updated_at = support::now_epoch_seconds();
+            card_store->move(card_id, true, next_parent, next_sort_key, updated_at);
+            const auto moved_opt = card_store->get(card_id);
+            if (!moved_opt.has_value()) {
+              res = support::error_response(http::status::not_found, "not_found", "Card not found.");
+              return true;
+            }
+
+            nlohmann::json data;
+            data["card_id"] = moved_opt->card_id;
+            data["parent_card_id"] = moved_opt->parent_card_id.has_value()
+                                         ? nlohmann::json(moved_opt->parent_card_id.value())
+                                         : nlohmann::json(nullptr);
+            data["sort_key"] = moved_opt->sort_key;
+            data["revision"] = moved_opt->updated_at;
+            data["moved_into_title"] = moved_into_title.has_value()
+                                           ? nlohmann::json(moved_into_title.value())
+                                           : nlohmann::json(nullptr);
+
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = std::move(data);
+            res = support::json_response(http::status::ok, payload);
+          } catch (const holder::privacy::PrivacyError& ex) {
+            res = privacy_error_response(ex);
+          } catch (const std::runtime_error& ex) {
+            const std::string msg = ex.what();
+            if (msg == "invalid_target") {
+              res = support::error_response(http::status::unprocessable_entity,
+                                            "invalid_target",
+                                            "Target card is invalid for requested move.");
+            } else {
+              res = support::error_response(http::status::bad_request, "bad_request", msg);
+            }
+          } catch (const std::exception& ex) {
+            res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        }
       } else if (tail == "/links") {
         try {
           const auto card_opt = card_store->get(card_id);
