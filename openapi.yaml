@@ -771,6 +771,61 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/CardMoveResult"
+    CardContextCard:
+      allOf:
+        - $ref: "#/components/schemas/CardListItem"
+        - type: object
+          required: [child_count]
+          properties:
+            child_count:
+              type: integer
+    CardContextBreadcrumb:
+      type: object
+      required: [type, title]
+      properties:
+        type:
+          type: string
+          enum: [project, card]
+        title:
+          type: string
+        project_id:
+          type: string
+          nullable: true
+        card_id:
+          type: string
+          nullable: true
+    CardContextData:
+      type: object
+      required: [project, current_parent_card_id, breadcrumbs, cards]
+      properties:
+        project:
+          type: object
+          required: [project_id, name]
+          properties:
+            project_id:
+              type: string
+            name:
+              type: string
+        current_parent_card_id:
+          type: string
+          nullable: true
+        breadcrumbs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardContextBreadcrumb"
+        cards:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardContextCard"
+    CardContextResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardContextData"
     CardLink:
       type: object
       required: [from_card_id, to_card_id, to_type, kind, created_at]
@@ -2374,6 +2429,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /cards/context:
+    get:
+      summary: Read card context and breadcrumb path for a project level
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: parent_card_id
+          required: false
+          schema:
+            type: string
+          description: Optional parent card id. Omit for project root level.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardContextResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or parent card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /cards/{card_id}:
     get:
       summary: Fetch a card
@@ -2404,7 +2499,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /cards/{card_id}/move:
     post:
-      summary: Move/reparent/reorder a card using flowboard intent
+      summary: Move/reparent/reorder a card using card move intent
       parameters:
         - name: card_id
           in: path

@@ -8,6 +8,7 @@
 #include "store/AiThreadRepo.h"
 #include "store/CardRepo.h"
 #include "store/LinkRepo.h"
+#include "store/ProjectRepo.h"
 #include "store/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>
@@ -17,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace holder::api::routes {
 namespace {
@@ -221,6 +223,133 @@ bool handle_card_routes(const std::string& path,
                         holder::index::FtsIndexer* fts,
                         const std::function<std::string()>& uuid_v4,
                         const std::function<std::string(const std::string&)>& param_get) {
+  if (path == "/cards/context" && req.method() == http::verb::get) {
+    const std::string project_id = param_get("project_id");
+    const std::string parent_raw = param_get("parent_card_id");
+    if (project_id.empty()) {
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      return true;
+    }
+
+    try {
+      holder::store::ProjectRepo project_repo(db);
+      const auto project_opt = project_repo.get(project_id);
+      if (!project_opt.has_value()) {
+        res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+        return true;
+      }
+
+      holder::store::CardRepo card_repo(db);
+      const auto all_cards = card_repo.list_all(project_id);
+      std::unordered_map<std::string, holder::model::Card> cards_by_id;
+      cards_by_id.reserve(all_cards.size());
+      for (const auto& c : all_cards) {
+        if (!c.deleted_at.has_value()) {
+          cards_by_id[c.card_id] = c;
+        }
+      }
+
+      std::optional<std::string> parent_card_id = std::nullopt;
+      if (!parent_raw.empty()) {
+        parent_card_id = normalize_parent_id(std::optional<std::string>(parent_raw));
+      }
+
+      if (parent_card_id.has_value()) {
+        const auto parent_it = cards_by_id.find(parent_card_id.value());
+        if (parent_it == cards_by_id.end()) {
+          res = support::error_response(http::status::not_found, "not_found", "Parent card not found.");
+          return true;
+        }
+      }
+
+      std::unordered_map<std::string, int> child_count_by_parent;
+      for (const auto& [card_id, card] : cards_by_id) {
+        const auto parent = normalize_parent_id(card.parent_card_id);
+        if (parent.has_value() && cards_by_id.find(parent.value()) != cards_by_id.end()) {
+          child_count_by_parent[parent.value()] += 1;
+        }
+      }
+
+      std::vector<holder::model::Card> level_cards;
+      if (!parent_card_id.has_value()) {
+        level_cards = card_repo.list_roots(project_id);
+      } else {
+        level_cards = card_repo.list_children(project_id, parent_card_id.value());
+      }
+
+      nlohmann::json cards_json = nlohmann::json::array();
+      for (const auto& card : level_cards) {
+        if (card.deleted_at.has_value()) {
+          continue;
+        }
+        nlohmann::json item;
+        item["card_id"] = card.card_id;
+        item["project_id"] = card.project_id;
+        item["title"] = card.title;
+        item["rel_path"] = card.rel_path;
+        item["sort_key"] = card.sort_key;
+        item["created_at"] = card.created_at;
+        item["updated_at"] = card.updated_at;
+        item["parent_card_id"] = card.parent_card_id.has_value()
+                                     ? nlohmann::json(card.parent_card_id.value())
+                                     : nlohmann::json(nullptr);
+        item["deleted_at"] = nlohmann::json(nullptr);
+        const auto child_it = child_count_by_parent.find(card.card_id);
+        item["child_count"] = child_it == child_count_by_parent.end() ? 0 : child_it->second;
+        cards_json.push_back(std::move(item));
+      }
+
+      nlohmann::json breadcrumbs = nlohmann::json::array();
+      breadcrumbs.push_back({
+          {"type", "project"},
+          {"project_id", project_opt->project_id},
+          {"title", project_opt->name},
+      });
+
+      if (parent_card_id.has_value()) {
+        std::vector<holder::model::Card> chain;
+        std::optional<std::string> cursor = parent_card_id;
+        int guard = 0;
+        while (cursor.has_value() && guard < 1024) {
+          const auto it = cards_by_id.find(cursor.value());
+          if (it == cards_by_id.end()) {
+            break;
+          }
+          chain.push_back(it->second);
+          cursor = normalize_parent_id(it->second.parent_card_id);
+          guard++;
+        }
+        std::reverse(chain.begin(), chain.end());
+        for (const auto& card : chain) {
+          breadcrumbs.push_back({
+              {"type", "card"},
+              {"card_id", card.card_id},
+              {"title", card.title},
+          });
+        }
+      }
+
+      nlohmann::json data;
+      data["project"] = {
+          {"project_id", project_opt->project_id},
+          {"name", project_opt->name},
+      };
+      data["current_parent_card_id"] = parent_card_id.has_value()
+                                           ? nlohmann::json(parent_card_id.value())
+                                           : nlohmann::json(nullptr);
+      data["breadcrumbs"] = std::move(breadcrumbs);
+      data["cards"] = std::move(cards_json);
+
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = std::move(data);
+      res = support::json_response(http::status::ok, payload);
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+    }
+    return true;
+  }
+
   if (path == "/cards" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
