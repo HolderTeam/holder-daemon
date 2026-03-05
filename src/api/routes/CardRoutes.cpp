@@ -701,6 +701,24 @@ bool handle_card_routes(const std::string& path,
             std::optional<double> next_sort_key;
             std::optional<std::string> moved_into_title;
 
+            auto write_move_response = [&](const holder::model::Card& moved_card) {
+              nlohmann::json data;
+              data["card_id"] = moved_card.card_id;
+              data["parent_card_id"] = moved_card.parent_card_id.has_value()
+                                           ? nlohmann::json(moved_card.parent_card_id.value())
+                                           : nlohmann::json(nullptr);
+              data["sort_key"] = moved_card.sort_key;
+              data["revision"] = moved_card.updated_at;
+              data["moved_into_title"] = moved_into_title.has_value()
+                                             ? nlohmann::json(moved_into_title.value())
+                                             : nlohmann::json(nullptr);
+
+              nlohmann::json payload;
+              payload["ok"] = true;
+              payload["data"] = std::move(data);
+              res = support::json_response(http::status::ok, payload);
+            };
+
             if (intent == "into" || intent == "before" || intent == "after") {
               if (!body.contains("target_card_id") || body.at("target_card_id").is_null()) {
                 res = support::error_response(http::status::bad_request,
@@ -737,14 +755,12 @@ bool handle_card_routes(const std::string& path,
                 const auto siblings = siblings_for_parent(next_parent, source.card_id);
                 next_sort_key = sort_key_around_target(siblings, target.card_id, intent == "after");
               }
-            } else if (intent == "to_start" || intent == "to_end") {
-              if (!body.contains("parent_card_id")) {
-                res = support::error_response(http::status::bad_request,
-                                              "missing_parent_card_id",
-                                              "parent_card_id is required for this intent.");
-                return true;
+            } else if (intent == "to_start" || intent == "to_end" || intent == "left" || intent == "right") {
+              if (body.contains("parent_card_id")) {
+                next_parent = normalize_parent_id(body.at("parent_card_id"));
+              } else {
+                next_parent = normalize_parent_id(source.parent_card_id);
               }
-              next_parent = normalize_parent_id(body.at("parent_card_id"));
               if (next_parent.has_value()) {
                 const auto parent_it = cards_by_id.find(next_parent.value());
                 if (parent_it == cards_by_id.end() || parent_it->second.deleted_at.has_value()) {
@@ -754,13 +770,56 @@ bool handle_card_routes(const std::string& path,
                   return true;
                 }
               }
-              const auto siblings = siblings_for_parent(next_parent, source.card_id);
-              if (siblings.empty()) {
-                next_sort_key = 0.0;
-              } else if (intent == "to_start") {
-                next_sort_key = siblings.front().sort_key - 1.0;
+              const auto siblings_without_source = siblings_for_parent(next_parent, source.card_id);
+              if (intent == "to_start") {
+                if (siblings_without_source.empty()) {
+                  write_move_response(source);
+                  return true;
+                }
+                next_sort_key = siblings_without_source.front().sort_key - 1.0;
+              } else if (intent == "to_end") {
+                if (siblings_without_source.empty()) {
+                  write_move_response(source);
+                  return true;
+                }
+                next_sort_key = siblings_without_source.back().sort_key + 1.0;
               } else {
-                next_sort_key = siblings.back().sort_key + 1.0;
+                auto siblings_with_source = siblings_for_parent(next_parent, "");
+                std::sort(siblings_with_source.begin(), siblings_with_source.end(), [](const auto& a, const auto& b) {
+                  if (a.sort_key < b.sort_key) return true;
+                  if (a.sort_key > b.sort_key) return false;
+                  if (a.updated_at > b.updated_at) return true;
+                  if (a.updated_at < b.updated_at) return false;
+                  return a.title < b.title;
+                });
+                int source_index = -1;
+                for (int i = 0; i < static_cast<int>(siblings_with_source.size()); ++i) {
+                  if (siblings_with_source[static_cast<size_t>(i)].card_id == source.card_id) {
+                    source_index = i;
+                    break;
+                  }
+                }
+                if (source_index < 0) {
+                  write_move_response(source);
+                  return true;
+                }
+                if (intent == "left") {
+                  if (source_index == 0) {
+                    write_move_response(source);
+                    return true;
+                  }
+                  const auto& target = siblings_with_source[static_cast<size_t>(source_index - 1)];
+                  const auto siblings = siblings_for_parent(next_parent, source.card_id);
+                  next_sort_key = sort_key_around_target(siblings, target.card_id, false);
+                } else {
+                  if (source_index >= static_cast<int>(siblings_with_source.size()) - 1) {
+                    write_move_response(source);
+                    return true;
+                  }
+                  const auto& target = siblings_with_source[static_cast<size_t>(source_index + 1)];
+                  const auto siblings = siblings_for_parent(next_parent, source.card_id);
+                  next_sort_key = sort_key_around_target(siblings, target.card_id, true);
+                }
               }
             } else if (intent == "up_level") {
               const auto current_parent = normalize_parent_id(source.parent_card_id);
@@ -800,22 +859,7 @@ bool handle_card_routes(const std::string& path,
               res = support::error_response(http::status::not_found, "not_found", "Card not found.");
               return true;
             }
-
-            nlohmann::json data;
-            data["card_id"] = moved_opt->card_id;
-            data["parent_card_id"] = moved_opt->parent_card_id.has_value()
-                                         ? nlohmann::json(moved_opt->parent_card_id.value())
-                                         : nlohmann::json(nullptr);
-            data["sort_key"] = moved_opt->sort_key;
-            data["revision"] = moved_opt->updated_at;
-            data["moved_into_title"] = moved_into_title.has_value()
-                                           ? nlohmann::json(moved_into_title.value())
-                                           : nlohmann::json(nullptr);
-
-            nlohmann::json payload;
-            payload["ok"] = true;
-            payload["data"] = std::move(data);
-            res = support::json_response(http::status::ok, payload);
+            write_move_response(moved_opt.value());
           } catch (const holder::privacy::PrivacyError& ex) {
             res = privacy_error_response(ex);
           } catch (const std::runtime_error& ex) {

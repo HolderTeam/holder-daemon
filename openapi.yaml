@@ -722,7 +722,7 @@ components:
               type: string
     CardMoveIntent:
       type: string
-      enum: [into, before, after, to_start, to_end, up_level]
+      enum: [into, before, after, left, right, to_start, to_end, up_level]
     CardMoveRequest:
       type: object
       required: [project_id, intent]
@@ -738,7 +738,7 @@ components:
         parent_card_id:
           type: string
           nullable: true
-          description: Required for intents to_start/to_end. Null means project root.
+          description: Optional parent scope for intents to_start/to_end/left/right. If omitted, source card's current parent scope is used.
         if_revision:
           type: integer
           format: int64

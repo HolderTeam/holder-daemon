@@ -446,6 +446,67 @@ TEST_CASE("HTTP card move intent endpoint", "[http]") {
   REQUIRE(move_up["ok"] == true);
   REQUIRE(move_up["data"]["parent_card_id"].is_null());
 
+  auto position_in_root_tree = [&](const std::string& id) -> int {
+    const auto tree = http_json_request(bound.bind,
+                                        bound.port,
+                                        token,
+                                        boost::beast::http::verb::get,
+                                        "/cards?project_id=proj-1&view=tree",
+                                        nlohmann::json::object(),
+                                        boost::beast::http::status::ok);
+    REQUIRE(tree["ok"] == true);
+    for (size_t i = 0; i < tree["data"].size(); ++i) {
+      if (tree["data"][i]["card_id"] == id) {
+        return static_cast<int>(i);
+      }
+    }
+    return -1;
+  };
+
+  const auto to_end_inferred_parent = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/33333333-3333-4333-8333-333333333333/move",
+      {{"project_id", "proj-1"}, {"intent", "to_end"}},
+      boost::beast::http::status::ok);
+  REQUIRE(to_end_inferred_parent["ok"] == true);
+  const int c_after_end = position_in_root_tree("33333333-3333-4333-8333-333333333333");
+  REQUIRE(c_after_end >= 0);
+
+  const auto to_start_inferred_parent = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/33333333-3333-4333-8333-333333333333/move",
+      {{"project_id", "proj-1"}, {"intent", "to_start"}},
+      boost::beast::http::status::ok);
+  REQUIRE(to_start_inferred_parent["ok"] == true);
+  const int c_after_start = position_in_root_tree("33333333-3333-4333-8333-333333333333");
+  REQUIRE(c_after_start == 0);
+
+  const auto left_noop = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::post,
+                                           "/cards/33333333-3333-4333-8333-333333333333/move",
+                                           {{"project_id", "proj-1"}, {"intent", "left"}},
+                                           boost::beast::http::status::ok);
+  REQUIRE(left_noop["ok"] == true);
+  REQUIRE(position_in_root_tree("33333333-3333-4333-8333-333333333333") == 0);
+
+  const auto right_move = http_json_request(bound.bind,
+                                            bound.port,
+                                            token,
+                                            boost::beast::http::verb::post,
+                                            "/cards/33333333-3333-4333-8333-333333333333/move",
+                                            {{"project_id", "proj-1"}, {"intent", "right"}},
+                                            boost::beast::http::status::ok);
+  REQUIRE(right_move["ok"] == true);
+  REQUIRE(position_in_root_tree("33333333-3333-4333-8333-333333333333") > 0);
+
   std::raise(SIGTERM);
   server_thread.join();
 }
