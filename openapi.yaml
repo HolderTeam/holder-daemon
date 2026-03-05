@@ -696,6 +696,10 @@ components:
           type: integer
           format: int64
           nullable: true
+        child_count:
+          type: integer
+          minimum: 0
+          description: Present when count=true.
     CardListResponse:
       type: object
       required: [ok, data]
@@ -775,7 +779,6 @@ components:
       allOf:
         - $ref: "#/components/schemas/CardListItem"
         - type: object
-          required: [child_count]
           properties:
             child_count:
               type: integer
@@ -1241,6 +1244,14 @@ components:
         updated_at:
           type: integer
           format: int64
+        card_count:
+          type: integer
+          minimum: 0
+          description: Present when count=true.
+        root_card_count:
+          type: integer
+          minimum: 0
+          description: Present when count=true.
         sync:
           $ref: "#/components/schemas/ProjectSync"
     ProjectSync:
@@ -1986,6 +1997,13 @@ paths:
             format: int32
             minimum: 0
           description: Offset into ordered results (default 0).
+        - in: query
+          name: count
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include count fields (card_count/root_card_count) per project.
       responses:
         "200":
           description: OK
@@ -2381,6 +2399,13 @@ paths:
             Card ordering strategy. Defaults are view-aware: tree uses tree_default
             (sort_key asc, updated_at desc, title asc), recent uses updated_desc.
         - in: query
+          name: count
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include count fields (child_count) in returned card items.
+        - in: query
           name: limit
           required: false
           schema:
@@ -2470,6 +2495,13 @@ paths:
             enum: [tree_default, updated_desc, title_asc]
             default: tree_default
           description: Ordering for the returned level cards.
+        - in: query
+          name: count
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: Include count fields (child_count) in context cards.
       responses:
         "200":
           description: OK

@@ -237,6 +237,23 @@ std::optional<int> parse_limit_param(const std::string& limit_raw,
   return limit;
 }
 
+std::optional<bool> parse_count_param(const std::string& count_raw,
+                                      http::response<http::string_body>& res) {
+  if (count_raw.empty()) {
+    return false;
+  }
+  if (count_raw == "1" || count_raw == "true") {
+    return true;
+  }
+  if (count_raw == "0" || count_raw == "false") {
+    return false;
+  }
+  res = support::error_response(http::status::bad_request,
+                                "bad_request",
+                                "Invalid count. Expected true/false or 1/0.");
+  return std::nullopt;
+}
+
 enum class CardListOrder {
   TreeDefault,
   UpdatedDesc,
@@ -303,7 +320,8 @@ void sort_cards_by_order(std::vector<holder::model::Card>& cards, CardListOrder 
 http::response<http::string_body> recent_cards_response(holder::store::Db& db,
                                                         const std::string& project_id,
                                                         int limit,
-                                                        CardListOrder order) {
+                                                        CardListOrder order,
+                                                        bool include_count) {
   holder::store::CardRepo repo(db);
   auto cards = repo.list_all(project_id);
   std::vector<holder::model::Card> visible;
@@ -331,6 +349,9 @@ http::response<http::string_body> recent_cards_response(holder::store::Db& db,
                                  ? nlohmann::json(card.parent_card_id.value())
                                  : nlohmann::json(nullptr);
     item["deleted_at"] = nlohmann::json(nullptr);
+    if (include_count) {
+      item["child_count"] = repo.count_children_not_deleted(project_id, card.card_id);
+    }
     data.push_back(std::move(item));
   }
 
@@ -354,6 +375,7 @@ bool handle_card_routes(const std::string& path,
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
     const std::string order_raw = param_get("order");
+    const std::string count_raw = param_get("count");
     if (project_id.empty()) {
       res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
@@ -408,6 +430,10 @@ bool handle_card_routes(const std::string& path,
       if (!order.has_value()) {
         return true;
       }
+      const auto include_count = parse_count_param(count_raw, res);
+      if (!include_count.has_value()) {
+        return true;
+      }
       sort_cards_by_order(level_cards, order.value());
 
       nlohmann::json cards_json = nlohmann::json::array();
@@ -427,8 +453,10 @@ bool handle_card_routes(const std::string& path,
                                      ? nlohmann::json(card.parent_card_id.value())
                                      : nlohmann::json(nullptr);
         item["deleted_at"] = nlohmann::json(nullptr);
-        const auto child_it = child_count_by_parent.find(card.card_id);
-        item["child_count"] = child_it == child_count_by_parent.end() ? 0 : child_it->second;
+        if (include_count.value()) {
+          const auto child_it = child_count_by_parent.find(card.card_id);
+          item["child_count"] = child_it == child_count_by_parent.end() ? 0 : child_it->second;
+        }
         cards_json.push_back(std::move(item));
       }
 
@@ -488,6 +516,7 @@ bool handle_card_routes(const std::string& path,
     const std::string parent_raw = param_get("parent_card_id");
     const std::string view_raw = param_get("view");
     const std::string order_raw = param_get("order");
+    const std::string count_raw = param_get("count");
     const std::string limit_raw = param_get("limit");
     const std::string include_deleted_raw = param_get("include_deleted");
     if (project_id.empty()) {
@@ -496,6 +525,8 @@ bool handle_card_routes(const std::string& path,
       try {
         holder::store::CardRepo repo(db);
         const std::string view = view_raw.empty() ? "tree" : view_raw;
+        const auto include_count = parse_count_param(count_raw, res);
+        if (!include_count.has_value()) return true;
 
         std::vector<holder::model::Card> cards;
         if (view == "tree") {
@@ -509,7 +540,7 @@ bool handle_card_routes(const std::string& path,
           if (!order.has_value()) return true;
           const auto limit = parse_limit_param(limit_raw, res);
           if (!limit.has_value()) return true;
-          res = recent_cards_response(db, project_id, limit.value(), order.value());
+          res = recent_cards_response(db, project_id, limit.value(), order.value(), include_count.value());
           return true;
         } else {
           res = support::error_response(http::status::bad_request,
@@ -538,6 +569,9 @@ bool handle_card_routes(const std::string& path,
                                        : nlohmann::json(nullptr);
           item["deleted_at"] = card.deleted_at.has_value() ? nlohmann::json(card.deleted_at.value())
                                                            : nlohmann::json(nullptr);
+          if (include_count.value()) {
+            item["child_count"] = repo.count_children_not_deleted(project_id, card.card_id);
+          }
           data.push_back(std::move(item));
         }
         nlohmann::json payload;

@@ -224,6 +224,61 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                     create_body2,
                     boost::beast::http::status::created);
 
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "11111111-1111-4111-8111-111111111111"},
+                     {"project_id", "proj-1"},
+                     {"title", "P1 Root"},
+                     {"content", "P1 Root"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "22222222-2222-4222-8222-222222222222"},
+                     {"project_id", "proj-2"},
+                     {"title", "P2 Root"},
+                     {"content", "P2 Root"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "33333333-3333-4333-8333-333333333333"},
+                     {"project_id", "proj-2"},
+                     {"title", "P2 Child"},
+                     {"content", "P2 Child"},
+                     {"parent_card_id", "22222222-2222-4222-8222-222222222222"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+
+  const auto counted = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::get,
+                                         "/projects?count=true",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(counted["ok"] == true);
+  bool proj1_seen = false;
+  bool proj2_seen = false;
+  for (const auto& item : counted["data"]) {
+    if (item["project_id"] == "proj-1") {
+      proj1_seen = true;
+      REQUIRE(item["card_count"] == 1);
+      REQUIRE(item["root_card_count"] == 1);
+    }
+    if (item["project_id"] == "proj-2") {
+      proj2_seen = true;
+      REQUIRE(item["card_count"] == 2);
+      REQUIRE(item["root_card_count"] == 1);
+    }
+  }
+  REQUIRE(proj1_seen);
+  REQUIRE(proj2_seen);
+
   const auto filtered_by_name = http_json_request(bound.bind, bound.port, token,
                                                   boost::beast::http::verb::get,
                                                   "/projects?name=Second",
@@ -319,6 +374,15 @@ TEST_CASE("HTTP project list rejects invalid order and negative paging", "[http]
                                            nlohmann::json::object(),
                                            boost::beast::http::status::bad_request);
   REQUIRE(bad_limit["ok"] == false);
+
+  const auto bad_count = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/projects?count=maybe",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_count["ok"] == false);
 
   std::raise(SIGTERM);
   server_thread.join();

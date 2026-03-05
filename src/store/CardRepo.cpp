@@ -216,6 +216,73 @@ std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_i
   return out;
 }
 
+int CardRepo::count_all_not_deleted(const std::string& project_id) const {
+  static constexpr const char* SQL =
+      "SELECT COUNT(*) FROM cards WHERE project_id = ? AND deleted_at IS NULL;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare count all cards failed");
+  }
+  bind_text(stmt, 1, project_id);
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    const int count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+  }
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "count all cards failed");
+  }
+  return 0;
+}
+
+int CardRepo::count_roots_not_deleted(const std::string& project_id) const {
+  static constexpr const char* SQL =
+      "SELECT COUNT(*) FROM cards "
+      "WHERE project_id = ? AND parent_card_id IS NULL AND deleted_at IS NULL;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare count root cards failed");
+  }
+  bind_text(stmt, 1, project_id);
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    const int count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+  }
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "count root cards failed");
+  }
+  return 0;
+}
+
+int CardRepo::count_children_not_deleted(const std::string& project_id,
+                                         const std::string& parent_card_id) const {
+  static constexpr const char* SQL =
+      "SELECT COUNT(*) FROM cards "
+      "WHERE project_id = ? AND parent_card_id = ? AND deleted_at IS NULL;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare count child cards failed");
+  }
+  bind_text(stmt, 1, project_id);
+  bind_text(stmt, 2, parent_card_id);
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    const int count = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+    return count;
+  }
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) {
+    throw_sqlite(db_.handle(), "count child cards failed");
+  }
+  return 0;
+}
+
 double CardRepo::next_sort_key(const std::string& project_id,
                                const std::optional<std::string>& parent_card_id) const {
   static constexpr const char* SQL_ROOT =

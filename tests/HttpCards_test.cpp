@@ -575,7 +575,7 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
                                           bound.port,
                                           token,
                                           boost::beast::http::verb::get,
-                                          "/cards/context?project_id=proj-1",
+                                          "/cards/context?project_id=proj-1&count=true",
                                           nlohmann::json::object(),
                                           boost::beast::http::status::ok);
   REQUIRE(root_ctx["ok"] == true);
@@ -607,7 +607,7 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
       bound.port,
       token,
       boost::beast::http::verb::get,
-      "/cards/context?project_id=proj-1&parent_card_id=11111111-1111-4111-8111-111111111111",
+      "/cards/context?project_id=proj-1&parent_card_id=11111111-1111-4111-8111-111111111111&count=true",
       nlohmann::json::object(),
       boost::beast::http::status::ok);
   REQUIRE(child_ctx["ok"] == true);
@@ -624,7 +624,7 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
       bound.port,
       token,
       boost::beast::http::verb::get,
-      "/cards/context?project_id=proj-1&parent_card_id=does-not-exist",
+      "/cards/context?project_id=proj-1&parent_card_id=does-not-exist&count=true",
       nlohmann::json::object(),
       boost::beast::http::status::not_found);
   REQUIRE(missing_parent["ok"] == false);
@@ -821,6 +821,17 @@ TEST_CASE("HTTP cards/context support explicit order parameter", "[http]") {
   REQUIRE(context_by_title["data"]["cards"][0]["title"] == "Alpha");
   REQUIRE(context_by_title["data"]["cards"][1]["title"] == "Mike");
   REQUIRE(context_by_title["data"]["cards"][2]["title"] == "Zulu");
+  REQUIRE(!context_by_title["data"]["cards"][0].contains("child_count"));
+
+  const auto context_with_counts = http_json_request(bound.bind,
+                                                     bound.port,
+                                                     token,
+                                                     boost::beast::http::verb::get,
+                                                     "/cards/context?project_id=proj-1&order=title_asc&count=true",
+                                                     nlohmann::json::object(),
+                                                     boost::beast::http::status::ok);
+  REQUIRE(context_with_counts["ok"] == true);
+  REQUIRE(context_with_counts["data"]["cards"][0].contains("child_count"));
 
   const auto bad_order = http_json_request(bound.bind,
                                            bound.port,
@@ -841,6 +852,16 @@ TEST_CASE("HTTP cards/context support explicit order parameter", "[http]") {
                                                    boost::beast::http::status::bad_request);
   REQUIRE(bad_context_order["ok"] == false);
   REQUIRE(bad_context_order["error"]["code"] == "bad_request");
+
+  const auto bad_count = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/cards?project_id=proj-1&view=tree&count=maybe",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_count["ok"] == false);
+  REQUIRE(bad_count["error"]["code"] == "bad_request");
 
   std::raise(SIGTERM);
   server_thread.join();
