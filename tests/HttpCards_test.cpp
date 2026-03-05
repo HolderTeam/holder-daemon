@@ -580,6 +580,110 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
   server_thread.join();
 }
 
+TEST_CASE("HTTP card overview endpoint", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  ensure_uuid_seeded();
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto create_card = [&](const std::string& id, const std::string& title, int t) {
+    return http_json_request(bound.bind,
+                             bound.port,
+                             token,
+                             boost::beast::http::verb::post,
+                             "/cards",
+                             {
+                                 {"card_id", id},
+                                 {"project_id", "proj-1"},
+                                 {"title", title},
+                                 {"content", title},
+                                 {"created_at", t},
+                                 {"updated_at", t},
+                             },
+                             boost::beast::http::status::created);
+  };
+
+  REQUIRE(create_card("11111111-1111-4111-8111-111111111111", "First", 10)["ok"] == true);
+  REQUIRE(create_card("22222222-2222-4222-8222-222222222222", "Second", 20)["ok"] == true);
+  REQUIRE(create_card("33333333-3333-4333-8333-333333333333", "Third", 30)["ok"] == true);
+
+  const auto deleted = http_json_request(bound.bind,
+                                         bound.port,
+                                         token,
+                                         boost::beast::http::verb::delete_,
+                                         "/cards/22222222-2222-4222-8222-222222222222",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(deleted["ok"] == true);
+
+  const auto overview = http_json_request(bound.bind,
+                                          bound.port,
+                                          token,
+                                          boost::beast::http::verb::get,
+                                          "/cards/overview?project_id=proj-1",
+                                          nlohmann::json::object(),
+                                          boost::beast::http::status::ok);
+  REQUIRE(overview["ok"] == true);
+  REQUIRE(overview["data"].is_array());
+  REQUIRE(overview["data"].size() == 2);
+  REQUIRE(overview["data"][0]["card_id"] == "33333333-3333-4333-8333-333333333333");
+  REQUIRE(overview["data"][1]["card_id"] == "11111111-1111-4111-8111-111111111111");
+
+  const auto overview_limit = http_json_request(bound.bind,
+                                                bound.port,
+                                                token,
+                                                boost::beast::http::verb::get,
+                                                "/cards/overview?project_id=proj-1&limit=1",
+                                                nlohmann::json::object(),
+                                                boost::beast::http::status::ok);
+  REQUIRE(overview_limit["ok"] == true);
+  REQUIRE(overview_limit["data"].is_array());
+  REQUIRE(overview_limit["data"].size() == 1);
+  REQUIRE(overview_limit["data"][0]["card_id"] == "33333333-3333-4333-8333-333333333333");
+
+  const auto missing_project = http_json_request(bound.bind,
+                                                 bound.port,
+                                                 token,
+                                                 boost::beast::http::verb::get,
+                                                 "/cards/overview",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::bad_request);
+  REQUIRE(missing_project["ok"] == false);
+  REQUIRE(missing_project["error"]["code"] == "bad_request");
+
+  const auto bad_limit = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/cards/overview?project_id=proj-1&limit=abc",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_limit["ok"] == false);
+  REQUIRE(bad_limit["error"]["code"] == "bad_request");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
