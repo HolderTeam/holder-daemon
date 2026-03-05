@@ -106,7 +106,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
 
   const auto children_empty = http_json_request(bound.bind, bound.port, token,
                                                 boost::beast::http::verb::get,
-                                                "/cards?project_id=proj-1&scope=children&parent_card_id=abcd1234",
+                                                "/cards?project_id=proj-1&view=tree&parent_card_id=abcd1234",
                                                 nlohmann::json::object(),
                                                 boost::beast::http::status::ok);
   REQUIRE(children_empty["ok"] == true);
@@ -158,7 +158,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
 
   const auto listed_all = http_json_request(bound.bind, bound.port, token,
                                             boost::beast::http::verb::get,
-                                            "/cards?project_id=proj-1&scope=all",
+                                            "/cards?project_id=proj-1&view=recent",
                                             nlohmann::json::object(),
                                             boost::beast::http::status::ok);
   bool found_nested_in_all = false;
@@ -172,7 +172,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
 
   const auto listed_root = http_json_request(bound.bind, bound.port, token,
                                              boost::beast::http::verb::get,
-                                             "/cards?project_id=proj-1&scope=root",
+                                             "/cards?project_id=proj-1&view=tree",
                                              nlohmann::json::object(),
                                              boost::beast::http::status::ok);
   bool found_nested_in_root = false;
@@ -203,19 +203,12 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   REQUIRE(fetched_reparented["data"]["parent_card_id"].is_null());
   REQUIRE(fetched_reparented["data"]["updated_at"] == 31);
 
-  const auto scope_children_missing_parent = http_json_request(bound.bind, bound.port, token,
-                                                               boost::beast::http::verb::get,
-                                                               "/cards?project_id=proj-1&scope=children",
-                                                               nlohmann::json::object(),
-                                                               boost::beast::http::status::bad_request);
-  REQUIRE(scope_children_missing_parent["ok"] == false);
-
-  const auto scope_all_with_parent = http_json_request(bound.bind, bound.port, token,
-                                                       boost::beast::http::verb::get,
-                                                       "/cards?project_id=proj-1&scope=all&parent_card_id=abcd1234",
-                                                       nlohmann::json::object(),
-                                                       boost::beast::http::status::bad_request);
-  REQUIRE(scope_all_with_parent["ok"] == false);
+  const auto invalid_view = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::get,
+                                              "/cards?project_id=proj-1&view=bogus",
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::bad_request);
+  REQUIRE(invalid_view["ok"] == false);
 
   const auto deleted = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::delete_,
@@ -422,7 +415,7 @@ TEST_CASE("HTTP card move intent endpoint", "[http]") {
                                      bound.port,
                                      token,
                                      boost::beast::http::verb::get,
-                                     "/cards?project_id=proj-1&scope=all",
+                                     "/cards?project_id=proj-1&view=recent",
                                      nlohmann::json::object(),
                                      boost::beast::http::status::ok);
   double c_sort = 0.0;
@@ -580,7 +573,7 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
   server_thread.join();
 }
 
-TEST_CASE("HTTP card overview endpoint", "[http]") {
+TEST_CASE("HTTP cards view=recent listing", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
@@ -639,7 +632,7 @@ TEST_CASE("HTTP card overview endpoint", "[http]") {
                                           bound.port,
                                           token,
                                           boost::beast::http::verb::get,
-                                          "/cards/overview?project_id=proj-1",
+                                          "/cards?project_id=proj-1&view=recent",
                                           nlohmann::json::object(),
                                           boost::beast::http::status::ok);
   REQUIRE(overview["ok"] == true);
@@ -652,7 +645,7 @@ TEST_CASE("HTTP card overview endpoint", "[http]") {
                                                 bound.port,
                                                 token,
                                                 boost::beast::http::verb::get,
-                                                "/cards/overview?project_id=proj-1&limit=1",
+                                                "/cards?project_id=proj-1&view=recent&limit=1",
                                                 nlohmann::json::object(),
                                                 boost::beast::http::status::ok);
   REQUIRE(overview_limit["ok"] == true);
@@ -664,7 +657,7 @@ TEST_CASE("HTTP card overview endpoint", "[http]") {
                                                  bound.port,
                                                  token,
                                                  boost::beast::http::verb::get,
-                                                 "/cards/overview",
+                                                 "/cards?view=recent",
                                                  nlohmann::json::object(),
                                                  boost::beast::http::status::bad_request);
   REQUIRE(missing_project["ok"] == false);
@@ -674,7 +667,7 @@ TEST_CASE("HTTP card overview endpoint", "[http]") {
                                            bound.port,
                                            token,
                                            boost::beast::http::verb::get,
-                                           "/cards/overview?project_id=proj-1&limit=abc",
+                                           "/cards?project_id=proj-1&view=recent&limit=abc",
                                            nlohmann::json::object(),
                                            boost::beast::http::status::bad_request);
   REQUIRE(bad_limit["ok"] == false);
@@ -684,7 +677,7 @@ TEST_CASE("HTTP card overview endpoint", "[http]") {
   server_thread.join();
 }
 
-TEST_CASE("HTTP card recent endpoint", "[http]") {
+TEST_CASE("HTTP cards view=recent listing (alias coverage)", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
@@ -742,7 +735,7 @@ TEST_CASE("HTTP card recent endpoint", "[http]") {
                                         bound.port,
                                         token,
                                         boost::beast::http::verb::get,
-                                        "/cards/recent?project_id=proj-1",
+                                        "/cards?project_id=proj-1&view=recent",
                                         nlohmann::json::object(),
                                         boost::beast::http::status::ok);
   REQUIRE(recent["ok"] == true);
@@ -755,7 +748,7 @@ TEST_CASE("HTTP card recent endpoint", "[http]") {
                                               bound.port,
                                               token,
                                               boost::beast::http::verb::get,
-                                              "/cards/recent?project_id=proj-1&limit=1",
+                                              "/cards?project_id=proj-1&view=recent&limit=1",
                                               nlohmann::json::object(),
                                               boost::beast::http::status::ok);
   REQUIRE(recent_limit["ok"] == true);
@@ -767,7 +760,7 @@ TEST_CASE("HTTP card recent endpoint", "[http]") {
                                                  bound.port,
                                                  token,
                                                  boost::beast::http::verb::get,
-                                                 "/cards/recent",
+                                                 "/cards?view=recent",
                                                  nlohmann::json::object(),
                                                  boost::beast::http::status::bad_request);
   REQUIRE(missing_project["ok"] == false);
@@ -777,7 +770,7 @@ TEST_CASE("HTTP card recent endpoint", "[http]") {
                                            bound.port,
                                            token,
                                            boost::beast::http::verb::get,
-                                           "/cards/recent?project_id=proj-1&limit=abc",
+                                           "/cards?project_id=proj-1&view=recent&limit=abc",
                                            nlohmann::json::object(),
                                            boost::beast::http::status::bad_request);
   REQUIRE(bad_limit["ok"] == false);

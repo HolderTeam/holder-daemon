@@ -418,85 +418,32 @@ bool handle_card_routes(const std::string& path,
     return true;
   }
 
-  if (path == "/cards/overview" && req.method() == http::verb::get) {
-    const std::string project_id = param_get("project_id");
-    const std::string limit_raw = param_get("limit");
-    if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
-      return true;
-    }
-
-    const auto limit = parse_limit_param(limit_raw, res);
-    if (!limit.has_value()) return true;
-
-    try {
-      res = recent_cards_response(db, project_id, limit.value());
-    } catch (const std::exception& ex) {
-      res = support::error_response(http::status::internal_server_error, "error", ex.what());
-    }
-    return true;
-  }
-
-  if (path == "/cards/recent" && req.method() == http::verb::get) {
-    const std::string project_id = param_get("project_id");
-    const std::string limit_raw = param_get("limit");
-    if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
-      return true;
-    }
-
-    const auto limit = parse_limit_param(limit_raw, res);
-    if (!limit.has_value()) return true;
-
-    try {
-      res = recent_cards_response(db, project_id, limit.value());
-    } catch (const std::exception& ex) {
-      res = support::error_response(http::status::internal_server_error, "error", ex.what());
-    }
-    return true;
-  }
-
   if (path == "/cards" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
-    const std::string scope_raw = param_get("scope");
+    const std::string view_raw = param_get("view");
+    const std::string limit_raw = param_get("limit");
     const std::string include_deleted_raw = param_get("include_deleted");
     if (project_id.empty()) {
       res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         holder::store::CardRepo repo(db);
-        const std::string scope = scope_raw.empty() ? "root" : scope_raw;
+        const std::string view = view_raw.empty() ? "tree" : view_raw;
 
         std::vector<holder::model::Card> cards;
-        if (scope == "root") {
-          if (!parent_raw.empty()) {
-            res = support::error_response(http::status::bad_request,
-                                          "bad_request",
-                                          "parent_card_id is not allowed when scope=root.");
-            return true;
-          }
-          cards = repo.list_roots(project_id);
-        } else if (scope == "children") {
-          if (parent_raw.empty()) {
-            res = support::error_response(http::status::bad_request,
-                                          "bad_request",
-                                          "parent_card_id is required when scope=children.");
-            return true;
-          }
-          cards = repo.list_children(project_id, parent_raw);
-        } else if (scope == "all") {
-          if (!parent_raw.empty()) {
-            res = support::error_response(http::status::bad_request,
-                                          "bad_request",
-                                          "parent_card_id is not allowed when scope=all.");
-            return true;
-          }
-          cards = repo.list_all(project_id);
+        if (view == "tree") {
+          cards = parent_raw.empty() ? repo.list_roots(project_id)
+                                     : repo.list_children(project_id, parent_raw);
+        } else if (view == "recent") {
+          const auto limit = parse_limit_param(limit_raw, res);
+          if (!limit.has_value()) return true;
+          res = recent_cards_response(db, project_id, limit.value());
+          return true;
         } else {
           res = support::error_response(http::status::bad_request,
                                         "bad_request",
-                                        "Invalid scope. Expected root, children, or all.");
+                                        "Invalid view. Expected tree or recent.");
           return true;
         }
 

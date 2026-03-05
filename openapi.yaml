@@ -2358,19 +2358,28 @@ paths:
           schema:
             type: string
         - in: query
-          name: scope
+          name: view
           required: false
           schema:
             type: string
-            enum: [root, children, all]
-            default: root
-          description: Card list scope. root shows only top-level cards, children requires parent_card_id, all returns all cards in project.
+            enum: [tree, recent]
+            default: tree
+          description: Card list mode. tree returns one hierarchy level (roots or a parent's children); recent returns recently updated cards.
         - in: query
           name: parent_card_id
           required: false
           schema:
             type: string
-          description: Required when scope=children. Must be omitted for scope=root/all.
+          description: Optional when view=tree. Omit for roots; set to return that parent card's children.
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 200
+          description: Maximum number of cards when view=recent.
         - in: query
           name: include_deleted
           required: false
@@ -2465,80 +2474,6 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Project or parent card not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /cards/overview:
-    get:
-      summary: List cards for project overview ordered by recent updates
-      parameters:
-        - in: query
-          name: project_id
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: limit
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 5000
-            default: 200
-          description: Maximum number of cards to return.
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CardListResponse"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /cards/recent:
-    get:
-      summary: List recently updated cards for sidebar/recent views
-      parameters:
-        - in: query
-          name: project_id
-          required: true
-          schema:
-            type: string
-        - in: query
-          name: limit
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 5000
-            default: 200
-          description: Maximum number of cards to return.
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CardListResponse"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: Unauthorized
           content:
             application/json:
               schema:
