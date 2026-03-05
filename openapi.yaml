@@ -2372,6 +2372,15 @@ paths:
             type: string
           description: Optional when view=tree. Omit for roots; set to return that parent card's children.
         - in: query
+          name: order
+          required: false
+          schema:
+            type: string
+            enum: [tree_default, updated_desc, title_asc]
+          description: |
+            Card ordering strategy. Defaults are view-aware: tree uses tree_default
+            (sort_key asc, updated_at desc, title asc), recent uses updated_desc.
+        - in: query
           name: limit
           required: false
           schema:
@@ -2453,6 +2462,14 @@ paths:
           schema:
             type: string
           description: Optional parent card id. Omit for project root level.
+        - in: query
+          name: order
+          required: false
+          schema:
+            type: string
+            enum: [tree_default, updated_desc, title_asc]
+            default: tree_default
+          description: Ordering for the returned level cards.
       responses:
         "200":
           description: OK

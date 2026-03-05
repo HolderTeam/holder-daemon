@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +29,15 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
 
 bool is_valid_privacy_mode(const std::string& mode) {
   return mode == "encrypted_git" || mode == "plain";
+}
+
+bool is_home_project_name(const std::string& name) {
+  std::string lowered;
+  lowered.reserve(name.size());
+  for (const char c : name) {
+    lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  return lowered == "home";
 }
 
 nlohmann::json git_test_remote_payload(const std::string& project_id,
@@ -391,6 +401,17 @@ bool handle_project_routes(const std::string& path,
                                               : (a.updated_at > b.updated_at);
                          }
                        });
+
+      if (order_raw.empty()) {
+        std::stable_sort(projects.begin(),
+                         projects.end(),
+                         [](const holder::model::Project& a, const holder::model::Project& b) {
+                           const bool a_home = is_home_project_name(a.name);
+                           const bool b_home = is_home_project_name(b.name);
+                           if (a_home != b_home) return a_home;
+                           return false;
+                         });
+      }
 
       if (offset > 0 || limit < static_cast<int>(projects.size())) {
         std::vector<holder::model::Project> paged;

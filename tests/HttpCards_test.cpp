@@ -677,6 +677,114 @@ TEST_CASE("HTTP cards view=recent listing", "[http]") {
   server_thread.join();
 }
 
+TEST_CASE("HTTP cards/context support explicit order parameter", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto create_card = [&](const std::string& id, const std::string& title, int t) {
+    return http_json_request(bound.bind,
+                             bound.port,
+                             token,
+                             boost::beast::http::verb::post,
+                             "/cards",
+                             {
+                                 {"card_id", id},
+                                 {"project_id", "proj-1"},
+                                 {"title", title},
+                                 {"content", title},
+                                 {"created_at", t},
+                                 {"updated_at", t},
+                             },
+                             boost::beast::http::status::created);
+  };
+
+  REQUIRE(create_card("11111111-1111-4111-8111-111111111111", "Zulu", 10)["ok"] == true);
+  REQUIRE(create_card("22222222-2222-4222-8222-222222222222", "Alpha", 20)["ok"] == true);
+  REQUIRE(create_card("33333333-3333-4333-8333-333333333333", "Mike", 30)["ok"] == true);
+
+  const auto tree_by_updated = http_json_request(bound.bind,
+                                                 bound.port,
+                                                 token,
+                                                 boost::beast::http::verb::get,
+                                                 "/cards?project_id=proj-1&view=tree&order=updated_desc",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::ok);
+  REQUIRE(tree_by_updated["ok"] == true);
+  REQUIRE(tree_by_updated["data"].size() == 3);
+  REQUIRE(tree_by_updated["data"][0]["card_id"] == "33333333-3333-4333-8333-333333333333");
+  REQUIRE(tree_by_updated["data"][1]["card_id"] == "22222222-2222-4222-8222-222222222222");
+  REQUIRE(tree_by_updated["data"][2]["card_id"] == "11111111-1111-4111-8111-111111111111");
+
+  const auto recent_by_title = http_json_request(bound.bind,
+                                                 bound.port,
+                                                 token,
+                                                 boost::beast::http::verb::get,
+                                                 "/cards?project_id=proj-1&view=recent&order=title_asc",
+                                                 nlohmann::json::object(),
+                                                 boost::beast::http::status::ok);
+  REQUIRE(recent_by_title["ok"] == true);
+  REQUIRE(recent_by_title["data"].size() == 3);
+  REQUIRE(recent_by_title["data"][0]["title"] == "Alpha");
+  REQUIRE(recent_by_title["data"][1]["title"] == "Mike");
+  REQUIRE(recent_by_title["data"][2]["title"] == "Zulu");
+
+  const auto context_by_title = http_json_request(bound.bind,
+                                                  bound.port,
+                                                  token,
+                                                  boost::beast::http::verb::get,
+                                                  "/cards/context?project_id=proj-1&order=title_asc",
+                                                  nlohmann::json::object(),
+                                                  boost::beast::http::status::ok);
+  REQUIRE(context_by_title["ok"] == true);
+  REQUIRE(context_by_title["data"]["cards"].size() == 3);
+  REQUIRE(context_by_title["data"]["cards"][0]["title"] == "Alpha");
+  REQUIRE(context_by_title["data"]["cards"][1]["title"] == "Mike");
+  REQUIRE(context_by_title["data"]["cards"][2]["title"] == "Zulu");
+
+  const auto bad_order = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/cards?project_id=proj-1&view=tree&order=bogus",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_order["ok"] == false);
+  REQUIRE(bad_order["error"]["code"] == "bad_request");
+
+  const auto bad_context_order = http_json_request(bound.bind,
+                                                   bound.port,
+                                                   token,
+                                                   boost::beast::http::verb::get,
+                                                   "/cards/context?project_id=proj-1&order=bogus",
+                                                   nlohmann::json::object(),
+                                                   boost::beast::http::status::bad_request);
+  REQUIRE(bad_context_order["ok"] == false);
+  REQUIRE(bad_context_order["error"]["code"] == "bad_request");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP cards view=recent listing (alias coverage)", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";

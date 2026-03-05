@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -236,9 +237,73 @@ std::optional<int> parse_limit_param(const std::string& limit_raw,
   return limit;
 }
 
+enum class CardListOrder {
+  TreeDefault,
+  UpdatedDesc,
+  TitleAsc,
+};
+
+std::optional<CardListOrder> parse_card_order_param(const std::string& order_raw,
+                                                    CardListOrder default_order,
+                                                    http::response<http::string_body>& res) {
+  if (order_raw.empty()) {
+    return default_order;
+  }
+  if (order_raw == "tree_default") {
+    return CardListOrder::TreeDefault;
+  }
+  if (order_raw == "updated_desc") {
+    return CardListOrder::UpdatedDesc;
+  }
+  if (order_raw == "title_asc") {
+    return CardListOrder::TitleAsc;
+  }
+  res = support::error_response(http::status::bad_request,
+                                "bad_request",
+                                "Invalid order. Expected tree_default, updated_desc, or title_asc.");
+  return std::nullopt;
+}
+
+int compare_title_ci_then_id(const holder::model::Card& a, const holder::model::Card& b) {
+  std::string a_lower = a.title;
+  std::string b_lower = b.title;
+  std::transform(a_lower.begin(), a_lower.end(), a_lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  std::transform(b_lower.begin(), b_lower.end(), b_lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  if (a_lower < b_lower) return -1;
+  if (a_lower > b_lower) return 1;
+  if (a.card_id < b.card_id) return -1;
+  if (a.card_id > b.card_id) return 1;
+  return 0;
+}
+
+void sort_cards_by_order(std::vector<holder::model::Card>& cards, CardListOrder order) {
+  std::sort(cards.begin(), cards.end(), [order](const auto& a, const auto& b) {
+    if (order == CardListOrder::TreeDefault) {
+      if (a.sort_key < b.sort_key) return true;
+      if (a.sort_key > b.sort_key) return false;
+      if (a.updated_at > b.updated_at) return true;
+      if (a.updated_at < b.updated_at) return false;
+      return compare_title_ci_then_id(a, b) < 0;
+    }
+    if (order == CardListOrder::UpdatedDesc) {
+      if (a.updated_at > b.updated_at) return true;
+      if (a.updated_at < b.updated_at) return false;
+      if (a.created_at > b.created_at) return true;
+      if (a.created_at < b.created_at) return false;
+      return compare_title_ci_then_id(a, b) < 0;
+    }
+    return compare_title_ci_then_id(a, b) < 0;
+  });
+}
+
 http::response<http::string_body> recent_cards_response(holder::store::Db& db,
                                                         const std::string& project_id,
-                                                        int limit) {
+                                                        int limit,
+                                                        CardListOrder order) {
   holder::store::CardRepo repo(db);
   auto cards = repo.list_all(project_id);
   std::vector<holder::model::Card> visible;
@@ -248,13 +313,7 @@ http::response<http::string_body> recent_cards_response(holder::store::Db& db,
       visible.push_back(c);
     }
   }
-  std::sort(visible.begin(), visible.end(), [](const auto& a, const auto& b) {
-    if (a.updated_at > b.updated_at) return true;
-    if (a.updated_at < b.updated_at) return false;
-    if (a.created_at > b.created_at) return true;
-    if (a.created_at < b.created_at) return false;
-    return a.title < b.title;
-  });
+  sort_cards_by_order(visible, order);
 
   nlohmann::json data = nlohmann::json::array();
   const size_t out_count = std::min(static_cast<size_t>(limit), visible.size());
@@ -294,6 +353,7 @@ bool handle_card_routes(const std::string& path,
   if (path == "/cards/context" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
+    const std::string order_raw = param_get("order");
     if (project_id.empty()) {
       res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
@@ -344,6 +404,11 @@ bool handle_card_routes(const std::string& path,
       } else {
         level_cards = card_repo.list_children(project_id, parent_card_id.value());
       }
+      const auto order = parse_card_order_param(order_raw, CardListOrder::TreeDefault, res);
+      if (!order.has_value()) {
+        return true;
+      }
+      sort_cards_by_order(level_cards, order.value());
 
       nlohmann::json cards_json = nlohmann::json::array();
       for (const auto& card : level_cards) {
@@ -422,6 +487,7 @@ bool handle_card_routes(const std::string& path,
     const std::string project_id = param_get("project_id");
     const std::string parent_raw = param_get("parent_card_id");
     const std::string view_raw = param_get("view");
+    const std::string order_raw = param_get("order");
     const std::string limit_raw = param_get("limit");
     const std::string include_deleted_raw = param_get("include_deleted");
     if (project_id.empty()) {
@@ -433,12 +499,17 @@ bool handle_card_routes(const std::string& path,
 
         std::vector<holder::model::Card> cards;
         if (view == "tree") {
+          const auto order = parse_card_order_param(order_raw, CardListOrder::TreeDefault, res);
+          if (!order.has_value()) return true;
           cards = parent_raw.empty() ? repo.list_roots(project_id)
                                      : repo.list_children(project_id, parent_raw);
+          sort_cards_by_order(cards, order.value());
         } else if (view == "recent") {
+          const auto order = parse_card_order_param(order_raw, CardListOrder::UpdatedDesc, res);
+          if (!order.has_value()) return true;
           const auto limit = parse_limit_param(limit_raw, res);
           if (!limit.has_value()) return true;
-          res = recent_cards_response(db, project_id, limit.value());
+          res = recent_cards_response(db, project_id, limit.value(), order.value());
           return true;
         } else {
           res = support::error_response(http::status::bad_request,
