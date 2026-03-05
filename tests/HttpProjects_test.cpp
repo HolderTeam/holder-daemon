@@ -49,8 +49,11 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   std::filesystem::create_directories(projects_root);
   EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
