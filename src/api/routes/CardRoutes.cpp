@@ -213,6 +213,74 @@ double sort_key_around_target(const std::vector<holder::model::Card>& siblings,
   return (left + right) / 2.0;
 }
 
+std::optional<int> parse_limit_param(const std::string& limit_raw,
+                                     http::response<http::string_body>& res) {
+  int limit = 200;
+  if (!limit_raw.empty()) {
+    try {
+      const long parsed = std::stol(limit_raw);
+      if (parsed <= 0 || parsed > 5000) {
+        res = support::error_response(http::status::bad_request,
+                                      "bad_request",
+                                      "limit must be between 1 and 5000.");
+        return std::nullopt;
+      }
+      limit = static_cast<int>(parsed);
+    } catch (const std::exception&) {
+      res = support::error_response(http::status::bad_request,
+                                    "bad_request",
+                                    "Invalid limit. Expected integer.");
+      return std::nullopt;
+    }
+  }
+  return limit;
+}
+
+http::response<http::string_body> recent_cards_response(holder::store::Db& db,
+                                                        const std::string& project_id,
+                                                        int limit) {
+  holder::store::CardRepo repo(db);
+  auto cards = repo.list_all(project_id);
+  std::vector<holder::model::Card> visible;
+  visible.reserve(cards.size());
+  for (const auto& c : cards) {
+    if (!c.deleted_at.has_value()) {
+      visible.push_back(c);
+    }
+  }
+  std::sort(visible.begin(), visible.end(), [](const auto& a, const auto& b) {
+    if (a.updated_at > b.updated_at) return true;
+    if (a.updated_at < b.updated_at) return false;
+    if (a.created_at > b.created_at) return true;
+    if (a.created_at < b.created_at) return false;
+    return a.title < b.title;
+  });
+
+  nlohmann::json data = nlohmann::json::array();
+  const size_t out_count = std::min(static_cast<size_t>(limit), visible.size());
+  for (size_t i = 0; i < out_count; ++i) {
+    const auto& card = visible[i];
+    nlohmann::json item;
+    item["card_id"] = card.card_id;
+    item["project_id"] = card.project_id;
+    item["title"] = card.title;
+    item["rel_path"] = card.rel_path;
+    item["sort_key"] = card.sort_key;
+    item["created_at"] = card.created_at;
+    item["updated_at"] = card.updated_at;
+    item["parent_card_id"] = card.parent_card_id.has_value()
+                                 ? nlohmann::json(card.parent_card_id.value())
+                                 : nlohmann::json(nullptr);
+    item["deleted_at"] = nlohmann::json(nullptr);
+    data.push_back(std::move(item));
+  }
+
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = std::move(data);
+  return support::json_response(http::status::ok, payload);
+}
+
 } // namespace
 
 bool handle_card_routes(const std::string& path,
@@ -358,66 +426,30 @@ bool handle_card_routes(const std::string& path,
       return true;
     }
 
-    int limit = 200;
-    if (!limit_raw.empty()) {
-      try {
-        const long parsed = std::stol(limit_raw);
-        if (parsed <= 0 || parsed > 5000) {
-          res = support::error_response(http::status::bad_request,
-                                        "bad_request",
-                                        "limit must be between 1 and 5000.");
-          return true;
-        }
-        limit = static_cast<int>(parsed);
-      } catch (const std::exception&) {
-        res = support::error_response(http::status::bad_request,
-                                      "bad_request",
-                                      "Invalid limit. Expected integer.");
-        return true;
-      }
-    }
+    const auto limit = parse_limit_param(limit_raw, res);
+    if (!limit.has_value()) return true;
 
     try {
-      holder::store::CardRepo repo(db);
-      auto cards = repo.list_all(project_id);
-      std::vector<holder::model::Card> visible;
-      visible.reserve(cards.size());
-      for (const auto& c : cards) {
-        if (!c.deleted_at.has_value()) {
-          visible.push_back(c);
-        }
-      }
-      std::sort(visible.begin(), visible.end(), [](const auto& a, const auto& b) {
-        if (a.updated_at > b.updated_at) return true;
-        if (a.updated_at < b.updated_at) return false;
-        if (a.created_at > b.created_at) return true;
-        if (a.created_at < b.created_at) return false;
-        return a.title < b.title;
-      });
+      res = recent_cards_response(db, project_id, limit.value());
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::internal_server_error, "error", ex.what());
+    }
+    return true;
+  }
 
-      nlohmann::json data = nlohmann::json::array();
-      const size_t out_count = std::min(static_cast<size_t>(limit), visible.size());
-      for (size_t i = 0; i < out_count; ++i) {
-        const auto& card = visible[i];
-        nlohmann::json item;
-        item["card_id"] = card.card_id;
-        item["project_id"] = card.project_id;
-        item["title"] = card.title;
-        item["rel_path"] = card.rel_path;
-        item["sort_key"] = card.sort_key;
-        item["created_at"] = card.created_at;
-        item["updated_at"] = card.updated_at;
-        item["parent_card_id"] = card.parent_card_id.has_value()
-                                     ? nlohmann::json(card.parent_card_id.value())
-                                     : nlohmann::json(nullptr);
-        item["deleted_at"] = nlohmann::json(nullptr);
-        data.push_back(std::move(item));
-      }
+  if (path == "/cards/recent" && req.method() == http::verb::get) {
+    const std::string project_id = param_get("project_id");
+    const std::string limit_raw = param_get("limit");
+    if (project_id.empty()) {
+      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      return true;
+    }
 
-      nlohmann::json payload;
-      payload["ok"] = true;
-      payload["data"] = std::move(data);
-      res = support::json_response(http::status::ok, payload);
+    const auto limit = parse_limit_param(limit_raw, res);
+    if (!limit.has_value()) return true;
+
+    try {
+      res = recent_cards_response(db, project_id, limit.value());
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::internal_server_error, "error", ex.what());
     }
