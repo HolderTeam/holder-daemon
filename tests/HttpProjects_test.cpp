@@ -67,6 +67,8 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto project_root = dir / "project_repo";
+  const auto manual_project_root = dir / "manual_project_repo";
+  const auto second_project_root = dir / "project2_repo";
 
   nlohmann::json create_body = {
       {"project_id", "proj-1"},
@@ -166,7 +168,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   }
 
   holder::git::GitRepo git_repo;
-  git_repo.open_or_init("/tmp/project");
+  git_repo.open_or_init(manual_project_root.string());
   git_repo.set_remote("origin", "git@github.com:me/demo.git");
 
   nlohmann::json clear_git = {
@@ -210,13 +212,13 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(fetched_privacy["data"]["privacy_mode"] == "plain");
   REQUIRE(fetched_privacy["data"]["project_key_id"] == "key-123");
 
-  git_repo.open_or_init("/tmp/project");
+  git_repo.open_or_init(manual_project_root.string());
   git_repo.remove_remote("origin");
 
   nlohmann::json create_body2 = {
       {"project_id", "proj-2"},
       {"name", "Second Project"},
-      {"root_path", "/tmp/project2"},
+      {"root_path", second_project_root.string()},
       {"created_at", 15},
       {"updated_at", 30}
   };
