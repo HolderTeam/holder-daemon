@@ -90,6 +90,7 @@ add_executable(lockfile_tests
   GitRepo_test.cpp
   RepoSyncMetrics_test.cpp
   FsAdapterFailure_test.cpp
+  RealFs_test.cpp
   GitAdapterFailure_test.cpp
   Reindexer_test.cpp
   ../src/core/LockFile.cpp
