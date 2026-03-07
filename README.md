@@ -25,6 +25,9 @@ Runtime/build dependencies used by this repo:
 - Git clone: initializes submodule automatically.
 - ZIP download: fetches pinned `caste` archive (requires `curl` or `wget`).
 
+Coverage tooling (optional):
+- lcov (`lcov`, `genhtml`)
+
 Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
 
 ## Quick Start (Ubuntu)
@@ -42,7 +45,8 @@ sudo apt install -y \
   build-essential cmake ninja-build pkg-config git curl \
   libboost-system-dev libboost-filesystem-dev \
   libsqlite3-dev nlohmann-json3-dev libspdlog-dev libyaml-cpp-dev \
-  libgit2-dev libmd4c-dev xdg-utils-cxx-dev catch2 libsodium-dev
+  libgit2-dev libmd4c-dev xdg-utils-cxx-dev catch2 libsodium-dev \
+  lcov
 
 ./make.sh
 ```
@@ -63,6 +67,7 @@ Holder is intended to be cross-platform, but Ubuntu has the smoothest setup toda
 ./make.sh Debug           # debug build
 ./make.sh perf-privacy    # run encrypted-card perf profile table
 ./make.sh perf-privacy Debug
+./make.sh coverage        # build + run tests + generate HTML coverage report
 ./build/holder --help
 ./build/holder --reindex
 ./scripts/cloud-smoke.sh --provider switchyard --token "$HOLDER_TOKEN" --api-key "$SWITCHYARD_API_KEY"

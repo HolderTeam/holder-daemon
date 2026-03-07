@@ -66,6 +66,35 @@ build_all() {
   cmake --build build -- -j "${JOBS}"
 }
 
+coverage_all() {
+  local build_dir="build-coverage"
+  local report_dir="${build_dir}/coverage"
+  local info_base="${build_dir}/coverage-base.info"
+  local info_tests="${build_dir}/coverage-tests.info"
+  local info_total="${build_dir}/coverage.info"
+
+  cmake -S . -B "${build_dir}" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_C_FLAGS="--coverage -O0 -g" \
+    -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
+
+  if command -v nproc >/dev/null 2>&1; then
+    JOBS="$(nproc)"
+  else
+    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  fi
+  cmake --build "${build_dir}" -- -j "${JOBS}"
+
+  lcov --directory "${build_dir}" --zerocounters
+  lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}"
+  ctest --test-dir "${build_dir}" --output-on-failure
+  lcov --capture --directory "${build_dir}" --output-file "${info_tests}"
+  lcov --add-tracefile "${info_base}" --add-tracefile "${info_tests}" --output-file "${info_total}"
+  lcov --remove "${info_total}" '/usr/*' '*/third_party/*' '*/tests/*' --output-file "${info_total}"
+  genhtml "${info_total}" --output-directory "${report_dir}" --title "holder backend coverage"
+  echo "Coverage report: ${report_dir}/index.html"
+}
+
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
@@ -75,6 +104,9 @@ case "${MODE}" in
   perf-privacy)
     build_all "${BUILD_TYPE}"
     ./build/tests/lockfile_tests "CardStore encrypted project perf profile (manual)"
+    ;;
+  coverage)
+    coverage_all
     ;;
   *)
     # Backward-compatible: treat first arg as build type in default flow.
