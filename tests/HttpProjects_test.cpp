@@ -49,8 +49,11 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   std::filesystem::create_directories(projects_root);
   EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
   const std::string token = "testtoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -64,6 +67,8 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto project_root = dir / "project_repo";
+  const auto manual_project_root = dir / "manual_project_repo";
+  const auto second_project_root = dir / "project2_repo";
 
   nlohmann::json create_body = {
       {"project_id", "proj-1"},
@@ -163,7 +168,7 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   }
 
   holder::git::GitRepo git_repo;
-  git_repo.open_or_init("/tmp/project");
+  git_repo.open_or_init(manual_project_root.string());
   git_repo.set_remote("origin", "git@github.com:me/demo.git");
 
   nlohmann::json clear_git = {
@@ -207,13 +212,13 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(fetched_privacy["data"]["privacy_mode"] == "plain");
   REQUIRE(fetched_privacy["data"]["project_key_id"] == "key-123");
 
-  git_repo.open_or_init("/tmp/project");
+  git_repo.open_or_init(manual_project_root.string());
   git_repo.remove_remote("origin");
 
   nlohmann::json create_body2 = {
       {"project_id", "proj-2"},
       {"name", "Second Project"},
-      {"root_path", "/tmp/project2"},
+      {"root_path", second_project_root.string()},
       {"created_at", 15},
       {"updated_at", 30}
   };
@@ -223,6 +228,61 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
                     "/projects",
                     create_body2,
                     boost::beast::http::status::created);
+
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "11111111-1111-4111-8111-111111111111"},
+                     {"project_id", "proj-1"},
+                     {"title", "P1 Root"},
+                     {"content", "P1 Root"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "22222222-2222-4222-8222-222222222222"},
+                     {"project_id", "proj-2"},
+                     {"title", "P2 Root"},
+                     {"content", "P2 Root"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "33333333-3333-4333-8333-333333333333"},
+                     {"project_id", "proj-2"},
+                     {"title", "P2 Child"},
+                     {"content", "P2 Child"},
+                     {"parent_card_id", "22222222-2222-4222-8222-222222222222"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+
+  const auto counted = http_json_request(bound.bind, bound.port, token,
+                                         boost::beast::http::verb::get,
+                                         "/projects?count=true",
+                                         nlohmann::json::object(),
+                                         boost::beast::http::status::ok);
+  REQUIRE(counted["ok"] == true);
+  bool proj1_seen = false;
+  bool proj2_seen = false;
+  for (const auto& item : counted["data"]) {
+    if (item["project_id"] == "proj-1") {
+      proj1_seen = true;
+      REQUIRE(item["card_count"] == 1);
+      REQUIRE(item["root_card_count"] == 1);
+    }
+    if (item["project_id"] == "proj-2") {
+      proj2_seen = true;
+      REQUIRE(item["card_count"] == 2);
+      REQUIRE(item["root_card_count"] == 1);
+    }
+  }
+  REQUIRE(proj1_seen);
+  REQUIRE(proj2_seen);
 
   const auto filtered_by_name = http_json_request(bound.bind, bound.port, token,
                                                   boost::beast::http::verb::get,
@@ -319,6 +379,74 @@ TEST_CASE("HTTP project list rejects invalid order and negative paging", "[http]
                                            nlohmann::json::object(),
                                            boost::beast::http::status::bad_request);
   REQUIRE(bad_limit["ok"] == false);
+
+  const auto bad_count = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/projects?count=maybe",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_count["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP project list defaults to Home first", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  ensure_uuid_seeded();
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  http_json_request(bound.bind,
+                    bound.port,
+                    token,
+                    boost::beast::http::verb::post,
+                    "/projects",
+                    {{"project_id", "proj-a"},
+                     {"name", "Alpha"},
+                     {"root_path", "/tmp/proj-a"},
+                     {"created_at", 20},
+                     {"updated_at", 20}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind,
+                    bound.port,
+                    token,
+                    boost::beast::http::verb::post,
+                    "/projects",
+                    {{"project_id", "proj-home"},
+                     {"name", "Home"},
+                     {"root_path", "/tmp/proj-home"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+
+  const auto listed = http_json_request(bound.bind,
+                                        bound.port,
+                                        token,
+                                        boost::beast::http::verb::get,
+                                        "/projects",
+                                        nlohmann::json::object(),
+                                        boost::beast::http::status::ok);
+  REQUIRE(listed["ok"] == true);
+  REQUIRE(listed["data"].is_array());
+  REQUIRE(listed["data"].size() == 2);
+  REQUIRE(listed["data"][0]["name"] == "Home");
 
   std::raise(SIGTERM);
   server_thread.join();

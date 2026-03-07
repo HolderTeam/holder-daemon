@@ -20,6 +20,10 @@ public:
   std::vector<holder::model::Card> list_children(const std::string& project_id,
                                                  const std::string& parent_card_id) const;
   std::vector<holder::model::Card> list_all(const std::string& project_id) const;
+  int count_all_not_deleted(const std::string& project_id) const;
+  int count_roots_not_deleted(const std::string& project_id) const;
+  int count_children_not_deleted(const std::string& project_id,
+                                 const std::string& parent_card_id) const;
   double next_sort_key(const std::string& project_id,
                        const std::optional<std::string>& parent_card_id) const;
 

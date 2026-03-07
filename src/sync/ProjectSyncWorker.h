@@ -10,6 +10,7 @@ class ProjectSyncWorker {
 public:
   explicit ProjectSyncWorker(std::filesystem::path db_path,
                              int push_interval_seconds = 1200,
+                             int pull_interval_seconds = 300,
                              int poll_interval_seconds = 30);
 
   void run(const holder::core::SignalHandler& signals);
@@ -21,8 +22,8 @@ private:
 
   std::filesystem::path db_path_;
   int push_interval_seconds_ = 1200;
+  int pull_interval_seconds_ = 300;
   int poll_interval_seconds_ = 30;
 };
 
 } // namespace holder::sync
-

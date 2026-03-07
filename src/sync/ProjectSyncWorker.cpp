@@ -26,9 +26,11 @@ bool is_push_success(holder::git::PushStatus status) {
 
 ProjectSyncWorker::ProjectSyncWorker(std::filesystem::path db_path,
                                      int push_interval_seconds,
+                                     int pull_interval_seconds,
                                      int poll_interval_seconds)
     : db_path_(std::move(db_path)),
       push_interval_seconds_(push_interval_seconds),
+      pull_interval_seconds_(pull_interval_seconds),
       poll_interval_seconds_(poll_interval_seconds) {}
 
 void ProjectSyncWorker::run(const holder::core::SignalHandler& signals) {
@@ -142,6 +144,38 @@ void ProjectSyncWorker::run_push_cycle() {
     }
 
     const auto state = sync.get(project.project_id);
+    if (should_attempt_pull(
+            {.last_pull_at = state.has_value() ? state->last_pull_at : std::optional<long long>{},
+             .next_pull_retry_at =
+                 state.has_value() ? state->next_pull_retry_at : std::optional<long long>{},
+             .now = now,
+             .pull_interval_seconds = pull_interval_seconds_})) {
+      try {
+        git.open_or_init(project.root_path);
+        git.set_remote("origin", project.git_remote_url.value());
+        git.pull_remote_ff_only("origin");
+        sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
+      } catch (const std::exception& ex) {
+        sync.record_pull_result(project.project_id,
+                                "failed",
+                                false,
+                                std::optional<std::string>(ex.what()),
+                                now);
+      }
+
+      try {
+        const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
+        sync.update_activity_counts(project.project_id,
+                                    metrics.uncommitted_changes_count,
+                                    metrics.unpushed_commits_count,
+                                    now);
+      } catch (const std::exception& ex) {
+        spdlog::warn("sync worker post-pull metrics refresh failed for {}: {}",
+                     project.project_id,
+                     ex.what());
+      }
+    }
+
     if (!should_attempt_push(
             {.last_push_at = state.has_value() ? state->last_push_at : std::optional<long long>{},
              .next_retry_at = state.has_value() ? state->next_retry_at : std::optional<long long>{},

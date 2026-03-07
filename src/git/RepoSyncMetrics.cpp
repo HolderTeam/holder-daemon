@@ -27,6 +27,35 @@ int clamp_size_t_to_int(std::size_t value) {
   return static_cast<int>(value);
 }
 
+bool is_ignored_uncommitted_path(const char* path) {
+  if (path == nullptr) {
+    return false;
+  }
+  return std::string(path) == ".holder/privacy.json";
+}
+
+int filtered_uncommitted_count(git_status_list* status_list) {
+  const std::size_t n = git_status_list_entrycount(status_list);
+  int count = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    const git_status_entry* entry = git_status_byindex(status_list, i);
+    if (entry == nullptr) {
+      continue;
+    }
+    const char* path = nullptr;
+    if (entry->index_to_workdir != nullptr && entry->index_to_workdir->new_file.path != nullptr) {
+      path = entry->index_to_workdir->new_file.path;
+    } else if (entry->head_to_index != nullptr && entry->head_to_index->new_file.path != nullptr) {
+      path = entry->head_to_index->new_file.path;
+    }
+    if (is_ignored_uncommitted_path(path)) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
 std::string current_local_branch_name(git_repository* repo) {
   git_reference* head = nullptr;
   const int rc = git_repository_head(&head, repo);
@@ -48,34 +77,6 @@ std::string current_local_branch_name(git_repository* repo) {
   }
   git_reference_free(head);
   return branch;
-}
-
-int count_head_commits(git_repository* repo) {
-  git_revwalk* walk = nullptr;
-  int rc = git_revwalk_new(&walk, repo);
-  if (rc != 0 || walk == nullptr) {
-    throw git_err("git_revwalk_new failed", rc);
-  }
-  rc = git_revwalk_push_head(walk);
-  if (rc == GIT_EUNBORNBRANCH || rc == GIT_ENOTFOUND) {
-    git_revwalk_free(walk);
-    return 0;
-  }
-  if (rc != 0) {
-    git_revwalk_free(walk);
-    throw git_err("git_revwalk_push_head failed", rc);
-  }
-
-  std::size_t count = 0;
-  git_oid oid{};
-  while ((rc = git_revwalk_next(&oid, walk)) == 0) {
-    count += 1;
-  }
-  git_revwalk_free(walk);
-  if (rc != GIT_ITEROVER) {
-    throw git_err("git_revwalk_next failed", rc);
-  }
-  return clamp_size_t_to_int(count);
 }
 
 } // namespace
@@ -108,7 +109,7 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
     git_libgit2_shutdown();
     throw git_err("git_status_list_new failed", rc);
   }
-  metrics.uncommitted_changes_count = clamp_size_t_to_int(git_status_list_entrycount(status_list));
+  metrics.uncommitted_changes_count = filtered_uncommitted_count(status_list);
   git_status_list_free(status_list);
 
   const std::string branch = current_local_branch_name(repo);
@@ -141,7 +142,9 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
       ("refs/remotes/" + remote_name + "/" + branch).c_str());
   if (rc == GIT_ENOTFOUND) {
     git_reference_free(head_ref);
-    metrics.unpushed_commits_count = count_head_commits(repo);
+    // Missing remote-tracking ref is common immediately after push in this local clone.
+    // Treat as unknown/clean rather than "all local commits unpushed".
+    metrics.unpushed_commits_count = 0;
     git_repository_free(repo);
     git_libgit2_shutdown();
     return metrics;

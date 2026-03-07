@@ -5,6 +5,7 @@
 #include "core/ProjectPaths.h"
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
+#include "store/CardRepo.h"
 #include "store/ProjectRepo.h"
 #include "store/ProjectSyncRepo.h"
 
@@ -12,6 +13,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +30,22 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
 
 bool is_valid_privacy_mode(const std::string& mode) {
   return mode == "encrypted_git" || mode == "plain";
+}
+
+bool is_home_project_name(const std::string& name) {
+  std::string lowered;
+  lowered.reserve(name.size());
+  for (const char c : name) {
+    lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  return lowered == "home";
+}
+
+std::optional<bool> parse_count_param(const std::string& count_raw) {
+  if (count_raw.empty()) return false;
+  if (count_raw == "1" || count_raw == "true") return true;
+  if (count_raw == "0" || count_raw == "false") return false;
+  return std::nullopt;
 }
 
 nlohmann::json git_test_remote_payload(const std::string& project_id,
@@ -122,6 +140,8 @@ nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSy
         {"last_sync_error_at", nullptr},
         {"retry_count", 0},
         {"next_retry_at", nullptr},
+        {"pull_retry_count", 0},
+        {"next_pull_retry_at", nullptr},
         {"updated_at", nullptr},
     };
   }
@@ -139,6 +159,8 @@ nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSy
       {"last_sync_error_at", as_json_or_null(sync.last_sync_error_at)},
       {"retry_count", sync.retry_count},
       {"next_retry_at", as_json_or_null(sync.next_retry_at)},
+      {"pull_retry_count", sync.pull_retry_count},
+      {"next_pull_retry_at", as_json_or_null(sync.next_pull_retry_at)},
       {"updated_at", sync.updated_at > 0 ? nlohmann::json(sync.updated_at) : nlohmann::json(nullptr)},
   };
 }
@@ -306,6 +328,7 @@ bool handle_project_routes(const std::string& path,
       const std::string limit_raw = param_get("limit");
       const std::string offset_raw = param_get("offset");
       const std::string order_raw = param_get("order");
+      const std::string count_raw = param_get("count");
       std::optional<long long> updated_after;
       std::optional<long long> updated_before;
       if (!updated_after_raw.empty()) {
@@ -324,6 +347,10 @@ bool handle_project_routes(const std::string& path,
       }
       if (limit < 0 || offset < 0) {
         throw std::invalid_argument("limit/offset must be non-negative");
+      }
+      const auto include_count = parse_count_param(count_raw);
+      if (!include_count.has_value()) {
+        throw std::invalid_argument("invalid count");
       }
       if (limit > 1000) {
         limit = 1000;
@@ -392,6 +419,17 @@ bool handle_project_routes(const std::string& path,
                          }
                        });
 
+      if (order_raw.empty()) {
+        std::stable_sort(projects.begin(),
+                         projects.end(),
+                         [](const holder::model::Project& a, const holder::model::Project& b) {
+                           const bool a_home = is_home_project_name(a.name);
+                           const bool b_home = is_home_project_name(b.name);
+                           if (a_home != b_home) return a_home;
+                           return false;
+                         });
+      }
+
       if (offset > 0 || limit < static_cast<int>(projects.size())) {
         std::vector<holder::model::Project> paged;
         const std::size_t start = static_cast<std::size_t>(offset);
@@ -405,8 +443,9 @@ bool handle_project_routes(const std::string& path,
       }
 
       nlohmann::json data = nlohmann::json::array();
+      holder::store::CardRepo card_repo(db);
       for (const auto& project : projects) {
-        data.push_back({
+        nlohmann::json item = {
             {"project_id", project.project_id},
             {"name", project.name},
             {"root_path", project.root_path},
@@ -423,7 +462,12 @@ bool handle_project_routes(const std::string& path,
             {"created_at", project.created_at},
             {"updated_at", project.updated_at},
             {"sync", project_sync_to_json(sync_repo.get(project.project_id))},
-        });
+        };
+        if (include_count.value()) {
+          item["card_count"] = card_repo.count_all_not_deleted(project.project_id);
+          item["root_card_count"] = card_repo.count_roots_not_deleted(project.project_id);
+        }
+        data.push_back(std::move(item));
       }
       nlohmann::json payload;
       payload["ok"] = true;
