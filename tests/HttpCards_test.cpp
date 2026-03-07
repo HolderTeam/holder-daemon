@@ -634,6 +634,109 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
   server_thread.join();
 }
 
+TEST_CASE("HTTP card move endpoint rejects invalid input", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  const auto project_root_1 = dir / "project_repo_1";
+  const auto project_root_2 = dir / "project_repo_2";
+  create_project(db, "proj-1", project_root_1.string());
+  create_project(db, "proj-2", project_root_2.string());
+  ensure_uuid_seeded();
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "11111111-1111-4111-8111-111111111111"},
+                     {"project_id", "proj-1"},
+                     {"title", "A"},
+                     {"content", "A"},
+                     {"created_at", 10},
+                     {"updated_at", 10}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "22222222-2222-4222-8222-222222222222"},
+                     {"project_id", "proj-1"},
+                     {"title", "B"},
+                     {"content", "B"},
+                     {"created_at", 11},
+                     {"updated_at", 11}},
+                    boost::beast::http::status::created);
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    {{"card_id", "33333333-3333-4333-8333-333333333333"},
+                     {"project_id", "proj-2"},
+                     {"title", "X"},
+                     {"content", "X"},
+                     {"created_at", 12},
+                     {"updated_at", 12}},
+                    boost::beast::http::status::created);
+
+  const auto missing_intent = http_json_request(bound.bind,
+                                                bound.port,
+                                                token,
+                                                boost::beast::http::verb::post,
+                                                "/cards/11111111-1111-4111-8111-111111111111/move",
+                                                {{"project_id", "proj-1"}},
+                                                boost::beast::http::status::bad_request);
+  REQUIRE(missing_intent["ok"] == false);
+  REQUIRE(missing_intent["error"]["code"] == "bad_request");
+
+  const auto missing_target = http_json_request(bound.bind,
+                                                bound.port,
+                                                token,
+                                                boost::beast::http::verb::post,
+                                                "/cards/11111111-1111-4111-8111-111111111111/move",
+                                                {{"project_id", "proj-1"}, {"intent", "before"}},
+                                                boost::beast::http::status::bad_request);
+  REQUIRE(missing_target["ok"] == false);
+  REQUIRE(missing_target["error"]["code"] == "missing_target_card_id");
+
+  const auto cross_project = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/11111111-1111-4111-8111-111111111111/move",
+      {{"project_id", "proj-1"}, {"intent", "into"}, {"target_card_id", "33333333-3333-4333-8333-333333333333"}},
+      boost::beast::http::status::not_found);
+  REQUIRE(cross_project["ok"] == false);
+  REQUIRE(cross_project["error"]["code"] == "target_not_found");
+
+  const auto bad_intent = http_json_request(bound.bind,
+                                            bound.port,
+                                            token,
+                                            boost::beast::http::verb::post,
+                                            "/cards/11111111-1111-4111-8111-111111111111/move",
+                                            {{"project_id", "proj-1"}, {"intent", "teleport"}},
+                                            boost::beast::http::status::bad_request);
+  REQUIRE(bad_intent["ok"] == false);
+  REQUIRE(bad_intent["error"]["code"] == "invalid_move_intent");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP cards view=recent listing", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";

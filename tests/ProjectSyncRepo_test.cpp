@@ -106,3 +106,45 @@ TEST_CASE("ProjectSyncRepo stores uncommitted and unpushed counters", "[sync][re
   REQUIRE(state->uncommitted_changes_count == 3);
   REQUIRE(state->unpushed_commits_count == 7);
 }
+
+TEST_CASE("ProjectSyncRepo upgrades old sync table with pull retry columns", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::store::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  // Simulate pre-upgrade schema with no pull_retry_count/next_pull_retry_at.
+  db.exec(
+      "CREATE TABLE IF NOT EXISTS project_sync_state ("
+      " project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,"
+      " last_commit_at INTEGER NULL,"
+      " last_push_at INTEGER NULL,"
+      " last_pull_at INTEGER NULL,"
+      " uncommitted_changes_count INTEGER NOT NULL DEFAULT 0,"
+      " unpushed_commits_count INTEGER NOT NULL DEFAULT 0,"
+      " last_push_status TEXT NULL,"
+      " last_pull_status TEXT NULL,"
+      " last_sync_error TEXT NULL,"
+      " last_sync_error_at INTEGER NULL,"
+      " retry_count INTEGER NOT NULL DEFAULT 0,"
+      " next_retry_at INTEGER NULL,"
+      " updated_at INTEGER NOT NULL DEFAULT 0"
+      ");");
+
+  holder::store::ProjectSyncRepo sync(db);
+  sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{"boom"}, 500);
+
+  const auto state = sync.get("proj-1");
+  REQUIRE(state.has_value());
+  REQUIRE(state->pull_retry_count == 1);
+  REQUIRE(state->next_pull_retry_at.has_value());
+  REQUIRE(state->next_pull_retry_at.value() == 560);
+}

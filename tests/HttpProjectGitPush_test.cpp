@@ -98,6 +98,8 @@ TEST_CASE("Project git push returns remote_unset when no remote configured", "[g
   REQUIRE(sync["data"]["sync"]["last_push_status"] == "remote_unset");
   REQUIRE(sync["data"]["sync"]["retry_count"] == 1);
   REQUIRE(sync["data"]["sync"]["next_retry_at"].is_number_integer());
+  REQUIRE(sync["data"]["sync"]["pull_retry_count"] == 0);
+  REQUIRE(sync["data"]["sync"]["next_pull_retry_at"].is_null());
   REQUIRE(sync["data"]["sync"]["last_sync_error"].is_string());
 
   std::raise(SIGTERM);
@@ -167,6 +169,8 @@ TEST_CASE("Project git push returns structured non_fast_forward result", "[git][
   REQUIRE(sync["data"]["sync"]["last_push_status"] == "non_fast_forward");
   REQUIRE(sync["data"]["sync"]["retry_count"] == 1);
   REQUIRE(sync["data"]["sync"]["next_retry_at"].is_number_integer());
+  REQUIRE(sync["data"]["sync"]["pull_retry_count"] == 0);
+  REQUIRE(sync["data"]["sync"]["next_pull_retry_at"].is_null());
   REQUIRE(sync["data"]["sync"]["last_sync_error"] == "non-fast-forward");
 
   std::raise(SIGTERM);
