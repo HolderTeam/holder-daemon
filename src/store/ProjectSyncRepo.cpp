@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <array>
+#include <set>
 #include <stdexcept>
 
 namespace holder::store {
@@ -75,6 +76,34 @@ int backoff_seconds_for_retry(int retry_count) {
   return kSchedule.back();
 }
 
+std::set<std::string> table_columns(sqlite3* db, const std::string& table_name) {
+  const std::string sql = "PRAGMA table_info(" + table_name + ");";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db, "prepare table_info failed");
+  }
+
+  std::set<std::string> columns;
+  while (true) {
+    const int rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+      const unsigned char* name = sqlite3_column_text(stmt, 1);
+      if (name != nullptr) {
+        columns.insert(reinterpret_cast<const char*>(name));
+      }
+      continue;
+    }
+    if (rc == SQLITE_DONE) {
+      break;
+    }
+    sqlite3_finalize(stmt);
+    throw_sqlite(db, "table_info step failed");
+  }
+
+  sqlite3_finalize(stmt);
+  return columns;
+}
+
 } // namespace
 
 ProjectSyncRepo::ProjectSyncRepo(Db& db) : db_(db) { ensure_table(); }
@@ -94,8 +123,18 @@ void ProjectSyncRepo::ensure_table() {
       " last_sync_error_at INTEGER NULL,"
       " retry_count INTEGER NOT NULL DEFAULT 0,"
       " next_retry_at INTEGER NULL,"
+      " pull_retry_count INTEGER NOT NULL DEFAULT 0,"
+      " next_pull_retry_at INTEGER NULL,"
       " updated_at INTEGER NOT NULL DEFAULT 0"
       ");");
+
+  const auto cols = table_columns(db_.handle(), "project_sync_state");
+  if (cols.find("pull_retry_count") == cols.end()) {
+    db_.exec("ALTER TABLE project_sync_state ADD COLUMN pull_retry_count INTEGER NOT NULL DEFAULT 0;");
+  }
+  if (cols.find("next_pull_retry_at") == cols.end()) {
+    db_.exec("ALTER TABLE project_sync_state ADD COLUMN next_pull_retry_at INTEGER NULL;");
+  }
 }
 
 std::optional<holder::model::ProjectSyncState> ProjectSyncRepo::get(const std::string& project_id) const {
@@ -103,7 +142,7 @@ std::optional<holder::model::ProjectSyncState> ProjectSyncRepo::get(const std::s
       "SELECT project_id, last_commit_at, last_push_at, last_pull_at,"
       " uncommitted_changes_count, unpushed_commits_count,"
       " last_push_status, last_pull_status, last_sync_error, last_sync_error_at, retry_count,"
-      " next_retry_at, updated_at"
+      " next_retry_at, pull_retry_count, next_pull_retry_at, updated_at"
       " FROM project_sync_state WHERE project_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -127,7 +166,9 @@ std::optional<holder::model::ProjectSyncState> ProjectSyncRepo::get(const std::s
     state.last_sync_error_at = read_int64_optional(stmt, 9);
     state.retry_count = sqlite3_column_int(stmt, 10);
     state.next_retry_at = read_int64_optional(stmt, 11);
-    state.updated_at = sqlite3_column_int64(stmt, 12);
+    state.pull_retry_count = sqlite3_column_int(stmt, 12);
+    state.next_pull_retry_at = read_int64_optional(stmt, 13);
+    state.updated_at = sqlite3_column_int64(stmt, 14);
     sqlite3_finalize(stmt);
     return state;
   }
@@ -144,8 +185,8 @@ void ProjectSyncRepo::upsert(const holder::model::ProjectSyncState& state) {
       " project_id, last_commit_at, last_push_at, last_pull_at,"
       " uncommitted_changes_count, unpushed_commits_count,"
       " last_push_status, last_pull_status, last_sync_error, last_sync_error_at, retry_count,"
-      " next_retry_at, updated_at)"
-      " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      " next_retry_at, pull_retry_count, next_pull_retry_at, updated_at)"
+      " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       " ON CONFLICT(project_id) DO UPDATE SET"
       " last_commit_at=excluded.last_commit_at,"
       " last_push_at=excluded.last_push_at,"
@@ -158,6 +199,8 @@ void ProjectSyncRepo::upsert(const holder::model::ProjectSyncState& state) {
       " last_sync_error_at=excluded.last_sync_error_at,"
       " retry_count=excluded.retry_count,"
       " next_retry_at=excluded.next_retry_at,"
+      " pull_retry_count=excluded.pull_retry_count,"
+      " next_pull_retry_at=excluded.next_pull_retry_at,"
       " updated_at=excluded.updated_at;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -177,7 +220,9 @@ void ProjectSyncRepo::upsert(const holder::model::ProjectSyncState& state) {
   bind_int64_optional(stmt, 10, state.last_sync_error_at);
   bind_int(stmt, 11, state.retry_count);
   bind_int64_optional(stmt, 12, state.next_retry_at);
-  bind_int64(stmt, 13, state.updated_at);
+  bind_int(stmt, 13, state.pull_retry_count);
+  bind_int64_optional(stmt, 14, state.next_pull_retry_at);
+  bind_int64(stmt, 15, state.updated_at);
 
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -237,11 +282,15 @@ void ProjectSyncRepo::record_pull_result(const std::string& project_id,
     state.last_pull_at = now;
     state.last_sync_error.reset();
     state.last_sync_error_at.reset();
+    state.pull_retry_count = 0;
+    state.next_pull_retry_at.reset();
   } else {
     state.last_sync_error = error_message.has_value() && !error_message->empty()
                                 ? error_message
                                 : std::optional<std::string>{"pull failed"};
     state.last_sync_error_at = now;
+    state.pull_retry_count += 1;
+    state.next_pull_retry_at = now + backoff_seconds_for_retry(state.pull_retry_count);
   }
   upsert(state);
 }

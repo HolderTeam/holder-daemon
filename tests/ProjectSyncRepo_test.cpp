@@ -70,6 +70,9 @@ TEST_CASE("ProjectSyncRepo records pull status and errors", "[sync][repo]") {
   REQUIRE(failed->last_sync_error.value() == "ff-only failed");
   REQUIRE(failed->last_sync_error_at.has_value());
   REQUIRE(failed->last_sync_error_at.value() == 400);
+  REQUIRE(failed->pull_retry_count == 1);
+  REQUIRE(failed->next_pull_retry_at.has_value());
+  REQUIRE(failed->next_pull_retry_at.value() == 460);
 
   sync.record_pull_result("proj-1", "succeeded", true, std::nullopt, 450);
   auto ok = sync.get("proj-1");
@@ -77,6 +80,8 @@ TEST_CASE("ProjectSyncRepo records pull status and errors", "[sync][repo]") {
   REQUIRE(ok->last_pull_at.has_value());
   REQUIRE(ok->last_pull_at.value() == 450);
   REQUIRE_FALSE(ok->last_sync_error.has_value());
+  REQUIRE(ok->pull_retry_count == 0);
+  REQUIRE_FALSE(ok->next_pull_retry_at.has_value());
 }
 
 TEST_CASE("ProjectSyncRepo stores uncommitted and unpushed counters", "[sync][repo]") {

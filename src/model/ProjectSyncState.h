@@ -18,6 +18,8 @@ struct ProjectSyncState {
   std::optional<long long> last_sync_error_at;
   int retry_count = 0;
   std::optional<long long> next_retry_at;
+  int pull_retry_count = 0;
+  std::optional<long long> next_pull_retry_at;
   long long updated_at = 0;
 };
 

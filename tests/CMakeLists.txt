@@ -66,6 +66,7 @@ add_executable(lockfile_tests
   ProjectRepo_test.cpp
   ProjectSyncRepo_test.cpp
   ProjectSyncPolicy_test.cpp
+  ProjectSyncWorker_test.cpp
   ProjectPrivacy_test.cpp
   CardRepo_test.cpp
   LinkRepo_test.cpp

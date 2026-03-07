@@ -140,6 +140,8 @@ nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSy
         {"last_sync_error_at", nullptr},
         {"retry_count", 0},
         {"next_retry_at", nullptr},
+        {"pull_retry_count", 0},
+        {"next_pull_retry_at", nullptr},
         {"updated_at", nullptr},
     };
   }
@@ -157,6 +159,8 @@ nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSy
       {"last_sync_error_at", as_json_or_null(sync.last_sync_error_at)},
       {"retry_count", sync.retry_count},
       {"next_retry_at", as_json_or_null(sync.next_retry_at)},
+      {"pull_retry_count", sync.pull_retry_count},
+      {"next_pull_retry_at", as_json_or_null(sync.next_pull_retry_at)},
       {"updated_at", sync.updated_at > 0 ? nlohmann::json(sync.updated_at) : nlohmann::json(nullptr)},
   };
 }

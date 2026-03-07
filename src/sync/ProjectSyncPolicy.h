@@ -11,7 +11,14 @@ struct PushDecisionInput {
   int push_interval_seconds = 1200;
 };
 
+struct PullDecisionInput {
+  std::optional<long long> last_pull_at;
+  std::optional<long long> next_pull_retry_at;
+  long long now = 0;
+  int pull_interval_seconds = 300;
+};
+
 bool should_attempt_push(const PushDecisionInput& input);
+bool should_attempt_pull(const PullDecisionInput& input);
 
 } // namespace holder::sync
-
