@@ -67,6 +67,16 @@ TEST_CASE("RealFs rename throws for missing source", "[fs][realfs]") {
   REQUIRE_THROWS_WITH(fs.rename(from, to), Catch::Matchers::ContainsSubstring("Failed to rename"));
 }
 
+TEST_CASE("RealFs remove throws for non-empty directory", "[fs][realfs]") {
+  holder::core::RealFs fs;
+  const auto dir = make_temp_dir();
+  const auto non_empty_dir = dir / "non-empty";
+  fs.create_directories(non_empty_dir);
+  fs.write_file(non_empty_dir / "child.txt", "x");
+  REQUIRE_THROWS_WITH(fs.remove(non_empty_dir),
+                      Catch::Matchers::ContainsSubstring("Failed to remove"));
+}
+
 TEST_CASE("RealFs last_write_time_seconds throws for missing path", "[fs][realfs]") {
   holder::core::RealFs fs;
   const auto missing = make_temp_dir() / "missing.txt";
