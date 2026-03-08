@@ -12,7 +12,7 @@
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
 #include "card/CardStore.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
 #include <boost/asio.hpp>

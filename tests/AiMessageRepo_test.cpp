@@ -11,7 +11,7 @@
 #include "ai/AiMessagePaths.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
 #include <chrono>

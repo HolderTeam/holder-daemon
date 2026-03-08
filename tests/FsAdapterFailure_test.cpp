@@ -17,9 +17,9 @@
 #include "ai/AiThreadRepo.h"
 #include "card/CardRepo.h"
 #include "card/CardStore.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
-#include "store/Rebuilder.h"
+#include "project/Rebuilder.h"
 
 #include <chrono>
 #include <filesystem>

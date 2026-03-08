@@ -1,6 +1,6 @@
 #include "ai/AiRunRepo.h"
 
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <sqlite3.h>
 #include <stdexcept>

@@ -5,7 +5,7 @@
 #endif
 
 #include "model/Project.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
 #include <chrono>

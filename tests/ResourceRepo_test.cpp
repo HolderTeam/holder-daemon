@@ -6,7 +6,7 @@
 
 #include "model/Project.h"
 #include "model/Resource.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 #include "store/ResourceRepo.h"
 

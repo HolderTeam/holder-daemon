@@ -5,7 +5,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <filesystem>

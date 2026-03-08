@@ -1,7 +1,7 @@
 #pragma once
 
 #include "index/FtsIndexer.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 namespace holder::index {
 

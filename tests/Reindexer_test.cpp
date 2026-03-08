@@ -5,7 +5,7 @@
 #endif
 
 #include "index/Reindexer.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <filesystem>

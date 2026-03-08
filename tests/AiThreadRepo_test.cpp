@@ -7,7 +7,7 @@
 #include "model/AiThread.h"
 #include "model/Project.h"
 #include "ai/AiThreadRepo.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
 #include <chrono>

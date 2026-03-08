@@ -1,7 +1,7 @@
 #pragma once
 
 #include "model/AiRouterConfig.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <optional>
 #include <string>

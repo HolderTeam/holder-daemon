@@ -138,11 +138,11 @@ add_executable(holder
   src/ai/AiRouterConfigRepo.cpp
   src/ai/AiProviderCredentialRepo.cpp
   src/ai/AiProviderSettingRepo.cpp
-  src/store/Rebuilder.cpp
+  src/project/Rebuilder.cpp
   src/card/CardStore.cpp
-  src/store/Db.cpp
-  src/store/Tx.cpp
-  src/store/Migrations.cpp
+  src/platform/Db.cpp
+  src/platform/Tx.cpp
+  src/platform/Migrations.cpp
   src/git/GitRepo.cpp
   src/git/GitOps.cpp
   src/git/RepoSyncMetrics.cpp

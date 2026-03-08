@@ -5,7 +5,7 @@
 #include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <memory>

@@ -3,7 +3,7 @@
 #include "api/routes/ai/AiRunRoutes.h"
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>

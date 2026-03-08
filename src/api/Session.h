@@ -5,7 +5,7 @@
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"
 #include "card/CardStore.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/asio.hpp>
 

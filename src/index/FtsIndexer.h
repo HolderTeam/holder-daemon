@@ -1,6 +1,6 @@
 #pragma once
 
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <string>
 #include <vector>

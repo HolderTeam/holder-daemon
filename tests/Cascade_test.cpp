@@ -14,7 +14,7 @@
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
 #include "card/CardRepo.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 #include "store/ResourceRepo.h"

@@ -2,7 +2,7 @@
 #include "api/support/HttpResponses.h"
 
 #include "project/ProjectRepo.h"
-#include "store/Rebuilder.h"
+#include "project/Rebuilder.h"
 
 #include <boost/beast/http.hpp>
 #include <string>

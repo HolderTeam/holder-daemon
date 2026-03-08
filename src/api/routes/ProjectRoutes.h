@@ -1,7 +1,7 @@
 #pragma once
 
 #include "git/GitOps.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/beast/http.hpp>
 

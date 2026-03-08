@@ -1,5 +1,5 @@
 #include "api/support/ThreadCompaction.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <catch2/catch_test_macros.hpp>
 

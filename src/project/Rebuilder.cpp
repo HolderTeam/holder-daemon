@@ -1,4 +1,4 @@
-#include "store/Rebuilder.h"
+#include "project/Rebuilder.h"
 
 #include "ai/AiMessageFrontMatter.h"
 #include "ai/AiMessagePaths.h"
@@ -8,7 +8,7 @@
 #include "ai/AiThreadRepo.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
-#include "store/Tx.h"
+#include "platform/Tx.h"
 
 #include <sqlite3.h>
 

@@ -168,11 +168,11 @@ add_executable(lockfile_tests
   ../src/ai/AiRouterConfigRepo.cpp
   ../src/ai/AiProviderCredentialRepo.cpp
   ../src/ai/AiProviderSettingRepo.cpp
-  ../src/store/Rebuilder.cpp
-  ../src/store/Migrations.cpp
+  ../src/project/Rebuilder.cpp
+  ../src/platform/Migrations.cpp
   ../src/card/CardStore.cpp
-  ../src/store/Tx.cpp
-  ../src/store/Db.cpp
+  ../src/platform/Tx.cpp
+  ../src/platform/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src

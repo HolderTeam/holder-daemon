@@ -5,7 +5,7 @@
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
 #include "card/CardRepo.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 

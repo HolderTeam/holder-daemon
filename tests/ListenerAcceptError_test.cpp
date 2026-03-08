@@ -1,7 +1,7 @@
 #include "api/Listener.h"
 #include "api/Router.h"
 #include "platform/Signal.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>

@@ -5,7 +5,7 @@
 #include "git/GitOps.h"
 #include "model/AiMessage.h"
 #include "ai/AiThreadRepo.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 

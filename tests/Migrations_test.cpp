@@ -5,8 +5,8 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "store/Db.h"
-#include "store/Migrations.h"
+#include "platform/Db.h"
+#include "platform/Migrations.h"
 
 #include <chrono>
 #include <filesystem>

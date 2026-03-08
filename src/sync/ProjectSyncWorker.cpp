@@ -3,7 +3,7 @@
 #include "git/GitOps.h"
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
 #include "sync/ProjectSyncPolicy.h"

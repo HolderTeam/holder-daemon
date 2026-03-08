@@ -1,5 +1,5 @@
-#include "store/Migrations.h"
-#include "store/Tx.h"
+#include "platform/Migrations.h"
+#include "platform/Tx.h"
 
 #include <spdlog/spdlog.h>
 #include <sqlite3.h>

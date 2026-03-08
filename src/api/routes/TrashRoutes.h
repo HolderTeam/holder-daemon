@@ -2,7 +2,7 @@
 
 #include "index/FtsIndexer.h"
 #include "card/CardStore.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/beast/http.hpp>
 
