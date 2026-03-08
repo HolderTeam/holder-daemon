@@ -378,14 +378,13 @@ TEST_CASE("encrypt_project_blob rethrows PrivacyError for invalid key material",
 #if CARD_SERVER_HAVE_LIBGIT2
 TEST_CASE("index safety check errors when git index cannot be loaded", "[privacy]") {
   const auto root = make_temp_dir_local();
+  const auto bare_repo_path = root / "bare.git";
   git_repository* repo = nullptr;
-  git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
-  opts.flags = GIT_REPOSITORY_INIT_BARE;
-  REQUIRE(git_repository_init_ext(&repo, root.string().c_str(), &opts) == 0);
+  REQUIRE(git_repository_init(&repo, bare_repo_path.string().c_str(), 1) == 0);
   git_repository_free(repo);
 
   REQUIRE_THROWS_AS(
-      holder::privacy::assert_encryption_index_paths_safe(root.string(), {"cards/aa/a.md"}),
+      holder::privacy::assert_encryption_index_paths_safe(bare_repo_path.string(), {"cards/aa/a.md"}),
       holder::privacy::PrivacyError);
 }
 

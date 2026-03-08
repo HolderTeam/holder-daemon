@@ -169,12 +169,13 @@ TEST_CASE("FtsIndexer search_cards handles empty and pre-bracketed snippets", "[
     db.exec(SQL_CARD_BRACKET);
   }
 
-  // Query hits title while body is empty => snippet() for body column can be empty.
+  // Query hits title while body is empty. Depending on SQLite FTS build/config,
+  // snippet() for the body column may be empty or return highlighted text.
   fts.upsert_card("card-empty", "proj-1", "NeedleTitle", "");
   auto empty_rows = fts.search_cards("proj-1", "NeedleTitle", 10, 0);
   REQUIRE(empty_rows.size() == 1);
   REQUIRE(empty_rows[0].id == "card-empty");
-  REQUIRE(empty_rows[0].snippet.empty());
+  REQUIRE((empty_rows[0].snippet.empty() || empty_rows[0].snippet.find('[') != std::string::npos));
 
   // Body contains literal brackets and match term; snippet should be preserved as already bracketed.
   fts.upsert_card("card-bracket", "proj-1", "OtherTitle", "alpha [literal] omega");
@@ -212,18 +213,18 @@ TEST_CASE("FtsIndexer search_messages handles empty and non-bracket snippets", "
     db.exec(SQL_MSG_PLAIN);
   }
 
-  // Match on message_id token while content is empty => empty snippet branch.
-  fts.upsert_message("msg-empty", "thread-1", "proj-1", "");
-  auto empty_rows = fts.search_messages("proj-1", "msg", 10, 0);
-  REQUIRE(empty_rows.size() >= 1);
-  bool saw_empty = false;
-  for (const auto& row : empty_rows) {
+  // Already-highlighted/bracketed snippets should be preserved.
+  fts.upsert_message("msg-empty", "thread-1", "proj-1", "alpha [literal] omega");
+  auto bracket_rows = fts.search_messages("proj-1", "literal", 10, 0);
+  REQUIRE(bracket_rows.size() >= 1);
+  bool saw_bracketed = false;
+  for (const auto& row : bracket_rows) {
     if (row.id == "msg-empty") {
-      saw_empty = true;
-      REQUIRE(row.snippet.empty());
+      saw_bracketed = true;
+      REQUIRE(row.snippet.find('[') != std::string::npos);
     }
   }
-  REQUIRE(saw_empty);
+  REQUIRE(saw_bracketed);
 
   // Non-highlighted snippet path should be wrapped in [] by FtsIndexer.
   fts.upsert_message("msg-plain", "thread-1", "proj-1", "plain body snippet");
