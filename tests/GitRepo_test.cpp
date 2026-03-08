@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <cstdlib>
 #include <sstream>
 
 namespace {
@@ -36,6 +37,48 @@ void init_bare_repo(const std::filesystem::path& repo_path) {
     INFO("libgit2 error: " << (e && e->message ? e->message : "<none>"));
   }
   REQUIRE(rc == 0);
+  git_repository_free(repo);
+  git_libgit2_shutdown();
+}
+
+class EnvGuard {
+public:
+  EnvGuard(const char* key, const std::string& value) : key_(key) {
+    const char* current = std::getenv(key_);
+    if (current != nullptr) {
+      had_old_ = true;
+      old_ = current;
+    }
+    setenv(key_, value.c_str(), 1);
+  }
+
+  ~EnvGuard() {
+    if (had_old_) {
+      setenv(key_, old_.c_str(), 1);
+    } else {
+      unsetenv(key_);
+    }
+  }
+
+private:
+  const char* key_;
+  bool had_old_ = false;
+  std::string old_;
+};
+
+void detach_head_to_current_commit(const std::filesystem::path& repo_path) {
+  git_libgit2_init();
+  git_repository* repo = nullptr;
+  REQUIRE(git_repository_open(&repo, repo_path.string().c_str()) == 0);
+
+  git_reference* head = nullptr;
+  REQUIRE(git_repository_head(&head, repo) == 0);
+  const git_oid* head_oid = git_reference_target(head);
+  REQUIRE(head_oid != nullptr);
+
+  REQUIRE(git_repository_set_head_detached(repo, head_oid) == 0);
+
+  git_reference_free(head);
   git_repository_free(repo);
   git_libgit2_shutdown();
 }
@@ -267,4 +310,49 @@ TEST_CASE("GitRepo pull_remote_ff_only rejects non-fast-forward updates", "[git]
   } catch (const std::runtime_error& e) {
     REQUIRE(std::string(e.what()).find("Non-fast-forward pull is not supported") != std::string::npos);
   }
+}
+
+TEST_CASE("GitRepo commit falls back to placeholder signature without git config", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto fake_home = dir / "fake_home";
+  const auto fake_cfg = dir / "fake_cfg";
+  std::filesystem::create_directories(fake_home);
+  std::filesystem::create_directories(fake_cfg);
+
+  EnvGuard home_guard("HOME", fake_home.string());
+  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_cfg.string());
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir / "repo");
+  repo.write_file("cards/a.md", "fallback-signature");
+  repo.stage_path("cards/a.md");
+  REQUIRE_NOTHROW(repo.commit("fallback signature"));
+}
+
+TEST_CASE("GitRepo push_branch uses GIT_DEFAULT_BRANCH when HEAD is detached", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  init_bare_repo(remote_dir);
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "v1");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  local_repo.set_remote("origin", remote_dir.string());
+
+  detach_head_to_current_commit(local_dir);
+  EnvGuard branch_guard("GIT_DEFAULT_BRANCH", "cards");
+
+  const auto result = local_repo.push_branch("origin", "", false);
+  REQUIRE(result.status == holder::git::PushStatus::Pushed);
+
+  git_repository* remote = nullptr;
+  REQUIRE(git_repository_open(&remote, remote_dir.string().c_str()) == 0);
+  git_reference* cards_ref = nullptr;
+  REQUIRE(git_reference_lookup(&cards_ref, remote, "refs/heads/cards") == 0);
+  git_reference_free(cards_ref);
+  git_repository_free(remote);
 }

@@ -12,6 +12,8 @@
 #include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 
+#include <sqlite3.h>
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -244,6 +246,100 @@ TEST_CASE("LinkRepo methods throw sqlite errors when DB is closed", "[linkrepo]"
   REQUIRE_THROWS(repo.list_backlinks("proj-1", "card-b"));
   REQUIRE_THROWS(repo.list_backlinks_typed("proj-1", "card-b", "card"));
   REQUIRE_THROWS(repo.delete_link("proj-1", "card-a", "card-b", std::nullopt, std::nullopt));
+  REQUIRE_THROWS(repo.delete_links_to_typed("proj-1", "card-b", "card"));
+  REQUIRE_THROWS(repo.delete_links_from("proj-1", "card-a"));
+}
+
+TEST_CASE("LinkRepo upsert throws when sqlite step fails", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  // Force INSERT/UPSERT step failure while still allowing statement prepare.
+  db.exec(
+      "CREATE TRIGGER block_link_insert "
+      "BEFORE INSERT ON card_links "
+      "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
+
+  holder::card::LinkRepo repo(db);
+  holder::model::CardLink link;
+  link.project_id = "proj-1";
+  link.from_card_id = "card-a";
+  link.to_card_id = "card-b";
+  link.to_type = "card";
+  link.kind = "ref";
+  link.created_at = 1;
+
+  REQUIRE_THROWS(repo.upsert_links("proj-1", "card-a", {link}));
+}
+
+namespace {
+int interrupt_progress(void*) { return 1; }
+} // namespace
+
+TEST_CASE("LinkRepo list methods throw when sqlite step is interrupted", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  holder::card::LinkRepo repo(db);
+  holder::model::CardLink link;
+  link.project_id = "proj-1";
+  link.from_card_id = "card-a";
+  link.to_card_id = "card-b";
+  link.to_type = "card";
+  link.kind = "ref";
+  link.created_at = 1;
+  repo.upsert_links("proj-1", "card-a", {link});
+
+  sqlite3_progress_handler(db.handle(), 1, interrupt_progress, nullptr);
+  REQUIRE_THROWS(repo.list_outgoing("proj-1", "card-a"));
+  REQUIRE_THROWS(repo.list_backlinks("proj-1", "card-b"));
+  REQUIRE_THROWS(repo.list_backlinks_typed("proj-1", "card-b", "card"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("LinkRepo delete methods throw when sqlite delete step fails", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  holder::card::LinkRepo repo(db);
+  holder::model::CardLink link;
+  link.project_id = "proj-1";
+  link.from_card_id = "card-a";
+  link.to_card_id = "card-b";
+  link.to_type = "card";
+  link.kind = "ref";
+  link.created_at = 1;
+  repo.upsert_links("proj-1", "card-a", {link});
+
+  // Force DELETE step failure while still allowing prepare/bind.
+  db.exec(
+      "CREATE TRIGGER block_link_delete "
+      "BEFORE DELETE ON card_links "
+      "BEGIN SELECT RAISE(ABORT, 'blocked delete'); END;");
+
+  REQUIRE_THROWS(
+      repo.delete_link("proj-1", "card-a", "card-b", std::optional<std::string>("card"), std::nullopt));
   REQUIRE_THROWS(repo.delete_links_to_typed("proj-1", "card-b", "card"));
   REQUIRE_THROWS(repo.delete_links_from("proj-1", "card-a"));
 }
