@@ -276,3 +276,70 @@ TEST_CASE("ProjectSyncWorker skips project when metrics refresh fails", "[sync][
   REQUIRE(state.has_value());
   REQUIRE_FALSE(state->last_push_at.has_value());
 }
+
+TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  // Point db_path at a directory so sqlite open fails in both startup and push cycle.
+  const auto bad_db_path = dir;
+
+  holder::core::SignalHandler signals;
+  holder::sync::ProjectSyncWorker worker(bad_db_path, 0, 0, 1);
+  std::exception_ptr thread_error;
+  std::thread thread([&worker, &signals, &thread_error]() {
+    try {
+      worker.run(signals);
+    } catch (...) {
+      thread_error = std::current_exception();
+    }
+  });
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  std::raise(SIGTERM);
+  thread.join();
+
+  REQUIRE(thread_error == nullptr);
+}
+
+TEST_CASE("ProjectSyncWorker startup handles pull and metrics failures on corrupted repo",
+          "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto remote_dir = dir / "remote_repo";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "seed\n");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "local\n");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  {
+    std::ofstream head(local_dir / ".git" / "HEAD");
+    REQUIRE(head.good());
+    head << "definitely-not-a-valid-head-ref\n";
+  }
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    create_project(
+        projects, "proj-startup-postpull", local_dir, remote_dir.string(), "plain");
+  }
+
+  run_worker_with_intervals_for_seconds(
+      db_path,
+      2000000000, // effectively disable push attempts
+      3600,       // pull interval irrelevant for startup pass
+      1,
+      2);
+
+  const auto state = load_sync_state(db_path, "proj-startup-postpull");
+  REQUIRE(state.has_value());
+  REQUIRE(state->last_pull_status.has_value());
+  REQUIRE(state->last_pull_status.value() == "failed");
+}

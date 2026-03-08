@@ -451,3 +451,45 @@ TEST_CASE("HTTP project list defaults to Home first", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP project create tolerates invalid HOLDER_UUID_SEED", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  auto db = open_db_with_schema(db_path);
+  EnvGuard bad_seed("HOLDER_UUID_SEED", "definitely-not-a-number");
+
+  const auto projects_root = dir / "projects_root";
+  std::filesystem::create_directories(projects_root);
+  EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto created = http_json_request(bound.bind,
+                                         bound.port,
+                                         token,
+                                         boost::beast::http::verb::post,
+                                         "/projects",
+                                         {{"name", "Seed Fallback Project"}},
+                                         boost::beast::http::status::created);
+  REQUIRE(created["ok"] == true);
+  REQUIRE(created["data"]["project_id"].is_string());
+  REQUIRE(created["data"]["project_id"].get<std::string>().size() > 0);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}

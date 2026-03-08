@@ -20,3 +20,14 @@ TEST_CASE("Listener start fails when port already in use", "[listener]") {
   holder::api::HttpServer server2("127.0.0.1", bound.port, db, token, nullptr, nullptr);
   REQUIRE_THROWS(server2.start());
 }
+
+TEST_CASE("HttpServer run throws if start was not called", "[listener]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::core::SignalHandler signals;
+  REQUIRE_THROWS(server.run(signals));
+}
