@@ -337,3 +337,112 @@ TEST_CASE("LocalModelRunner start_pull returns existing queued job for same mode
   REQUIRE_FALSE(first.job_id.empty());
   REQUIRE(second.job_id == first.job_id);
 }
+
+TEST_CASE("LocalModelRunner retry non-fake surfaces HTTP status errors", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(port, {HttpResponseSpec{500, R"({"error":"down"})"}});
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "/definitely/not-found-ollama");
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.available == false);
+  REQUIRE_FALSE(status.error.empty());
+  REQUIRE((status.error.find("HTTP 500") != std::string::npos ||
+           status.error.find("model runner executable not found") != std::string::npos ||
+           status.error.find("No such file or directory") != std::string::npos));
+}
+
+TEST_CASE("LocalModelRunner retry non-fake handles malformed version JSON", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200, "{not-json"},
+          HttpResponseSpec{500, R"({"error":"tags-down"})"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "/definitely/not-found-ollama");
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.available == false);
+  REQUIRE_FALSE(status.error.empty());
+}
+
+TEST_CASE("LocalModelRunner start_pull non-fake parses stream progress to completion", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{
+              200,
+              "not-json\n"
+              "{\"status\":\"verifying\",\"completed\":1,\"total\":4}\n"
+              "{\"status\":\"success\",\"completed\":4,\"total\":4}\n"},
+          HttpResponseSpec{200, R"({"version":"after-pull"})"},
+          HttpResponseSpec{200, R"({"models":[]})"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  auto job = runner.start_pull("model-c");
+  REQUIRE_FALSE(job.job_id.empty());
+
+  bool completed = false;
+  for (int i = 0; i < 100; ++i) {
+    auto fetched = runner.get_pull(job.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->status == "completed") {
+      completed = true;
+      REQUIRE(fetched->progress.stage == "success");
+      REQUIRE(fetched->progress.total == 4);
+      REQUIRE(fetched->progress.completed == 4);
+      REQUIRE(fetched->progress.percent == 100.0);
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(completed);
+}
+
+TEST_CASE("LocalModelRunner start_pull non-fake handles streamed error payload", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(port, {HttpResponseSpec{200, "{\"error\":\"download failed\"}\n"}});
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  auto job = runner.start_pull("model-d");
+  REQUIRE_FALSE(job.job_id.empty());
+
+  bool failed = false;
+  for (int i = 0; i < 100; ++i) {
+    auto fetched = runner.get_pull(job.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->status == "failed") {
+      failed = true;
+      REQUIRE(fetched->error == "download failed");
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(failed);
+}
