@@ -2,12 +2,32 @@
 
 #include <boost/interprocess/exceptions.hpp>
 
+#include <atomic>
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace holder::core {
+namespace {
+
+std::atomic<bool> g_force_try_lock_throw_for_tests{false};
+std::atomic<bool> g_force_unlock_throw_for_tests{false};
+std::atomic<bool> g_force_release_throw_for_tests{false};
+
+} // namespace
+
+void lockfile_set_force_try_lock_throw_for_tests(bool enabled) {
+  g_force_try_lock_throw_for_tests.store(enabled);
+}
+
+void lockfile_set_force_unlock_throw_for_tests(bool enabled) {
+  g_force_unlock_throw_for_tests.store(enabled);
+}
+
+void lockfile_set_force_release_throw_for_tests(bool enabled) {
+  g_force_release_throw_for_tests.store(enabled);
+}
 
 LockFile::LockFile(std::filesystem::path path) : path_(std::move(path)) {}
 
@@ -56,6 +76,9 @@ bool LockFile::try_acquire() {
   if (locked_) return true;
 
   try {
+    if (g_force_try_lock_throw_for_tests.load()) {
+      throw boost::interprocess::interprocess_exception("forced try_lock failure");
+    }
     if (!lock_->try_lock()) return false;
   } catch (const boost::interprocess::interprocess_exception& ex) {
     throw std::runtime_error("Failed to acquire lock: " + path_.string() +
@@ -68,9 +91,15 @@ bool LockFile::try_acquire() {
 }
 
 void LockFile::release() {
+  if (g_force_release_throw_for_tests.load()) {
+    throw std::runtime_error("forced release failure");
+  }
   if (lock_) {
     if (locked_) {
       try {
+        if (g_force_unlock_throw_for_tests.load()) {
+          throw std::runtime_error("forced unlock failure");
+        }
         lock_->unlock();
       } catch (...) {
       }

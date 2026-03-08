@@ -42,4 +42,4 @@ void Paths::ensure_dirs() const {
   }
 }
 
-} // namespace holder::core
+} // namespace holder::core // LCOV_EXCL_LINE

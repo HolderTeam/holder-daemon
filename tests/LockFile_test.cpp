@@ -18,6 +18,12 @@
 #include <sys/wait.h>
 #endif
 
+namespace holder::core {
+void lockfile_set_force_try_lock_throw_for_tests(bool enabled);
+void lockfile_set_force_unlock_throw_for_tests(bool enabled);
+void lockfile_set_force_release_throw_for_tests(bool enabled);
+} // namespace holder::core
+
 namespace {
 
 std::filesystem::path make_temp_dir() {
@@ -53,6 +59,19 @@ int run_helper(const std::filesystem::path& helper,
   return WEXITSTATUS(rc);
 #endif
 }
+
+class LockHooksGuard {
+ public:
+  LockHooksGuard() { reset(); }
+  ~LockHooksGuard() { reset(); }
+
+ private:
+  static void reset() {
+    holder::core::lockfile_set_force_try_lock_throw_for_tests(false);
+    holder::core::lockfile_set_force_unlock_throw_for_tests(false);
+    holder::core::lockfile_set_force_release_throw_for_tests(false);
+  }
+};
 
 } // namespace
 
@@ -170,6 +189,50 @@ TEST_CASE("LockFile release is safe when never acquired", "[lock]") {
   REQUIRE_FALSE(lock.is_locked());
   REQUIRE_NOTHROW(lock.release());
   REQUIRE_FALSE(lock.is_locked());
+}
+
+TEST_CASE("LockFile wraps try_lock exceptions in try_acquire", "[lock]") {
+  LockHooksGuard hooks;
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+
+  holder::core::LockFile lock(lock_path);
+  holder::core::lockfile_set_force_try_lock_throw_for_tests(true);
+
+  bool threw = false;
+  try {
+    (void) lock.try_acquire();
+  } catch (const std::runtime_error& e) {
+    threw = true;
+    REQUIRE(std::string(e.what()).find("Failed to acquire lock: ") == 0);
+  }
+  REQUIRE(threw);
+}
+
+TEST_CASE("LockFile swallows unlock exceptions during release", "[lock]") {
+  LockHooksGuard hooks;
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+
+  holder::core::LockFile lock(lock_path);
+  REQUIRE(lock.try_acquire());
+  holder::core::lockfile_set_force_unlock_throw_for_tests(true);
+
+  REQUIRE_NOTHROW(lock.release());
+  REQUIRE_FALSE(lock.is_locked());
+}
+
+TEST_CASE("LockFile destructor swallows release exceptions", "[lock]") {
+  LockHooksGuard hooks;
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+
+  holder::core::lockfile_set_force_release_throw_for_tests(true);
+  {
+    holder::core::LockFile lock(lock_path);
+  }
+
+  SUCCEED();
 }
 
 TEST_CASE("LockFile move constructor transfers lock ownership", "[lock]") {

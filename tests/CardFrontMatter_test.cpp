@@ -90,3 +90,81 @@ TEST_CASE("render_card_front_matter includes links", "[card_front_matter]") {
   REQUIRE(front_matter.find("kind: ref") != std::string::npos);
   REQUIRE(front_matter.find("label: See also") != std::string::npos);
 }
+
+TEST_CASE("render_card_front_matter writes deleted_at and null link label", "[card_front_matter]") {
+  holder::model::Card card;
+  card.card_id = "abcd1234";
+  card.project_id = "proj-1";
+  card.title = "Hello";
+  card.created_at = 10;
+  card.updated_at = 20;
+  card.sort_key = 1.5;
+  card.rel_path = "cards/ab/cd/abcd1234.md";
+  card.deleted_at = 99;
+
+  holder::model::CardLink link;
+  link.project_id = "proj-1";
+  link.from_card_id = "abcd1234";
+  link.to_card_id = "efgh5678";
+  link.to_type = "card";
+  link.kind = "ref";
+  link.created_at = 15;
+
+  const auto front_matter = holder::core::render_card_front_matter(card, {link});
+  REQUIRE(front_matter.find("deleted_at: 99") != std::string::npos);
+  REQUIRE((front_matter.find("label: ~") != std::string::npos ||
+           front_matter.find("label: null") != std::string::npos));
+}
+
+TEST_CASE("parse_card_file falls back when front matter is unterminated", "[card_front_matter]") {
+  const std::string raw =
+      "---\n"
+      "card_id: abcd1234\n"
+      "project_id: proj-1\n";
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE_FALSE(parsed.has_front_matter);
+  REQUIRE(parsed.body == raw);
+}
+
+TEST_CASE("parse_card_file falls back when yaml root is not a map", "[card_front_matter]") {
+  const std::string raw =
+      "---\n"
+      "- list-item\n"
+      "---\n"
+      "Body\n";
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE_FALSE(parsed.has_front_matter);
+  REQUIRE(parsed.body == raw);
+}
+
+TEST_CASE("parse_card_file reads deleted_at when present", "[card_front_matter]") {
+  const std::string raw =
+      "---\n"
+      "card_id: abcd1234\n"
+      "project_id: proj-1\n"
+      "title: Hello\n"
+      "created_at: 10\n"
+      "updated_at: 20\n"
+      "parent_card_id: null\n"
+      "sort_key: 1.5\n"
+      "rel_path: cards/ab/cd/abcd1234.md\n"
+      "deleted_at: 123\n"
+      "---\n"
+      "Body text\n";
+
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE(parsed.has_front_matter);
+  REQUIRE(parsed.card.deleted_at.has_value());
+  REQUIRE(parsed.card.deleted_at.value() == 123);
+}
+
+TEST_CASE("parse_card_file falls back on yaml parse exception", "[card_front_matter]") {
+  const std::string raw =
+      "---\n"
+      "card_id: [\n"
+      "---\n"
+      "Body text\n";
+  const auto parsed = holder::core::parse_card_file(raw);
+  REQUIRE_FALSE(parsed.has_front_matter);
+  REQUIRE(parsed.body == raw);
+}
