@@ -102,3 +102,42 @@ TEST_CASE("Session handles write error and returns", "[session]") {
                                nullptr);
   REQUIRE_NOTHROW(session.run());
 }
+
+TEST_CASE("Session handles normal request/response path", "[session]") {
+  SocketPair pair;
+  holder::platform::Db db;
+  holder::api::Router router;
+  const std::string token = "testtoken";
+
+  // No auth header: should produce a normal 401 response and hit final request log path.
+  const std::string req =
+      "GET /health HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  holder::api::Session session(std::move(pair.server),
+                               db,
+                               token,
+                               router,
+                               std::chrono::steady_clock::now(),
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr);
+  REQUIRE_NOTHROW(session.run());
+
+  boost::system::error_code ec;
+  std::string response;
+  std::array<char, 1024> buf{};
+  for (;;) {
+    const auto n = pair.client.read_some(boost::asio::buffer(buf), ec);
+    if (ec) {
+      break;
+    }
+    response.append(buf.data(), n);
+  }
+  REQUIRE(ec == boost::asio::error::eof);
+  REQUIRE(response.find("401 Unauthorized") != std::string::npos);
+}
