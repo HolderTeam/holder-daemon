@@ -5,6 +5,7 @@
 #endif
 
 #include "git/GitRepo.h"
+#include <git2.h>
 
 #include <filesystem>
 #include <fstream>
@@ -20,6 +21,12 @@ std::filesystem::path make_temp_dir() {
   auto dir = base / ("holder_git_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
+}
+
+void init_bare_repo(const std::filesystem::path& repo_path) {
+  git_repository* repo = nullptr;
+  REQUIRE(git_repository_init(&repo, repo_path.string().c_str(), 1) == 0);
+  git_repository_free(repo);
 }
 
 } // namespace
@@ -147,4 +154,106 @@ TEST_CASE("GitRepo pull_remote_ff_only fast-forwards existing local branch", "[g
   // In some libgit2/working-tree combinations, the branch ref fast-forwards but
   // worktree file materialization may lag; accept either while still covering path.
   REQUIRE((buffer.str() == "v1" || buffer.str() == "v2"));
+}
+
+TEST_CASE("GitRepo probe_remote classifies invalid remote URL", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+  repo.set_remote("origin", "not-a-valid://remote");
+
+  const auto result = repo.probe_remote("origin");
+  REQUIRE((result.status == holder::git::RemoteProbeStatus::InvalidRemoteUrl ||
+           result.status == holder::git::RemoteProbeStatus::UnknownError));
+  REQUIRE(result.remote_has_head == false);
+  REQUIRE_FALSE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo push_branch returns up_to_date for unborn branch with remote", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "seed");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.set_remote("origin", remote_dir.string());
+
+  const auto result = local_repo.push_branch("origin", "", false);
+  REQUIRE(result.status == holder::git::PushStatus::UpToDate);
+  REQUIRE(result.ahead_count == 0);
+  REQUIRE(result.behind_count == 0);
+  REQUIRE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo push_branch can set upstream on success", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  init_bare_repo(remote_dir);
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "v1");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  local_repo.set_remote("origin", remote_dir.string());
+
+  const auto result = local_repo.push_branch("origin", "", true);
+  REQUIRE(result.status == holder::git::PushStatus::Pushed);
+
+  git_repository* raw = nullptr;
+  REQUIRE(git_repository_open(&raw, local_dir.string().c_str()) == 0);
+
+  git_reference* head_ref = nullptr;
+  REQUIRE(git_repository_head(&head_ref, raw) == 0);
+  const char* local_ref_name = git_reference_name(head_ref);
+  REQUIRE(local_ref_name != nullptr);
+  git_buf upstream = GIT_BUF_INIT;
+  REQUIRE(git_branch_upstream_name(&upstream, raw, local_ref_name) == 0);
+  const std::string expected_upstream =
+      "refs/remotes/origin/" + std::string(local_ref_name).substr(std::string("refs/heads/").size());
+  REQUIRE(std::string(upstream.ptr) == expected_upstream);
+
+  git_buf_dispose(&upstream);
+  git_reference_free(head_ref);
+  git_repository_free(raw);
+}
+
+TEST_CASE("GitRepo pull_remote_ff_only rejects non-fast-forward updates", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "base");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.set_remote("origin", remote_dir.string());
+  local_repo.pull_remote_ff_only("origin");
+
+  local_repo.write_file("cards/local-only.md", "local");
+  local_repo.stage_path("cards/local-only.md");
+  local_repo.commit("local commit");
+
+  remote_repo.write_file("cards/remote-only.md", "remote");
+  remote_repo.stage_path("cards/remote-only.md");
+  remote_repo.commit("remote commit");
+
+  try {
+    local_repo.pull_remote_ff_only("origin");
+    FAIL("Expected non-fast-forward pull to throw");
+  } catch (const std::runtime_error& e) {
+    REQUIRE(std::string(e.what()).find("Non-fast-forward pull is not supported") != std::string::npos);
+  }
 }

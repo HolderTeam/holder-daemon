@@ -129,3 +129,121 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   outgoing = repo.list_outgoing("proj-1", "card-a");
   REQUIRE(outgoing.empty());
 }
+
+TEST_CASE("LinkRepo upsert rejects project/from mismatch", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_project(db, "proj-2");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  holder::card::LinkRepo repo(db);
+
+  holder::model::CardLink bad;
+  bad.project_id = "proj-2";
+  bad.from_card_id = "card-a";
+  bad.to_card_id = "card-b";
+  bad.to_type = "card";
+  bad.kind = "ref";
+  bad.created_at = 1;
+
+  REQUIRE_THROWS(repo.upsert_links("proj-1", "card-a", {bad}));
+}
+
+TEST_CASE("LinkRepo delete_link supports type-only and type+kind filters", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  holder::card::LinkRepo repo(db);
+
+  holder::model::CardLink l1;
+  l1.project_id = "proj-1";
+  l1.from_card_id = "card-a";
+  l1.to_card_id = "card-b";
+  l1.to_type = "card";
+  l1.kind = "wiki";
+  l1.created_at = 1;
+
+  holder::model::CardLink l2;
+  l2.project_id = "proj-1";
+  l2.from_card_id = "card-a";
+  l2.to_card_id = "card-b";
+  l2.to_type = "resource";
+  l2.kind = "ref";
+  l2.created_at = 2;
+
+  holder::model::CardLink l3;
+  l3.project_id = "proj-1";
+  l3.from_card_id = "card-a";
+  l3.to_card_id = "card-b";
+  l3.to_type = "resource";
+  l3.kind = "embed";
+  l3.created_at = 3;
+
+  repo.upsert_links("proj-1", "card-a", {l1, l2, l3});
+  REQUIRE(repo.list_outgoing("proj-1", "card-a").size() == 3);
+
+  // has_type only branch
+  repo.delete_link("proj-1", "card-a", "card-b", std::optional<std::string>("resource"), std::nullopt);
+  auto outgoing = repo.list_outgoing("proj-1", "card-a");
+  REQUIRE(outgoing.size() == 1);
+  REQUIRE(outgoing[0].to_type == "card");
+
+  // Reinsert resource links and delete exact type+kind
+  repo.upsert_links("proj-1", "card-a", {l2, l3});
+  REQUIRE(repo.list_outgoing("proj-1", "card-a").size() == 3);
+  repo.delete_link("proj-1",
+                   "card-a",
+                   "card-b",
+                   std::optional<std::string>("resource"),
+                   std::optional<std::string>("embed"));
+  outgoing = repo.list_outgoing("proj-1", "card-a");
+  REQUIRE(outgoing.size() == 2);
+
+  auto typed = repo.list_backlinks_typed("proj-1", "card-b", "resource");
+  REQUIRE(typed.size() == 1);
+  REQUIRE(typed[0].kind == "ref");
+}
+
+TEST_CASE("LinkRepo methods throw sqlite errors when DB is closed", "[linkrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+  create_card(db, "card-a", "proj-1");
+  create_card(db, "card-b", "proj-1");
+
+  holder::card::LinkRepo repo(db);
+  db.close();
+
+  holder::model::CardLink link;
+  link.project_id = "proj-1";
+  link.from_card_id = "card-a";
+  link.to_card_id = "card-b";
+  link.to_type = "card";
+  link.kind = "ref";
+  link.created_at = 1;
+
+  REQUIRE_THROWS(repo.upsert_links("proj-1", "card-a", {link}));
+  REQUIRE_THROWS(repo.list_outgoing("proj-1", "card-a"));
+  REQUIRE_THROWS(repo.list_backlinks("proj-1", "card-b"));
+  REQUIRE_THROWS(repo.list_backlinks_typed("proj-1", "card-b", "card"));
+  REQUIRE_THROWS(repo.delete_link("proj-1", "card-a", "card-b", std::nullopt, std::nullopt));
+  REQUIRE_THROWS(repo.delete_links_to_typed("proj-1", "card-b", "card"));
+  REQUIRE_THROWS(repo.delete_links_from("proj-1", "card-a"));
+}

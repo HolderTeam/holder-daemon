@@ -200,13 +200,13 @@ TEST_CASE("FtsIndexer search_messages handles empty and non-bracket snippets", "
         "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);";
     static constexpr const char* SQL_THREAD =
         "INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
-        "VALUES('thread-1', 'proj-1', 'T', 1, 1);";
+        "VALUES('thread1', 'proj-1', 'T', 1, 1);";
     static constexpr const char* SQL_MSG_EMPTY =
         "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
-        "VALUES('msg-empty', 'thread-1', 'assistant', 'local', '', 1);";
+        "VALUES('msg-empty', 'thread1', 'assistant', 'local', '', 1);";
     static constexpr const char* SQL_MSG_PLAIN =
         "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
-        "VALUES('msg-plain', 'thread-1', 'assistant', 'local', 'plain body snippet', 2);";
+        "VALUES('msg-plain', 'thread1', 'assistant', 'local', 'plain body snippet', 2);";
     db.exec(SQL_PROJECT);
     db.exec(SQL_THREAD);
     db.exec(SQL_MSG_EMPTY);
@@ -259,6 +259,21 @@ namespace {
 int sqlite_interrupt_cb(void* data) {
   auto* flag = static_cast<int*>(data);
   return (flag && *flag) ? 1 : 0;
+}
+
+int sqlite_deny_insert_into_table(void* data,
+                                  int action,
+                                  const char* detail1,
+                                  const char* detail2,
+                                  const char*,
+                                  const char*) {
+  (void)detail2;
+  const char* deny_table = static_cast<const char*>(data);
+  if (action == SQLITE_INSERT && detail1 != nullptr && deny_table != nullptr &&
+      std::string(detail1) == std::string(deny_table)) {
+    return SQLITE_DENY;
+  }
+  return SQLITE_OK;
 }
 } // namespace
 
@@ -333,4 +348,24 @@ TEST_CASE("FtsIndexer search throws when join tables are missing", "[fts]") {
 
   REQUIRE_THROWS(fts.search_cards("proj-1", "alpha", 10, 0));
   REQUIRE_THROWS(fts.search_messages("proj-1", "alpha", 10, 0));
+}
+
+TEST_CASE("FtsIndexer upsert throws when insert prepare is denied by authorizer", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  const char* deny_cards = "cards_fts";
+  sqlite3_set_authorizer(db.handle(), sqlite_deny_insert_into_table, const_cast<char*>(deny_cards));
+  REQUIRE_THROWS(fts.upsert_card("card-1", "proj-1", "Title", "Body"));
+
+  const char* deny_ai = "ai_fts";
+  sqlite3_set_authorizer(db.handle(), sqlite_deny_insert_into_table, const_cast<char*>(deny_ai));
+  REQUIRE_THROWS(fts.upsert_message("msg-1", "thread-1", "proj-1", "alpha beta"));
+
+  sqlite3_set_authorizer(db.handle(), nullptr, nullptr);
 }
