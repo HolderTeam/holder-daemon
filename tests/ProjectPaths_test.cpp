@@ -68,6 +68,13 @@ TEST_CASE("slugify converts names to URL-safe slugs", "[project_paths]") {
   REQUIRE(slugify("???") == "project");
 }
 
+TEST_CASE("slugify skips non-ascii bytes", "[project_paths]") {
+  using holder::core::slugify;
+
+  REQUIRE(slugify("Cafe \xC3\xA9lan") == "cafe-lan");
+  REQUIRE(slugify("\xF0\x9F\xA6\x8A") == "project");
+}
+
 TEST_CASE("default_projects_root uses env override", "[project_paths]") {
   const auto base = std::filesystem::temp_directory_path() / "holder_projects_root_test";
   EnvGuard guard("HOLDER_PROJECTS_ROOT", base.string());
@@ -134,4 +141,31 @@ TEST_CASE("unique_project_root handles collisions with existing dirs and DB entr
 
   const auto unique = holder::core::unique_project_root(base, "demo", existing);
   REQUIRE(unique == (base / "demo-4").string());
+}
+
+TEST_CASE("unique_project_root throws after exhausting candidate attempts", "[project_paths]") {
+  namespace fs = std::filesystem;
+  const auto base = fs::temp_directory_path() / "holder_unique_root_exhaust_test";
+  fs::create_directories(base);
+
+  std::vector<holder::model::Project> existing;
+  existing.reserve(1000);
+  for (int attempt = 1; attempt <= 1000; ++attempt) {
+    holder::model::Project p;
+    std::string suffix;
+    if (attempt > 1) {
+      suffix = "-" + std::to_string(attempt);
+    }
+    p.root_path = (base / ("demo" + suffix)).string();
+    existing.push_back(p);
+  }
+
+  bool threw = false;
+  try {
+    (void) holder::core::unique_project_root(base, "demo", existing);
+  } catch (const std::runtime_error& e) {
+    threw = true;
+    REQUIRE(std::string(e.what()) == "Unable to generate unique project root path.");
+  }
+  REQUIRE(threw);
 }

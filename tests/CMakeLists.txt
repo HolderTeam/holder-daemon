@@ -78,8 +78,10 @@ add_executable(lockfile_tests
   AiProviderCredentialRepo_test.cpp
   AiProviderSettingRepo_test.cpp
   Migrations_test.cpp
+  Db_test.cpp
   Cascade_test.cpp
   CardPaths_test.cpp
+  Paths_test.cpp
   CardFrontMatter_test.cpp
   AiMessagePaths_test.cpp
   AiMessageFrontMatter_test.cpp
@@ -88,8 +90,10 @@ add_executable(lockfile_tests
   CardStoreFsFailure_test.cpp
   FtsIndexer_test.cpp
   GitRepo_test.cpp
+  GitOps_test.cpp
   RepoSyncMetrics_test.cpp
   FsAdapterFailure_test.cpp
+  RealFs_test.cpp
   GitAdapterFailure_test.cpp
   Reindexer_test.cpp
   ../src/core/LockFile.cpp

@@ -46,7 +46,7 @@ std::string slugify(const std::string& input) {
     out = "project";
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::filesystem::path default_projects_root() {
   if (const char* env = std::getenv("HOLDER_PROJECTS_ROOT")) {
