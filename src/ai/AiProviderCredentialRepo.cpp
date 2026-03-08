@@ -1,4 +1,4 @@
-#include "store/AiProviderSettingRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
 
 #include <sqlite3.h>
 
@@ -18,30 +18,31 @@ void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   }
 }
 
-holder::model::AiProviderSetting read_row(sqlite3_stmt* stmt) {
-  holder::model::AiProviderSetting out;
+holder::model::AiProviderCredential read_row(sqlite3_stmt* stmt) {
+  holder::model::AiProviderCredential out;
   out.provider = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-  out.enabled = sqlite3_column_int(stmt, 1) != 0;
-  out.updated_at = sqlite3_column_int64(stmt, 2);
+  out.api_key = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+  out.created_at = sqlite3_column_int64(stmt, 2);
+  out.updated_at = sqlite3_column_int64(stmt, 3);
   return out;
 }
 
 } // namespace
 
-AiProviderSettingRepo::AiProviderSettingRepo(Db& db) : db_(db) {}
+AiProviderCredentialRepo::AiProviderCredentialRepo(Db& db) : db_(db) {}
 
-std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() const {
+std::vector<holder::model::AiProviderCredential> AiProviderCredentialRepo::list() const {
   static constexpr const char* SQL =
-      "SELECT provider, enabled, updated_at "
-      "FROM ai_provider_settings "
+      "SELECT provider, api_key, created_at, updated_at "
+      "FROM ai_provider_credentials "
       "ORDER BY provider ASC;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare list provider settings failed");
+    throw_sqlite(db_.handle(), "prepare list provider credentials failed");
   }
 
-  std::vector<holder::model::AiProviderSetting> rows;
+  std::vector<holder::model::AiProviderCredential> rows;
   for (;;) {
     const int rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
@@ -50,23 +51,23 @@ std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() cons
     }
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-      throw_sqlite(db_.handle(), "list provider settings failed");
+      throw_sqlite(db_.handle(), "list provider credentials failed");
     }
     break;
   }
   return rows;
 }
 
-std::optional<holder::model::AiProviderSetting> AiProviderSettingRepo::get(
+std::optional<holder::model::AiProviderCredential> AiProviderCredentialRepo::get(
     const std::string& provider) const {
   static constexpr const char* SQL =
-      "SELECT provider, enabled, updated_at "
-      "FROM ai_provider_settings "
+      "SELECT provider, api_key, created_at, updated_at "
+      "FROM ai_provider_credentials "
       "WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare get provider setting failed");
+    throw_sqlite(db_.handle(), "prepare get provider credential failed");
   }
   bind_text(stmt, 1, provider);
 
@@ -78,46 +79,50 @@ std::optional<holder::model::AiProviderSetting> AiProviderSettingRepo::get(
   }
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "get provider setting failed");
+    throw_sqlite(db_.handle(), "get provider credential failed");
   }
   return std::nullopt;
 }
 
-void AiProviderSettingRepo::upsert(const std::string& provider, bool enabled, long long updated_at) {
+void AiProviderCredentialRepo::upsert(const std::string& provider,
+                                      const std::string& api_key,
+                                      long long created_at,
+                                      long long updated_at) {
   static constexpr const char* SQL =
-      "INSERT INTO ai_provider_settings(provider, enabled, updated_at) "
-      "VALUES(?, ?, ?) "
+      "INSERT INTO ai_provider_credentials(provider, api_key, created_at, updated_at) "
+      "VALUES(?, ?, ?, ?) "
       "ON CONFLICT(provider) DO UPDATE SET "
-      "enabled = excluded.enabled, updated_at = excluded.updated_at;";
+      "api_key = excluded.api_key, updated_at = excluded.updated_at;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare upsert provider setting failed");
+    throw_sqlite(db_.handle(), "prepare upsert provider credential failed");
   }
   bind_text(stmt, 1, provider);
-  sqlite3_bind_int(stmt, 2, enabled ? 1 : 0);
-  sqlite3_bind_int64(stmt, 3, updated_at);
+  bind_text(stmt, 2, api_key);
+  sqlite3_bind_int64(stmt, 3, created_at);
+  sqlite3_bind_int64(stmt, 4, updated_at);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "upsert provider setting failed");
+    throw_sqlite(db_.handle(), "upsert provider credential failed");
   }
   sqlite3_finalize(stmt);
 }
 
-void AiProviderSettingRepo::remove(const std::string& provider) {
+void AiProviderCredentialRepo::remove(const std::string& provider) {
   static constexpr const char* SQL =
-      "DELETE FROM ai_provider_settings WHERE provider = ?;";
+      "DELETE FROM ai_provider_credentials WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare delete provider setting failed");
+    throw_sqlite(db_.handle(), "prepare delete provider credential failed");
   }
   bind_text(stmt, 1, provider);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "delete provider setting failed");
+    throw_sqlite(db_.handle(), "delete provider credential failed");
   }
   sqlite3_finalize(stmt);
 }

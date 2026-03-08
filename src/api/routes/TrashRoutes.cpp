@@ -1,8 +1,8 @@
 #include "api/routes/TrashRoutes.h"
 #include "api/support/HttpResponses.h"
 
-#include "store/AiMessageRepo.h"
-#include "store/CardRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "card/CardRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>

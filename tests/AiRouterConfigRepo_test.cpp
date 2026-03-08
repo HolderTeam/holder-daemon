@@ -1,4 +1,4 @@
-#include "store/AiRouterConfigRepo.h"
+#include "ai/AiRouterConfigRepo.h"
 #include "store/Db.h"
 
 #include <catch2/catch_test_macros.hpp>

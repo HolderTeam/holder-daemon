@@ -1,4 +1,4 @@
-#include "store/AiRunRepo.h"
+#include "ai/AiRunRepo.h"
 
 #include "store/Db.h"
 

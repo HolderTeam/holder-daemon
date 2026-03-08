@@ -1,4 +1,4 @@
-#include "store/AiRunRepo.h"
+#include "ai/AiRunRepo.h"
 #include "store/Db.h"
 
 #include <catch2/catch_test_macros.hpp>

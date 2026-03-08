@@ -1,7 +1,7 @@
 #include "http_test_helpers.h"
 #include "api/support/CloudClient.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiRunRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiRunRepo.h"
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;

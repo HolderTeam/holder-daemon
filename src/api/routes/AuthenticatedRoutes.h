@@ -3,7 +3,7 @@
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
-#include "store/CardStore.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
 
 #include <boost/asio/ip/tcp.hpp>

@@ -2,10 +2,10 @@
 
 #include "api/HttpServer.h"
 #include "index/FtsIndexer.h"
-#include "store/CardStore.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
-#include "store/CardRepo.h"
+#include "project/ProjectRepo.h"
+#include "card/CardRepo.h"
 
 #include <filesystem>
 #include <fstream>

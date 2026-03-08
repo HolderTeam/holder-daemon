@@ -10,12 +10,12 @@
 #include "model/AiThread.h"
 #include "model/Card.h"
 #include "model/Project.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/CardRepo.h"
-#include "store/CardStore.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>

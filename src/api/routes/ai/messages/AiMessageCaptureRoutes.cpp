@@ -2,9 +2,9 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>

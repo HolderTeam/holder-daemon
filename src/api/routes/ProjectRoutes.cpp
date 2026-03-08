@@ -5,9 +5,9 @@
 #include "project/ProjectPaths.h"
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
-#include "store/CardRepo.h"
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "card/CardRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>

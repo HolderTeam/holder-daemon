@@ -1,8 +1,8 @@
 #include "http_test_helpers.h"
 #include "api/support/CloudClient.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiRunRepo.h"
-#include "store/AiMessageRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiRunRepo.h"
+#include "ai/AiMessageRepo.h"
 
 using holder::test::make_temp_dir;
 

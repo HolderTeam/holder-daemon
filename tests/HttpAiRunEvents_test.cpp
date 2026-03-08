@@ -1,5 +1,5 @@
 #include "http_test_helpers.h"
-#include "store/AiRunRepo.h"
+#include "ai/AiRunRepo.h"
 
 using holder::test::http_request_raw;
 using holder::test::make_temp_dir;

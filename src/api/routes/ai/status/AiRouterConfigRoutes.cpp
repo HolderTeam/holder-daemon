@@ -2,8 +2,8 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiRouterConfigRepo.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiRouterConfigRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>

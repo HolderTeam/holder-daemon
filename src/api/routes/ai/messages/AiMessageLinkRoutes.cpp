@@ -2,10 +2,10 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/CardRepo.h"
-#include "store/LinkRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
 #include "store/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>

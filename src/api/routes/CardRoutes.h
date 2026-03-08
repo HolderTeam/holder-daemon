@@ -1,7 +1,7 @@
 #pragma once
 
 #include "index/FtsIndexer.h"
-#include "store/CardStore.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
 
 #include <boost/beast/http.hpp>

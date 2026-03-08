@@ -11,9 +11,9 @@
 #include "git/GitRepo.h"
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
-#include "store/CardStore.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>

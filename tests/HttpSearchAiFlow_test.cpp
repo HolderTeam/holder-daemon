@@ -2,8 +2,8 @@
 
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;

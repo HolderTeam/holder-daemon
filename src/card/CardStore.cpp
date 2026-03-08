@@ -1,11 +1,11 @@
-#include "store/CardStore.h"
+#include "card/CardStore.h"
 
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
 #include "platform/Fs.h"
 #include "git/GitOps.h"
 #include "privacy/ProjectPrivacy.h"
-#include "store/LinkRepo.h"
+#include "card/LinkRepo.h"
 
 #include <yaml-cpp/yaml.h>
 

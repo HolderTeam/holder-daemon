@@ -6,9 +6,9 @@
 
 #include "model/AiThread.h"
 #include "model/Project.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>

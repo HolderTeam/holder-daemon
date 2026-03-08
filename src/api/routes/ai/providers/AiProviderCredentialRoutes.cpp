@@ -3,8 +3,8 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiProviderSettingRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>

@@ -3,7 +3,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/RunEventStore.h"
 #include "api/support/Time.h"
-#include "store/AiRunRepo.h"
+#include "ai/AiRunRepo.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>

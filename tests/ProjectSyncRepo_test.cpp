@@ -1,5 +1,5 @@
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 #include "http_test_helpers.h"
 
 TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][repo]") {

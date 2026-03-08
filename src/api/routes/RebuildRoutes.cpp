@@ -1,7 +1,7 @@
 #include "api/routes/RebuildRoutes.h"
 #include "api/support/HttpResponses.h"
 
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 #include "store/Rebuilder.h"
 
 #include <boost/beast/http.hpp>

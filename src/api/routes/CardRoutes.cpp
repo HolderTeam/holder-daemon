@@ -4,11 +4,11 @@
 
 #include "card/CardPaths.h"
 #include "privacy/PrivacyError.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/CardRepo.h"
-#include "store/LinkRepo.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
+#include "project/ProjectRepo.h"
 #include "store/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>

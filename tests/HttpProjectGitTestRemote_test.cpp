@@ -2,7 +2,7 @@
 
 #include "git/GitOps.h"
 #include "model/Project.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <filesystem>
 #include <stdexcept>

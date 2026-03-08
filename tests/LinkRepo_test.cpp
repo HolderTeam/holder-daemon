@@ -7,10 +7,10 @@
 #include "model/Card.h"
 #include "model/CardLink.h"
 #include "model/Project.h"
-#include "store/CardRepo.h"
+#include "card/CardRepo.h"
 #include "store/Db.h"
-#include "store/LinkRepo.h"
-#include "store/ProjectRepo.h"
+#include "card/LinkRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>

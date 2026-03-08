@@ -1,4 +1,4 @@
-#include "store/AiThreadRepo.h"
+#include "ai/AiThreadRepo.h"
 
 #include <sqlite3.h>
 

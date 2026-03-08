@@ -2,7 +2,7 @@
 
 #include "git/GitOps.h"
 #include "privacy/PrivacyError.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <functional>
 #include <optional>

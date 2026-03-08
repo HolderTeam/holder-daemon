@@ -1,4 +1,4 @@
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include <sqlite3.h>
 

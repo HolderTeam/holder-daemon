@@ -1,4 +1,4 @@
-#include "store/AiRouterConfigRepo.h"
+#include "ai/AiRouterConfigRepo.h"
 
 #include <sqlite3.h>
 

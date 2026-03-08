@@ -12,10 +12,10 @@
 #include "model/Card.h"
 #include "model/Project.h"
 #include "privacy/ProjectPrivacy.h"
-#include "store/CardRepo.h"
-#include "store/CardStore.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 #include "index/FtsIndexer.h"
 
 #include <git2.h>

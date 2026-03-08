@@ -1,4 +1,4 @@
-#include "store/AiMessageRepo.h"
+#include "ai/AiMessageRepo.h"
 
 #include "ai/AiMessageFrontMatter.h"
 #include "ai/AiMessagePaths.h"

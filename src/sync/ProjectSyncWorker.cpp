@@ -4,8 +4,8 @@
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 #include "sync/ProjectSyncPolicy.h"
 
 #include <spdlog/spdlog.h>

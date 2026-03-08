@@ -3,8 +3,8 @@
 #include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "model/Project.h"
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include "http_test_helpers.h"
 

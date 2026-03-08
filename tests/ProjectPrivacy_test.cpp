@@ -3,7 +3,7 @@
 #include "git/GitOps.h"
 #include "model/Project.h"
 #include "privacy/CryptoService.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>

@@ -127,19 +127,19 @@ add_executable(holder
   src/api/support/RunEventStore.cpp
   src/api/Session.cpp
   src/api/Router.cpp
-  src/store/ProjectRepo.cpp
-  src/store/ProjectSyncRepo.cpp
-  src/store/CardRepo.cpp
-  src/store/LinkRepo.cpp
+  src/project/ProjectRepo.cpp
+  src/project/ProjectSyncRepo.cpp
+  src/card/CardRepo.cpp
+  src/card/LinkRepo.cpp
   src/store/ResourceRepo.cpp
-  src/store/AiThreadRepo.cpp
-  src/store/AiMessageRepo.cpp
-  src/store/AiRunRepo.cpp
-  src/store/AiRouterConfigRepo.cpp
-  src/store/AiProviderCredentialRepo.cpp
-  src/store/AiProviderSettingRepo.cpp
+  src/ai/AiThreadRepo.cpp
+  src/ai/AiMessageRepo.cpp
+  src/ai/AiRunRepo.cpp
+  src/ai/AiRouterConfigRepo.cpp
+  src/ai/AiProviderCredentialRepo.cpp
+  src/ai/AiProviderSettingRepo.cpp
   src/store/Rebuilder.cpp
-  src/store/CardStore.cpp
+  src/card/CardStore.cpp
   src/store/Db.cpp
   src/store/Tx.cpp
   src/store/Migrations.cpp

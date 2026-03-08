@@ -5,9 +5,9 @@
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
 #include "platform/Fs.h"
-#include "store/AiThreadRepo.h"
-#include "store/CardRepo.h"
-#include "store/LinkRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
 #include "store/Tx.h"
 
 #include <sqlite3.h>

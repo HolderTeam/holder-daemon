@@ -4,10 +4,10 @@
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
-#include "store/CardRepo.h"
+#include "card/CardRepo.h"
 #include "store/Db.h"
-#include "store/LinkRepo.h"
-#include "store/ProjectRepo.h"
+#include "card/LinkRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <optional>
 #include <string>

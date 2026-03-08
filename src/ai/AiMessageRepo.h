@@ -4,10 +4,10 @@
 #include "index/FtsIndexer.h"
 #include "git/GitOps.h"
 #include "model/AiMessage.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "store/Db.h"
-#include "store/LinkRepo.h"
-#include "store/ProjectRepo.h"
+#include "card/LinkRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <optional>
 #include <string>

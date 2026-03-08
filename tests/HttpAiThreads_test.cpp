@@ -1,7 +1,7 @@
 #include "http_test_helpers.h"
 
 #include "model/Card.h"
-#include "store/CardRepo.h"
+#include "card/CardRepo.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;

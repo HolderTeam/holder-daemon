@@ -1,4 +1,4 @@
-#include "store/LinkRepo.h"
+#include "card/LinkRepo.h"
 
 #include <sqlite3.h>
 

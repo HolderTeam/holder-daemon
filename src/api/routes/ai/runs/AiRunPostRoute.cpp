@@ -9,12 +9,12 @@
 #include "api/support/RunEventStore.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiProviderSettingRepo.h"
-#include "store/AiRouterConfigRepo.h"
-#include "store/AiRunRepo.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRouterConfigRepo.h"
+#include "ai/AiRunRepo.h"
+#include "ai/AiThreadRepo.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>

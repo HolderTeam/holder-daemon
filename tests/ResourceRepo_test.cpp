@@ -7,7 +7,7 @@
 #include "model/Project.h"
 #include "model/Resource.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 #include "store/ResourceRepo.h"
 
 #include <chrono>

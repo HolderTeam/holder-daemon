@@ -9,10 +9,10 @@
 #include "model/Project.h"
 #include "index/FtsIndexer.h"
 #include "ai/AiMessagePaths.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>
