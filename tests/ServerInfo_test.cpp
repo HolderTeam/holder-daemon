@@ -96,3 +96,59 @@ TEST_CASE("write_server_info overwrites existing file", "[serverinfo]") {
   REQUIRE(j["port"] == 4321);
   REQUIRE(j["auth_token"] == "beefdead");
 }
+
+TEST_CASE("write_server_info throws when temp file cannot be opened", "[serverinfo]") {
+  const auto dir = make_temp_dir();
+  const auto missing_parent = dir / "missing" / "nested";
+  const auto info_path = missing_parent / "holder.json";
+
+  holder::core::ServerInfo info;
+  info.pid = 1;
+  info.bind = "127.0.0.1";
+  info.port = 1;
+  info.started_at = 1;
+  info.api_version = "0.1";
+  info.server_version = "0.1.0";
+  info.auth_token = "token";
+
+  REQUIRE_THROWS(holder::core::write_server_info(info_path, info));
+}
+
+TEST_CASE("write_server_info fallback removes existing directory target then renames", "[serverinfo]") {
+  const auto dir = make_temp_dir();
+  const auto info_path = dir / "holder.json";
+  std::filesystem::create_directory(info_path);
+
+  holder::core::ServerInfo info;
+  info.pid = 2;
+  info.bind = "127.0.0.1";
+  info.port = 2;
+  info.started_at = 2;
+  info.api_version = "0.1";
+  info.server_version = "0.1.0";
+  info.auth_token = "token2";
+
+  REQUIRE_NOTHROW(holder::core::write_server_info(info_path, info));
+  REQUIRE(std::filesystem::is_regular_file(info_path));
+}
+
+TEST_CASE("write_server_info throws when fallback rename still fails", "[serverinfo]") {
+  const auto dir = make_temp_dir();
+  const auto info_path = dir / "holder.json";
+  std::filesystem::create_directory(info_path);
+  {
+    std::ofstream keep(info_path / "keep.txt");
+    keep << "non-empty";
+  }
+
+  holder::core::ServerInfo info;
+  info.pid = 3;
+  info.bind = "127.0.0.1";
+  info.port = 3;
+  info.started_at = 3;
+  info.api_version = "0.1";
+  info.server_version = "0.1.0";
+  info.auth_token = "token3";
+
+  REQUIRE_THROWS(holder::core::write_server_info(info_path, info));
+}

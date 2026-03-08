@@ -15,3 +15,11 @@ TEST_CASE("SignalHandler sets flag on SIGTERM", "[signal]") {
   std::raise(SIGTERM);
   REQUIRE(handler.is_requested());
 }
+
+TEST_CASE("SignalHandler records last signal", "[signal]") {
+  holder::core::SignalHandler handler;
+
+  std::raise(SIGINT);
+  REQUIRE(handler.is_requested());
+  REQUIRE(handler.last_signal() == SIGINT);
+}

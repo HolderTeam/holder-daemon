@@ -171,3 +171,56 @@ TEST_CASE("LockFile release is safe when never acquired", "[lock]") {
   REQUIRE_NOTHROW(lock.release());
   REQUIRE_FALSE(lock.is_locked());
 }
+
+TEST_CASE("LockFile move constructor transfers lock ownership", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto lock_path = dir / "holder.lock";
+  const auto helper = std::filesystem::path(LOCK_HELPER_PATH);
+
+  holder::core::LockFile original(lock_path);
+  REQUIRE(original.try_acquire());
+  REQUIRE(original.is_locked());
+
+  holder::core::LockFile moved(std::move(original));
+  REQUIRE(moved.is_locked());
+
+  const int rc_while_moved_holds = run_helper(helper, lock_path);
+  REQUIRE(rc_while_moved_holds == 1);
+
+  moved.release();
+  const int rc_after_release = run_helper(helper, lock_path);
+  REQUIRE(rc_after_release == 0);
+}
+
+TEST_CASE("LockFile move assignment releases existing lock and adopts source", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto lock_a = dir / "a.lock";
+  const auto lock_b = dir / "b.lock";
+  const auto helper = std::filesystem::path(LOCK_HELPER_PATH);
+
+  holder::core::LockFile source(lock_a);
+  REQUIRE(source.try_acquire());
+  holder::core::LockFile target(lock_b);
+  REQUIRE(target.try_acquire());
+
+  target = std::move(source);
+  REQUIRE(target.is_locked());
+
+  const int rc_a_held = run_helper(helper, lock_a);
+  REQUIRE(rc_a_held == 1);
+  const int rc_b_released = run_helper(helper, lock_b);
+  REQUIRE(rc_b_released == 0);
+
+  target.release();
+  const int rc_a_released = run_helper(helper, lock_a);
+  REQUIRE(rc_a_released == 0);
+}
+
+TEST_CASE("LockFile throws when lock file cannot be opened", "[lock]") {
+  const auto dir = make_temp_dir();
+  const auto missing_parent = dir / "missing-subdir";
+  const auto lock_path = missing_parent / "holder.lock";
+
+  holder::core::LockFile lock(lock_path);
+  REQUIRE_THROWS(lock.try_acquire());
+}
