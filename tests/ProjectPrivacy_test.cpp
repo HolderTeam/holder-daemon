@@ -375,6 +375,50 @@ TEST_CASE("encrypt_project_blob rethrows PrivacyError for invalid key material",
   }
 }
 
+TEST_CASE("ensure_project_key_material fails when test keystore key path is a directory", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-key-open-fail";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  const auto keystore_dir = dir / "keystore";
+  std::filesystem::create_directories(keystore_dir / "key-open-fail.key");
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+  REQUIRE_THROWS(holder::privacy::ensure_project_key_material(
+      repo,
+      project.project_id,
+      std::nullopt,
+      2,
+      []() { return std::string("key-open-fail"); }));
+}
+
+TEST_CASE("ensure_encrypted_git_setup fails when privacy metadata target is a directory", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_root = dir / "repo";
+
+  holder::git::RealGitOps git;
+  git.open_or_init(repo_root);
+
+  // Force std::ofstream open failure for .holder/privacy.json.
+  std::filesystem::create_directories(repo_root / ".holder" / "privacy.json");
+
+  REQUIRE_THROWS(holder::privacy::ensure_encrypted_git_setup(
+      git,
+      repo_root.string(),
+      "proj-meta-fail",
+      "key-meta-fail"));
+}
+
 #if CARD_SERVER_HAVE_LIBGIT2
 TEST_CASE("index safety check errors when git index cannot be loaded", "[privacy]") {
   const auto root = make_temp_dir_local();
