@@ -10,6 +10,7 @@
 #include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
+#include <sqlite3.h>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -56,6 +57,11 @@ void create_project(holder::platform::Db& db, const std::string& project_id) {
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
+}
+
+int sqlite_interrupt_cb(void* data) {
+  auto* flag = static_cast<int*>(data);
+  return (flag && *flag) ? 1 : 0;
 }
 
 } // namespace
@@ -258,4 +264,52 @@ TEST_CASE("CardRepo methods throw sqlite errors when DB is closed", "[cardrepo]"
   REQUIRE_THROWS(repo.restore("card-1", 5));
   REQUIRE_THROWS(repo.remove("card-1"));
   REQUIRE_THROWS(repo.move("card-1", std::nullopt, 1.5, 6));
+}
+
+TEST_CASE("CardRepo read/count queries throw on interrupted sqlite step", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  holder::model::Card parent;
+  parent.card_id = "parent-int";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.rel_path = "cards/pa/re/parent-int.md";
+  parent.sort_key = 1.0;
+  parent.created_at = 1;
+  parent.updated_at = 1;
+  repo.create(parent);
+
+  holder::model::Card child;
+  child.card_id = "child-int";
+  child.project_id = "proj-1";
+  child.title = "Child";
+  child.rel_path = "cards/ch/il/child-int.md";
+  child.parent_card_id = "parent-int";
+  child.sort_key = 2.0;
+  child.created_at = 2;
+  child.updated_at = 2;
+  repo.create(child);
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+
+  REQUIRE_THROWS(repo.get("parent-int"));
+  REQUIRE_THROWS(repo.list_roots("proj-1"));
+  REQUIRE_THROWS(repo.list_children("proj-1", "parent-int"));
+  REQUIRE_THROWS(repo.list_all("proj-1"));
+  REQUIRE_THROWS(repo.count_all_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_roots_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", "parent-int"));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::nullopt));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::optional<std::string>("parent-int")));
+
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

@@ -10,6 +10,7 @@
 #include "project/ProjectRepo.h"
 #include "resource/ResourceRepo.h"
 
+#include <sqlite3.h>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -56,6 +57,11 @@ void create_project(holder::platform::Db& db, const std::string& project_id) {
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
+}
+
+int sqlite_interrupt_cb(void* data) {
+  auto* flag = static_cast<int*>(data);
+  return (flag && *flag) ? 1 : 0;
 }
 
 } // namespace
@@ -138,4 +144,61 @@ TEST_CASE("ResourceRepo methods throw when DB handle is closed", "[resourcerepo]
   REQUIRE_THROWS(repo.get("res-closed"));
   REQUIRE_THROWS(repo.update(resource));
   REQUIRE_THROWS(repo.remove("res-closed"));
+}
+
+TEST_CASE("ResourceRepo add throws on duplicate resource_id", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+
+  holder::model::Resource resource;
+  resource.resource_id = "res-dup";
+  resource.project_id = "proj-1";
+  resource.kind = "url";
+  resource.uri = "https://example.com";
+  resource.label = "Example";
+  resource.desc = "Docs";
+  resource.created_at = 10;
+  resource.updated_at = 10;
+
+  repo.add(resource);
+  REQUIRE_THROWS(repo.add(resource));
+}
+
+TEST_CASE("ResourceRepo list/get/update/remove throw on interrupted sqlite step", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+  holder::model::Resource resource;
+  resource.resource_id = "res-int";
+  resource.project_id = "proj-1";
+  resource.kind = "url";
+  resource.uri = "https://example.com";
+  resource.label = "Example";
+  resource.desc = std::nullopt;
+  resource.created_at = 10;
+  resource.updated_at = 10;
+  repo.add(resource);
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+  REQUIRE_THROWS(repo.list("proj-1"));
+  REQUIRE_THROWS(repo.get("res-int"));
+
+  resource.updated_at = 11;
+  REQUIRE_THROWS(repo.update(resource));
+  REQUIRE_THROWS(repo.remove("res-int"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

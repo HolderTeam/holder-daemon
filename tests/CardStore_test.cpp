@@ -25,6 +25,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -1021,6 +1022,42 @@ TEST_CASE("CardStore move exercises error and no-op branches", "[cardstore]") {
   store.create(missing_body, "body");
   std::filesystem::remove(project_root / holder::core::card_rel_path(missing_body.card_id));
   REQUIRE_THROWS(store.move(missing_body.card_id, true, std::optional<std::string>("parentx"), std::nullopt, 2));
+
+  // Make file front matter already match target move while DB still has old values.
+  // This forces changed=true but updated_raw==raw, exercising the no-write branch.
+  holder::model::Card stale_db;
+  stale_db.card_id = "movraw01";
+  stale_db.project_id = "proj-1";
+  stale_db.title = "RawNoop";
+  stale_db.created_at = 1;
+  stale_db.updated_at = 1;
+  store.create(stale_db, "body", std::optional<double>(1.0));
+
+  const auto stale_db_opt = card_repo.get(stale_db.card_id);
+  REQUIRE(stale_db_opt.has_value());
+  const auto stale_rel = holder::core::card_rel_path(stale_db.card_id);
+  const auto stale_path = project_root / stale_rel;
+  const auto stale_raw = read_file(stale_path);
+  const auto stale_parsed = holder::core::parse_card_file(stale_raw);
+  REQUIRE(stale_parsed.has_front_matter);
+
+  auto file_card = stale_db_opt.value();
+  file_card.parent_card_id = std::optional<std::string>("parent-target");
+  file_card.sort_key = 7.0;
+  file_card.updated_at = 77;
+  const auto prewritten_raw =
+      holder::core::render_card_front_matter(file_card, {}) + stale_parsed.body;
+  holder::git::GitRepo stale_repo;
+  stale_repo.open_or_init(project_root);
+  stale_repo.write_file(stale_rel, prewritten_raw);
+
+  const int before_raw_noop = count_commits(project_root);
+  store.move(stale_db.card_id,
+             true,
+             std::optional<std::string>("parent-target"),
+             std::optional<double>(7.0),
+             77);
+  REQUIRE(count_commits(project_root) == before_raw_noop);
 }
 
 TEST_CASE("CardStore move encrypted branch updates and commits", "[cardstore]") {
@@ -1183,6 +1220,7 @@ TEST_CASE("CardStore trash/restore/hard_delete and get_content guards", "[cardst
   deleted_bad_rel.rel_path = "cards/another-wrong.md";
   deleted_bad_rel.deleted_at = 10;
   card_repo.create(deleted_bad_rel);
+  REQUIRE_THROWS(store.trash(deleted_bad_rel.card_id, 2));
   REQUIRE_THROWS(store.restore(deleted_bad_rel.card_id, 2));
 
   holder::model::Card content_missing;
