@@ -15,6 +15,9 @@ public:
 
   void run(const holder::core::SignalHandler& signals);
 
+  static void set_fail_post_pull_metrics_for_tests(bool enabled);
+  static void set_fail_post_push_metrics_for_tests(bool enabled);
+
 private:
   long long now_epoch_seconds() const;
   void run_startup_pull_pass();

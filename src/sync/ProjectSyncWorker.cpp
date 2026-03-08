@@ -17,6 +17,9 @@
 namespace holder::sync {
 namespace {
 
+bool g_fail_post_pull_metrics_for_tests = false;
+bool g_fail_post_push_metrics_for_tests = false;
+
 bool is_push_success(holder::git::PushStatus status) {
   return status == holder::git::PushStatus::Pushed ||
          status == holder::git::PushStatus::UpToDate;
@@ -53,6 +56,14 @@ void ProjectSyncWorker::run(const holder::core::SignalHandler& signals) {
       slept += 1;
     }
   }
+}
+
+void ProjectSyncWorker::set_fail_post_pull_metrics_for_tests(bool enabled) {
+  g_fail_post_pull_metrics_for_tests = enabled;
+}
+
+void ProjectSyncWorker::set_fail_post_push_metrics_for_tests(bool enabled) {
+  g_fail_post_push_metrics_for_tests = enabled;
 }
 
 long long ProjectSyncWorker::now_epoch_seconds() const {
@@ -164,6 +175,9 @@ void ProjectSyncWorker::run_push_cycle() {
       }
 
       try {
+        if (g_fail_post_pull_metrics_for_tests) {
+          throw std::runtime_error("forced post-pull metrics failure for tests");
+        }
         const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
         sync.update_activity_counts(project.project_id,
                                     metrics.uncommitted_changes_count,
@@ -206,6 +220,9 @@ void ProjectSyncWorker::run_push_cycle() {
                               now);
     }
     try {
+      if (g_fail_post_push_metrics_for_tests) {
+        throw std::runtime_error("forced post-push metrics failure for tests");
+      }
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(project.project_id,
                                   metrics.uncommitted_changes_count,
