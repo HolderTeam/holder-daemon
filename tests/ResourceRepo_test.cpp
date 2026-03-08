@@ -202,3 +202,34 @@ TEST_CASE("ResourceRepo list/get/update/remove throw on interrupted sqlite step"
   REQUIRE_THROWS(repo.remove("res-int"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
+
+TEST_CASE("ResourceRepo list throws sqlite error branch under heavy interrupt", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+
+  // Seed enough rows so query iteration reliably hits interrupted sqlite_step.
+  for (int i = 0; i < 600; ++i) {
+    holder::model::Resource resource;
+    resource.resource_id = "res-heavy-" + std::to_string(i);
+    resource.project_id = "proj-1";
+    resource.kind = "url";
+    resource.uri = "https://example.com/" + std::to_string(i);
+    resource.label = "Example";
+    resource.desc = (i % 2 == 0) ? std::optional<std::string>("Docs") : std::nullopt;
+    resource.created_at = i + 1;
+    resource.updated_at = i + 1;
+    repo.add(resource);
+  }
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+  REQUIRE_THROWS(repo.list("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}

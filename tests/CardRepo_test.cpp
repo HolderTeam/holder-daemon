@@ -313,3 +313,99 @@ TEST_CASE("CardRepo read/count queries throw on interrupted sqlite step", "[card
 
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
+
+TEST_CASE("CardRepo list/count/next_sort throw on interrupted step under load", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  // Seed enough rows to ensure SELECTs execute enough VM ops for interrupt callback.
+  for (int i = 0; i < 500; ++i) {
+    holder::model::Card c;
+    c.card_id = "root-int-" + std::to_string(i);
+    c.project_id = "proj-1";
+    c.title = "Root";
+    c.rel_path = "cards/ro/ot/root-int-" + std::to_string(i) + ".md";
+    c.sort_key = static_cast<double>(i);
+    c.created_at = i + 1;
+    c.updated_at = i + 1;
+    repo.create(c);
+  }
+
+  holder::model::Card parent;
+  parent.card_id = "parent-heavy";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.rel_path = "cards/pa/re/parent-heavy.md";
+  parent.sort_key = 1000.0;
+  parent.created_at = 1;
+  parent.updated_at = 1;
+  repo.create(parent);
+
+  for (int i = 0; i < 500; ++i) {
+    holder::model::Card c;
+    c.card_id = "child-heavy-" + std::to_string(i);
+    c.project_id = "proj-1";
+    c.title = "Child";
+    c.rel_path = "cards/ch/il/child-heavy-" + std::to_string(i) + ".md";
+    c.parent_card_id = parent.card_id;
+    c.sort_key = static_cast<double>(i);
+    c.created_at = i + 10;
+    c.updated_at = i + 10;
+    repo.create(c);
+  }
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+
+  REQUIRE_THROWS(repo.list_roots("proj-1"));
+  REQUIRE_THROWS(repo.list_children("proj-1", parent.card_id));
+  REQUIRE_THROWS(repo.list_all("proj-1"));
+  REQUIRE_THROWS(repo.count_all_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_roots_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", parent.card_id));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::nullopt));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::optional<std::string>(parent.card_id)));
+
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("CardRepo update/delete/move throw when sqlite step aborts", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+  holder::model::Card card;
+  card.card_id = "abort-card";
+  card.project_id = "proj-1";
+  card.title = "Abort";
+  card.rel_path = "cards/ab/or/abort-card.md";
+  card.sort_key = 1.0;
+  card.created_at = 1;
+  card.updated_at = 1;
+  repo.create(card);
+
+  // Force sqlite3_step failures for UPDATE and DELETE (prepare still succeeds).
+  db.exec("CREATE TRIGGER cards_fail_update BEFORE UPDATE ON cards "
+          "BEGIN SELECT RAISE(ABORT, 'blocked update'); END;");
+  db.exec("CREATE TRIGGER cards_fail_delete BEFORE DELETE ON cards "
+          "BEGIN SELECT RAISE(ABORT, 'blocked delete'); END;");
+
+  REQUIRE_THROWS(repo.update_title(card.card_id, "New", 2));
+  REQUIRE_THROWS(repo.touch_updated(card.card_id, 3));
+  REQUIRE_THROWS(repo.soft_delete(card.card_id, 4, 5));
+  REQUIRE_THROWS(repo.restore(card.card_id, 6));
+  REQUIRE_THROWS(repo.move(card.card_id, std::nullopt, 2.0, 7));
+  REQUIRE_THROWS(repo.remove(card.card_id));
+}

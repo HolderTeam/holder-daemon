@@ -148,3 +148,82 @@ TEST_CASE("ProjectSyncRepo upgrades old sync table with pull retry columns", "[s
   REQUIRE(state->next_pull_retry_at.has_value());
   REQUIRE(state->next_pull_retry_at.value() == 560);
 }
+
+TEST_CASE("ProjectSyncRepo backoff caps at max retry schedule", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+
+  for (int retry = 1; retry <= 5; ++retry) {
+    const long long now = 1000 + retry * 10;
+    sync.record_push_result("proj-1", "failed", false, std::optional<std::string>{"err"}, now);
+  }
+
+  const auto state = sync.get("proj-1");
+  REQUIRE(state.has_value());
+  REQUIRE(state->retry_count == 5);
+  REQUIRE(state->next_retry_at.has_value());
+  REQUIRE(state->next_retry_at.value() == (1000 + 5 * 10 + 1800));
+}
+
+TEST_CASE("ProjectSyncRepo uses default sync errors for empty messages", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+  sync.record_push_result("proj-1", "failed", false, std::nullopt, 100);
+
+  auto push_failed = sync.get("proj-1");
+  REQUIRE(push_failed.has_value());
+  REQUIRE(push_failed->last_sync_error.has_value());
+  REQUIRE(push_failed->last_sync_error.value() == "push failed");
+
+  sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{""}, 200);
+  auto pull_failed = sync.get("proj-1");
+  REQUIRE(pull_failed.has_value());
+  REQUIRE(pull_failed->last_sync_error.has_value());
+  REQUIRE(pull_failed->last_sync_error.value() == "pull failed");
+}
+
+TEST_CASE("ProjectSyncRepo remove deletes state row", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+  sync.record_push_result("proj-1", "pushed", true, std::nullopt, 100);
+  REQUIRE(sync.get("proj-1").has_value());
+
+  sync.remove("proj-1");
+  REQUIRE_FALSE(sync.get("proj-1").has_value());
+}
