@@ -21,10 +21,6 @@
 #include <vector>
 
 namespace holder::store {
-using holder::ai::AiThreadRepo;
-using holder::card::CardRepo;
-using holder::card::LinkRepo;
-
 namespace {
 
 holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
@@ -141,8 +137,8 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
                       "DELETE FROM ai_fts WHERE project_id = ?;",
                       project.project_id);
 
-  CardRepo card_repo(db_);
-  LinkRepo link_repo(db_);
+  holder::card::CardRepo card_repo(db_);
+  holder::card::LinkRepo link_repo(db_);
 
   auto collect_files = [&](const std::filesystem::path& base) {
     std::vector<std::filesystem::path> out;
@@ -315,7 +311,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
     rebuild_message_file(path, true);
   }
 
-  AiThreadRepo thread_repo(db_);
+  holder::ai::AiThreadRepo thread_repo(db_);
   for (const auto& entry : thread_times) {
     holder::model::AiThread thread;
     thread.thread_id = entry.first;
