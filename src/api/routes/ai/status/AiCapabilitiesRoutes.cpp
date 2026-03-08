@@ -3,7 +3,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/LocalModelRouting.h"
 #include "api/support/Time.h"
-#include "store/AiRouterConfigRepo.h"
+#include "ai/AiRouterConfigRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -21,7 +21,7 @@ namespace http = boost::beast::http;
 bool handle_ai_capabilities_routes(const std::string& path,
                                    const http::request<http::string_body>& req,
                                    http::response<http::string_body>& res,
-                                   holder::store::Db& db,
+                                   holder::platform::Db& db,
                                    holder::llm::LocalModelRunner* runner,
                                    const std::function<std::string(const std::string&)>& param_get) {
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {
@@ -33,7 +33,7 @@ bool handle_ai_capabilities_routes(const std::string& path,
   std::optional<holder::model::AiRouterConfig> global_router_cfg;
   std::optional<holder::model::AiRouterConfig> project_router_cfg;
   try {
-    holder::store::AiRouterConfigRepo router_cfg_repo(db);
+    holder::ai::AiRouterConfigRepo router_cfg_repo(db);
     global_router_cfg = router_cfg_repo.get_global();
     project_router_cfg = project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
                                             : router_cfg_repo.get_for_project(project_id);

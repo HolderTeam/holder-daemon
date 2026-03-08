@@ -2,7 +2,7 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiThreadRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -32,7 +32,7 @@ bool handle_ai_thread_collection_routes(
     const std::string& path,
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/ai/threads" && req.method() == http::verb::get) {
@@ -43,7 +43,7 @@ bool handle_ai_thread_collection_routes(
     }
 
     try {
-      holder::store::AiThreadRepo repo(db);
+      holder::ai::AiThreadRepo repo(db);
       const auto threads = repo.list(project_id);
       nlohmann::json data = nlohmann::json::array();
       for (const auto& thread : threads) {
@@ -90,7 +90,7 @@ bool handle_ai_thread_collection_routes(
           thread.updated_at = thread.created_at;
         }
 
-        holder::store::AiThreadRepo repo(db);
+        holder::ai::AiThreadRepo repo(db);
         repo.create(thread);
 
         nlohmann::json payload;

@@ -5,7 +5,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <filesystem>
@@ -28,12 +28,12 @@ TEST_CASE("Db move constructor transfers ownership", "[db]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "one.db";
 
-  holder::store::Db first;
+  holder::platform::Db first;
   first.open(db_path);
   sqlite3* original_handle = first.handle();
   REQUIRE(original_handle != nullptr);
 
-  holder::store::Db moved(std::move(first));
+  holder::platform::Db moved(std::move(first));
   REQUIRE(first.handle() == nullptr);
   REQUIRE(moved.handle() == original_handle);
   REQUIRE(moved.path() == db_path);
@@ -45,12 +45,12 @@ TEST_CASE("Db move assignment transfers ownership and allows self move", "[db]")
   const auto src_path = dir / "src.db";
   const auto dst_path = dir / "dst.db";
 
-  holder::store::Db source;
+  holder::platform::Db source;
   source.open(src_path);
   sqlite3* source_handle = source.handle();
   REQUIRE(source_handle != nullptr);
 
-  holder::store::Db target;
+  holder::platform::Db target;
   target.open(dst_path);
   REQUIRE(target.handle() != nullptr);
 
@@ -69,7 +69,7 @@ TEST_CASE("Db open failure throws sqlite open error", "[db]") {
   const auto dir = make_temp_dir();
   const auto impossible_path = dir / "missing-parent" / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   REQUIRE_THROWS_WITH(db.open(impossible_path),
                       Catch::Matchers::ContainsSubstring("sqlite open failed"));
 }
@@ -78,7 +78,7 @@ TEST_CASE("Db exec failure includes sqlite message", "[db]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "bad-sql.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   REQUIRE_THROWS_WITH(db.exec("THIS IS NOT VALID SQL;"),

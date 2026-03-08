@@ -4,8 +4,8 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/Paths.h"
-#include "core/ProjectPaths.h"
+#include "platform/Paths.h"
+#include "project/ProjectPaths.h"
 #include "model/Project.h"
 
 #include <filesystem>

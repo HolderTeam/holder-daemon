@@ -1,5 +1,5 @@
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 #include "http_test_helpers.h"
 
 TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][repo]") {
@@ -7,7 +7,7 @@ TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo projects(db);
+  holder::project::ProjectRepo projects(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -16,7 +16,7 @@ TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][
   project.updated_at = 1;
   projects.create(project);
 
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
 
   sync.record_push_result("proj-1", "auth_failed", false, std::optional<std::string>{"bad auth"}, 100);
   auto first = sync.get("proj-1");
@@ -51,7 +51,7 @@ TEST_CASE("ProjectSyncRepo records pull status and errors", "[sync][repo]") {
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo projects(db);
+  holder::project::ProjectRepo projects(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -60,7 +60,7 @@ TEST_CASE("ProjectSyncRepo records pull status and errors", "[sync][repo]") {
   project.updated_at = 1;
   projects.create(project);
 
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
   sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{"ff-only failed"}, 400);
   auto failed = sync.get("proj-1");
   REQUIRE(failed.has_value());
@@ -89,7 +89,7 @@ TEST_CASE("ProjectSyncRepo stores uncommitted and unpushed counters", "[sync][re
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo projects(db);
+  holder::project::ProjectRepo projects(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -98,7 +98,7 @@ TEST_CASE("ProjectSyncRepo stores uncommitted and unpushed counters", "[sync][re
   project.updated_at = 1;
   projects.create(project);
 
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
   sync.update_activity_counts("proj-1", 3, 7, 500);
 
   const auto state = sync.get("proj-1");
@@ -112,7 +112,7 @@ TEST_CASE("ProjectSyncRepo upgrades old sync table with pull retry columns", "[s
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo projects(db);
+  holder::project::ProjectRepo projects(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -139,7 +139,7 @@ TEST_CASE("ProjectSyncRepo upgrades old sync table with pull retry columns", "[s
       " updated_at INTEGER NOT NULL DEFAULT 0"
       ");");
 
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
   sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{"boom"}, 500);
 
   const auto state = sync.get("proj-1");

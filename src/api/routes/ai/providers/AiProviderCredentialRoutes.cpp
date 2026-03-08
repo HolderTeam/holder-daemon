@@ -3,8 +3,8 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiProviderSettingRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -21,10 +21,10 @@ namespace http = boost::beast::http;
 bool handle_ai_provider_credential_routes(const std::string& path,
                                           const http::request<http::string_body>& req,
                                           http::response<http::string_body>& res,
-                                          holder::store::Db& db) {
+                                          holder::platform::Db& db) {
   if (path == "/ai/providers/settings" && req.method() == http::verb::get) {
     try {
-      holder::store::AiProviderSettingRepo repo(db);
+      holder::ai::AiProviderSettingRepo repo(db);
       nlohmann::json providers = nlohmann::json::array();
       for (const auto& setting : repo.list()) {
         providers.push_back({
@@ -69,7 +69,7 @@ bool handle_ai_provider_credential_routes(const std::string& path,
                                ? body.at("updated_at").get<long long>()
                                : support::now_epoch_seconds();
 
-      holder::store::AiProviderSettingRepo repo(db);
+      holder::ai::AiProviderSettingRepo repo(db);
       repo.upsert(provider, enabled, ts);
 
       nlohmann::json payload;
@@ -95,7 +95,7 @@ bool handle_ai_provider_credential_routes(const std::string& path,
         res = support::error_response(http::status::bad_request, "bad_request", "Invalid provider.");
         return true;
       }
-      holder::store::AiProviderSettingRepo repo(db);
+      holder::ai::AiProviderSettingRepo repo(db);
       repo.remove(provider);
       nlohmann::json payload;
       payload["ok"] = true;
@@ -110,7 +110,7 @@ bool handle_ai_provider_credential_routes(const std::string& path,
 
   if (path == "/ai/providers/credentials" && req.method() == http::verb::get) {
     try {
-      holder::store::AiProviderCredentialRepo repo(db);
+      holder::ai::AiProviderCredentialRepo repo(db);
       nlohmann::json providers = nlohmann::json::array();
       for (const auto& credential : repo.list()) {
         providers.push_back({
@@ -164,11 +164,11 @@ bool handle_ai_provider_credential_routes(const std::string& path,
                                ? body.at("updated_at").get<long long>()
                                : support::now_epoch_seconds();
 
-      holder::store::AiProviderCredentialRepo repo(db);
+      holder::ai::AiProviderCredentialRepo repo(db);
       const auto existing = repo.get(provider);
       const long long created_at = existing.has_value() ? existing->created_at : ts;
       repo.upsert(provider, api_key, created_at, ts);
-      holder::store::AiProviderSettingRepo setting_repo(db);
+      holder::ai::AiProviderSettingRepo setting_repo(db);
       setting_repo.upsert(provider, true, ts);
 
       nlohmann::json payload;
@@ -196,9 +196,9 @@ bool handle_ai_provider_credential_routes(const std::string& path,
         res = support::error_response(http::status::bad_request, "bad_request", "Invalid provider.");
         return true;
       }
-      holder::store::AiProviderCredentialRepo repo(db);
+      holder::ai::AiProviderCredentialRepo repo(db);
       repo.remove(provider);
-      holder::store::AiProviderSettingRepo setting_repo(db);
+      holder::ai::AiProviderSettingRepo setting_repo(db);
       setting_repo.upsert(provider, false, support::now_epoch_seconds());
       nlohmann::json payload;
       payload["ok"] = true;

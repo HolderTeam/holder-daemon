@@ -3,7 +3,7 @@
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
@@ -23,7 +23,7 @@ DispatchResult dispatch_ai_routes(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,

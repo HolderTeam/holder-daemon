@@ -7,13 +7,13 @@
 #endif
 
 #include "api/HttpServer.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
-#include "store/CardStore.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "card/CardStore.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -72,8 +72,8 @@ inline nlohmann::json get_health(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
-inline holder::store::Db open_db_with_schema(const std::filesystem::path& db_path) {
-  holder::store::Db db;
+inline holder::platform::Db open_db_with_schema(const std::filesystem::path& db_path) {
+  holder::platform::Db db;
   db.open(db_path);
 
   std::filesystem::path schema_path = SCHEMA_SQL_PATH;
@@ -85,10 +85,10 @@ inline holder::store::Db open_db_with_schema(const std::filesystem::path& db_pat
   return db;
 }
 
-inline void create_project(holder::store::Db& db,
+inline void create_project(holder::platform::Db& db,
                            const std::string& project_id,
                            const std::string& root_path = "/tmp/project") {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";

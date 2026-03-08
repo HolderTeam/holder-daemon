@@ -2,8 +2,8 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiRouterConfigRepo.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiRouterConfigRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -59,12 +59,12 @@ nlohmann::json router_config_payload(const std::optional<holder::model::AiRouter
 bool handle_ai_router_config_routes(const std::string& path,
                                     const http::request<http::string_body>& req,
                                     http::response<http::string_body>& res,
-                                    holder::store::Db& db,
+                                    holder::platform::Db& db,
                                     const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/ai/router/config" && req.method() == http::verb::get) {
     try {
       const std::string project_id = param_get("project_id");
-      holder::store::AiRouterConfigRepo repo(db);
+      holder::ai::AiRouterConfigRepo repo(db);
       const auto global_cfg = repo.get_global();
       const auto project_cfg =
           project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
@@ -112,7 +112,7 @@ bool handle_ai_router_config_routes(const std::string& path,
           valid = false;
         }
         if (valid) {
-          holder::store::ProjectRepo projects(db);
+          holder::project::ProjectRepo projects(db);
           if (!projects.get(project_id).has_value()) {
             res = support::error_response(http::status::not_found, "not_found", "Project not found.");
             valid = false;
@@ -133,7 +133,7 @@ bool handle_ai_router_config_routes(const std::string& path,
                 ? body.at("updated_at").get<long long>()
                 : support::now_epoch_seconds();
 
-        holder::store::AiRouterConfigRepo repo(db);
+        holder::ai::AiRouterConfigRepo repo(db);
         if (scope == "global") {
           if (has_model) {
             repo.set_global(router_model, updated_at);

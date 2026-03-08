@@ -18,7 +18,7 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   EnvGuard root_env("HOLDER_PROJECTS_ROOT", projects_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

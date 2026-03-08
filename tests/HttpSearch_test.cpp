@@ -2,8 +2,8 @@
 
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -19,7 +19,7 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -64,7 +64,7 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   thread.title = "Thread";
   thread.created_at = 11;
   thread.updated_at = 11;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::model::AiMessage msg;
@@ -74,7 +74,7 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   msg.source = "manual";
   msg.content = "search ai";
   msg.created_at = 12;
-  holder::store::AiMessageRepo msg_repo(db, &fts);
+  holder::ai::AiMessageRepo msg_repo(db, &fts);
   msg_repo.append(msg);
 
   const auto messages = http_json_request(bound.bind, bound.port, token,
@@ -103,7 +103,7 @@ TEST_CASE("HTTP search endpoints reject missing params", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -148,7 +148,7 @@ TEST_CASE("HTTP search endpoints reject bad params", "[http]") {
   create_project(db, "proj-1", (dir / "repo").string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

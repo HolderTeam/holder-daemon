@@ -1,7 +1,7 @@
 #include "http_test_helpers.h"
 
 #include "model/AiThread.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiThreadRepo.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -22,11 +22,11 @@ TEST_CASE("HTTP ai messages create/list/get", "[http]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

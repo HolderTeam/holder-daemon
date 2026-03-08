@@ -1,8 +1,8 @@
 #include "api/routes/TrashRoutes.h"
 #include "api/support/HttpResponses.h"
 
-#include "store/AiMessageRepo.h"
-#include "store/CardRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "card/CardRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -20,8 +20,8 @@ namespace http = boost::beast::http;
 bool handle_trash_routes(const std::string& path,
                          const http::request<http::string_body>& req,
                          http::response<http::string_body>& res,
-                         holder::store::Db& db,
-                         holder::store::CardStore* card_store,
+                         holder::platform::Db& db,
+                         holder::card::CardStore* card_store,
                          holder::index::FtsIndexer* fts,
                          const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/trash" && req.method() == http::verb::get) {
@@ -33,7 +33,7 @@ bool handle_trash_routes(const std::string& path,
       try {
         nlohmann::json data = nlohmann::json::array();
         if (type.empty() || type == "card" || type == "all") {
-          holder::store::CardRepo card_repo(db);
+          holder::card::CardRepo card_repo(db);
           const auto cards = card_repo.list_all(project_id);
           for (const auto& card : cards) {
             if (!card.deleted_at.has_value()) continue;
@@ -48,7 +48,7 @@ bool handle_trash_routes(const std::string& path,
           }
         }
         if (type.empty() || type == "ai_message" || type == "all") {
-          holder::store::AiMessageRepo msg_repo(db, fts);
+          holder::ai::AiMessageRepo msg_repo(db, fts);
           const auto msgs = msg_repo.list_deleted_by_project(project_id);
           for (const auto& msg : msgs) {
             if (!msg.deleted_at.has_value()) continue;
@@ -82,7 +82,7 @@ bool handle_trash_routes(const std::string& path,
     } else {
       try {
         if ((type.empty() || type == "card" || type == "all") && card_store) {
-          holder::store::CardRepo card_repo(db);
+          holder::card::CardRepo card_repo(db);
           const auto cards = card_repo.list_all(project_id);
           for (const auto& card : cards) {
             if (!card.deleted_at.has_value()) continue;
@@ -90,7 +90,7 @@ bool handle_trash_routes(const std::string& path,
           }
         }
         if (type.empty() || type == "ai_message" || type == "all") {
-          holder::store::AiMessageRepo msg_repo(db, fts);
+          holder::ai::AiMessageRepo msg_repo(db, fts);
           const auto msgs = msg_repo.list_deleted_by_project(project_id);
           for (const auto& msg : msgs) {
             msg_repo.remove(msg.message_id);
@@ -132,7 +132,7 @@ bool handle_trash_routes(const std::string& path,
               res = support::json_response(http::status::ok, payload);
             }
           } else if (type == "ai_message") {
-            holder::store::AiMessageRepo msg_repo(db, fts);
+            holder::ai::AiMessageRepo msg_repo(db, fts);
             msg_repo.remove(id);
             nlohmann::json payload;
             payload["ok"] = true;

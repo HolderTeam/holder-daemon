@@ -4,14 +4,14 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/CardPaths.h"
+#include "card/CardPaths.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
 #include "model/Project.h"
-#include "store/CardRepo.h"
-#include "store/CardStore.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
 
 #include <filesystem>
 #include <fstream>
@@ -28,7 +28,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   std::filesystem::path schema_path = SCHEMA_SQL_PATH;
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -36,10 +36,10 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -55,7 +55,7 @@ void create_project(holder::store::Db& db,
 
 TEST_CASE("CardStore update recreates file if missing", "[cardstore]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -63,7 +63,7 @@ TEST_CASE("CardStore update recreates file if missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "deadbeef";
@@ -82,7 +82,7 @@ TEST_CASE("CardStore update recreates file if missing", "[cardstore]") {
 
 TEST_CASE("CardStore update_links fails if card file missing", "[cardstore]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -90,7 +90,7 @@ TEST_CASE("CardStore update_links fails if card file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "cafebabe";
@@ -108,7 +108,7 @@ TEST_CASE("CardStore update_links fails if card file missing", "[cardstore]") {
 
 TEST_CASE("CardStore trash fails if card file missing", "[cardstore]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -116,7 +116,7 @@ TEST_CASE("CardStore trash fails if card file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "feedface";
@@ -134,7 +134,7 @@ TEST_CASE("CardStore trash fails if card file missing", "[cardstore]") {
 
 TEST_CASE("CardStore restore fails if trash file missing", "[cardstore]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -142,7 +142,7 @@ TEST_CASE("CardStore restore fails if trash file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "baddcafe";
@@ -161,7 +161,7 @@ TEST_CASE("CardStore restore fails if trash file missing", "[cardstore]") {
 
 TEST_CASE("CardStore update fails on rel_path mismatch", "[cardstore]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -169,7 +169,7 @@ TEST_CASE("CardStore update fails on rel_path mismatch", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "faceb00c";

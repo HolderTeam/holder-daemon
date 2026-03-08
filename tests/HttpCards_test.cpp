@@ -19,7 +19,7 @@ TEST_CASE("HTTP card create/get/patch", "[http]") {
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -257,7 +257,7 @@ TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -337,7 +337,7 @@ TEST_CASE("HTTP card move intent endpoint", "[http]") {
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -521,7 +521,7 @@ TEST_CASE("HTTP card context endpoint", "[http]") {
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -646,7 +646,7 @@ TEST_CASE("HTTP card move endpoint rejects invalid input", "[http]") {
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -747,7 +747,7 @@ TEST_CASE("HTTP cards view=recent listing", "[http]") {
   ensure_uuid_seeded();
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -850,7 +850,7 @@ TEST_CASE("HTTP cards/context support explicit order parameter", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -979,7 +979,7 @@ TEST_CASE("HTTP cards view=recent listing (alias coverage)", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -1082,7 +1082,7 @@ TEST_CASE("HTTP card create rejects duplicate card_id", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -1135,7 +1135,7 @@ TEST_CASE("HTTP card endpoints reject missing fields", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -1180,7 +1180,7 @@ TEST_CASE("HTTP card endpoints reject invalid token", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -1217,7 +1217,7 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

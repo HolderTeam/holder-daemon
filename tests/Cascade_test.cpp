@@ -11,13 +11,13 @@
 #include "model/Project.h"
 #include "model/Resource.h"
 #include "index/FtsIndexer.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/CardRepo.h"
-#include "store/Db.h"
-#include "store/LinkRepo.h"
-#include "store/ProjectRepo.h"
-#include "store/ResourceRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "platform/Db.h"
+#include "card/LinkRepo.h"
+#include "project/ProjectRepo.h"
+#include "resource/ResourceRepo.h"
 
 #include <chrono>
 #include <filesystem>
@@ -48,7 +48,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -62,17 +62,17 @@ TEST_CASE("Deleting project cascades to dependent rows", "[cascade]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 
-  holder::store::ProjectRepo project_repo(db);
-  holder::store::CardRepo card_repo(db);
-  holder::store::LinkRepo link_repo(db);
-  holder::store::ResourceRepo resource_repo(db);
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  holder::card::LinkRepo link_repo(db);
+  holder::resource::ResourceRepo resource_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   holder::index::FtsIndexer fts(db);
-  holder::store::AiMessageRepo message_repo(db, &fts);
+  holder::ai::AiMessageRepo message_repo(db, &fts);
 
   holder::model::Project project;
   project.project_id = "proj-1";

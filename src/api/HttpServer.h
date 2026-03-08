@@ -1,17 +1,17 @@
 #pragma once
 
 #include "api/Router.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <memory>
 #include <string>
 
-namespace holder::store {
+namespace holder::card {
 class CardStore;
 }
 
@@ -28,9 +28,9 @@ public:
 
   HttpServer(std::string bind,
              unsigned short port,
-             holder::store::Db& db,
+             holder::platform::Db& db,
              std::string auth_token,
-             holder::store::CardStore* card_store,
+             holder::card::CardStore* card_store,
              holder::index::FtsIndexer* fts,
              holder::git::GitOps* git_ops = nullptr,
              holder::llm::LocalModelRunner* runner = nullptr);
@@ -42,12 +42,12 @@ public:
 private:
   std::string bind_;
   unsigned short port_;
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   std::string auth_token_;
   std::chrono::steady_clock::time_point started_at_;
   Router router_;
   std::unique_ptr<Listener> listener_;
-  holder::store::CardStore* card_store_ = nullptr;
+  holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::LocalModelRunner* runner_ = nullptr;

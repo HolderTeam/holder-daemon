@@ -9,7 +9,7 @@ endif()
 
 add_executable(lock_helper
   lock_helper.cpp
-  ../src/core/LockFile.cpp
+  ../src/platform/LockFile.cpp
 )
 target_include_directories(lock_helper PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -96,16 +96,16 @@ add_executable(lockfile_tests
   RealFs_test.cpp
   GitAdapterFailure_test.cpp
   Reindexer_test.cpp
-  ../src/core/LockFile.cpp
-  ../src/core/Paths.cpp
-  ../src/core/ServerInfo.cpp
-  ../src/core/Signal.cpp
-  ../src/core/Fs.cpp
-  ../src/core/CardPaths.cpp
-  ../src/core/AiMessagePaths.cpp
-  ../src/core/CardFrontMatter.cpp
-  ../src/core/AiMessageFrontMatter.cpp
-  ../src/core/ProjectPaths.cpp
+  ../src/platform/LockFile.cpp
+  ../src/platform/Paths.cpp
+  ../src/platform/ServerInfo.cpp
+  ../src/platform/Signal.cpp
+  ../src/platform/Fs.cpp
+  ../src/card/CardPaths.cpp
+  ../src/ai/AiMessagePaths.cpp
+  ../src/card/CardFrontMatter.cpp
+  ../src/ai/AiMessageFrontMatter.cpp
+  ../src/project/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp
   ../src/llm/LocalModelRunner.cpp
@@ -157,22 +157,22 @@ add_executable(lockfile_tests
   ../src/privacy/CryptoService.cpp
   ../src/sync/ProjectSyncPolicy.cpp
   ../src/sync/ProjectSyncWorker.cpp
-  ../src/store/ProjectRepo.cpp
-  ../src/store/ProjectSyncRepo.cpp
-  ../src/store/CardRepo.cpp
-  ../src/store/LinkRepo.cpp
-  ../src/store/ResourceRepo.cpp
-  ../src/store/AiThreadRepo.cpp
-  ../src/store/AiMessageRepo.cpp
-  ../src/store/AiRunRepo.cpp
-  ../src/store/AiRouterConfigRepo.cpp
-  ../src/store/AiProviderCredentialRepo.cpp
-  ../src/store/AiProviderSettingRepo.cpp
-  ../src/store/Rebuilder.cpp
-  ../src/store/Migrations.cpp
-  ../src/store/CardStore.cpp
-  ../src/store/Tx.cpp
-  ../src/store/Db.cpp
+  ../src/project/ProjectRepo.cpp
+  ../src/project/ProjectSyncRepo.cpp
+  ../src/card/CardRepo.cpp
+  ../src/card/LinkRepo.cpp
+  ../src/resource/ResourceRepo.cpp
+  ../src/ai/AiThreadRepo.cpp
+  ../src/ai/AiMessageRepo.cpp
+  ../src/ai/AiRunRepo.cpp
+  ../src/ai/AiRouterConfigRepo.cpp
+  ../src/ai/AiProviderCredentialRepo.cpp
+  ../src/ai/AiProviderSettingRepo.cpp
+  ../src/project/Rebuilder.cpp
+  ../src/platform/Migrations.cpp
+  ../src/card/CardStore.cpp
+  ../src/platform/Tx.cpp
+  ../src/platform/Db.cpp
 )
 target_include_directories(lockfile_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src

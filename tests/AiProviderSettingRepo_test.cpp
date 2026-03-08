@@ -1,5 +1,5 @@
-#include "store/AiProviderSettingRepo.h"
-#include "store/Db.h"
+#include "ai/AiProviderSettingRepo.h"
+#include "platform/Db.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,7 +12,7 @@ TEST_CASE("AiProviderSettingRepo upsert/list/remove", "[db]") {
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   std::ifstream in(SCHEMA_SQL_PATH);
@@ -20,7 +20,7 @@ TEST_CASE("AiProviderSettingRepo upsert/list/remove", "[db]") {
   std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   db.exec(sql);
 
-  holder::store::AiProviderSettingRepo repo(db);
+  holder::ai::AiProviderSettingRepo repo(db);
   REQUIRE(repo.list().empty());
 
   repo.upsert("switchyard", true, 100);

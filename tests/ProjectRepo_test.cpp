@@ -5,8 +5,8 @@
 #endif
 
 #include "model/Project.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>
@@ -38,7 +38,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -52,11 +52,11 @@ TEST_CASE("ProjectRepo CRUD", "[projectrepo]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-1";

@@ -15,7 +15,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 } // namespace
 
-Reindexer::Reindexer(holder::store::Db& db) : db_(db) {}
+Reindexer::Reindexer(holder::platform::Db& db) : db_(db) {}
 
 void Reindexer::run() {
   holder::index::FtsIndexer fts(db_);

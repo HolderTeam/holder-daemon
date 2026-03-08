@@ -5,8 +5,8 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "store/Db.h"
-#include "store/Migrations.h"
+#include "platform/Db.h"
+#include "platform/Migrations.h"
 
 #include <chrono>
 #include <filesystem>
@@ -43,25 +43,25 @@ TEST_CASE("ensure_schema_version accepts expected version", "[migrations]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   const auto schema_path = find_schema_sql();
-  holder::store::Migrations::ensure_schema(db, schema_path);
+  holder::platform::Migrations::ensure_schema(db, schema_path);
 
-  REQUIRE_NOTHROW(holder::store::Migrations::ensure_schema_version(db, 1));
+  REQUIRE_NOTHROW(holder::platform::Migrations::ensure_schema_version(db, 1));
 }
 
 TEST_CASE("ensure_schema_version rejects mismatch", "[migrations]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   const auto schema_path = find_schema_sql();
-  holder::store::Migrations::ensure_schema(db, schema_path);
+  holder::platform::Migrations::ensure_schema(db, schema_path);
 
-  REQUIRE_THROWS_WITH(holder::store::Migrations::ensure_schema_version(db, 2),
+  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema_version(db, 2),
                       Catch::Matchers::ContainsSubstring("Schema version mismatch"));
 }

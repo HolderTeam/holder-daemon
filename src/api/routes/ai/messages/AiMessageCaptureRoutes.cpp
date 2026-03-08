@@ -2,9 +2,9 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -22,7 +22,7 @@ namespace http = boost::beast::http;
 bool handle_ai_message_capture_routes(const std::string& path,
                                       const http::request<http::string_body>& req,
                                       http::response<http::string_body>& res,
-                                      holder::store::Db& db,
+                                      holder::platform::Db& db,
                                       holder::index::FtsIndexer* fts,
                                       const std::function<std::string()>& uuid_v4) {
   if (path != "/ai/messages/capture" || req.method() != http::verb::post) {
@@ -56,7 +56,7 @@ bool handle_ai_message_capture_routes(const std::string& path,
       thread_id = body.at("thread_id").get<std::string>();
     }
 
-    holder::store::ProjectRepo project_repo(db);
+    holder::project::ProjectRepo project_repo(db);
     if (!project_repo.get(project_id).has_value()) {
       res = support::error_response(http::status::not_found, "not_found", "Project not found.");
       return true;
@@ -66,7 +66,7 @@ bool handle_ai_message_capture_routes(const std::string& path,
                                      ? body.at("created_at").get<long long>()
                                      : support::now_epoch_seconds();
 
-    holder::store::AiThreadRepo thread_repo(db);
+    holder::ai::AiThreadRepo thread_repo(db);
     if (thread_id.has_value()) {
       const auto existing = thread_repo.get(thread_id.value());
       if (!existing.has_value()) {
@@ -93,7 +93,7 @@ bool handle_ai_message_capture_routes(const std::string& path,
       thread_id = thread.thread_id;
     }
 
-    holder::store::AiMessageRepo msg_repo(db, fts);
+    holder::ai::AiMessageRepo msg_repo(db, fts);
     holder::model::AiMessage user_msg;
     user_msg.message_id = uuid_v4();
     user_msg.thread_id = thread_id.value();

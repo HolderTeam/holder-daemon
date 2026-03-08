@@ -6,9 +6,9 @@
 
 #include "model/AiThread.h"
 #include "model/Project.h"
-#include "store/AiThreadRepo.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>
@@ -39,7 +39,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -47,8 +47,8 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db, const std::string& project_id) {
-  holder::store::ProjectRepo repo(db);
+void create_project(holder::platform::Db& db, const std::string& project_id) {
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -64,12 +64,12 @@ TEST_CASE("AiThreadRepo CRUD", "[aithreaddrepo]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   create_project(db, "proj-1");
 
-  holder::store::AiThreadRepo repo(db);
+  holder::ai::AiThreadRepo repo(db);
 
   holder::model::AiThread thread;
   thread.thread_id = "thread-1";

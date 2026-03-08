@@ -73,16 +73,16 @@ add_subdirectory(third_party/caste)
 # ----------------------------
 add_executable(holder
   src/main.cpp
-  src/core/Paths.cpp
-  src/core/LockFile.cpp
-  src/core/ServerInfo.cpp
-  src/core/Signal.cpp
-  src/core/Fs.cpp
-  src/core/CardPaths.cpp
-  src/core/CardFrontMatter.cpp
-  src/core/AiMessagePaths.cpp
-  src/core/AiMessageFrontMatter.cpp
-  src/core/ProjectPaths.cpp
+  src/platform/Paths.cpp
+  src/platform/LockFile.cpp
+  src/platform/ServerInfo.cpp
+  src/platform/Signal.cpp
+  src/platform/Fs.cpp
+  src/card/CardPaths.cpp
+  src/card/CardFrontMatter.cpp
+  src/ai/AiMessagePaths.cpp
+  src/ai/AiMessageFrontMatter.cpp
+  src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp
@@ -127,22 +127,22 @@ add_executable(holder
   src/api/support/RunEventStore.cpp
   src/api/Session.cpp
   src/api/Router.cpp
-  src/store/ProjectRepo.cpp
-  src/store/ProjectSyncRepo.cpp
-  src/store/CardRepo.cpp
-  src/store/LinkRepo.cpp
-  src/store/ResourceRepo.cpp
-  src/store/AiThreadRepo.cpp
-  src/store/AiMessageRepo.cpp
-  src/store/AiRunRepo.cpp
-  src/store/AiRouterConfigRepo.cpp
-  src/store/AiProviderCredentialRepo.cpp
-  src/store/AiProviderSettingRepo.cpp
-  src/store/Rebuilder.cpp
-  src/store/CardStore.cpp
-  src/store/Db.cpp
-  src/store/Tx.cpp
-  src/store/Migrations.cpp
+  src/project/ProjectRepo.cpp
+  src/project/ProjectSyncRepo.cpp
+  src/card/CardRepo.cpp
+  src/card/LinkRepo.cpp
+  src/resource/ResourceRepo.cpp
+  src/ai/AiThreadRepo.cpp
+  src/ai/AiMessageRepo.cpp
+  src/ai/AiRunRepo.cpp
+  src/ai/AiRouterConfigRepo.cpp
+  src/ai/AiProviderCredentialRepo.cpp
+  src/ai/AiProviderSettingRepo.cpp
+  src/project/Rebuilder.cpp
+  src/card/CardStore.cpp
+  src/platform/Db.cpp
+  src/platform/Tx.cpp
+  src/platform/Migrations.cpp
   src/git/GitRepo.cpp
   src/git/GitOps.cpp
   src/git/RepoSyncMetrics.cpp

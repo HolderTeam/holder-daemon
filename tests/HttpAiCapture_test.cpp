@@ -1,5 +1,5 @@
 #include "http_test_helpers.h"
-#include "store/AiMessageRepo.h"
+#include "ai/AiMessageRepo.h"
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -45,7 +45,7 @@ TEST_CASE("HTTP ai messages capture creates thread and two messages", "[http]") 
   REQUIRE(created["data"]["assistant_message_id"].is_string());
 
   const std::string thread_id = created["data"]["thread_id"].get<std::string>();
-  holder::store::AiMessageRepo msg_repo(db, nullptr);
+  holder::ai::AiMessageRepo msg_repo(db, nullptr);
   const auto msgs = msg_repo.list_by_thread(thread_id);
   REQUIRE(msgs.size() == 2);
   REQUIRE(msgs[0].role == "user");

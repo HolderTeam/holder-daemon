@@ -8,11 +8,11 @@
 #include "model/AiThread.h"
 #include "model/Project.h"
 #include "index/FtsIndexer.h"
-#include "core/AiMessagePaths.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiThreadRepo.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
+#include "ai/AiMessagePaths.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
 
 #include <chrono>
 #include <filesystem>
@@ -43,7 +43,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -51,10 +51,10 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -70,8 +70,8 @@ std::string read_file(const std::filesystem::path& path) {
   return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-void create_thread(holder::store::Db& db, const std::string& thread_id, const std::string& project_id) {
-  holder::store::AiThreadRepo repo(db);
+void create_thread(holder::platform::Db& db, const std::string& thread_id, const std::string& project_id) {
+  holder::ai::AiThreadRepo repo(db);
   holder::model::AiThread thread;
   thread.thread_id = thread_id;
   thread.project_id = project_id;
@@ -87,7 +87,7 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -95,7 +95,7 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   create_thread(db, "thread-1", "proj-1");
 
   holder::index::FtsIndexer fts(db);
-  holder::store::AiMessageRepo repo(db, &fts);
+  holder::ai::AiMessageRepo repo(db, &fts);
 
   holder::model::AiMessage msg1;
   msg1.message_id = "msg-1";

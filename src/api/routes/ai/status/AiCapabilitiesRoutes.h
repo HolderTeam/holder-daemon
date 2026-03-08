@@ -1,7 +1,7 @@
 #pragma once
 
 #include "llm/LocalModelRunner.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <boost/beast/http.hpp>
 
@@ -14,7 +14,7 @@ bool handle_ai_capabilities_routes(
     const std::string& path,
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string(const std::string&)>& param_get);
 

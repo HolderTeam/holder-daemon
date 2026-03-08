@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/CardPaths.h"
+#include "card/CardPaths.h"
 
 TEST_CASE("card_rel_path shards by first 4 characters", "[cardpaths]") {
   const std::string path = holder::core::card_rel_path("abcd1234");

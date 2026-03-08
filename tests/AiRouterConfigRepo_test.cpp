@@ -1,5 +1,5 @@
-#include "store/AiRouterConfigRepo.h"
-#include "store/Db.h"
+#include "ai/AiRouterConfigRepo.h"
+#include "platform/Db.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,7 +12,7 @@ TEST_CASE("AiRouterConfigRepo global and project config", "[db]") {
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   std::ifstream in(SCHEMA_SQL_PATH);
@@ -23,7 +23,7 @@ TEST_CASE("AiRouterConfigRepo global and project config", "[db]") {
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
 
-  holder::store::AiRouterConfigRepo repo(db);
+  holder::ai::AiRouterConfigRepo repo(db);
 
   REQUIRE_FALSE(repo.get_global().has_value());
   REQUIRE_FALSE(repo.get_for_project("proj-1").has_value());

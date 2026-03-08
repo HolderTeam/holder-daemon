@@ -5,7 +5,7 @@
 #endif
 
 #include "index/Reindexer.h"
-#include "store/Db.h"
+#include "platform/Db.h"
 
 #include <chrono>
 #include <filesystem>
@@ -36,7 +36,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -44,7 +44,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-int count_table(holder::store::Db& db, const std::string& table) {
+int count_table(holder::platform::Db& db, const std::string& table) {
   const std::string sql = "SELECT count(*) FROM " + table + ";";
   sqlite3_stmt* stmt = nullptr;
   REQUIRE(sqlite3_prepare_v2(db.handle(), sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK);
@@ -62,7 +62,7 @@ TEST_CASE("Reindexer rebuilds FTS tables", "[reindex]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 

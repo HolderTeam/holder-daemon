@@ -3,7 +3,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/RunEventStore.h"
 #include "api/support/Time.h"
-#include "store/AiRunRepo.h"
+#include "ai/AiRunRepo.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -72,7 +72,7 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
 RouteDispatchResult handle_ai_runs_list_route(
     const std::function<std::string(const std::string&)>& param_get,
     http::response<http::string_body>& res,
-    holder::store::Db& db) {
+    holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string project_id = param_get("project_id");
@@ -84,7 +84,7 @@ RouteDispatchResult handle_ai_runs_list_route(
     return out;
   }
   try {
-    holder::store::AiRunRepo repo(db);
+    holder::ai::AiRunRepo repo(db);
     std::vector<holder::model::AiRun> runs;
     if (!thread_id.empty()) {
       runs = repo.list_by_thread(thread_id);
@@ -108,7 +108,7 @@ RouteDispatchResult handle_ai_runs_list_route(
 RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
                                                 boost::asio::ip::tcp::socket& socket,
                                                 http::response<http::string_body>& res,
-                                                holder::store::Db& db) {
+                                                holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   out.streamed = true;
@@ -123,7 +123,7 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
 
   std::optional<holder::model::AiRun> run_record;
   try {
-    holder::store::AiRunRepo repo(db);
+    holder::ai::AiRunRepo repo(db);
     run_record = repo.get(run_id);
   } catch (const std::exception&) {
     run_record = std::nullopt;
@@ -199,7 +199,7 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
 
 RouteDispatchResult handle_ai_runs_get_route(const std::string& path,
                                              http::response<http::string_body>& res,
-                                             holder::store::Db& db) {
+                                             holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string run_id = path.substr(std::string("/ai/runs/").size());
@@ -208,7 +208,7 @@ RouteDispatchResult handle_ai_runs_get_route(const std::string& path,
     return out;
   }
   try {
-    holder::store::AiRunRepo repo(db);
+    holder::ai::AiRunRepo repo(db);
     const auto run = repo.get(run_id);
     if (!run.has_value()) {
       res = support::error_response(http::status::not_found, "not_found", "Run not found.");

@@ -9,12 +9,12 @@
 #include "api/support/RunEventStore.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiProviderSettingRepo.h"
-#include "store/AiRouterConfigRepo.h"
-#include "store/AiRunRepo.h"
-#include "store/AiThreadRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRouterConfigRepo.h"
+#include "ai/AiRunRepo.h"
+#include "ai/AiThreadRepo.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -84,13 +84,13 @@ std::optional<AiRunPostInput> parse_ai_run_post_input(
 }
 
 void ensure_ai_run_thread(AiRunPostInput& input,
-                          holder::store::Db& db,
+                          holder::platform::Db& db,
                           const std::function<std::string()>& uuid_v4) {
   if (input.thread_id.has_value() || !input.project_id.has_value()) {
     return;
   }
 
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   holder::model::AiThread thread;
   thread.thread_id = uuid_v4();
   thread.project_id = input.project_id.value();
@@ -139,7 +139,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -162,13 +162,13 @@ RouteDispatchResult execute_cloud_post_path(
     mode = "model";
   }
 
-  holder::store::AiProviderCredentialRepo credential_repo(db);
+  holder::ai::AiProviderCredentialRepo credential_repo(db);
   const auto credentials = credential_repo.list();
   std::unordered_map<std::string, holder::model::AiProviderCredential> creds_by_key;
   for (const auto& credential : credentials) {
     creds_by_key[credential.provider] = credential;
   }
-  holder::store::AiProviderSettingRepo setting_repo(db);
+  holder::ai::AiProviderSettingRepo setting_repo(db);
   std::unordered_map<std::string, bool> enabled_by_provider;
   for (const auto& setting : setting_repo.list()) {
     enabled_by_provider[setting.provider] = setting.enabled;
@@ -223,7 +223,7 @@ RouteDispatchResult execute_cloud_post_path(
                                     "cloud_not_configured",
                                     "No cloud model configured for selected provider.");
     } else {
-      holder::store::AiRunRepo run_repo(db);
+      holder::ai::AiRunRepo run_repo(db);
       holder::model::AiRun run;
       run.run_id = uuid_v4();
       run.project_id = project_id;
@@ -281,7 +281,7 @@ RouteDispatchResult execute_cloud_post_path(
       send_event("progress", {{"message", "Using cloud provider"}, {"provider", selected_provider->id}});
 
       if (thread_id.has_value()) {
-        holder::store::AiMessageRepo msg_repo(db, fts);
+        holder::ai::AiMessageRepo msg_repo(db, fts);
         holder::model::AiMessage user_msg;
         user_msg.message_id = uuid_v4();
         user_msg.thread_id = thread_id.value();
@@ -654,7 +654,7 @@ RouteDispatchResult execute_cloud_post_path(
 
         std::optional<std::string> message_id;
         if (thread_id.has_value()) {
-          holder::store::AiMessageRepo msg_repo(db, fts);
+          holder::ai::AiMessageRepo msg_repo(db, fts);
           holder::model::AiMessage assistant_msg;
           assistant_msg.message_id = uuid_v4();
           assistant_msg.thread_id = thread_id.value();
@@ -695,7 +695,7 @@ RouteDispatchResult execute_local_post_path(
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -749,7 +749,7 @@ RouteDispatchResult execute_local_post_path(
     };
 
     try {
-      holder::store::AiRouterConfigRepo router_cfg_repo(db);
+      holder::ai::AiRouterConfigRepo router_cfg_repo(db);
       if (project_id.has_value()) {
         const auto cfg = router_cfg_repo.get_for_project(project_id.value());
         if (cfg.has_value() && is_installed(cfg->router_model)) {
@@ -782,7 +782,7 @@ RouteDispatchResult execute_local_post_path(
     }
   }
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   holder::model::AiRun run;
   run.run_id = uuid_v4();
   run.project_id = project_id;
@@ -834,7 +834,7 @@ RouteDispatchResult execute_local_post_path(
   std::string assistant_text;
 
   if (thread_id.has_value()) {
-    holder::store::AiMessageRepo msg_repo(db, fts);
+    holder::ai::AiMessageRepo msg_repo(db, fts);
     holder::model::AiMessage user_msg;
     user_msg.message_id = uuid_v4();
     user_msg.thread_id = thread_id.value();
@@ -959,7 +959,7 @@ RouteDispatchResult execute_local_post_path(
     send_event("done", {{"model", chosen_model}});
     std::optional<std::string> message_id;
     if (thread_id.has_value()) {
-      holder::store::AiMessageRepo msg_repo(db, fts);
+      holder::ai::AiMessageRepo msg_repo(db, fts);
       holder::model::AiMessage assistant_msg;
       assistant_msg.message_id = uuid_v4();
       assistant_msg.thread_id = thread_id.value();
@@ -1003,7 +1003,7 @@ RouteDispatchResult handle_ai_runs_post_route(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4) {

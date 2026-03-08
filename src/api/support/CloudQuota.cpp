@@ -23,7 +23,7 @@ long long failure_cooldown_seconds(long long failure_count,
 
 } // namespace
 
-CloudQuotaWindowUsage load_cloud_window_usage(holder::store::Db& db,
+CloudQuotaWindowUsage load_cloud_window_usage(holder::platform::Db& db,
                                               const std::string& provider,
                                               const std::string& model_id,
                                               long long since_epoch_seconds) {
@@ -50,7 +50,7 @@ CloudQuotaWindowUsage load_cloud_window_usage(holder::store::Db& db,
   return usage;
 }
 
-void record_cloud_usage_event(holder::store::Db& db,
+void record_cloud_usage_event(holder::platform::Db& db,
                               const std::string& provider,
                               const std::string& model_id,
                               long long prompt_tokens,
@@ -84,7 +84,7 @@ void record_cloud_usage_event(holder::store::Db& db,
   }
 }
 
-std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::store::Db& db,
+std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::platform::Db& db,
                                                                   const std::string& provider,
                                                                   const std::string& model_id) {
   static constexpr const char* SQL =
@@ -118,7 +118,7 @@ std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::store::
   return out;
 }
 
-CloudModelCooldownState record_cloud_model_failure(holder::store::Db& db,
+CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
                                                    const std::string& provider,
                                                    const std::string& model_id,
                                                    const std::string& error,
@@ -169,7 +169,7 @@ CloudModelCooldownState record_cloud_model_failure(holder::store::Db& db,
   return out;
 }
 
-void clear_cloud_model_cooldown(holder::store::Db& db,
+void clear_cloud_model_cooldown(holder::platform::Db& db,
                                 const std::string& provider,
                                 const std::string& model_id,
                                 long long now_epoch_seconds) {

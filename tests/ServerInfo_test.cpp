@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/ServerInfo.h"
+#include "platform/ServerInfo.h"
 
 #include <nlohmann/json.hpp>
 

@@ -1,5 +1,5 @@
-#include "store/AiRunRepo.h"
-#include "store/Db.h"
+#include "ai/AiRunRepo.h"
+#include "platform/Db.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,7 +12,7 @@ TEST_CASE("AiRunRepo create/get/update", "[db]") {
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   std::ifstream in(SCHEMA_SQL_PATH);
@@ -27,7 +27,7 @@ TEST_CASE("AiRunRepo create/get/update", "[db]") {
   db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
           "VALUES('msg-1', 'thread-1', 'assistant', 'local', 'hi', 1);");
 
-  holder::store::AiRunRepo repo(db);
+  holder::ai::AiRunRepo repo(db);
   holder::model::AiRun run;
   run.run_id = "run-1";
   run.project_id = "proj-1";

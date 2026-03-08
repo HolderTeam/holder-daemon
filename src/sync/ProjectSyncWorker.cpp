@@ -3,9 +3,9 @@
 #include "git/GitOps.h"
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
-#include "store/Db.h"
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "platform/Db.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 #include "sync/ProjectSyncPolicy.h"
 
 #include <spdlog/spdlog.h>
@@ -62,10 +62,10 @@ long long ProjectSyncWorker::now_epoch_seconds() const {
 }
 
 void ProjectSyncWorker::run_startup_pull_pass() {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path_);
-  holder::store::ProjectRepo projects(db);
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectRepo projects(db);
+  holder::project::ProjectSyncRepo sync(db);
   holder::git::RealGitOps git;
 
   const auto now = now_epoch_seconds();
@@ -117,10 +117,10 @@ void ProjectSyncWorker::run_startup_pull_pass() {
 }
 
 void ProjectSyncWorker::run_push_cycle() {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path_);
-  holder::store::ProjectRepo projects(db);
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectRepo projects(db);
+  holder::project::ProjectSyncRepo sync(db);
   holder::git::RealGitOps git;
 
   const auto now = now_epoch_seconds();

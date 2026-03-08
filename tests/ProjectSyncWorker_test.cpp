@@ -1,10 +1,10 @@
 #include "sync/ProjectSyncWorker.h"
 
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "model/Project.h"
-#include "store/ProjectRepo.h"
-#include "store/ProjectSyncRepo.h"
+#include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include "http_test_helpers.h"
 
@@ -42,9 +42,9 @@ void run_worker_with_intervals_for_seconds(const std::filesystem::path& db_path,
 
 std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
                                            const std::string& project_id) {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
   const auto state = sync.get(project_id);
   if (!state.has_value()) {
     return std::nullopt;
@@ -54,9 +54,9 @@ std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
 
 std::optional<holder::model::ProjectSyncState> load_sync_state(const std::filesystem::path& db_path,
                                                                const std::string& project_id) {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
-  holder::store::ProjectSyncRepo sync(db);
+  holder::project::ProjectSyncRepo sync(db);
   return sync.get(project_id);
 }
 
@@ -66,7 +66,7 @@ long long now_epoch_seconds() {
       .count();
 }
 
-void create_project(holder::store::ProjectRepo& projects,
+void create_project(holder::project::ProjectRepo& projects,
                     const std::string& project_id,
                     const std::filesystem::path& root_path,
                     const std::string& remote,
@@ -98,8 +98,8 @@ TEST_CASE("ProjectSyncWorker periodically refreshes pull timestamp", "[sync][wor
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
-    holder::store::ProjectSyncRepo sync(db);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
     holder::model::Project project;
     project.project_id = "proj-1";
     project.name = "Project";
@@ -139,8 +139,8 @@ TEST_CASE("ProjectSyncWorker pull failure uses pull retry lane", "[sync][worker]
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
-    holder::store::ProjectSyncRepo sync(db);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
     holder::model::Project project;
     project.project_id = "proj-1";
     project.name = "Project";
@@ -179,8 +179,8 @@ TEST_CASE("ProjectSyncWorker push cycle records successful push", "[sync][worker
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
-    holder::store::ProjectSyncRepo sync(db);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
     create_project(projects, "proj-push", local_dir, remote_dir.string(), "plain");
     // Skip startup pull path; this test targets push-cycle push handling.
     sync.record_pull_result("proj-push", "succeeded", true, std::nullopt, now_epoch_seconds());
@@ -206,8 +206,8 @@ TEST_CASE("ProjectSyncWorker push cycle records pull failure", "[sync][worker]")
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
-    holder::store::ProjectSyncRepo sync(db);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
     create_project(projects, "proj-pull-fail", local_dir, (dir / "missing_remote").string(), "plain");
     // Make startup skip pull, then force run_push_cycle pull attempt.
     sync.record_pull_result("proj-pull-fail", "succeeded", true, std::nullopt, now_epoch_seconds() - 10000);
@@ -238,8 +238,8 @@ TEST_CASE("ProjectSyncWorker encrypted project push safety failure is recorded",
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
-    holder::store::ProjectSyncRepo sync(db);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
     create_project(projects, "proj-encrypted", local_dir, remote_dir.string(), "encrypted_git");
     sync.record_pull_result("proj-encrypted", "succeeded", true, std::nullopt, now_epoch_seconds());
   }
@@ -267,7 +267,7 @@ TEST_CASE("ProjectSyncWorker skips project when metrics refresh fails", "[sync][
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
-    holder::store::ProjectRepo projects(db);
+    holder::project::ProjectRepo projects(db);
     create_project(projects, "proj-invalid-root", invalid_root, remote_dir.string(), "plain");
   }
 

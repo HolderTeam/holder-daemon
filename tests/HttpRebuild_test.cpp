@@ -1,9 +1,9 @@
 #include "http_test_helpers.h"
 
-#include "core/AiMessageFrontMatter.h"
-#include "core/AiMessagePaths.h"
-#include "core/CardFrontMatter.h"
-#include "core/CardPaths.h"
+#include "ai/AiMessageFrontMatter.h"
+#include "ai/AiMessagePaths.h"
+#include "card/CardFrontMatter.h"
+#include "card/CardPaths.h"
 
 #include <filesystem>
 #include <fstream>

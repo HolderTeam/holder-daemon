@@ -1,12 +1,12 @@
 #pragma once
 
 #include "api/Router.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"
-#include "store/CardStore.h"
-#include "store/Db.h"
+#include "card/CardStore.h"
+#include "platform/Db.h"
 
 #include <boost/asio.hpp>
 
@@ -24,11 +24,11 @@ public:
 
   Listener(std::string bind,
            unsigned short port,
-           holder::store::Db& db,
+           holder::platform::Db& db,
            const std::string& auth_token,
            const Router& router,
            std::chrono::steady_clock::time_point started_at,
-           holder::store::CardStore* card_store,
+           holder::card::CardStore* card_store,
            holder::index::FtsIndexer* fts,
            holder::git::GitOps* git_ops = nullptr,
            holder::llm::LocalModelRunner* runner = nullptr);
@@ -44,11 +44,11 @@ private:
   tcp::acceptor acceptor_;
   std::string bind_;
   unsigned short port_;
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   const std::string& auth_token_;
   const Router& router_;
   std::chrono::steady_clock::time_point started_at_;
-  holder::store::CardStore* card_store_ = nullptr;
+  holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::LocalModelRunner* runner_ = nullptr;

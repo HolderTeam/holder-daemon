@@ -2,7 +2,7 @@
 
 #include "git/GitOps.h"
 #include "model/Project.h"
-#include "store/ProjectRepo.h"
+#include "project/ProjectRepo.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -44,7 +44,7 @@ TEST_CASE("Project git test-remote returns remote_unset when no remote configure
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -90,7 +90,7 @@ TEST_CASE("Project git test-remote uses override remote and persists project rem
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";

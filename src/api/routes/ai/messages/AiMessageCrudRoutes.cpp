@@ -2,7 +2,7 @@
 
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "store/AiMessageRepo.h"
+#include "ai/AiMessageRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -39,7 +39,7 @@ nlohmann::json ai_message_to_json(const holder::model::AiMessage& msg) {
 bool handle_ai_message_crud_routes(const std::string& path,
                                    const http::request<http::string_body>& req,
                                    http::response<http::string_body>& res,
-                                   holder::store::Db& db,
+                                   holder::platform::Db& db,
                                    holder::index::FtsIndexer* fts,
                                    const std::function<std::string()>& uuid_v4,
                                    const std::function<std::string(const std::string&)>& param_get) {
@@ -52,7 +52,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
     }
 
     try {
-      holder::store::AiMessageRepo repo(db, fts);
+      holder::ai::AiMessageRepo repo(db, fts);
       const auto messages = repo.list_by_thread(thread_id);
       nlohmann::json data = nlohmann::json::array();
       for (const auto& msg : messages) {
@@ -108,7 +108,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
           msg.created_at = support::now_epoch_seconds();
         }
 
-        holder::store::AiMessageRepo repo(db, fts);
+        holder::ai::AiMessageRepo repo(db, fts);
         repo.append(msg);
 
         nlohmann::json payload;
@@ -151,7 +151,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
       return true;
     }
     try {
-      holder::store::AiMessageRepo repo(db, fts);
+      holder::ai::AiMessageRepo repo(db, fts);
       repo.restore(message_id);
       nlohmann::json payload;
       payload["ok"] = true;
@@ -166,7 +166,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
 
   if (req.method() == http::verb::delete_) {
     try {
-      holder::store::AiMessageRepo repo(db, fts);
+      holder::ai::AiMessageRepo repo(db, fts);
       const long long deleted_at = support::now_epoch_seconds();
       repo.trash(message_id, deleted_at);
       nlohmann::json payload;
@@ -182,7 +182,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
   if (req.method() == http::verb::patch) {
     try {
       const auto body = nlohmann::json::parse(req.body());
-      holder::store::AiMessageRepo repo(db, fts);
+      holder::ai::AiMessageRepo repo(db, fts);
       const auto msg_opt = repo.get(message_id);
       if (!msg_opt.has_value()) {
         res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
@@ -251,7 +251,7 @@ bool handle_ai_message_crud_routes(const std::string& path,
   }
 
   try {
-    holder::store::AiMessageRepo repo(db, fts);
+    holder::ai::AiMessageRepo repo(db, fts);
     const auto msg_opt = repo.get(message_id);
     if (!msg_opt.has_value() || msg_opt->deleted_at.has_value()) {
       res = support::error_response(http::status::not_found, "not_found", "AI message not found.");

@@ -1,7 +1,7 @@
 #include "http_test_helpers.h"
 
 #include "model/Card.h"
-#include "store/CardRepo.h"
+#include "card/CardRepo.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -17,8 +17,8 @@ TEST_CASE("HTTP ai threads create/list/get/patch", "[http]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardStore card_store(db, &fts);
+  holder::card::CardRepo card_repo(db);
 
   holder::model::Card card;
   card.card_id = "card-1";

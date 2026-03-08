@@ -2,7 +2,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
-#include "store/ResourceRepo.h"
+#include "resource/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -19,7 +19,7 @@ namespace http = boost::beast::http;
 bool handle_ai_resource_routes(const std::string& path,
                                const http::request<http::string_body>& req,
                                http::response<http::string_body>& res,
-                               holder::store::Db& db,
+                               holder::platform::Db& db,
                                const std::function<std::string()>& uuid_v4,
                                const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/resources" && req.method() == http::verb::get) {
@@ -28,7 +28,7 @@ bool handle_ai_resource_routes(const std::string& path,
       res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
-        holder::store::ResourceRepo repo(db);
+        holder::resource::ResourceRepo repo(db);
         const auto resources = repo.list(project_id);
         nlohmann::json data = nlohmann::json::array();
         for (const auto& resource : resources) {
@@ -89,7 +89,7 @@ bool handle_ai_resource_routes(const std::string& path,
           resource.updated_at = resource.created_at;
         }
 
-        holder::store::ResourceRepo repo(db);
+        holder::resource::ResourceRepo repo(db);
         repo.add(resource);
 
         nlohmann::json payload;
@@ -118,7 +118,7 @@ bool handle_ai_resource_routes(const std::string& path,
         if (!body.contains("updated_at")) {
           res = support::error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
         } else {
-          holder::store::ResourceRepo repo(db);
+          holder::resource::ResourceRepo repo(db);
           const auto existing = repo.get(resource_id);
           if (!existing.has_value()) {
             res = support::error_response(http::status::not_found, "not_found", "Resource not found.");
@@ -154,7 +154,7 @@ bool handle_ai_resource_routes(const std::string& path,
       }
     } else if (req.method() == http::verb::delete_) {
       try {
-        holder::store::ResourceRepo repo(db);
+        holder::resource::ResourceRepo repo(db);
         repo.remove(resource_id);
         nlohmann::json payload;
         payload["ok"] = true;

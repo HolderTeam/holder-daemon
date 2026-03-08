@@ -2,8 +2,8 @@
 
 #include "api/support/CloudConfig.h"
 #include "api/support/HttpResponses.h"
-#include "store/AiProviderCredentialRepo.h"
-#include "store/AiProviderSettingRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -53,7 +53,7 @@ nlohmann::json api_to_json(const support::CloudProviderConfig& provider) {
 bool handle_ai_provider_catalog_routes(const std::string& path,
                                        const http::request<http::string_body>& req,
                                        http::response<http::string_body>& res,
-                                       holder::store::Db& db) {
+                                       holder::platform::Db& db) {
   if (path != "/ai/providers/catalog" || req.method() != http::verb::get) {
     return false;
   }
@@ -67,12 +67,12 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
       return true;
     }
 
-    holder::store::AiProviderCredentialRepo credential_repo(db);
+    holder::ai::AiProviderCredentialRepo credential_repo(db);
     std::unordered_set<std::string> configured_ids;
     for (const auto& credential : credential_repo.list()) {
       configured_ids.insert(credential.provider);
     }
-    holder::store::AiProviderSettingRepo setting_repo(db);
+    holder::ai::AiProviderSettingRepo setting_repo(db);
     std::unordered_map<std::string, bool> enabled_by_provider;
     for (const auto& setting : setting_repo.list()) {
       enabled_by_provider[setting.provider] = setting.enabled;

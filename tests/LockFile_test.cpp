@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/LockFile.h"
+#include "platform/LockFile.h"
 
 #include <chrono>
 #include <cstdlib>

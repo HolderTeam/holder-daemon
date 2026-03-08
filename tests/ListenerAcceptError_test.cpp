@@ -1,7 +1,7 @@
 #include "api/Listener.h"
 #include "api/Router.h"
-#include "core/Signal.h"
-#include "store/Db.h"
+#include "platform/Signal.h"
+#include "platform/Db.h"
 
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -14,7 +14,7 @@
 #include <thread>
 
 TEST_CASE("Listener accept error branch is exercised", "[listener]") {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(std::filesystem::temp_directory_path() / "holder_listener_error.db");
 
   holder::api::Router router;
