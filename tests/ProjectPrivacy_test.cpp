@@ -12,6 +12,7 @@
 #endif
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -38,6 +39,31 @@ void write_file(const std::filesystem::path& path, const std::string& text) {
   REQUIRE(out.is_open());
   out << text;
 }
+
+class EnvUnsetGuard {
+public:
+  explicit EnvUnsetGuard(const char* key) : key_(key) {
+    const char* current = std::getenv(key_);
+    if (current != nullptr) {
+      had_old_ = true;
+      old_ = current;
+    }
+    unsetenv(key_);
+  }
+
+  ~EnvUnsetGuard() {
+    if (had_old_) {
+      setenv(key_, old_.c_str(), 1);
+    } else {
+      unsetenv(key_);
+    }
+  }
+
+private:
+  const char* key_;
+  bool had_old_ = false;
+  std::string old_;
+};
 
 } // namespace
 
@@ -417,6 +443,109 @@ TEST_CASE("ensure_encrypted_git_setup fails when privacy metadata target is a di
       repo_root.string(),
       "proj-meta-fail",
       "key-meta-fail"));
+}
+
+TEST_CASE("ensure_project_key_material reports keyring unavailable when libsecret cannot be reached", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-keyring-store";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    (void)holder::privacy::ensure_project_key_material(
+        repo,
+        project.project_id,
+        std::nullopt,
+        2,
+        []() { return std::string("keyring-store"); });
+    FAIL("Expected keyring failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable);
+  }
+}
+
+TEST_CASE("import_recovery_token rethrows non-token privacy errors", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-import-rethrow";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  // Create token while test keystore override is enabled.
+  std::string token;
+  {
+    holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                        (dir / "keystore").string());
+    holder::git::RealGitOps git;
+    holder::privacy::ensure_encrypted_project_ready(
+        git,
+        repo,
+        project.project_id,
+        project.root_path,
+        std::nullopt,
+        2,
+        []() { return std::string("key-import-rethrow"); });
+
+    const auto fetched = repo.get(project.project_id);
+    REQUIRE(fetched.has_value());
+    REQUIRE(fetched->project_key_id.has_value());
+    token = holder::privacy::export_recovery_token(
+        project.project_id,
+        fetched->project_key_id.value(),
+        "1234");
+  }
+
+  // Import with libsecret path forced and unreachable so store_key_material throws KeyringUnavailable.
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    holder::privacy::import_recovery_token(repo, project.project_id, "1234", token, 3);
+    FAIL("Expected keyring failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable);
+  }
+}
+
+TEST_CASE("inspect_recovery_token maps invalid base64 payload to RecoveryTokenInvalid", "[privacy]") {
+  nlohmann::json token;
+  token["version"] = 1;
+  token["kdf"] = {
+      {"name", "PBKDF2-HMAC-SHA256"},
+      {"iterations", 210000},
+      {"salt_b64", "!!!!not-b64!!!!"},
+  };
+  token["cipher"] = {
+      {"name", "holder-privacy-envelope-v1"},
+      {"wrapped", "ignored"},
+  };
+
+  try {
+    (void)holder::privacy::inspect_recovery_token("1234", token.dump());
+    FAIL("Expected recovery token invalid error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
 }
 
 #if CARD_SERVER_HAVE_LIBGIT2

@@ -10,6 +10,7 @@
 
 #include <array>
 #include <chrono>
+#include <string>
 #include <thread>
 
 namespace {
@@ -73,3 +74,31 @@ TEST_CASE("Session handles generic read error and returns", "[session]") {
   REQUIRE_NOTHROW(session.run());
 }
 
+TEST_CASE("Session handles write error and returns", "[session]") {
+  SocketPair pair;
+  holder::platform::Db db;
+  holder::api::Router router;
+  const std::string token = "testtoken";
+
+  // Send a valid request, then force client-side RST so server write fails.
+  const std::string req =
+      "GET /health HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Authorization: Bearer testtoken\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+  pair.client.set_option(boost::asio::socket_base::linger(true, 0));
+  pair.client.close();
+
+  holder::api::Session session(std::move(pair.server),
+                               db,
+                               token,
+                               router,
+                               std::chrono::steady_clock::now(),
+                               nullptr,
+                               nullptr,
+                               nullptr,
+                               nullptr);
+  REQUIRE_NOTHROW(session.run());
+}
