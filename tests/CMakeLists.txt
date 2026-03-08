@@ -91,6 +91,8 @@ add_executable(lockfile_tests
   CardStoreFsFailure_test.cpp
   FtsIndexer_test.cpp
   GitRepo_test.cpp
+  PushResult_test.cpp
+  RemoteProbe_test.cpp
   GitOps_test.cpp
   RepoSyncMetrics_test.cpp
   FsAdapterFailure_test.cpp

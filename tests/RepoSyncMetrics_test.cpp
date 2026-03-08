@@ -191,3 +191,26 @@ TEST_CASE("RepoSyncMetrics throws when graph ahead-behind cannot resolve remote 
     REQUIRE(std::string(e.what()).find("git_graph_ahead_behind failed") != std::string::npos);
   }
 }
+
+TEST_CASE("RepoSyncMetrics malformed HEAD can fail at git_repository_head", "[git][sync]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+  repo.write_file("cards/a.md", "hello");
+  repo.stage_path("cards/a.md");
+  repo.commit("seed");
+
+  std::ofstream head_file(dir / ".git" / "HEAD", std::ios::trunc);
+  REQUIRE(head_file.is_open());
+  head_file << "ref: refs/heads/\n";
+  head_file.close();
+
+  try {
+    (void)holder::git::inspect_repo_sync_metrics(dir);
+    FAIL("Expected inspect_repo_sync_metrics to throw for malformed HEAD ref");
+  } catch (const std::runtime_error& e) {
+    const std::string msg(e.what());
+    REQUIRE((msg.find("git_repository_head failed") != std::string::npos ||
+             msg.find("git_status_list_new failed") != std::string::npos));
+  }
+}
