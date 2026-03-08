@@ -6,6 +6,7 @@
 #endif
 
 #include "platform/Db.h"
+#include "platform/Tx.h"
 
 #include <chrono>
 #include <filesystem>
@@ -83,4 +84,17 @@ TEST_CASE("Db exec failure includes sqlite message", "[db]") {
 
   REQUIRE_THROWS_WITH(db.exec("THIS IS NOT VALID SQL;"),
                       Catch::Matchers::ContainsSubstring("sqlite exec failed"));
+}
+
+TEST_CASE("Tx destructor swallows rollback failure", "[db][tx]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "tx-rollback.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+
+  REQUIRE_NOTHROW([&]() {
+    holder::platform::Tx tx(db);
+    db.close();
+  }());
 }

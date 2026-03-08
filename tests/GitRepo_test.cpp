@@ -75,3 +75,74 @@ TEST_CASE("GitRepo pull_remote_ff_only pulls from local remote", "[git]") {
   buffer << in.rdbuf();
   REQUIRE(buffer.str() == "hello");
 }
+
+TEST_CASE("GitRepo remove_remote ignores missing remote", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+
+  REQUIRE_NOTHROW(repo.remove_remote("origin"));
+}
+
+TEST_CASE("GitRepo remove_path throws when file was never tracked", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+
+  REQUIRE_THROWS(repo.remove_path("cards/missing.md"));
+}
+
+TEST_CASE("GitRepo probe_remote reports remote_unset when missing", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+
+  const auto result = repo.probe_remote("origin");
+  REQUIRE(result.status == holder::git::RemoteProbeStatus::RemoteUnset);
+  REQUIRE(result.remote_has_head == false);
+  REQUIRE_FALSE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo push_branch reports remote_unset when missing", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+  repo.write_file("cards/a.md", "hello");
+  repo.stage_path("cards/a.md");
+  repo.commit("seed");
+
+  const auto result = repo.push_branch("origin", "", false);
+  REQUIRE(result.status == holder::git::PushStatus::RemoteUnset);
+  REQUIRE(result.ahead_count == 0);
+  REQUIRE(result.behind_count == 0);
+  REQUIRE_FALSE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo pull_remote_ff_only fast-forwards existing local branch", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "v1");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.set_remote("origin", remote_dir.string());
+  local_repo.pull_remote_ff_only("origin");
+
+  remote_repo.write_file("cards/a.md", "v2");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("update");
+
+  local_repo.pull_remote_ff_only("origin");
+
+  std::ifstream in(local_dir / "cards" / "a.md", std::ios::binary);
+  REQUIRE(in.is_open());
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  REQUIRE(buffer.str() == "v2");
+}

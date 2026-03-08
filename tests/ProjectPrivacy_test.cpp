@@ -17,6 +17,10 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#if CARD_SERVER_HAVE_LIBGIT2
+#include <git2.h>
+#endif
+
 namespace {
 
 std::filesystem::path make_temp_dir_local() {
@@ -331,3 +335,88 @@ TEST_CASE("index safety check errors when repository cannot be opened", "[privac
       holder::privacy::assert_encryption_index_paths_safe(root.string(), {"cards/aa/a.md"}),
       holder::privacy::PrivacyError);
 }
+
+TEST_CASE("inspect_recovery_token maps empty pin to RecoveryTokenInvalid", "[privacy]") {
+  const auto token = nlohmann::json{{"version", 1}}.dump();
+  try {
+    (void)holder::privacy::inspect_recovery_token("", token);
+    FAIL("Expected recovery token error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
+}
+
+TEST_CASE("inspect_recovery_token maps unsupported version to RecoveryTokenInvalid", "[privacy]") {
+  const auto token = nlohmann::json{{"version", 2}}.dump();
+  try {
+    (void)holder::privacy::inspect_recovery_token("1234", token);
+    FAIL("Expected recovery token error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
+}
+
+TEST_CASE("encrypt_project_blob rethrows PrivacyError for invalid key material", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                      (dir / "keystore").string());
+  std::filesystem::create_directories(dir / "keystore");
+  {
+    std::ofstream out(dir / "keystore" / "key-invalid.key", std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+    out << "not_base64";
+  }
+
+  try {
+    (void)holder::privacy::encrypt_project_blob("proj-1", "key-invalid", "hello");
+    FAIL("Expected privacy error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::EnvelopeInvalid);
+  }
+}
+
+#if CARD_SERVER_HAVE_LIBGIT2
+TEST_CASE("index safety check errors when git index cannot be loaded", "[privacy]") {
+  const auto root = make_temp_dir_local();
+  git_repository* repo = nullptr;
+  git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+  opts.flags = GIT_REPOSITORY_INIT_BARE;
+  REQUIRE(git_repository_init_ext(&repo, root.string().c_str(), &opts) == 0);
+  git_repository_free(repo);
+
+  REQUIRE_THROWS_AS(
+      holder::privacy::assert_encryption_index_paths_safe(root.string(), {"cards/aa/a.md"}),
+      holder::privacy::PrivacyError);
+}
+
+TEST_CASE("index safety check treats unreadable staged blob as unsafe", "[privacy]") {
+  const auto root = make_temp_dir_local();
+  holder::git::RealGitOps git;
+  git.open_or_init(root);
+
+  const std::string rel = "cards/aa/blob-missing.md";
+  git.write_file(rel, "HolderPriv1\n{}\nAA==\n");
+  git.stage_path(rel);
+
+  git_repository* repo = nullptr;
+  REQUIRE(git_repository_open(&repo, root.string().c_str()) == 0);
+  git_index* index = nullptr;
+  REQUIRE(git_repository_index(&index, repo) == 0);
+  const git_index_entry* entry = git_index_get_bypath(index, rel.c_str(), 0);
+  REQUIRE(entry != nullptr);
+  char oid_hex[GIT_OID_HEXSZ + 1]{};
+  git_oid_tostr(oid_hex, sizeof(oid_hex), &entry->id);
+  git_index_free(index);
+  git_repository_free(repo);
+
+  const std::string hex(oid_hex);
+  REQUIRE(hex.size() == GIT_OID_HEXSZ);
+  const auto object_path = root / ".git" / "objects" / hex.substr(0, 2) / hex.substr(2);
+  REQUIRE(std::filesystem::exists(object_path));
+  std::filesystem::remove(object_path);
+
+  REQUIRE_THROWS_AS(
+      holder::privacy::assert_encryption_index_paths_safe(root.string(), {rel}),
+      holder::privacy::PrivacyError);
+}
+#endif

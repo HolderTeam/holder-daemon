@@ -125,3 +125,74 @@ TEST_CASE("CardRepo CRUD", "[cardrepo]") {
   REQUIRE(deleted->deleted_at.value() == 40);
   REQUIRE(deleted->updated_at == 41);
 }
+
+TEST_CASE("CardRepo counts children and handles deleted_at on create", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  holder::model::Card parent;
+  parent.card_id = "parent-1";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.rel_path = "cards/pa/re/parent-1.md";
+  parent.sort_key = 1.0;
+  parent.created_at = 1;
+  parent.updated_at = 1;
+  repo.create(parent);
+
+  holder::model::Card child_visible;
+  child_visible.card_id = "child-1";
+  child_visible.project_id = "proj-1";
+  child_visible.title = "Child 1";
+  child_visible.rel_path = "cards/ch/il/child-1.md";
+  child_visible.parent_card_id = parent.card_id;
+  child_visible.sort_key = 2.0;
+  child_visible.created_at = 2;
+  child_visible.updated_at = 2;
+  repo.create(child_visible);
+
+  holder::model::Card child_deleted;
+  child_deleted.card_id = "child-2";
+  child_deleted.project_id = "proj-1";
+  child_deleted.title = "Child 2";
+  child_deleted.rel_path = "cards/ch/il/child-2.md";
+  child_deleted.parent_card_id = parent.card_id;
+  child_deleted.sort_key = 3.0;
+  child_deleted.created_at = 3;
+  child_deleted.updated_at = 3;
+  child_deleted.deleted_at = 99; // exercises bind_int64_optional(value.has_value())
+  repo.create(child_deleted);
+
+  REQUIRE(repo.count_children_not_deleted("proj-1", parent.card_id) == 1);
+}
+
+TEST_CASE("CardRepo throws sqlite error when DB handle is invalid", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+  db.close();
+
+  holder::model::Card card;
+  card.card_id = "invalid-db";
+  card.project_id = "proj-1";
+  card.title = "Broken";
+  card.rel_path = "cards/in/va/invalid-db.md";
+  card.sort_key = 1.0;
+  card.created_at = 1;
+  card.updated_at = 1;
+
+  REQUIRE_THROWS(repo.create(card));
+}

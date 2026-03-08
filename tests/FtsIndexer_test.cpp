@@ -144,3 +144,112 @@ TEST_CASE("FtsIndexer search returns snippets", "[fts]") {
   REQUIRE(std::isfinite(rows[0].rank));
   REQUIRE(rows[0].snippet.find('[') != std::string::npos);
 }
+
+TEST_CASE("FtsIndexer search_cards handles empty and pre-bracketed snippets", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  {
+    static constexpr const char* SQL_PROJECT =
+        "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+        "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);";
+    db.exec(SQL_PROJECT);
+    static constexpr const char* SQL_CARD_EMPTY =
+        "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+        "VALUES('card-empty', 'proj-1', 'NeedleTitle', 'cards/a/b/card-empty.md', 0.0, 1, 1);";
+    static constexpr const char* SQL_CARD_BRACKET =
+        "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+        "VALUES('card-bracket', 'proj-1', 'OtherTitle', 'cards/a/b/card-bracket.md', 0.0, 1, 1);";
+    db.exec(SQL_CARD_EMPTY);
+    db.exec(SQL_CARD_BRACKET);
+  }
+
+  // Query hits title while body is empty => snippet() for body column can be empty.
+  fts.upsert_card("card-empty", "proj-1", "NeedleTitle", "");
+  auto empty_rows = fts.search_cards("proj-1", "NeedleTitle", 10, 0);
+  REQUIRE(empty_rows.size() == 1);
+  REQUIRE(empty_rows[0].id == "card-empty");
+  REQUIRE(empty_rows[0].snippet.empty());
+
+  // Body contains literal brackets and match term; snippet should be preserved as already bracketed.
+  fts.upsert_card("card-bracket", "proj-1", "OtherTitle", "alpha [literal] omega");
+  auto bracket_rows = fts.search_cards("proj-1", "literal", 10, 0);
+  REQUIRE(bracket_rows.size() == 1);
+  REQUIRE(bracket_rows[0].id == "card-bracket");
+  REQUIRE(bracket_rows[0].snippet.find('[') != std::string::npos);
+}
+
+TEST_CASE("FtsIndexer search_messages handles empty and non-bracket snippets", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  {
+    static constexpr const char* SQL_PROJECT =
+        "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+        "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);";
+    static constexpr const char* SQL_THREAD =
+        "INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+        "VALUES('thread-1', 'proj-1', 'T', 1, 1);";
+    static constexpr const char* SQL_MSG_EMPTY =
+        "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+        "VALUES('msg-empty', 'thread-1', 'assistant', 'local', '', 1);";
+    static constexpr const char* SQL_MSG_PLAIN =
+        "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+        "VALUES('msg-plain', 'thread-1', 'assistant', 'local', 'plain body snippet', 2);";
+    db.exec(SQL_PROJECT);
+    db.exec(SQL_THREAD);
+    db.exec(SQL_MSG_EMPTY);
+    db.exec(SQL_MSG_PLAIN);
+  }
+
+  // Match on message_id token while content is empty => empty snippet branch.
+  fts.upsert_message("msg-empty", "thread-1", "proj-1", "");
+  auto empty_rows = fts.search_messages("proj-1", "msg", 10, 0);
+  REQUIRE(empty_rows.size() >= 1);
+  bool saw_empty = false;
+  for (const auto& row : empty_rows) {
+    if (row.id == "msg-empty") {
+      saw_empty = true;
+      REQUIRE(row.snippet.empty());
+    }
+  }
+  REQUIRE(saw_empty);
+
+  // Non-highlighted snippet path should be wrapped in [] by FtsIndexer.
+  fts.upsert_message("msg-plain", "thread-1", "proj-1", "plain body snippet");
+  auto plain_rows = fts.search_messages("proj-1", "plain", 10, 0);
+  REQUIRE(plain_rows.size() >= 1);
+  bool saw_wrapped = false;
+  for (const auto& row : plain_rows) {
+    if (row.id == "msg-plain") {
+      saw_wrapped = true;
+      REQUIRE_FALSE(row.snippet.empty());
+      REQUIRE(row.snippet.front() == '[');
+    }
+  }
+  REQUIRE(saw_wrapped);
+}
+
+TEST_CASE("FtsIndexer throws when sqlite handle is closed", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  db.close();
+
+  REQUIRE_THROWS(fts.upsert_card("card-1", "proj-1", "Title", "Body"));
+}

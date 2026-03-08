@@ -93,3 +93,8 @@ TEST_CASE("RealFs create_directories throws when path traverses regular file", "
   REQUIRE_THROWS_WITH(fs.create_directories(child),
                       Catch::Matchers::ContainsSubstring("Failed to create dirs"));
 }
+
+TEST_CASE("Fs base pointer delete uses virtual destructor", "[fs][realfs]") {
+  holder::core::Fs* fs = new holder::core::RealFs();
+  delete fs;
+}

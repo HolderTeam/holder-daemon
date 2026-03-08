@@ -7,7 +7,7 @@ namespace holder::core {
 
 class Fs {
 public:
-  virtual ~Fs() = default;
+  virtual ~Fs() = default; // LCOV_EXCL_LINE: compiler-generated destructor alias noise in headers
 
   virtual bool exists(const std::filesystem::path& path) const = 0;
   virtual void create_directories(const std::filesystem::path& path) const = 0;
