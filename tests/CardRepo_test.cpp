@@ -196,3 +196,66 @@ TEST_CASE("CardRepo throws sqlite error when DB handle is invalid", "[cardrepo]"
 
   REQUIRE_THROWS(repo.create(card));
 }
+
+TEST_CASE("CardRepo create throws on duplicate primary key", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  holder::model::Card card;
+  card.card_id = "dupe-card";
+  card.project_id = "proj-1";
+  card.title = "First";
+  card.rel_path = "cards/du/pe/dupe-card.md";
+  card.sort_key = 1.0;
+  card.created_at = 1;
+  card.updated_at = 1;
+
+  repo.create(card);
+  REQUIRE_THROWS(repo.create(card));
+}
+
+TEST_CASE("CardRepo methods throw sqlite errors when DB is closed", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  holder::model::Card card;
+  card.card_id = "closed-db-card";
+  card.project_id = "proj-1";
+  card.title = "Closed";
+  card.rel_path = "cards/cl/os/closed-db-card.md";
+  card.sort_key = 1.0;
+  card.created_at = 1;
+  card.updated_at = 1;
+
+  db.close();
+
+  REQUIRE_THROWS(repo.get("missing"));
+  REQUIRE_THROWS(repo.list_roots("proj-1"));
+  REQUIRE_THROWS(repo.list_children("proj-1", "parent"));
+  REQUIRE_THROWS(repo.list_all("proj-1"));
+  REQUIRE_THROWS(repo.count_all_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_roots_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", "parent"));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::nullopt));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::optional<std::string>("parent")));
+  REQUIRE_THROWS(repo.update_title("card-1", "Title", 2));
+  REQUIRE_THROWS(repo.touch_updated("card-1", 2));
+  REQUIRE_THROWS(repo.soft_delete("card-1", 3, 4));
+  REQUIRE_THROWS(repo.restore("card-1", 5));
+  REQUIRE_THROWS(repo.remove("card-1"));
+  REQUIRE_THROWS(repo.move("card-1", std::nullopt, 1.5, 6));
+}
