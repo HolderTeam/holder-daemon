@@ -67,12 +67,12 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
       return true;
     }
 
-    holder::store::AiProviderCredentialRepo credential_repo(db);
+    holder::ai::AiProviderCredentialRepo credential_repo(db);
     std::unordered_set<std::string> configured_ids;
     for (const auto& credential : credential_repo.list()) {
       configured_ids.insert(credential.provider);
     }
-    holder::store::AiProviderSettingRepo setting_repo(db);
+    holder::ai::AiProviderSettingRepo setting_repo(db);
     std::unordered_map<std::string, bool> enabled_by_provider;
     for (const auto& setting : setting_repo.list()) {
       enabled_by_provider[setting.provider] = setting.enabled;

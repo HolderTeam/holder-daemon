@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::ai {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -28,7 +28,7 @@ holder::model::AiProviderSetting read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiProviderSettingRepo::AiProviderSettingRepo(Db& db) : db_(db) {}
+AiProviderSettingRepo::AiProviderSettingRepo(holder::store::Db& db) : db_(db) {}
 
 std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() const {
   static constexpr const char* SQL =
@@ -122,4 +122,4 @@ void AiProviderSettingRepo::remove(const std::string& provider) {
   sqlite3_finalize(stmt);
 }
 
-} // namespace holder::store
+} // namespace holder::ai

@@ -22,11 +22,11 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);

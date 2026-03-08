@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::ai {
 
 class AiProviderSettingRepo {
  public:
-  explicit AiProviderSettingRepo(Db& db);
+  explicit AiProviderSettingRepo(holder::store::Db& db);
 
   std::vector<holder::model::AiProviderSetting> list() const;
   std::optional<holder::model::AiProviderSetting> get(const std::string& provider) const;
@@ -19,7 +19,7 @@ class AiProviderSettingRepo {
   void remove(const std::string& provider);
 
  private:
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::ai

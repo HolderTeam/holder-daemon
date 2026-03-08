@@ -66,13 +66,13 @@ TEST_CASE("Deleting project cascades to dependent rows", "[cascade]") {
   db.open(db_path);
   apply_schema(db);
 
-  holder::store::ProjectRepo project_repo(db);
-  holder::store::CardRepo card_repo(db);
-  holder::store::LinkRepo link_repo(db);
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  holder::card::LinkRepo link_repo(db);
   holder::store::ResourceRepo resource_repo(db);
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   holder::index::FtsIndexer fts(db);
-  holder::store::AiMessageRepo message_repo(db, &fts);
+  holder::ai::AiMessageRepo message_repo(db, &fts);
 
   holder::model::Project project;
   project.project_id = "proj-1";

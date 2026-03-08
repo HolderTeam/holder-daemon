@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::ai {
 namespace {
 
 holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
@@ -87,7 +87,7 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(Db& db,
+AiMessageRepo::AiMessageRepo(holder::store::Db& db,
                              holder::index::FtsIndexer* fts,
                              holder::core::Fs* fs,
                              holder::git::GitOps* git)
@@ -506,4 +506,4 @@ std::optional<holder::model::AiMessage> AiMessageRepo::get(
   return std::nullopt;
 }
 
-} // namespace holder::store
+} // namespace holder::ai

@@ -50,7 +50,7 @@ void apply_schema(holder::store::Db& db) {
 }
 
 void create_project(holder::store::Db& db, const std::string& project_id) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -63,7 +63,7 @@ void create_project(holder::store::Db& db, const std::string& project_id) {
 void create_card(holder::store::Db& db,
                  const std::string& card_id,
                  const std::string& project_id) {
-  holder::store::CardRepo repo(db);
+  holder::card::CardRepo repo(db);
   holder::model::Card card;
   card.card_id = card_id;
   card.project_id = project_id;
@@ -89,7 +89,7 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   create_card(db, "card-b", "proj-1");
   create_card(db, "card-c", "proj-1");
 
-  holder::store::LinkRepo repo(db);
+  holder::card::LinkRepo repo(db);
 
   holder::model::CardLink link1;
   link1.project_id = "proj-1";

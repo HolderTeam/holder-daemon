@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::ai {
 
 class AiThreadRepo {
 public:
-  explicit AiThreadRepo(Db& db);
+  explicit AiThreadRepo(holder::store::Db& db);
 
   void create(const holder::model::AiThread& thread);
   std::optional<holder::model::AiThread> get(const std::string& thread_id) const;
@@ -23,7 +23,7 @@ public:
   void remove(const std::string& thread_id);
 
 private:
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::ai

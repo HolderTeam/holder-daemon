@@ -48,7 +48,7 @@ void apply_schema(holder::store::Db& db) {
 }
 
 void create_project(holder::store::Db& db, const std::string& project_id) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -69,7 +69,7 @@ TEST_CASE("AiThreadRepo CRUD", "[aithreaddrepo]") {
   apply_schema(db);
   create_project(db, "proj-1");
 
-  holder::store::AiThreadRepo repo(db);
+  holder::ai::AiThreadRepo repo(db);
 
   holder::model::AiThread thread;
   thread.thread_id = "thread-1";

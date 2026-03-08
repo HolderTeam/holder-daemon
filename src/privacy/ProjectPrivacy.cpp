@@ -292,7 +292,7 @@ void ensure_encrypted_git_setup(holder::git::GitOps& git,
   write_privacy_meta(repo_root, project_id, project_key_id);
 }
 
-std::string ensure_project_key_material(holder::store::ProjectRepo& repo,
+std::string ensure_project_key_material(holder::project::ProjectRepo& repo,
                                         const std::string& project_id,
                                         const std::optional<std::string>& project_key_id,
                                         long long updated_at,
@@ -310,7 +310,7 @@ std::string ensure_project_key_material(holder::store::ProjectRepo& repo,
 }
 
 void ensure_encrypted_project_ready(holder::git::GitOps& git,
-                                    holder::store::ProjectRepo& repo,
+                                    holder::project::ProjectRepo& repo,
                                     const std::string& project_id,
                                     const std::string& root_path,
                                     const std::optional<std::string>& project_key_id,
@@ -403,7 +403,7 @@ std::string decrypt_project_blob(const std::string& project_id,
   }
 }
 
-void import_recovery_token(holder::store::ProjectRepo& repo,
+void import_recovery_token(holder::project::ProjectRepo& repo,
                            const std::string& project_id,
                            const std::string& pin,
                            const std::string& token_json,

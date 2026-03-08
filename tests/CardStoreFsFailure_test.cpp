@@ -39,7 +39,7 @@ void apply_schema(holder::store::Db& db) {
 void create_project(holder::store::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -63,7 +63,7 @@ TEST_CASE("CardStore update recreates file if missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "deadbeef";
@@ -90,7 +90,7 @@ TEST_CASE("CardStore update_links fails if card file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "cafebabe";
@@ -116,7 +116,7 @@ TEST_CASE("CardStore trash fails if card file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "feedface";
@@ -142,7 +142,7 @@ TEST_CASE("CardStore restore fails if trash file missing", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "baddcafe";
@@ -169,7 +169,7 @@ TEST_CASE("CardStore update fails on rel_path mismatch", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "faceb00c";

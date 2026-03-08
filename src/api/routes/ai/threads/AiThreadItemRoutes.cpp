@@ -44,7 +44,7 @@ bool handle_ai_thread_item_routes(const std::string& path,
 
   if (req.method() == http::verb::get) {
     try {
-      holder::store::AiThreadRepo repo(db);
+      holder::ai::AiThreadRepo repo(db);
       const auto thread_opt = repo.get(thread_id);
       if (!thread_opt.has_value()) {
         res = support::error_response(http::status::not_found, "not_found", "AI thread not found.");
@@ -76,7 +76,7 @@ bool handle_ai_thread_item_routes(const std::string& path,
         }
         const long long updated_at = body.at("updated_at").get<long long>();
 
-        holder::store::AiThreadRepo repo(db);
+        holder::ai::AiThreadRepo repo(db);
         if (title.has_value()) {
           repo.update_title(thread_id, title.value(), updated_at);
         } else {
@@ -99,7 +99,7 @@ bool handle_ai_thread_item_routes(const std::string& path,
 
   if (req.method() == http::verb::delete_) {
     try {
-      holder::store::AiThreadRepo repo(db);
+      holder::ai::AiThreadRepo repo(db);
       repo.remove(thread_id);
       nlohmann::json payload;
       payload["ok"] = true;

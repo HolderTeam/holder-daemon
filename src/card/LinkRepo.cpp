@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::card {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -51,7 +51,7 @@ holder::model::CardLink read_link(sqlite3_stmt* stmt) {
 
 } // namespace
 
-LinkRepo::LinkRepo(Db& db) : db_(db) {}
+LinkRepo::LinkRepo(holder::store::Db& db) : db_(db) {}
 
 void LinkRepo::upsert_links(const std::string& project_id,
                             const std::string& from_card_id,
@@ -285,4 +285,4 @@ void LinkRepo::delete_links_from(const std::string& project_id, const std::strin
   }
 }
 
-} // namespace holder::store
+} // namespace holder::card

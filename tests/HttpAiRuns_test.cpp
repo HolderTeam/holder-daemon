@@ -14,7 +14,7 @@ TEST_CASE("HTTP ai runs list and get", "[http]") {
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
-  holder::store::AiRunRepo repo(db);
+  holder::ai::AiRunRepo repo(db);
   holder::model::AiRun run;
   run.run_id = "run-1";
   run.project_id = "proj-1";

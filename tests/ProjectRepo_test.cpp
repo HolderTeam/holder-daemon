@@ -56,7 +56,7 @@ TEST_CASE("ProjectRepo CRUD", "[projectrepo]") {
   db.open(db_path);
   apply_schema(db);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-1";

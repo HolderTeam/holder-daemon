@@ -20,7 +20,7 @@ TEST_CASE("AiProviderSettingRepo upsert/list/remove", "[db]") {
   std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   db.exec(sql);
 
-  holder::store::AiProviderSettingRepo repo(db);
+  holder::ai::AiProviderSettingRepo repo(db);
   REQUIRE(repo.list().empty());
 
   repo.upsert("switchyard", true, 100);

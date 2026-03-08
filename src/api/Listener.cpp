@@ -20,7 +20,7 @@ Listener::Listener(std::string bind,
                    const std::string& auth_token,
                    const Router& router,
                    std::chrono::steady_clock::time_point started_at,
-                   holder::store::CardStore* card_store,
+                   holder::card::CardStore* card_store,
                    holder::index::FtsIndexer* fts,
                    holder::git::GitOps* git_ops,
                    holder::llm::LocalModelRunner* runner)

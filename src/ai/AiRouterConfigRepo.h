@@ -6,11 +6,11 @@
 #include <optional>
 #include <string>
 
-namespace holder::store {
+namespace holder::ai {
 
 class AiRouterConfigRepo {
  public:
-  explicit AiRouterConfigRepo(Db& db);
+  explicit AiRouterConfigRepo(holder::store::Db& db);
 
   std::optional<holder::model::AiRouterConfig> get_global() const;
   std::optional<holder::model::AiRouterConfig> get_for_project(const std::string& project_id) const;
@@ -24,7 +24,7 @@ class AiRouterConfigRepo {
   void clear_for_project(const std::string& project_id);
 
  private:
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::ai

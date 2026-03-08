@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::ai {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -50,7 +50,7 @@ holder::model::AiThread read_thread(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiThreadRepo::AiThreadRepo(Db& db) : db_(db) {}
+AiThreadRepo::AiThreadRepo(holder::store::Db& db) : db_(db) {}
 
 void AiThreadRepo::create(const holder::model::AiThread& thread) {
   static constexpr const char* SQL =
@@ -208,4 +208,4 @@ void AiThreadRepo::remove(const std::string& thread_id) {
   }
 }
 
-} // namespace holder::store
+} // namespace holder::ai

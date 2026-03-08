@@ -49,7 +49,7 @@ void apply_schema(holder::store::Db& db) {
 void create_project(holder::store::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -110,7 +110,7 @@ TEST_CASE("CardStore trash propagates fs rename failure", "[fs]") {
 
   holder::index::FtsIndexer fts(db);
   FailingFs fs;
-  holder::store::CardStore store(db, &fts, &fs);
+  holder::card::CardStore store(db, &fts, &fs);
 
   holder::model::Card card;
   card.card_id = "deadbeef";
@@ -127,7 +127,7 @@ TEST_CASE("CardStore trash propagates fs rename failure", "[fs]") {
   REQUIRE_THROWS(store.trash(card.card_id, 10));
   REQUIRE(std::filesystem::exists(src_path));
 
-  holder::store::CardRepo repo(db);
+  holder::card::CardRepo repo(db);
   const auto fetched = repo.get(card.card_id);
   REQUIRE(fetched.has_value());
   REQUIRE(!fetched->deleted_at.has_value());
@@ -148,12 +148,12 @@ TEST_CASE("AiMessageRepo trash propagates fs rename failure", "[fs]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
   FailingFs fs;
-  holder::store::AiMessageRepo repo(db, &fts, &fs);
+  holder::ai::AiMessageRepo repo(db, &fts, &fs);
 
   holder::model::AiMessage msg;
   msg.message_id = "msg-1";
@@ -227,7 +227,7 @@ TEST_CASE("CardStore restore propagates fs rename failure", "[fs]") {
 
   holder::index::FtsIndexer fts(db);
   FailingFs fs;
-  holder::store::CardStore store(db, &fts, &fs);
+  holder::card::CardStore store(db, &fts, &fs);
 
   holder::model::Card card;
   card.card_id = "restorefail";
@@ -245,7 +245,7 @@ TEST_CASE("CardStore restore propagates fs rename failure", "[fs]") {
   REQUIRE_THROWS(store.restore(card.card_id, 11));
   REQUIRE(std::filesystem::exists(src_path));
 
-  holder::store::CardRepo repo(db);
+  holder::card::CardRepo repo(db);
   const auto fetched = repo.get(card.card_id);
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->deleted_at.has_value());
@@ -266,12 +266,12 @@ TEST_CASE("AiMessageRepo restore propagates fs rename failure", "[fs]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
   FailingFs fs;
-  holder::store::AiMessageRepo repo(db, &fts, &fs);
+  holder::ai::AiMessageRepo repo(db, &fts, &fs);
 
   holder::model::AiMessage msg;
   msg.message_id = "msg-restore";

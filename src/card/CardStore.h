@@ -12,11 +12,11 @@
 #include <optional>
 #include <string>
 
-namespace holder::store {
+namespace holder::card {
 
 class CardStore {
 public:
-  CardStore(Db& db,
+  CardStore(holder::store::Db& db,
             holder::index::FtsIndexer* fts,
             holder::core::Fs* fs = nullptr,
             holder::git::GitOps* git = nullptr);
@@ -43,13 +43,13 @@ public:
 private:
   holder::model::Project require_project(const std::string& project_id);
 
-  Db& db_;
+  holder::store::Db& db_;
   holder::core::Fs* fs_ = nullptr;
   holder::git::GitOps* git_ = nullptr;
   CardRepo card_repo_;
   LinkRepo link_repo_;
-  ProjectRepo project_repo_;
+  holder::project::ProjectRepo project_repo_;
   holder::index::FtsIndexer* fts_ = nullptr;
 };
 
-} // namespace holder::store
+} // namespace holder::card

@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::card {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -75,7 +75,7 @@ holder::model::Card read_card(sqlite3_stmt* stmt) {
 
 } // namespace
 
-CardRepo::CardRepo(Db& db) : db_(db) {}
+CardRepo::CardRepo(holder::store::Db& db) : db_(db) {}
 
 void CardRepo::create(const holder::model::Card& card) {
   static constexpr const char* SQL =
@@ -436,4 +436,4 @@ void CardRepo::move(const std::string& card_id,
   }
 }
 
-} // namespace holder::store
+} // namespace holder::card

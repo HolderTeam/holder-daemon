@@ -91,7 +91,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
       data["pulls"] = pulls;
     }
 
-    holder::store::AiProviderCredentialRepo credential_repo(db);
+    holder::ai::AiProviderCredentialRepo credential_repo(db);
     nlohmann::json cloud = nlohmann::json::array();
     for (const auto& credential : credential_repo.list()) {
       cloud.push_back({

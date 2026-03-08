@@ -33,7 +33,7 @@ bool handle_ai_capabilities_routes(const std::string& path,
   std::optional<holder::model::AiRouterConfig> global_router_cfg;
   std::optional<holder::model::AiRouterConfig> project_router_cfg;
   try {
-    holder::store::AiRouterConfigRepo router_cfg_repo(db);
+    holder::ai::AiRouterConfigRepo router_cfg_repo(db);
     global_router_cfg = router_cfg_repo.get_global();
     project_router_cfg = project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
                                             : router_cfg_repo.get_for_project(project_id);

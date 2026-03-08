@@ -54,7 +54,7 @@ void apply_schema(holder::store::Db& db) {
 void create_project(holder::store::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -71,7 +71,7 @@ std::string read_file(const std::filesystem::path& path) {
 }
 
 void create_thread(holder::store::Db& db, const std::string& thread_id, const std::string& project_id) {
-  holder::store::AiThreadRepo repo(db);
+  holder::ai::AiThreadRepo repo(db);
   holder::model::AiThread thread;
   thread.thread_id = thread_id;
   thread.project_id = project_id;
@@ -95,7 +95,7 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   create_thread(db, "thread-1", "proj-1");
 
   holder::index::FtsIndexer fts(db);
-  holder::store::AiMessageRepo repo(db, &fts);
+  holder::ai::AiMessageRepo repo(db, &fts);
 
   holder::model::AiMessage msg1;
   msg1.message_id = "msg-1";

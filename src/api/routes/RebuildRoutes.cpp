@@ -31,7 +31,7 @@ bool handle_rebuild_routes(const std::string& path,
     }
 
     const std::string project_id = body.at("project_id").get<std::string>();
-    holder::store::ProjectRepo repo(db);
+    holder::project::ProjectRepo repo(db);
     const auto project_opt = repo.get(project_id);
     if (!project_opt.has_value()) {
       res = support::error_response(http::status::not_found, "not_found", "Project not found.");

@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::card {
 
 class LinkRepo {
 public:
-  explicit LinkRepo(Db& db);
+  explicit LinkRepo(holder::store::Db& db);
 
   void upsert_links(const std::string& project_id,
                     const std::string& from_card_id,
@@ -39,7 +39,7 @@ public:
   void delete_links_from(const std::string& project_id, const std::string& from_card_id);
 
 private:
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::card

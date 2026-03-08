@@ -36,7 +36,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
     holder::store::Db& db,
-    holder::store::CardStore* card_store,
+    holder::card::CardStore* card_store,
     holder::index::FtsIndexer* fts,
     holder::git::GitOps* git_ops,
     holder::llm::LocalModelRunner* runner,

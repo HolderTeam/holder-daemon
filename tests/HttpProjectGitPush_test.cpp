@@ -51,7 +51,7 @@ TEST_CASE("Project git push returns remote_unset when no remote configured", "[g
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";
@@ -111,7 +111,7 @@ TEST_CASE("Project git push returns structured non_fast_forward result", "[git][
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
 
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = "proj-1";
   project.name = "Project";

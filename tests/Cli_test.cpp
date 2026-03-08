@@ -106,8 +106,8 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
 
   holder::store::Db db;
   db.open(db_path);
-  holder::store::ProjectRepo project_repo(db);
-  holder::store::CardRepo card_repo(db);
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
 
   const auto projects = project_repo.list();
   REQUIRE(projects.size() == 1);
@@ -137,7 +137,7 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   REQUIRE(raw_blob.find(expected.str()) == std::string::npos);
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
   const auto content = card_store.get_content(cards[0]);
   REQUIRE(content.has_value());
   REQUIRE(content.value() == expected.str());
@@ -148,8 +148,8 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
 
   holder::store::Db db2;
   db2.open(db_path);
-  holder::store::ProjectRepo project_repo2(db2);
-  holder::store::CardRepo card_repo2(db2);
+  holder::project::ProjectRepo project_repo2(db2);
+  holder::card::CardRepo card_repo2(db2);
   const auto projects2 = project_repo2.list();
   REQUIRE(projects2.size() == 1);
   const auto cards2 = card_repo2.list_all(projects2[0].project_id);

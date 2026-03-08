@@ -170,7 +170,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::store::AiProviderCredentialRepo cred_repo(db);
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
@@ -220,7 +220,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
@@ -292,7 +292,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::store::AiProviderCredentialRepo cred_repo(db);
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("chadjeopardy", "test-key", 1, 1);
 
   const std::string token = "testtoken";
@@ -342,7 +342,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
@@ -413,7 +413,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::store::AiProviderCredentialRepo cred_repo(db);
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("mechatropic", "test-key", 1, 1);
 
   const std::string token = "testtoken";
@@ -463,7 +463,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");

@@ -74,7 +74,7 @@ TEST_CASE("ensure_encrypted_project_ready stores 32-byte privacy key material", 
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (dir / "keystore").string());
   auto db = holder::test::open_db_with_schema(db_path);
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-1";
@@ -115,7 +115,7 @@ TEST_CASE("staged card blob fails index safety check without explicit encryption
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (dir / "keystore").string());
   auto db = holder::test::open_db_with_schema(db_path);
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-1";
@@ -164,7 +164,7 @@ TEST_CASE("recovery token import wrong PIN returns typed privacy error", "[priva
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (dir / "keystore").string());
   auto db = holder::test::open_db_with_schema(db_path);
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-1";
@@ -205,7 +205,7 @@ TEST_CASE("export_recovery_token rejects empty PIN", "[privacy]") {
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (dir / "keystore").string());
   auto db = holder::test::open_db_with_schema(db_path);
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-pin-empty";
@@ -252,7 +252,7 @@ TEST_CASE("inspect_recovery_token maps wrong PIN to RecoveryTokenInvalid", "[pri
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (dir / "keystore").string());
   auto db = holder::test::open_db_with_schema(db_path);
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
 
   holder::model::Project project;
   project.project_id = "proj-inspect";

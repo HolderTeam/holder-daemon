@@ -6,7 +6,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::project {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -106,7 +106,7 @@ std::set<std::string> table_columns(sqlite3* db, const std::string& table_name) 
 
 } // namespace
 
-ProjectSyncRepo::ProjectSyncRepo(Db& db) : db_(db) { ensure_table(); }
+ProjectSyncRepo::ProjectSyncRepo(holder::store::Db& db) : db_(db) { ensure_table(); }
 
 void ProjectSyncRepo::ensure_table() {
   db_.exec(
@@ -309,4 +309,4 @@ void ProjectSyncRepo::remove(const std::string& project_id) {
   }
 }
 
-} // namespace holder::store
+} // namespace holder::project

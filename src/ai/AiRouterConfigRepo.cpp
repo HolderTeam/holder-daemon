@@ -4,7 +4,7 @@
 
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::ai {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -37,7 +37,7 @@ std::string project_key(const std::string& project_id) {
 
 } // namespace
 
-AiRouterConfigRepo::AiRouterConfigRepo(Db& db) : db_(db) {}
+AiRouterConfigRepo::AiRouterConfigRepo(holder::store::Db& db) : db_(db) {}
 
 std::optional<holder::model::AiRouterConfig> AiRouterConfigRepo::get_global() const {
   static constexpr const char* SQL =
@@ -167,4 +167,4 @@ void AiRouterConfigRepo::clear_for_project(const std::string& project_id) {
   sqlite3_finalize(stmt);
 }
 
-} // namespace holder::store
+} // namespace holder::ai

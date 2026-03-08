@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::project {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -64,7 +64,7 @@ holder::model::Project read_project(sqlite3_stmt* stmt) {
 
 } // namespace
 
-ProjectRepo::ProjectRepo(Db& db) : db_(db) {}
+ProjectRepo::ProjectRepo(holder::store::Db& db) : db_(db) {}
 
 void ProjectRepo::create(const holder::model::Project& project) {
   static constexpr const char* SQL =
@@ -316,4 +316,4 @@ void ProjectRepo::remove(const std::string& project_id) {
   }
 }
 
-} // namespace holder::store
+} // namespace holder::project

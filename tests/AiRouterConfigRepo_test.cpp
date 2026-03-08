@@ -23,7 +23,7 @@ TEST_CASE("AiRouterConfigRepo global and project config", "[db]") {
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
 
-  holder::store::AiRouterConfigRepo repo(db);
+  holder::ai::AiRouterConfigRepo repo(db);
 
   REQUIRE_FALSE(repo.get_global().has_value());
   REQUIRE_FALSE(repo.get_for_project("proj-1").has_value());

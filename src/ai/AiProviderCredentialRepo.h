@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::ai {
 
 class AiProviderCredentialRepo {
  public:
-  explicit AiProviderCredentialRepo(Db& db);
+  explicit AiProviderCredentialRepo(holder::store::Db& db);
 
   std::vector<holder::model::AiProviderCredential> list() const;
   std::optional<holder::model::AiProviderCredential> get(const std::string& provider) const;
@@ -22,7 +22,7 @@ class AiProviderCredentialRepo {
   void remove(const std::string& provider);
 
  private:
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::ai

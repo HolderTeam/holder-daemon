@@ -95,7 +95,7 @@ static std::string derive_title_from_markdown_first_line(const std::string& body
 }
 
 static std::optional<holder::model::Project> ensure_default_home_project(holder::store::Db& db) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   auto projects = repo.list();
   if (!projects.empty()) {
     return std::nullopt;
@@ -120,7 +120,7 @@ static std::optional<holder::model::Project> ensure_default_home_project(holder:
   return home;
 }
 
-static void ensure_default_welcome_card(holder::store::CardStore& card_store,
+static void ensure_default_welcome_card(holder::card::CardStore& card_store,
                                         const holder::model::Project& home) {
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                        std::chrono::system_clock::now().time_since_epoch())
@@ -216,9 +216,9 @@ int main(int argc, char* argv[]) {
   spdlog::info("holder boot complete.");
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore card_store(db, &fts);
+  holder::card::CardStore card_store(db, &fts);
   if (bootstrapped_home.has_value()) {
-    holder::store::ProjectRepo repo(db);
+    holder::project::ProjectRepo repo(db);
     holder::git::RealGitOps git;
     holder::privacy::ensure_encrypted_project_ready(
         git,

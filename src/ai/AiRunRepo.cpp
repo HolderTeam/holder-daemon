@@ -5,7 +5,7 @@
 #include <sqlite3.h>
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::ai {
 namespace {
 
 std::string column_text(sqlite3_stmt* stmt, int index) {
@@ -45,7 +45,7 @@ void throw_sqlite(sqlite3* db, const std::string& msg) {
 
 } // namespace
 
-AiRunRepo::AiRunRepo(Db& db) : db_(db) {}
+AiRunRepo::AiRunRepo(holder::store::Db& db) : db_(db) {}
 
 void AiRunRepo::create(const model::AiRun& run) {
   static constexpr const char* SQL =
@@ -237,4 +237,4 @@ void AiRunRepo::update_status(const std::string& run_id,
   sqlite3_finalize(stmt);
 }
 
-} // namespace holder::store
+} // namespace holder::ai

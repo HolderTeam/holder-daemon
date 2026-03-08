@@ -11,7 +11,7 @@
 
 #include <filesystem>
 #include <stdexcept>
-namespace holder::store {
+namespace holder::card {
 namespace {
 
 holder::core::Fs& resolve_fs(holder::core::Fs* fs) {
@@ -68,7 +68,7 @@ void assert_project_staged_blobs_safe(const holder::model::Project& project,
 
 } // namespace
 
-CardStore::CardStore(Db& db,
+CardStore::CardStore(holder::store::Db& db,
                      holder::index::FtsIndexer* fts,
                      holder::core::Fs* fs,
                      holder::git::GitOps* git)
@@ -423,4 +423,4 @@ std::optional<std::string> CardStore::get_content(const holder::model::Card& car
   return holder::core::parse_card_file(plain).body;
 }
 
-} // namespace holder::store
+} // namespace holder::card

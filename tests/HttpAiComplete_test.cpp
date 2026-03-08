@@ -36,7 +36,7 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
           "VALUES('card-1', 'proj-1', 'Card', 'cards/ca/rd/card-1.md', 1, 1);");
 
   const std::string token = "testtoken";
-  holder::store::CardStore card_store(db, nullptr);
+  holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
@@ -88,15 +88,15 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   const auto threads = thread_repo.list("proj-1");
   REQUIRE(threads.size() == 1);
 
-  holder::store::AiMessageRepo msg_repo(db, nullptr);
+  holder::ai::AiMessageRepo msg_repo(db, nullptr);
   const auto msgs = msg_repo.list_by_thread(threads[0].thread_id);
   REQUIRE(msgs.size() == 2);
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].message_id.has_value());
@@ -151,11 +151,11 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
                       "VALUES('proj-1', 'Project', '") +
           repo_dir.string() + "', 1, 1);");
-  holder::store::AiProviderCredentialRepo cred_repo(db);
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
-  holder::store::CardStore card_store(db, nullptr);
+  holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
@@ -205,7 +205,7 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  holder::store::AiRunRepo run_repo(db);
+  holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");

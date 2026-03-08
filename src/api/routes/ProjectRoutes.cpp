@@ -213,8 +213,8 @@ bool handle_project_routes(const std::string& path,
       const std::string recovery_token = body.at("recovery_token").get<std::string>();
       const auto metadata = holder::privacy::inspect_recovery_token(pin, recovery_token);
 
-      holder::store::ProjectRepo repo(db);
-      holder::store::ProjectSyncRepo sync_repo(db);
+      holder::project::ProjectRepo repo(db);
+      holder::project::ProjectSyncRepo sync_repo(db);
       const long long now = support::now_epoch_seconds();
       bool project_created = false;
       auto project_opt = repo.get(metadata.project_id);
@@ -319,8 +319,8 @@ bool handle_project_routes(const std::string& path,
 
   if (path == "/projects" && req.method() == http::verb::get) {
     try {
-      holder::store::ProjectRepo repo(db);
-      holder::store::ProjectSyncRepo sync_repo(db);
+      holder::project::ProjectRepo repo(db);
+      holder::project::ProjectSyncRepo sync_repo(db);
       auto projects = repo.list();
       const std::string name_filter = param_get("name");
       const std::string updated_after_raw = param_get("updated_after");
@@ -443,7 +443,7 @@ bool handle_project_routes(const std::string& path,
       }
 
       nlohmann::json data = nlohmann::json::array();
-      holder::store::CardRepo card_repo(db);
+      holder::card::CardRepo card_repo(db);
       for (const auto& project : projects) {
         nlohmann::json item = {
             {"project_id", project.project_id},
@@ -539,8 +539,8 @@ bool handle_project_routes(const std::string& path,
           project.updated_at = project.created_at;
         }
 
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         if (project.root_path.empty()) {
           const auto base_root = holder::core::default_projects_root();
           const auto slug = holder::core::slugify(project.name);
@@ -612,7 +612,7 @@ bool handle_project_routes(const std::string& path,
                 ? body.at("branch").get<std::string>()
                 : "";
 
-        holder::store::ProjectRepo repo(db);
+        holder::project::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -672,8 +672,8 @@ bool handle_project_routes(const std::string& path,
                 ? body.at("set_upstream").get<bool>()
                 : true;
 
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -735,8 +735,8 @@ bool handle_project_routes(const std::string& path,
       }
     } else if (subpath == "/git/sync-status" && req.method() == http::verb::get) {
       try {
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -754,8 +754,8 @@ bool handle_project_routes(const std::string& path,
       }
     } else if (subpath == "/encryption-check" && req.method() == http::verb::get) {
       try {
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found,
@@ -807,7 +807,7 @@ bool handle_project_routes(const std::string& path,
                                         "Missing required fields.");
           return true;
         }
-        holder::store::ProjectRepo repo(db);
+        holder::project::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found,
@@ -853,7 +853,7 @@ bool handle_project_routes(const std::string& path,
                                         "Missing required fields.");
           return true;
         }
-        holder::store::ProjectRepo repo(db);
+        holder::project::ProjectRepo repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found,
@@ -882,8 +882,8 @@ bool handle_project_routes(const std::string& path,
       }
     } else if (subpath.empty() && req.method() == http::verb::get) {
       try {
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -932,7 +932,7 @@ bool handle_project_routes(const std::string& path,
               !has_project_key_id) {
             res = support::error_response(http::status::bad_request, "bad_request", "No fields to update.");
           } else {
-            holder::store::ProjectRepo repo(db);
+            holder::project::ProjectRepo repo(db);
             const auto project_opt = repo.get(project_id);
             if (!project_opt.has_value()) {
               res = support::error_response(http::status::not_found, "not_found", "Project not found.");
@@ -1030,8 +1030,8 @@ bool handle_project_routes(const std::string& path,
       }
     } else if (subpath.empty() && req.method() == http::verb::delete_) {
       try {
-        holder::store::ProjectRepo repo(db);
-        holder::store::ProjectSyncRepo sync_repo(db);
+        holder::project::ProjectRepo repo(db);
+        holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
         if (!project_opt.has_value()) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");

@@ -13,11 +13,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::ai {
 
 class AiMessageRepo {
 public:
-  AiMessageRepo(Db& db,
+  AiMessageRepo(holder::store::Db& db,
                 holder::index::FtsIndexer* fts,
                 holder::core::Fs* fs = nullptr,
                 holder::git::GitOps* git = nullptr);
@@ -33,13 +33,13 @@ public:
   void remove(const std::string& message_id);
 
 private:
-  Db& db_;
+  holder::store::Db& db_;
   holder::core::Fs* fs_ = nullptr;
   holder::git::GitOps* git_ = nullptr;
-  holder::store::LinkRepo link_repo_;
-  holder::store::AiThreadRepo thread_repo_;
-  holder::store::ProjectRepo project_repo_;
+  holder::card::LinkRepo link_repo_;
+  holder::ai::AiThreadRepo thread_repo_;
+  holder::project::ProjectRepo project_repo_;
   holder::index::FtsIndexer* fts_ = nullptr;
 };
 
-} // namespace holder::store
+} // namespace holder::ai

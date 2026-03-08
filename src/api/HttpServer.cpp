@@ -23,7 +23,7 @@ HttpServer::HttpServer(std::string bind,
                        unsigned short port,
                        holder::store::Db& db,
                        std::string auth_token,
-                       holder::store::CardStore* card_store,
+                       holder::card::CardStore* card_store,
                        holder::index::FtsIndexer* fts,
                        holder::git::GitOps* git_ops,
                        holder::llm::LocalModelRunner* runner)

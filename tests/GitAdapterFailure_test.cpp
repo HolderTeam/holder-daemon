@@ -45,7 +45,7 @@ void apply_schema(holder::store::Db& db) {
 void create_project(holder::store::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -118,7 +118,7 @@ TEST_CASE("CardStore create propagates git commit failure after DB write", "[git
   holder::index::FtsIndexer fts(db);
   FailingGitOps git;
   git.fail_commit = true;
-  holder::store::CardStore store(db, &fts, nullptr, &git);
+  holder::card::CardStore store(db, &fts, nullptr, &git);
 
   holder::model::Card card;
   card.card_id = "card-1";
@@ -129,7 +129,7 @@ TEST_CASE("CardStore create propagates git commit failure after DB write", "[git
 
   REQUIRE_THROWS(store.create(card, "body"));
 
-  holder::store::CardRepo repo(db);
+  holder::card::CardRepo repo(db);
   REQUIRE(repo.get("card-1").has_value());
 }
 
@@ -148,13 +148,13 @@ TEST_CASE("AiMessageRepo append propagates git commit failure", "[git]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
   FailingGitOps git;
   git.fail_commit = true;
-  holder::store::AiMessageRepo repo(db, &fts, nullptr, &git);
+  holder::ai::AiMessageRepo repo(db, &fts, nullptr, &git);
 
   holder::model::AiMessage msg;
   msg.message_id = "msg-1";
@@ -175,13 +175,13 @@ TEST_CASE("CardStore create propagates set_remote failure", "[git]") {
 
   const auto project_root = dir / "repo";
   create_project(db, "proj-1", project_root.string());
-  holder::store::ProjectRepo project_repo(db);
+  holder::project::ProjectRepo project_repo(db);
   project_repo.update_git_remote("proj-1", std::optional<std::string>("git@example.com:repo.git"), 2);
 
   holder::index::FtsIndexer fts(db);
   FailingGitOps git;
   git.fail_set_remote = true;
-  holder::store::CardStore store(db, &fts, nullptr, &git);
+  holder::card::CardStore store(db, &fts, nullptr, &git);
 
   holder::model::Card card;
   card.card_id = "card-1";
@@ -204,7 +204,7 @@ TEST_CASE("CardStore update propagates git stage failure", "[git]") {
 
   holder::index::FtsIndexer fts(db);
   FailingGitOps git;
-  holder::store::CardStore store(db, &fts, nullptr, &git);
+  holder::card::CardStore store(db, &fts, nullptr, &git);
 
   holder::model::Card card;
   card.card_id = "card-2";
@@ -233,12 +233,12 @@ TEST_CASE("AiMessageRepo update propagates git stage failure", "[git]") {
   thread.title = "Thread";
   thread.created_at = 1;
   thread.updated_at = 1;
-  holder::store::AiThreadRepo thread_repo(db);
+  holder::ai::AiThreadRepo thread_repo(db);
   thread_repo.create(thread);
 
   holder::index::FtsIndexer fts(db);
   FailingGitOps git;
-  holder::store::AiMessageRepo repo(db, &fts, nullptr, &git);
+  holder::ai::AiMessageRepo repo(db, &fts, nullptr, &git);
 
   holder::model::AiMessage msg;
   msg.message_id = "msg-stage";

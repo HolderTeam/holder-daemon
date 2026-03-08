@@ -6,11 +6,11 @@
 #include <optional>
 #include <string>
 
-namespace holder::store {
+namespace holder::project {
 
 class ProjectSyncRepo {
 public:
-  explicit ProjectSyncRepo(Db& db);
+  explicit ProjectSyncRepo(holder::store::Db& db);
 
   std::optional<holder::model::ProjectSyncState> get(const std::string& project_id) const;
 
@@ -34,7 +34,7 @@ private:
   void ensure_table();
   void upsert(const holder::model::ProjectSyncState& state);
 
-  Db& db_;
+  holder::store::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::project

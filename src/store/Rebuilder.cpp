@@ -21,6 +21,10 @@
 #include <vector>
 
 namespace holder::store {
+using holder::ai::AiThreadRepo;
+using holder::card::CardRepo;
+using holder::card::LinkRepo;
+
 namespace {
 
 holder::core::Fs& resolve_fs(holder::core::Fs* fs) {

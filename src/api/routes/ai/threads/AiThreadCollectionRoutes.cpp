@@ -43,7 +43,7 @@ bool handle_ai_thread_collection_routes(
     }
 
     try {
-      holder::store::AiThreadRepo repo(db);
+      holder::ai::AiThreadRepo repo(db);
       const auto threads = repo.list(project_id);
       nlohmann::json data = nlohmann::json::array();
       for (const auto& thread : threads) {
@@ -90,7 +90,7 @@ bool handle_ai_thread_collection_routes(
           thread.updated_at = thread.created_at;
         }
 
-        holder::store::AiThreadRepo repo(db);
+        holder::ai::AiThreadRepo repo(db);
         repo.create(thread);
 
         nlohmann::json payload;

@@ -64,7 +64,7 @@ void apply_schema(holder::store::Db& db) {
 void create_project(holder::store::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
-  holder::store::ProjectRepo repo(db);
+  holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -168,7 +168,7 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd1234";
   card.project_id = "proj-1";
@@ -193,7 +193,7 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   REQUIRE(parsed.card.title == "First");
   REQUIRE(parsed.body == "hello");
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto fetched = card_repo.get("abcd1234");
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->rel_path == rel_path);
@@ -210,7 +210,7 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd5678";
   card.project_id = "proj-1";
@@ -234,7 +234,7 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   REQUIRE(parsed.card.updated_at == 20);
   REQUIRE(parsed.body == "updated");
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto fetched = card_repo.get(card.card_id);
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->title == "Renamed");
@@ -252,7 +252,7 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd9999";
   card.project_id = "proj-1";
@@ -289,7 +289,7 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcf0000";
   card.project_id = "proj-1";
@@ -315,7 +315,7 @@ TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardst
   apply_schema(db);
   const auto project_root = dir / "project_repo";
 
-  holder::store::ProjectRepo project_repo(db);
+  holder::project::ProjectRepo project_repo(db);
   holder::model::Project project;
   project.project_id = "proj-enc";
   project.name = "Encrypted";
@@ -339,7 +339,7 @@ TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardst
 
   holder::index::FtsIndexer fts(db);
   PlaintextForcingGitOps broken_git;
-  holder::store::CardStore store(db, &fts, nullptr, &broken_git);
+  holder::card::CardStore store(db, &fts, nullptr, &broken_git);
 
   holder::model::Card card;
   card.card_id = "abcd1111";
@@ -361,7 +361,7 @@ TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") 
   apply_schema(db);
   const auto project_root = dir / "project_repo";
 
-  holder::store::ProjectRepo project_repo(db);
+  holder::project::ProjectRepo project_repo(db);
   holder::model::Project project;
   project.project_id = "proj-large";
   project.name = "Encrypted Large";
@@ -384,7 +384,7 @@ TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") 
       []() { return std::string("key-large"); });
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "lgcd0001";
@@ -418,7 +418,7 @@ TEST_CASE("CardStore encrypted project rejects tampered envelope", "[cardstore]"
   apply_schema(db);
   const auto project_root = dir / "project_repo";
 
-  holder::store::ProjectRepo project_repo(db);
+  holder::project::ProjectRepo project_repo(db);
   holder::model::Project project;
   project.project_id = "proj-tamper";
   project.name = "Encrypted Tamper";
@@ -441,7 +441,7 @@ TEST_CASE("CardStore encrypted project rejects tampered envelope", "[cardstore]"
       []() { return std::string("key-tamper"); });
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "tmpr0001";
@@ -490,7 +490,7 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
   apply_schema(db);
   const auto project_root = dir / "project_repo";
 
-  holder::store::ProjectRepo project_repo(db);
+  holder::project::ProjectRepo project_repo(db);
   holder::model::Project project;
   project.project_id = "proj-perf";
   project.name = "Encrypted Perf";
@@ -513,7 +513,7 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
       []() { return std::string("key-perf"); });
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   for (std::size_t i = 0; i < sizes.size(); ++i) {
     const auto bytes = sizes[i];
@@ -573,7 +573,7 @@ TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card parent;
   parent.card_id = "parent01";
@@ -596,7 +596,7 @@ TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {
   const int after = count_commits(project_root);
   REQUIRE(after == before + 1);
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto moved = card_repo.get(child.card_id);
   REQUIRE(moved.has_value());
   REQUIRE(moved->parent_card_id.has_value());
@@ -627,7 +627,7 @@ TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abcd1111";
   card.project_id = "proj-1";
@@ -650,7 +650,7 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
   holder::model::Card card;
   card.card_id = "abca2222";
   card.project_id = "proj-1";
@@ -677,7 +677,7 @@ TEST_CASE("CardStore create appends to end of sibling scope when sort omitted", 
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card root_a;
   root_a.card_id = "root-a";
@@ -721,7 +721,7 @@ TEST_CASE("CardStore create appends to end of sibling scope when sort omitted", 
   child_b.updated_at = 14;
   store.create(child_b, "cb");
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto got_root_a = card_repo.get("root-a");
   const auto got_root_b = card_repo.get("root-b");
   const auto got_parent = card_repo.get("parent-a");
@@ -751,7 +751,7 @@ TEST_CASE("CardStore create preserves explicit sort_key", "[cardstore]") {
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card card;
   card.card_id = "explicit-1";
@@ -762,7 +762,7 @@ TEST_CASE("CardStore create preserves explicit sort_key", "[cardstore]") {
 
   store.create(card, "body", std::optional<double>(42.5));
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto fetched = card_repo.get(card.card_id);
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->sort_key == 42.5);
@@ -779,7 +779,7 @@ TEST_CASE("CardStore move across parent appends when sort omitted", "[cardstore]
   create_project(db, "proj-1", project_root.string());
 
   holder::index::FtsIndexer fts(db);
-  holder::store::CardStore store(db, &fts);
+  holder::card::CardStore store(db, &fts);
 
   holder::model::Card parent_a;
   parent_a.card_id = "parent-a";
@@ -817,7 +817,7 @@ TEST_CASE("CardStore move across parent appends when sort omitted", "[cardstore]
 
   store.move(moving.card_id, true, std::optional<std::string>(parent_b.card_id), std::nullopt, 20);
 
-  holder::store::CardRepo card_repo(db);
+  holder::card::CardRepo card_repo(db);
   const auto moved = card_repo.get(moving.card_id);
   REQUIRE(moved.has_value());
   REQUIRE(moved->parent_card_id.has_value());

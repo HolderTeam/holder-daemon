@@ -20,7 +20,7 @@ TEST_CASE("AiProviderCredentialRepo upsert/list/remove", "[db]") {
   std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   db.exec(sql);
 
-  holder::store::AiProviderCredentialRepo repo(db);
+  holder::ai::AiProviderCredentialRepo repo(db);
   REQUIRE(repo.list().empty());
 
   repo.upsert("chocolatefactory", "key-1", 100, 100);
