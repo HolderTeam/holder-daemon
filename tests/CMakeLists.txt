@@ -161,7 +161,7 @@ add_executable(lockfile_tests
   ../src/project/ProjectSyncRepo.cpp
   ../src/card/CardRepo.cpp
   ../src/card/LinkRepo.cpp
-  ../src/store/ResourceRepo.cpp
+  ../src/resource/ResourceRepo.cpp
   ../src/ai/AiThreadRepo.cpp
   ../src/ai/AiMessageRepo.cpp
   ../src/ai/AiRunRepo.cpp

@@ -11,7 +11,7 @@ namespace holder::ai {
 
 class AiThreadRepo {
 public:
-  explicit AiThreadRepo(holder::store::Db& db);
+  explicit AiThreadRepo(holder::platform::Db& db);
 
   void create(const holder::model::AiThread& thread);
   std::optional<holder::model::AiThread> get(const std::string& thread_id) const;
@@ -23,7 +23,7 @@ public:
   void remove(const std::string& thread_id);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::ai

@@ -11,7 +11,7 @@ namespace holder::ai {
 
 class AiProviderCredentialRepo {
  public:
-  explicit AiProviderCredentialRepo(holder::store::Db& db);
+  explicit AiProviderCredentialRepo(holder::platform::Db& db);
 
   std::vector<holder::model::AiProviderCredential> list() const;
   std::optional<holder::model::AiProviderCredential> get(const std::string& provider) const;
@@ -22,7 +22,7 @@ class AiProviderCredentialRepo {
   void remove(const std::string& provider);
 
  private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::ai

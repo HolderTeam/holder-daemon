@@ -104,7 +104,7 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   const auto db_path = xdg_root / "data" / "holder" / "server" / "holder.db";
   REQUIRE(std::filesystem::exists(db_path));
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   holder::project::ProjectRepo project_repo(db);
   holder::card::CardRepo card_repo(db);
@@ -146,7 +146,7 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   const int second_code = run_command(cmd);
   REQUIRE(second_code == 0);
 
-  holder::store::Db db2;
+  holder::platform::Db db2;
   db2.open(db_path);
   holder::project::ProjectRepo project_repo2(db2);
   holder::card::CardRepo card_repo2(db2);

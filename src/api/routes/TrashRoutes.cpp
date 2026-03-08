@@ -20,7 +20,7 @@ namespace http = boost::beast::http;
 bool handle_trash_routes(const std::string& path,
                          const http::request<http::string_body>& req,
                          http::response<http::string_body>& res,
-                         holder::store::Db& db,
+                         holder::platform::Db& db,
                          holder::card::CardStore* card_store,
                          holder::index::FtsIndexer* fts,
                          const std::function<std::string(const std::string&)>& param_get) {

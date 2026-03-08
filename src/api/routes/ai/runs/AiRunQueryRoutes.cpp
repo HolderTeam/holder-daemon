@@ -72,7 +72,7 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
 RouteDispatchResult handle_ai_runs_list_route(
     const std::function<std::string(const std::string&)>& param_get,
     http::response<http::string_body>& res,
-    holder::store::Db& db) {
+    holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string project_id = param_get("project_id");
@@ -108,7 +108,7 @@ RouteDispatchResult handle_ai_runs_list_route(
 RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
                                                 boost::asio::ip::tcp::socket& socket,
                                                 http::response<http::string_body>& res,
-                                                holder::store::Db& db) {
+                                                holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   out.streamed = true;
@@ -199,7 +199,7 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
 
 RouteDispatchResult handle_ai_runs_get_route(const std::string& path,
                                              http::response<http::string_body>& res,
-                                             holder::store::Db& db) {
+                                             holder::platform::Db& db) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string run_id = path.substr(std::string("/ai/runs/").size());

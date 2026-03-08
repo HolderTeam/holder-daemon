@@ -29,7 +29,7 @@ holder::model::AiProviderCredential read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiProviderCredentialRepo::AiProviderCredentialRepo(holder::store::Db& db) : db_(db) {}
+AiProviderCredentialRepo::AiProviderCredentialRepo(holder::platform::Db& db) : db_(db) {}
 
 std::vector<holder::model::AiProviderCredential> AiProviderCredentialRepo::list() const {
   static constexpr const char* SQL =

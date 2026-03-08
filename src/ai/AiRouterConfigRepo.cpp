@@ -37,7 +37,7 @@ std::string project_key(const std::string& project_id) {
 
 } // namespace
 
-AiRouterConfigRepo::AiRouterConfigRepo(holder::store::Db& db) : db_(db) {}
+AiRouterConfigRepo::AiRouterConfigRepo(holder::platform::Db& db) : db_(db) {}
 
 std::optional<holder::model::AiRouterConfig> AiRouterConfigRepo::get_global() const {
   static constexpr const char* SQL =

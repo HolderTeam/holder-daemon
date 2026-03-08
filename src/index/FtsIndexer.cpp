@@ -20,7 +20,7 @@ void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
 
 } // namespace
 
-FtsIndexer::FtsIndexer(holder::store::Db& db) : db_(db) {}
+FtsIndexer::FtsIndexer(holder::platform::Db& db) : db_(db) {}
 
 void FtsIndexer::upsert_card(const std::string& card_id,
                              const std::string& project_id,

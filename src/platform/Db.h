@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-namespace holder::store {
+namespace holder::platform {
 
 class Db {
 public:
@@ -39,5 +39,5 @@ private:
   std::filesystem::path path_;
 };
 
-} // namespace holder::store
+} // namespace holder::platform
 

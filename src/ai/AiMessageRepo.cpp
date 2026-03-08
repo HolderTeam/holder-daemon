@@ -87,7 +87,7 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(holder::store::Db& db,
+AiMessageRepo::AiMessageRepo(holder::platform::Db& db,
                              holder::index::FtsIndexer* fts,
                              holder::core::Fs* fs,
                              holder::git::GitOps* git)

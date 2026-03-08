@@ -11,7 +11,7 @@ namespace holder::store {
 
 class Rebuilder {
 public:
-  Rebuilder(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs = nullptr);
+  Rebuilder(holder::platform::Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs = nullptr);
 
   struct RebuildStats {
     std::size_t cards = 0;
@@ -23,7 +23,7 @@ public:
   RebuildStats rebuild_project(const holder::model::Project& project);
 
 private:
-  Db& db_;
+  holder::platform::Db& db_;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::core::Fs* fs_ = nullptr;
 };

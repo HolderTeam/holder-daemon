@@ -42,7 +42,7 @@ void run_worker_with_intervals_for_seconds(const std::filesystem::path& db_path,
 
 std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
                                            const std::string& project_id) {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   holder::project::ProjectSyncRepo sync(db);
   const auto state = sync.get(project_id);
@@ -54,7 +54,7 @@ std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
 
 std::optional<holder::model::ProjectSyncState> load_sync_state(const std::filesystem::path& db_path,
                                                                const std::string& project_id) {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   holder::project::ProjectSyncRepo sync(db);
   return sync.get(project_id);

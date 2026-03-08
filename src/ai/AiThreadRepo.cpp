@@ -50,7 +50,7 @@ holder::model::AiThread read_thread(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiThreadRepo::AiThreadRepo(holder::store::Db& db) : db_(db) {}
+AiThreadRepo::AiThreadRepo(holder::platform::Db& db) : db_(db) {}
 
 void AiThreadRepo::create(const holder::model::AiThread& thread) {
   static constexpr const char* SQL =

@@ -94,7 +94,7 @@ static std::string derive_title_from_markdown_first_line(const std::string& body
   return fallback;
 }
 
-static std::optional<holder::model::Project> ensure_default_home_project(holder::store::Db& db) {
+static std::optional<holder::model::Project> ensure_default_home_project(holder::platform::Db& db) {
   holder::project::ProjectRepo repo(db);
   auto projects = repo.list();
   if (!projects.empty()) {
@@ -197,12 +197,12 @@ int main(int argc, char* argv[]) {
     return 2;
   }
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(paths.db_path());
 
   const auto schema_path = find_schema_sql();
-  holder::store::Migrations::ensure_schema(db, schema_path);
-  holder::store::Migrations::ensure_schema_version(db, 1);
+  holder::platform::Migrations::ensure_schema(db, schema_path);
+  holder::platform::Migrations::ensure_schema_version(db, 1);
   const auto bootstrapped_home = ensure_default_home_project(db);
 
   holder::core::ServerInfo info;

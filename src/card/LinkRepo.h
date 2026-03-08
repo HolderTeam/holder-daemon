@@ -11,7 +11,7 @@ namespace holder::card {
 
 class LinkRepo {
 public:
-  explicit LinkRepo(holder::store::Db& db);
+  explicit LinkRepo(holder::platform::Db& db);
 
   void upsert_links(const std::string& project_id,
                     const std::string& from_card_id,
@@ -39,7 +39,7 @@ public:
   void delete_links_from(const std::string& project_id, const std::string& from_card_id);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::card

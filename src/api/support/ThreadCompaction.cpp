@@ -137,7 +137,7 @@ std::optional<std::string> merge_pinned_facts_json(const std::optional<std::stri
 
 } // namespace
 
-std::optional<ThreadCompactionState> load_thread_compaction_state(holder::store::Db& db,
+std::optional<ThreadCompactionState> load_thread_compaction_state(holder::platform::Db& db,
                                                                   const std::string& thread_id) {
   static constexpr const char* SQL =
       "SELECT thread_id, rolling_summary, pinned_facts_json, last_compacted_message_id, updated_at "
@@ -166,7 +166,7 @@ std::optional<ThreadCompactionState> load_thread_compaction_state(holder::store:
   return out;
 }
 
-void upsert_thread_compaction_state(holder::store::Db& db, const ThreadCompactionState& state) {
+void upsert_thread_compaction_state(holder::platform::Db& db, const ThreadCompactionState& state) {
   static constexpr const char* SQL =
       "INSERT INTO ai_thread_compaction_state("
       "thread_id, rolling_summary, pinned_facts_json, last_compacted_message_id, updated_at) "
@@ -277,7 +277,7 @@ std::string build_compacted_context(const std::string& context_json,
   return out;
 }
 
-void roll_thread_compaction_state(holder::store::Db& db,
+void roll_thread_compaction_state(holder::platform::Db& db,
                                   const std::string& thread_id,
                                   const std::string& context_json,
                                   long long updated_at) {

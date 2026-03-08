@@ -26,7 +26,7 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db = holder::test::open_db_with_schema(db_path);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -145,7 +145,7 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   }
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
-  holder::store::Db db = holder::test::open_db_with_schema(db_path);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "

@@ -8,7 +8,7 @@ TEST_CASE("HTTP docs and openapi are served without auth", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   namespace fs = std::filesystem;

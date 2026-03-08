@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::platform {
 
 std::string Migrations::read_file(const std::filesystem::path& p) {
   std::ifstream in(p);
@@ -88,4 +88,4 @@ void Migrations::ensure_schema_version(Db& db, int expected_version) {
   throw std::runtime_error("schema_version row missing");
 }
 
-} // namespace holder::store
+} // namespace holder::platform

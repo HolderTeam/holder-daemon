@@ -84,7 +84,7 @@ std::optional<AiRunPostInput> parse_ai_run_post_input(
 }
 
 void ensure_ai_run_thread(AiRunPostInput& input,
-                          holder::store::Db& db,
+                          holder::platform::Db& db,
                           const std::function<std::string()>& uuid_v4) {
   if (input.thread_id.has_value() || !input.project_id.has_value()) {
     return;
@@ -139,7 +139,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -695,7 +695,7 @@ RouteDispatchResult execute_local_post_path(
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -1003,7 +1003,7 @@ RouteDispatchResult handle_ai_runs_post_route(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4) {

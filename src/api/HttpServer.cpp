@@ -21,7 +21,7 @@ namespace http = boost::beast::http;
 
 HttpServer::HttpServer(std::string bind,
                        unsigned short port,
-                       holder::store::Db& db,
+                       holder::platform::Db& db,
                        std::string auth_token,
                        holder::card::CardStore* card_store,
                        holder::index::FtsIndexer* fts,

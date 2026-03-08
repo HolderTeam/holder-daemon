@@ -10,7 +10,7 @@ namespace holder::project {
 
 class ProjectSyncRepo {
 public:
-  explicit ProjectSyncRepo(holder::store::Db& db);
+  explicit ProjectSyncRepo(holder::platform::Db& db);
 
   std::optional<holder::model::ProjectSyncState> get(const std::string& project_id) const;
 
@@ -34,7 +34,7 @@ private:
   void ensure_table();
   void upsert(const holder::model::ProjectSyncState& state);
 
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::project

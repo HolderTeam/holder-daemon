@@ -194,7 +194,7 @@ http::response<http::string_body> privacy_error_response(
 bool handle_project_routes(const std::string& path,
                            const http::request<http::string_body>& req,
                            http::response<http::string_body>& res,
-                           holder::store::Db& db,
+                           holder::platform::Db& db,
                            holder::git::GitOps* git_ops,
                            const std::function<std::string()>& uuid_v4,
                            const std::function<std::string(const std::string&)>& param_get) {

@@ -53,7 +53,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -61,7 +61,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
   holder::project::ProjectRepo repo(db);
@@ -161,7 +161,7 @@ TEST_CASE("CardStore create writes file and DB", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -203,7 +203,7 @@ TEST_CASE("CardStore update writes file and updates metadata", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -245,7 +245,7 @@ TEST_CASE("CardStore update skips commit when content unchanged", "[cardstore]")
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -282,7 +282,7 @@ TEST_CASE("CardStore update creates commit when content changes", "[cardstore]")
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -310,7 +310,7 @@ TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardst
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -356,7 +356,7 @@ TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -413,7 +413,7 @@ TEST_CASE("CardStore encrypted project rejects tampered envelope", "[cardstore]"
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -485,7 +485,7 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -566,7 +566,7 @@ TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -620,7 +620,7 @@ TEST_CASE("CardStore create rejects duplicate card_id", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -643,7 +643,7 @@ TEST_CASE("CardStore create rejects existing file without DB row", "[cardstore]"
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -670,7 +670,7 @@ TEST_CASE("CardStore create appends to end of sibling scope when sort omitted", 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -744,7 +744,7 @@ TEST_CASE("CardStore create preserves explicit sort_key", "[cardstore]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";
@@ -772,7 +772,7 @@ TEST_CASE("CardStore move across parent appends when sort omitted", "[cardstore]
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";

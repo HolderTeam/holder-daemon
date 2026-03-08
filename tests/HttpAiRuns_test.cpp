@@ -8,7 +8,7 @@ TEST_CASE("HTTP ai runs list and get", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db = holder::test::open_db_with_schema(db_path);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "

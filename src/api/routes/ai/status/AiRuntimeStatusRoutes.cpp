@@ -17,7 +17,7 @@ namespace {
 
 namespace http = boost::beast::http;
 
-long long count_started_runs(holder::store::Db& db) {
+long long count_started_runs(holder::platform::Db& db) {
   static constexpr const char* SQL = "SELECT COUNT(*) FROM ai_runs WHERE status = 'started';";
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -37,7 +37,7 @@ long long count_started_runs(holder::store::Db& db) {
 bool handle_ai_runtime_status_routes(const std::string& path,
                                      const http::request<http::string_body>& req,
                                      http::response<http::string_body>& res,
-                                     holder::store::Db& db,
+                                     holder::platform::Db& db,
                                      holder::llm::LocalModelRunner* runner) {
   if (path == "/ai/status" && req.method() == http::verb::get) {
     nlohmann::json data;

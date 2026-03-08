@@ -31,7 +31,7 @@ nlohmann::json ai_thread_to_json(const holder::model::AiThread& thread) {
 bool handle_ai_thread_item_routes(const std::string& path,
                                   const http::request<http::string_body>& req,
                                   http::response<http::string_body>& res,
-                                  holder::store::Db& db) {
+                                  holder::platform::Db& db) {
   if (path.rfind("/ai/threads/", 0) != 0) {
     return false;
   }

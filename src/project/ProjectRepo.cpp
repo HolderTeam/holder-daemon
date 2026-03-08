@@ -64,7 +64,7 @@ holder::model::Project read_project(sqlite3_stmt* stmt) {
 
 } // namespace
 
-ProjectRepo::ProjectRepo(holder::store::Db& db) : db_(db) {}
+ProjectRepo::ProjectRepo(holder::platform::Db& db) : db_(db) {}
 
 void ProjectRepo::create(const holder::model::Project& project) {
   static constexpr const char* SQL =

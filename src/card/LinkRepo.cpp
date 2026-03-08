@@ -51,7 +51,7 @@ holder::model::CardLink read_link(sqlite3_stmt* stmt) {
 
 } // namespace
 
-LinkRepo::LinkRepo(holder::store::Db& db) : db_(db) {}
+LinkRepo::LinkRepo(holder::platform::Db& db) : db_(db) {}
 
 void LinkRepo::upsert_links(const std::string& project_id,
                             const std::string& from_card_id,

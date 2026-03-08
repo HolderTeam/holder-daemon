@@ -34,7 +34,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   std::filesystem::path schema_path = SCHEMA_SQL_PATH;
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -42,7 +42,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
   holder::project::ProjectRepo repo(db);
@@ -108,7 +108,7 @@ public:
 
 TEST_CASE("CardStore create propagates git commit failure after DB write", "[git]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -135,7 +135,7 @@ TEST_CASE("CardStore create propagates git commit failure after DB write", "[git
 
 TEST_CASE("AiMessageRepo append propagates git commit failure", "[git]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -169,7 +169,7 @@ TEST_CASE("AiMessageRepo append propagates git commit failure", "[git]") {
 
 TEST_CASE("CardStore create propagates set_remote failure", "[git]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -195,7 +195,7 @@ TEST_CASE("CardStore create propagates set_remote failure", "[git]") {
 
 TEST_CASE("CardStore update propagates git stage failure", "[git]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -220,7 +220,7 @@ TEST_CASE("CardStore update propagates git stage failure", "[git]") {
 
 TEST_CASE("AiMessageRepo update propagates git stage failure", "[git]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 

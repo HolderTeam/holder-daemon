@@ -11,7 +11,7 @@ namespace holder::ai {
 
 class AiRunRepo {
  public:
-  explicit AiRunRepo(holder::store::Db& db);
+  explicit AiRunRepo(holder::platform::Db& db);
 
   void create(const model::AiRun& run);
   std::optional<model::AiRun> get(const std::string& run_id) const;
@@ -27,7 +27,7 @@ class AiRunRepo {
                      long long updated_at);
 
  private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::ai

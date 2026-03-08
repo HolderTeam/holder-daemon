@@ -45,7 +45,7 @@ void throw_sqlite(sqlite3* db, const std::string& msg) {
 
 } // namespace
 
-AiRunRepo::AiRunRepo(holder::store::Db& db) : db_(db) {}
+AiRunRepo::AiRunRepo(holder::platform::Db& db) : db_(db) {}
 
 void AiRunRepo::create(const model::AiRun& run) {
   static constexpr const char* SQL =

@@ -28,7 +28,7 @@ public:
 
   HttpServer(std::string bind,
              unsigned short port,
-             holder::store::Db& db,
+             holder::platform::Db& db,
              std::string auth_token,
              holder::card::CardStore* card_store,
              holder::index::FtsIndexer* fts,
@@ -42,7 +42,7 @@ public:
 private:
   std::string bind_;
   unsigned short port_;
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   std::string auth_token_;
   std::chrono::steady_clock::time_point started_at_;
   Router router_;

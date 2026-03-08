@@ -11,7 +11,7 @@ namespace holder::card {
 
 class CardRepo {
 public:
-  explicit CardRepo(holder::store::Db& db);
+  explicit CardRepo(holder::platform::Db& db);
 
   void create(const holder::model::Card& card);
   std::optional<holder::model::Card> get(const std::string& card_id) const;
@@ -38,7 +38,7 @@ public:
             long long updated_at);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::card

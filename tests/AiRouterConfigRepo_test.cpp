@@ -12,7 +12,7 @@ TEST_CASE("AiRouterConfigRepo global and project config", "[db]") {
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   std::ifstream in(SCHEMA_SQL_PATH);

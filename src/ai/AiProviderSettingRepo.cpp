@@ -28,7 +28,7 @@ holder::model::AiProviderSetting read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiProviderSettingRepo::AiProviderSettingRepo(holder::store::Db& db) : db_(db) {}
+AiProviderSettingRepo::AiProviderSettingRepo(holder::platform::Db& db) : db_(db) {}
 
 std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() const {
   static constexpr const char* SQL =

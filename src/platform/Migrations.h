@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-namespace holder::store {
+namespace holder::platform {
 
 class Migrations {
 public:
@@ -17,4 +17,4 @@ private:
   static std::string read_file(const std::filesystem::path& p);
 };
 
-} // namespace holder::store
+} // namespace holder::platform

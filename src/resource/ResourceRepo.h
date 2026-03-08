@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace holder::store {
+namespace holder::resource {
 
 class ResourceRepo {
 public:
-  explicit ResourceRepo(Db& db);
+  explicit ResourceRepo(holder::platform::Db& db);
 
   void add(const holder::model::Resource& resource);
   std::optional<holder::model::Resource> get(const std::string& resource_id) const;
@@ -20,7 +20,7 @@ public:
   void remove(const std::string& resource_id);
 
 private:
-  Db& db_;
+  holder::platform::Db& db_;
 };
 
-} // namespace holder::store
+} // namespace holder::resource

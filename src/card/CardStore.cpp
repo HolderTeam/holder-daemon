@@ -68,7 +68,7 @@ void assert_project_staged_blobs_safe(const holder::model::Project& project,
 
 } // namespace
 
-CardStore::CardStore(holder::store::Db& db,
+CardStore::CardStore(holder::platform::Db& db,
                      holder::index::FtsIndexer* fts,
                      holder::core::Fs* fs,
                      holder::git::GitOps* git)

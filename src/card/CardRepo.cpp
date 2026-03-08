@@ -75,7 +75,7 @@ holder::model::Card read_card(sqlite3_stmt* stmt) {
 
 } // namespace
 
-CardRepo::CardRepo(holder::store::Db& db) : db_(db) {}
+CardRepo::CardRepo(holder::platform::Db& db) : db_(db) {}
 
 void CardRepo::create(const holder::model::Card& card) {
   static constexpr const char* SQL =

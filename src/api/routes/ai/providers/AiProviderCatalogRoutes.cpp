@@ -53,7 +53,7 @@ nlohmann::json api_to_json(const support::CloudProviderConfig& provider) {
 bool handle_ai_provider_catalog_routes(const std::string& path,
                                        const http::request<http::string_body>& req,
                                        http::response<http::string_body>& res,
-                                       holder::store::Db& db) {
+                                       holder::platform::Db& db) {
   if (path != "/ai/providers/catalog" || req.method() != http::verb::get) {
     return false;
   }

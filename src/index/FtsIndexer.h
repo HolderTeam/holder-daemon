@@ -9,7 +9,7 @@ namespace holder::index {
 
 class FtsIndexer {
 public:
-  explicit FtsIndexer(holder::store::Db& db);
+  explicit FtsIndexer(holder::platform::Db& db);
 
   void upsert_card(const std::string& card_id,
                    const std::string& project_id,
@@ -42,7 +42,7 @@ public:
                                          int offset);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::index

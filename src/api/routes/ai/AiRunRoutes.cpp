@@ -19,7 +19,7 @@ RouteDispatchResult handle_ai_run_routes(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,

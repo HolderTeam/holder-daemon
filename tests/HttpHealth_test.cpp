@@ -7,7 +7,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   const std::string token = "testtoken";
@@ -40,7 +40,7 @@ TEST_CASE("HTTP /health reports db_ok false when DB is closed", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   db.close();
 

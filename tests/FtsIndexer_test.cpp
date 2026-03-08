@@ -37,7 +37,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -45,7 +45,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-int count_cards_fts(holder::store::Db& db, const std::string& query) {
+int count_cards_fts(holder::platform::Db& db, const std::string& query) {
   static constexpr const char* SQL =
       "SELECT count(*) FROM cards_fts WHERE cards_fts MATCH ?;";
   sqlite3_stmt* stmt = nullptr;
@@ -59,7 +59,7 @@ int count_cards_fts(holder::store::Db& db, const std::string& query) {
   return count;
 }
 
-int count_ai_fts(holder::store::Db& db, const std::string& query) {
+int count_ai_fts(holder::platform::Db& db, const std::string& query) {
   static constexpr const char* SQL =
       "SELECT count(*) FROM ai_fts WHERE ai_fts MATCH ?;";
   sqlite3_stmt* stmt = nullptr;
@@ -79,7 +79,7 @@ TEST_CASE("FtsIndexer card upsert/delete", "[fts]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 
@@ -99,7 +99,7 @@ TEST_CASE("FtsIndexer message upsert/delete", "[fts]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 
@@ -119,7 +119,7 @@ TEST_CASE("FtsIndexer search returns snippets", "[fts]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
 

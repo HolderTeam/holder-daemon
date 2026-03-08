@@ -108,7 +108,7 @@ struct MessageRecord {
 
 } // namespace
 
-Rebuilder::Rebuilder(Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
+Rebuilder::Rebuilder(holder::platform::Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
     : db_(db), fts_(fts), fs_(&resolve_fs(fs)) {}
 
 Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project& project) {
@@ -119,7 +119,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
     throw std::runtime_error("project root not found");
   }
 
-  Tx tx(db_);
+  holder::platform::Tx tx(db_);
 
   exec_delete_project(db_.handle(),
                       "DELETE FROM card_links WHERE project_id = ?;",

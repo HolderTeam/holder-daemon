@@ -11,7 +11,7 @@ namespace holder::ai {
 
 class AiProviderSettingRepo {
  public:
-  explicit AiProviderSettingRepo(holder::store::Db& db);
+  explicit AiProviderSettingRepo(holder::platform::Db& db);
 
   std::vector<holder::model::AiProviderSetting> list() const;
   std::optional<holder::model::AiProviderSetting> get(const std::string& provider) const;
@@ -19,7 +19,7 @@ class AiProviderSettingRepo {
   void remove(const std::string& provider);
 
  private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::ai

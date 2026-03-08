@@ -43,7 +43,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -51,7 +51,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
   holder::project::ProjectRepo repo(db);
@@ -70,7 +70,7 @@ std::string read_file(const std::filesystem::path& path) {
   return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-void create_thread(holder::store::Db& db, const std::string& thread_id, const std::string& project_id) {
+void create_thread(holder::platform::Db& db, const std::string& thread_id, const std::string& project_id) {
   holder::ai::AiThreadRepo repo(db);
   holder::model::AiThread thread;
   thread.thread_id = thread_id;
@@ -87,7 +87,7 @@ TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   const auto project_root = dir / "project_repo";

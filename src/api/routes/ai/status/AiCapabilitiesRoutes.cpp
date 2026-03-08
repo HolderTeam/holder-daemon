@@ -21,7 +21,7 @@ namespace http = boost::beast::http;
 bool handle_ai_capabilities_routes(const std::string& path,
                                    const http::request<http::string_body>& req,
                                    http::response<http::string_body>& res,
-                                   holder::store::Db& db,
+                                   holder::platform::Db& db,
                                    holder::llm::LocalModelRunner* runner,
                                    const std::function<std::string(const std::string&)>& param_get) {
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {

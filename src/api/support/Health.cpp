@@ -3,7 +3,7 @@
 #include "platform/ServerInfo.h"
 
 namespace holder::api::support {
-nlohmann::json build_health_data(holder::store::Db& db,
+nlohmann::json build_health_data(holder::platform::Db& db,
                                  std::chrono::steady_clock::time_point started_at) {
   bool db_ok = true;
   try {

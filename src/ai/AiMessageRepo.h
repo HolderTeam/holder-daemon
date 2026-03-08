@@ -17,7 +17,7 @@ namespace holder::ai {
 
 class AiMessageRepo {
 public:
-  AiMessageRepo(holder::store::Db& db,
+  AiMessageRepo(holder::platform::Db& db,
                 holder::index::FtsIndexer* fts,
                 holder::core::Fs* fs = nullptr,
                 holder::git::GitOps* git = nullptr);
@@ -33,7 +33,7 @@ public:
   void remove(const std::string& message_id);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   holder::core::Fs* fs_ = nullptr;
   holder::git::GitOps* git_ = nullptr;
   holder::card::LinkRepo link_repo_;

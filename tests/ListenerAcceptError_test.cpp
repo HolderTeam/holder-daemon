@@ -14,7 +14,7 @@
 #include <thread>
 
 TEST_CASE("Listener accept error branch is exercised", "[listener]") {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(std::filesystem::temp_directory_path() / "holder_listener_error.db");
 
   holder::api::Router router;

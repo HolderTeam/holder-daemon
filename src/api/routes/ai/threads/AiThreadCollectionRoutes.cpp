@@ -32,7 +32,7 @@ bool handle_ai_thread_collection_routes(
     const std::string& path,
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/ai/threads" && req.method() == http::verb::get) {

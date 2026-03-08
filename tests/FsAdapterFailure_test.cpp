@@ -38,7 +38,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   std::filesystem::path schema_path = SCHEMA_SQL_PATH;
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -46,7 +46,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db,
+void create_project(holder::platform::Db& db,
                     const std::string& project_id,
                     const std::string& root_path) {
   holder::project::ProjectRepo repo(db);
@@ -101,7 +101,7 @@ struct FailingFs final : holder::core::Fs {
 
 TEST_CASE("CardStore trash propagates fs rename failure", "[fs]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -135,7 +135,7 @@ TEST_CASE("CardStore trash propagates fs rename failure", "[fs]") {
 
 TEST_CASE("AiMessageRepo trash propagates fs rename failure", "[fs]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -178,7 +178,7 @@ TEST_CASE("AiMessageRepo trash propagates fs rename failure", "[fs]") {
 
 TEST_CASE("Rebuilder propagates fs read failure", "[fs]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -218,7 +218,7 @@ TEST_CASE("Rebuilder propagates fs read failure", "[fs]") {
 
 TEST_CASE("CardStore restore propagates fs rename failure", "[fs]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 
@@ -253,7 +253,7 @@ TEST_CASE("CardStore restore propagates fs rename failure", "[fs]") {
 
 TEST_CASE("AiMessageRepo restore propagates fs rename failure", "[fs]") {
   const auto dir = make_temp_dir();
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(dir / "holder.db");
   apply_schema(db);
 

@@ -62,7 +62,7 @@ long long ProjectSyncWorker::now_epoch_seconds() const {
 }
 
 void ProjectSyncWorker::run_startup_pull_pass() {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path_);
   holder::project::ProjectRepo projects(db);
   holder::project::ProjectSyncRepo sync(db);
@@ -117,7 +117,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
 }
 
 void ProjectSyncWorker::run_push_cycle() {
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path_);
   holder::project::ProjectRepo projects(db);
   holder::project::ProjectSyncRepo sync(db);

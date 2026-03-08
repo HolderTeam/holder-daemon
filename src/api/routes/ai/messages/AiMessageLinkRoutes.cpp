@@ -6,7 +6,7 @@
 #include "ai/AiThreadRepo.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
-#include "store/ResourceRepo.h"
+#include "resource/ResourceRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -51,7 +51,7 @@ bool should_include_backlink_source(holder::card::CardRepo& card_repo,
   return false;
 }
 
-bool validate_link_target(holder::store::Db& db,
+bool validate_link_target(holder::platform::Db& db,
                           const std::string& project_id,
                           const std::string& to_id,
                           const std::string& to_type_raw,
@@ -89,7 +89,7 @@ bool validate_link_target(holder::store::Db& db,
     return true;
   }
   if (to_type == "resource") {
-    holder::store::ResourceRepo repo(db);
+    holder::resource::ResourceRepo repo(db);
     const auto target = repo.get(to_id);
     if (!target.has_value()) {
       error = "Target resource not found.";
@@ -130,7 +130,7 @@ bool validate_link_target(holder::store::Db& db,
 bool handle_ai_message_link_routes(const std::string& path,
                                    const http::request<http::string_body>& req,
                                    http::response<http::string_body>& res,
-                                   holder::store::Db& db,
+                                   holder::platform::Db& db,
                                    holder::index::FtsIndexer* fts,
                                    const std::function<std::string(const std::string&)>& param_get) {
   if (path.rfind("/ai/messages/", 0) != 0) {

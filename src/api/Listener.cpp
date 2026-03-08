@@ -16,7 +16,7 @@ constexpr auto kPollDelay = std::chrono::milliseconds(50);
 
 Listener::Listener(std::string bind,
                    unsigned short port,
-                   holder::store::Db& db,
+                   holder::platform::Db& db,
                    const std::string& auth_token,
                    const Router& router,
                    std::chrono::steady_clock::time_point started_at,

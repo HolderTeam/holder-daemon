@@ -72,8 +72,8 @@ inline nlohmann::json get_health(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
-inline holder::store::Db open_db_with_schema(const std::filesystem::path& db_path) {
-  holder::store::Db db;
+inline holder::platform::Db open_db_with_schema(const std::filesystem::path& db_path) {
+  holder::platform::Db db;
   db.open(db_path);
 
   std::filesystem::path schema_path = SCHEMA_SQL_PATH;
@@ -85,7 +85,7 @@ inline holder::store::Db open_db_with_schema(const std::filesystem::path& db_pat
   return db;
 }
 
-inline void create_project(holder::store::Db& db,
+inline void create_project(holder::platform::Db& db,
                            const std::string& project_id,
                            const std::string& root_path = "/tmp/project") {
   holder::project::ProjectRepo repo(db);

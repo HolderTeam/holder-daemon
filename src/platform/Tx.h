@@ -1,7 +1,7 @@
 #pragma once
 #include "platform/Db.h"
 
-namespace holder::store {
+namespace holder::platform {
 
 class Tx {
 public:
@@ -18,4 +18,4 @@ private:
   bool committed_ = false;
 };
 
-} // namespace holder::store
+} // namespace holder::platform

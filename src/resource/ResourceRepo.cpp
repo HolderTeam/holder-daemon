@@ -1,11 +1,11 @@
-#include "store/ResourceRepo.h"
+#include "resource/ResourceRepo.h"
 
 #include <sqlite3.h>
 
 #include <stdexcept>
 #include <utility>
 
-namespace holder::store {
+namespace holder::resource {
 namespace {
 
 void throw_sqlite(sqlite3* db, const std::string& what) {
@@ -52,7 +52,7 @@ holder::model::Resource read_resource(sqlite3_stmt* stmt) {
 
 } // namespace
 
-ResourceRepo::ResourceRepo(Db& db) : db_(db) {}
+ResourceRepo::ResourceRepo(holder::platform::Db& db) : db_(db) {}
 
 void ResourceRepo::add(const holder::model::Resource& resource) {
   static constexpr const char* SQL =
@@ -177,4 +177,4 @@ void ResourceRepo::remove(const std::string& resource_id) {
   }
 }
 
-} // namespace holder::store
+} // namespace holder::resource

@@ -16,7 +16,7 @@ namespace holder::card {
 
 class CardStore {
 public:
-  CardStore(holder::store::Db& db,
+  CardStore(holder::platform::Db& db,
             holder::index::FtsIndexer* fts,
             holder::core::Fs* fs = nullptr,
             holder::git::GitOps* git = nullptr);
@@ -43,7 +43,7 @@ public:
 private:
   holder::model::Project require_project(const std::string& project_id);
 
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   holder::core::Fs* fs_ = nullptr;
   holder::git::GitOps* git_ = nullptr;
   CardRepo card_repo_;

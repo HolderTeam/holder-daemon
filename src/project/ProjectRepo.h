@@ -11,7 +11,7 @@ namespace holder::project {
 
 class ProjectRepo {
 public:
-  explicit ProjectRepo(holder::store::Db& db);
+  explicit ProjectRepo(holder::platform::Db& db);
 
   void create(const holder::model::Project& project);
   std::optional<holder::model::Project> get(const std::string& project_id) const;
@@ -35,7 +35,7 @@ public:
   void remove(const std::string& project_id);
 
 private:
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
 };
 
 } // namespace holder::project

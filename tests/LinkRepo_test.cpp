@@ -41,7 +41,7 @@ std::filesystem::path make_temp_dir() {
   return dir;
 }
 
-void apply_schema(holder::store::Db& db) {
+void apply_schema(holder::platform::Db& db) {
   const auto schema_path = find_schema_sql();
   std::ifstream in(schema_path);
   REQUIRE(in.is_open());
@@ -49,7 +49,7 @@ void apply_schema(holder::store::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::store::Db& db, const std::string& project_id) {
+void create_project(holder::platform::Db& db, const std::string& project_id) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
@@ -60,7 +60,7 @@ void create_project(holder::store::Db& db, const std::string& project_id) {
   repo.create(project);
 }
 
-void create_card(holder::store::Db& db,
+void create_card(holder::platform::Db& db,
                  const std::string& card_id,
                  const std::string& project_id) {
   holder::card::CardRepo repo(db);
@@ -81,7 +81,7 @@ TEST_CASE("LinkRepo upsert/list/delete", "[linkrepo]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
   apply_schema(db);
   create_project(db, "proj-1");

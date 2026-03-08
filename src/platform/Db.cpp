@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace holder::store {
+namespace holder::platform {
 
 Db::~Db() { close(); }
 
@@ -69,4 +69,4 @@ void Db::exec(const std::string& sql) {
   }
 }
 
-} // namespace holder::store
+} // namespace holder::platform

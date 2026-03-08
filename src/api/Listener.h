@@ -24,7 +24,7 @@ public:
 
   Listener(std::string bind,
            unsigned short port,
-           holder::store::Db& db,
+           holder::platform::Db& db,
            const std::string& auth_token,
            const Router& router,
            std::chrono::steady_clock::time_point started_at,
@@ -44,7 +44,7 @@ private:
   tcp::acceptor acceptor_;
   std::string bind_;
   unsigned short port_;
-  holder::store::Db& db_;
+  holder::platform::Db& db_;
   const std::string& auth_token_;
   const Router& router_;
   std::chrono::steady_clock::time_point started_at_;

@@ -7,7 +7,7 @@ TEST_CASE("HTTP ai_catalog.yaml is served without auth (cloud test alias)", "[ht
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   const auto ai_catalog_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /

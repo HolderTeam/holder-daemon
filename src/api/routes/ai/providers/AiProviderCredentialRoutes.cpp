@@ -21,7 +21,7 @@ namespace http = boost::beast::http;
 bool handle_ai_provider_credential_routes(const std::string& path,
                                           const http::request<http::string_body>& req,
                                           http::response<http::string_body>& res,
-                                          holder::store::Db& db) {
+                                          holder::platform::Db& db) {
   if (path == "/ai/providers/settings" && req.method() == http::verb::get) {
     try {
       holder::ai::AiProviderSettingRepo repo(db);

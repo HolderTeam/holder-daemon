@@ -14,7 +14,7 @@ bool handle_project_routes(
     const std::string& path,
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
-    holder::store::Db& db,
+    holder::platform::Db& db,
     holder::git::GitOps* git_ops,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get);

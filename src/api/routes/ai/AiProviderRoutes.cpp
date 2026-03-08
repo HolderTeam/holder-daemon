@@ -8,7 +8,7 @@ namespace holder::api::routes {
 bool handle_ai_provider_routes(const std::string& path,
                                const boost::beast::http::request<boost::beast::http::string_body>& req,
                                boost::beast::http::response<boost::beast::http::string_body>& res,
-                               holder::store::Db& db) {
+                               holder::platform::Db& db) {
   if (ai::providers::handle_ai_provider_catalog_routes(path, req, res, db)) {
     return true;
   }

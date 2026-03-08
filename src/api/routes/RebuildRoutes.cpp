@@ -17,7 +17,7 @@ namespace http = boost::beast::http;
 bool handle_rebuild_routes(const std::string& path,
                            const http::request<http::string_body>& req,
                            http::response<http::string_body>& res,
-                           holder::store::Db& db,
+                           holder::platform::Db& db,
                            holder::index::FtsIndexer* fts) {
   if (path != "/rebuild" || req.method() != http::verb::post) {
     return false;

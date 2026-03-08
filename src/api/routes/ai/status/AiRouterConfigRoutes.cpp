@@ -59,7 +59,7 @@ nlohmann::json router_config_payload(const std::optional<holder::model::AiRouter
 bool handle_ai_router_config_routes(const std::string& path,
                                     const http::request<http::string_body>& req,
                                     http::response<http::string_body>& res,
-                                    holder::store::Db& db,
+                                    holder::platform::Db& db,
                                     const std::function<std::string(const std::string&)>& param_get) {
   if (path == "/ai/router/config" && req.method() == http::verb::get) {
     try {

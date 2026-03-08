@@ -13,7 +13,7 @@ TEST_CASE("ThreadCompaction state round-trip and build context", "[thread_compac
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
 
-  holder::store::Db db;
+  holder::platform::Db db;
   db.open(db_path);
 
   std::ifstream in(SCHEMA_SQL_PATH);
