@@ -24,9 +24,20 @@ std::filesystem::path make_temp_dir() {
 }
 
 void init_bare_repo(const std::filesystem::path& repo_path) {
+  git_libgit2_init();
+  std::filesystem::create_directories(repo_path.parent_path());
   git_repository* repo = nullptr;
-  REQUIRE(git_repository_init(&repo, repo_path.string().c_str(), 1) == 0);
+  git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+  opts.flags = GIT_REPOSITORY_INIT_BARE | GIT_REPOSITORY_INIT_MKPATH;
+  const int rc = git_repository_init_ext(&repo, repo_path.string().c_str(), &opts);
+  INFO("git_repository_init rc=" << rc);
+  if (rc != 0) {
+    const git_error* e = git_error_last();
+    INFO("libgit2 error: " << (e && e->message ? e->message : "<none>"));
+  }
+  REQUIRE(rc == 0);
   git_repository_free(repo);
+  git_libgit2_shutdown();
 }
 
 } // namespace
