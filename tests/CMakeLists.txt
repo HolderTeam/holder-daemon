@@ -50,6 +50,7 @@ add_executable(lockfile_tests
   HttpCloudProviders_test.cpp
   HttpGitProviders_test.cpp
   HttpRunner_test.cpp
+  LocalModelRunner_test.cpp
   Session_test.cpp
   CloudQuota_test.cpp
   CloudConfig_test.cpp
@@ -62,6 +63,7 @@ add_executable(lockfile_tests
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
   PrivacyCryptoService_test.cpp
+  PrivacyError_test.cpp
   Router_test.cpp
   Cli_test.cpp
   ProjectRepo_test.cpp
