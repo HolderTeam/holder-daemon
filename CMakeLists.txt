@@ -73,16 +73,16 @@ add_subdirectory(third_party/caste)
 # ----------------------------
 add_executable(holder
   src/main.cpp
-  src/core/Paths.cpp
-  src/core/LockFile.cpp
-  src/core/ServerInfo.cpp
-  src/core/Signal.cpp
-  src/core/Fs.cpp
-  src/core/CardPaths.cpp
-  src/core/CardFrontMatter.cpp
-  src/core/AiMessagePaths.cpp
-  src/core/AiMessageFrontMatter.cpp
-  src/core/ProjectPaths.cpp
+  src/platform/Paths.cpp
+  src/platform/LockFile.cpp
+  src/platform/ServerInfo.cpp
+  src/platform/Signal.cpp
+  src/platform/Fs.cpp
+  src/card/CardPaths.cpp
+  src/card/CardFrontMatter.cpp
+  src/ai/AiMessagePaths.cpp
+  src/ai/AiMessageFrontMatter.cpp
+  src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp

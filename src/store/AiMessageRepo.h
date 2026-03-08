@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/Fs.h"
+#include "platform/Fs.h"
 #include "index/FtsIndexer.h"
 #include "git/GitOps.h"
 #include "model/AiMessage.h"

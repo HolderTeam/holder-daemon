@@ -7,7 +7,7 @@
 #endif
 
 #include "api/HttpServer.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "index/FtsIndexer.h"
 #include "model/Project.h"

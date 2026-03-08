@@ -9,7 +9,7 @@ endif()
 
 add_executable(lock_helper
   lock_helper.cpp
-  ../src/core/LockFile.cpp
+  ../src/platform/LockFile.cpp
 )
 target_include_directories(lock_helper PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -96,16 +96,16 @@ add_executable(lockfile_tests
   RealFs_test.cpp
   GitAdapterFailure_test.cpp
   Reindexer_test.cpp
-  ../src/core/LockFile.cpp
-  ../src/core/Paths.cpp
-  ../src/core/ServerInfo.cpp
-  ../src/core/Signal.cpp
-  ../src/core/Fs.cpp
-  ../src/core/CardPaths.cpp
-  ../src/core/AiMessagePaths.cpp
-  ../src/core/CardFrontMatter.cpp
-  ../src/core/AiMessageFrontMatter.cpp
-  ../src/core/ProjectPaths.cpp
+  ../src/platform/LockFile.cpp
+  ../src/platform/Paths.cpp
+  ../src/platform/ServerInfo.cpp
+  ../src/platform/Signal.cpp
+  ../src/platform/Fs.cpp
+  ../src/card/CardPaths.cpp
+  ../src/ai/AiMessagePaths.cpp
+  ../src/card/CardFrontMatter.cpp
+  ../src/ai/AiMessageFrontMatter.cpp
+  ../src/project/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp
   ../src/llm/LocalModelRunner.cpp

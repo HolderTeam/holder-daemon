@@ -1,6 +1,6 @@
 #include "sync/ProjectSyncWorker.h"
 
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "model/Project.h"
 #include "store/ProjectRepo.h"

@@ -1,4 +1,4 @@
-#include "core/AiMessagePaths.h"
+#include "ai/AiMessagePaths.h"
 
 #include <stdexcept>
 

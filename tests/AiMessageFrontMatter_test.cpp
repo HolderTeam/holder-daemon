@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/AiMessageFrontMatter.h"
+#include "ai/AiMessageFrontMatter.h"
 
 TEST_CASE("parse_ai_message_file reads front matter and body", "[ai_message_front_matter]") {
   const std::string raw =

@@ -1,4 +1,4 @@
-#include "core/AiMessageFrontMatter.h"
+#include "ai/AiMessageFrontMatter.h"
 
 #include <yaml-cpp/yaml.h>
 

@@ -2,7 +2,7 @@
 
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
-#include "core/Fs.h"
+#include "platform/Fs.h"
 #include "store/Db.h"
 
 #include <cstddef>

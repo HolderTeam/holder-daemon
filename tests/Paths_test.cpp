@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/Paths.h"
+#include "platform/Paths.h"
 
 #include <chrono>
 #include <cstdlib>

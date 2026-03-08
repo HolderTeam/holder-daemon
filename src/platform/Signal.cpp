@@ -1,4 +1,4 @@
-#include "core/Signal.h"
+#include "platform/Signal.h"
 
 #include <csignal>
 

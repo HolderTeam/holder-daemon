@@ -1,4 +1,4 @@
-#include "core/CardFrontMatter.h"
+#include "card/CardFrontMatter.h"
 
 #include <yaml-cpp/yaml.h>
 

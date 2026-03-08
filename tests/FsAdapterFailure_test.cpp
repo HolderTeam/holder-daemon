@@ -4,10 +4,10 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/AiMessagePaths.h"
-#include "core/CardFrontMatter.h"
-#include "core/CardPaths.h"
-#include "core/Fs.h"
+#include "ai/AiMessagePaths.h"
+#include "card/CardFrontMatter.h"
+#include "card/CardPaths.h"
+#include "platform/Fs.h"
 #include "index/FtsIndexer.h"
 #include "model/AiMessage.h"
 #include "model/AiThread.h"

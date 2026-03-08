@@ -1,7 +1,7 @@
 #pragma once
 
 #include "api/Router.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"

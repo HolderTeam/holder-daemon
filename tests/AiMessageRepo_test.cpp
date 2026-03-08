@@ -8,7 +8,7 @@
 #include "model/AiThread.h"
 #include "model/Project.h"
 #include "index/FtsIndexer.h"
-#include "core/AiMessagePaths.h"
+#include "ai/AiMessagePaths.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"
 #include "store/Db.h"

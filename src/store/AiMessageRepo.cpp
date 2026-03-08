@@ -1,8 +1,8 @@
 #include "store/AiMessageRepo.h"
 
-#include "core/AiMessageFrontMatter.h"
-#include "core/AiMessagePaths.h"
-#include "core/Fs.h"
+#include "ai/AiMessageFrontMatter.h"
+#include "ai/AiMessagePaths.h"
+#include "platform/Fs.h"
 #include "git/GitOps.h"
 
 #include <sqlite3.h>

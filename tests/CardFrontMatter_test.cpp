@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/CardFrontMatter.h"
+#include "card/CardFrontMatter.h"
 
 #include <string>
 

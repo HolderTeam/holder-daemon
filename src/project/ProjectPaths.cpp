@@ -1,6 +1,6 @@
-#include "core/ProjectPaths.h"
+#include "project/ProjectPaths.h"
 
-#include "core/Paths.h"
+#include "platform/Paths.h"
 
 #include <cctype>
 #include <cstdlib>

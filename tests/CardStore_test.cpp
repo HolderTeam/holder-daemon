@@ -5,8 +5,8 @@
 #endif
 
 #include "http_test_helpers.h"
-#include "core/CardPaths.h"
-#include "core/CardFrontMatter.h"
+#include "card/CardPaths.h"
+#include "card/CardFrontMatter.h"
 #include "git/GitRepo.h"
 #include "git/GitOps.h"
 #include "model/Card.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/Fs.h"
+#include "platform/Fs.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"

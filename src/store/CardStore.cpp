@@ -1,8 +1,8 @@
 #include "store/CardStore.h"
 
-#include "core/CardFrontMatter.h"
-#include "core/CardPaths.h"
-#include "core/Fs.h"
+#include "card/CardFrontMatter.h"
+#include "card/CardPaths.h"
+#include "platform/Fs.h"
 #include "git/GitOps.h"
 #include "privacy/ProjectPrivacy.h"
 #include "store/LinkRepo.h"

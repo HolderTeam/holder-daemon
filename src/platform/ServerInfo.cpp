@@ -1,4 +1,4 @@
-#include "core/ServerInfo.h"
+#include "platform/ServerInfo.h"
 
 #include <nlohmann/json.hpp>
 

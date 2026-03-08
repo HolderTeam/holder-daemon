@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/AiMessagePaths.h"
+#include "ai/AiMessagePaths.h"
 
 #include <stdexcept>
 #include <string>

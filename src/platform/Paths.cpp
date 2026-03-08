@@ -1,4 +1,4 @@
-#include "core/Paths.h"
+#include "platform/Paths.h"
 
 #include <stdexcept>
 #include <system_error>

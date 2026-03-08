@@ -2,7 +2,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
-#include "core/ProjectPaths.h"
+#include "project/ProjectPaths.h"
 #include "git/RepoSyncMetrics.h"
 #include "privacy/ProjectPrivacy.h"
 #include "store/CardRepo.h"

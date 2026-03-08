@@ -1,6 +1,6 @@
 #include "api/Listener.h"
 #include "api/Router.h"
-#include "core/Signal.h"
+#include "platform/Signal.h"
 #include "store/Db.h"
 
 #if __has_include(<catch2/catch_test_macros.hpp>)

@@ -2,7 +2,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
-#include "core/CardPaths.h"
+#include "card/CardPaths.h"
 #include "privacy/PrivacyError.h"
 #include "store/AiMessageRepo.h"
 #include "store/AiThreadRepo.h"

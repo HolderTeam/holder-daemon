@@ -2,10 +2,10 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-#include "core/LockFile.h"
-#include "core/Paths.h"
-#include "core/ServerInfo.h"
-#include "core/Signal.h"
+#include "platform/LockFile.h"
+#include "platform/Paths.h"
+#include "platform/ServerInfo.h"
+#include "platform/Signal.h"
 #include "api/HttpServer.h"
 #include "store/CardStore.h"
 #include "store/ProjectRepo.h"
@@ -15,7 +15,7 @@
 #include "llm/LocalModelRunner.h"
 #include "store/Db.h"
 #include "store/Migrations.h"
-#include "core/ProjectPaths.h"
+#include "project/ProjectPaths.h"
 #include "privacy/ProjectPrivacy.h"
 #include "git/GitOps.h"
 #include "sync/ProjectSyncWorker.h"

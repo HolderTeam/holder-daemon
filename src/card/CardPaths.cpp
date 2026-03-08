@@ -1,4 +1,4 @@
-#include "core/CardPaths.h"
+#include "card/CardPaths.h"
 
 #include <stdexcept>
 

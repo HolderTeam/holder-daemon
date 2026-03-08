@@ -4,7 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "core/CardPaths.h"
+#include "card/CardPaths.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
 #include "model/Project.h"
