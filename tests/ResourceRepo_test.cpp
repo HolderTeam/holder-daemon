@@ -96,3 +96,46 @@ TEST_CASE("ResourceRepo add/list/remove", "[resourcerepo]") {
   list = repo.list("proj-1");
   REQUIRE(list.empty());
 }
+
+TEST_CASE("ResourceRepo get returns nullopt for missing resource", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+  const auto missing = repo.get("does-not-exist");
+  REQUIRE(!missing.has_value());
+}
+
+TEST_CASE("ResourceRepo methods throw when DB handle is closed", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+  db.close();
+
+  holder::model::Resource resource;
+  resource.resource_id = "res-closed";
+  resource.project_id = "proj-1";
+  resource.kind = "url";
+  resource.uri = "https://example.com";
+  resource.label = "Example";
+  resource.desc = std::nullopt;
+  resource.created_at = 10;
+  resource.updated_at = 11;
+
+  REQUIRE_THROWS(repo.add(resource));
+  REQUIRE_THROWS(repo.list("proj-1"));
+  REQUIRE_THROWS(repo.get("res-closed"));
+  REQUIRE_THROWS(repo.update(resource));
+  REQUIRE_THROWS(repo.remove("res-closed"));
+}
