@@ -254,3 +254,83 @@ TEST_CASE("FtsIndexer throws when sqlite handle is closed", "[fts]") {
 
   REQUIRE_THROWS(fts.upsert_card("card-1", "proj-1", "Title", "Body"));
 }
+
+namespace {
+int sqlite_interrupt_cb(void* data) {
+  auto* flag = static_cast<int*>(data);
+  return (flag && *flag) ? 1 : 0;
+}
+} // namespace
+
+TEST_CASE("FtsIndexer delete/upsert throw on interrupted sqlite step", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  fts.upsert_card("card-1", "proj-1", "Title", "Body");
+  fts.upsert_message("msg-1", "thread-1", "proj-1", "alpha beta");
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+  REQUIRE_THROWS(fts.delete_card("card-1"));
+  REQUIRE_THROWS(fts.delete_message("msg-1"));
+  REQUIRE_THROWS(fts.upsert_message("msg-2", "thread-2", "proj-1", "gamma"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("FtsIndexer search throws on interrupted sqlite step", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  {
+    static constexpr const char* SQL_PROJECT =
+        "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+        "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);";
+    static constexpr const char* SQL_CARD =
+        "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+        "VALUES('card-1', 'proj-1', 'Title', 'cards/xx/yy/card-1.md', 0.0, 1, 2);";
+    static constexpr const char* SQL_THREAD =
+        "INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+        "VALUES('thread-1', 'proj-1', 'T', 1, 1);";
+    static constexpr const char* SQL_MSG =
+        "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+        "VALUES('msg-1', 'thread-1', 'assistant', 'local', 'alpha beta', 1);";
+    db.exec(SQL_PROJECT);
+    db.exec(SQL_CARD);
+    db.exec(SQL_THREAD);
+    db.exec(SQL_MSG);
+  }
+  fts.upsert_card("card-1", "proj-1", "Title", "alpha beta");
+  fts.upsert_message("msg-1", "thread-1", "proj-1", "alpha beta");
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+  REQUIRE_THROWS(fts.search_cards("proj-1", "alpha", 10, 0));
+  REQUIRE_THROWS(fts.search_messages("proj-1", "alpha", 10, 0));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("FtsIndexer search throws when join tables are missing", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  db.exec("DROP TABLE cards;");
+  db.exec("DROP TABLE ai_messages;");
+
+  REQUIRE_THROWS(fts.search_cards("proj-1", "alpha", 10, 0));
+  REQUIRE_THROWS(fts.search_messages("proj-1", "alpha", 10, 0));
+}
