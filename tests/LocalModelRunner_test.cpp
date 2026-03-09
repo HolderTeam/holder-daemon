@@ -13,6 +13,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -57,6 +59,21 @@ uint16_t reserve_loopback_port() {
   boost::asio::io_context ioc;
   boost::asio::ip::tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
   return acceptor.local_endpoint().port();
+}
+
+std::string make_runner_script(const std::string& body) {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_runner_test_scripts";
+  std::filesystem::create_directories(dir);
+  const auto path = dir / ("runner-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".sh");
+  std::ofstream out(path);
+  out << "#!/usr/bin/env bash\n";
+  out << body;
+  out.close();
+  std::filesystem::permissions(path,
+                               std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_write,
+                               std::filesystem::perm_options::add);
+  return path.string();
 }
 
 class StubHttpServer {
@@ -336,6 +353,19 @@ TEST_CASE("LocalModelRunner start_pull returns existing queued job for same mode
   auto second = runner.start_pull("same-model");
   REQUIRE_FALSE(first.job_id.empty());
   REQUIRE(second.job_id == first.job_id);
+
+  // Avoid detached-thread teardown races: wait for fake pull completion.
+  bool completed = false;
+  for (int i = 0; i < 50; ++i) {
+    auto fetched = runner.get_pull(first.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->status == "completed") {
+      completed = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(completed);
 }
 
 TEST_CASE("LocalModelRunner retry non-fake surfaces HTTP status errors", "[llm]") {
@@ -440,6 +470,155 @@ TEST_CASE("LocalModelRunner start_pull non-fake handles streamed error payload",
     if (fetched->status == "failed") {
       failed = true;
       REQUIRE(fetched->error == "download failed");
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(failed);
+}
+
+TEST_CASE("LocalModelRunner stop terminates spawned runner handle", "[llm]") {
+  const std::string script = make_runner_script("sleep 30\n");
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", script);
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.spawn_attempted == true);
+
+  REQUIRE_NOTHROW(runner.stop());
+  // Second stop should hit the moved-out handle guard path.
+  REQUIRE_NOTHROW(runner.stop());
+}
+
+TEST_CASE("LocalModelRunner stop tolerates already-exited spawned process", "[llm]") {
+  const std::string script = make_runner_script("exit 0\n");
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", script);
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.spawn_attempted == true);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  REQUIRE_NOTHROW(runner.stop());
+}
+
+TEST_CASE("LocalModelRunner stream_generate returns false on HTTP error status", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(port, {HttpResponseSpec{500, R"({"error":"bad"})"}});
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  std::string out;
+  std::string err;
+  const bool ok = runner.stream_generate(
+      "model-http-err", "prompt", "", [&](const std::string& chunk) { out += chunk; }, &err);
+  REQUIRE_FALSE(ok);
+  REQUIRE(out.empty());
+  REQUIRE(err.find("HTTP 500") != std::string::npos);
+}
+
+TEST_CASE("LocalModelRunner stream_generate returns false on invalid options JSON", "[llm]") {
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  std::string out;
+  std::string err;
+  const bool ok = runner.stream_generate(
+      "model-opts", "prompt", "{not-json", [&](const std::string& chunk) { out += chunk; }, &err);
+  REQUIRE_FALSE(ok);
+  REQUIRE(out.empty());
+  REQUIRE_FALSE(err.empty());
+}
+
+TEST_CASE("LocalModelRunner stream_generate can succeed without explicit done marker", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200,
+                           "{\"response\":\"hello\"}   \n"
+                           "{\"response\":\" world\"}\n"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  std::string out;
+  std::string err;
+  const bool ok = runner.stream_generate(
+      "model-no-done", "prompt", "", [&](const std::string& chunk) { out += chunk; }, &err);
+  REQUIRE(ok);
+  REQUIRE(err.empty());
+  REQUIRE(out == "hello world");
+}
+
+TEST_CASE("LocalModelRunner start_pull reuses job when existing status is verifying", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(port, {HttpResponseSpec{200, "{\"status\":\"verifying\"}\n"}});
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  auto first = runner.start_pull("model-verifying");
+  REQUIRE_FALSE(first.job_id.empty());
+
+  bool seen_verifying = false;
+  for (int i = 0; i < 100; ++i) {
+    auto fetched = runner.get_pull(first.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->status == "verifying") {
+      seen_verifying = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(seen_verifying);
+
+  auto second = runner.start_pull("model-verifying");
+  REQUIRE(second.job_id == first.job_id);
+}
+
+TEST_CASE("LocalModelRunner start_pull marks failed on transport exception", "[llm]") {
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  auto job = runner.start_pull("model-no-server");
+  REQUIRE_FALSE(job.job_id.empty());
+
+  bool failed = false;
+  for (int i = 0; i < 100; ++i) {
+    auto fetched = runner.get_pull(job.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->status == "failed") {
+      failed = true;
+      REQUIRE_FALSE(fetched->error.empty());
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));

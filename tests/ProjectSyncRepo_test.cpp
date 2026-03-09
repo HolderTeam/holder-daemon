@@ -1,6 +1,14 @@
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
 #include "http_test_helpers.h"
+#include <sqlite3.h>
+
+namespace {
+int sqlite_interrupt_cb(void* data) {
+  auto* enabled = static_cast<int*>(data);
+  return (enabled != nullptr && *enabled != 0) ? 1 : 0;
+}
+}
 
 TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][repo]") {
   const auto dir = holder::test::make_temp_dir();
@@ -226,4 +234,54 @@ TEST_CASE("ProjectSyncRepo remove deletes state row", "[sync][repo]") {
 
   sync.remove("proj-1");
   REQUIRE_FALSE(sync.get("proj-1").has_value());
+}
+
+TEST_CASE("ProjectSyncRepo throws when sqlite handle is closed", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+  db.close();
+
+  REQUIRE_THROWS(sync.get("proj-1"));
+  REQUIRE_THROWS(sync.update_activity_counts("proj-1", 1, 1, 1));
+  REQUIRE_THROWS(sync.remove("proj-1"));
+}
+
+TEST_CASE("ProjectSyncRepo read/write/delete throw on interrupted sqlite step", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+
+  sync.update_activity_counts("proj-1", 1, 1, 1);
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+
+  REQUIRE_THROWS(sync.get("proj-1"));
+  REQUIRE_THROWS(sync.record_push_result("proj-1", "failed", false, std::nullopt, 2));
+  REQUIRE_THROWS(sync.remove("proj-1"));
+
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

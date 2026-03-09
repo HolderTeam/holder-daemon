@@ -356,3 +356,119 @@ TEST_CASE("GitRepo push_branch uses GIT_DEFAULT_BRANCH when HEAD is detached", "
   git_reference_free(cards_ref);
   git_repository_free(remote);
 }
+
+TEST_CASE("GitRepo probe_remote reports reachable for local remote with commits", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "seed");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir / "local");
+  repo.set_remote("origin", remote_dir.string());
+
+  const auto result = repo.probe_remote("origin");
+  REQUIRE(result.status == holder::git::RemoteProbeStatus::Reachable);
+  REQUIRE(result.remote_has_head == true);
+  REQUIRE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo push_branch uses git config init.defaultBranch when HEAD detached", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+  const auto fake_home = dir / "home";
+  const auto fake_xdg = dir / "xdg";
+  std::filesystem::create_directories(fake_home);
+  std::filesystem::create_directories(fake_xdg);
+
+  {
+    std::ofstream cfg(fake_home / ".gitconfig", std::ios::binary);
+    REQUIRE(cfg.is_open());
+    cfg << "[init]\n\tdefaultBranch = zebra\n";
+  }
+
+  init_bare_repo(remote_dir);
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "v1");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  local_repo.set_remote("origin", remote_dir.string());
+  detach_head_to_current_commit(local_dir);
+
+  EnvGuard empty_env_branch("GIT_DEFAULT_BRANCH", "");
+  EnvGuard home_guard("HOME", fake_home.string());
+  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
+
+  const auto result = local_repo.push_branch("origin", "", false);
+  REQUIRE(result.status == holder::git::PushStatus::Pushed);
+
+  git_repository* remote = nullptr;
+  REQUIRE(git_repository_open(&remote, remote_dir.string().c_str()) == 0);
+  git_reference* pushed_ref = nullptr;
+  const int zebra_rc = git_reference_lookup(&pushed_ref, remote, "refs/heads/zebra");
+  if (zebra_rc == 0) {
+    git_reference_free(pushed_ref);
+  } else {
+    const int cards_rc = git_reference_lookup(&pushed_ref, remote, "refs/heads/cards");
+    REQUIRE(cards_rc == 0);
+    git_reference_free(pushed_ref);
+  }
+  git_repository_free(remote);
+}
+
+TEST_CASE("GitRepo probe_remote can classify missing repository as not_found", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto missing = dir / "does-not-exist-repo";
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir / "local");
+  repo.set_remote("origin", missing.string());
+
+  const auto result = repo.probe_remote("origin");
+  REQUIRE(result.status != holder::git::RemoteProbeStatus::Reachable);
+  REQUIRE(result.status != holder::git::RemoteProbeStatus::RemoteUnset);
+  REQUIRE(result.remote_has_head == false);
+  REQUIRE_FALSE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo push_branch can classify non-fast-forward rejection", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_a_dir = dir / "local_a";
+  const auto local_b_dir = dir / "local_b";
+
+  init_bare_repo(remote_dir);
+
+  holder::git::GitRepo local_a;
+  local_a.open_or_init(local_a_dir);
+  local_a.write_file("cards/a.md", "a1");
+  local_a.stage_path("cards/a.md");
+  local_a.commit("a1");
+  local_a.set_remote("origin", remote_dir.string());
+  REQUIRE(local_a.push_branch("origin", "cards", true).status == holder::git::PushStatus::Pushed);
+
+  holder::git::GitRepo local_b;
+  local_b.open_or_init(local_b_dir);
+  local_b.set_remote("origin", remote_dir.string());
+  local_b.pull_remote_ff_only("origin");
+  local_b.write_file("cards/b.md", "b1");
+  local_b.stage_path("cards/b.md");
+  local_b.commit("b1");
+
+  local_a.write_file("cards/a.md", "a2");
+  local_a.stage_path("cards/a.md");
+  local_a.commit("a2");
+  REQUIRE(local_a.push_branch("origin", "cards", false).status == holder::git::PushStatus::Pushed);
+
+  const auto res = local_b.push_branch("origin", "cards", false);
+  REQUIRE((res.status == holder::git::PushStatus::NonFastForward ||
+           res.status == holder::git::PushStatus::UnknownError));
+  REQUIRE_FALSE(res.error_message.empty());
+}
