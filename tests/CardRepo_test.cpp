@@ -11,10 +11,13 @@
 #include "project/ProjectRepo.h"
 
 #include <sqlite3.h>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -365,13 +368,13 @@ TEST_CASE("CardRepo list/count/next_sort throw on interrupted step under load", 
   sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
 
   REQUIRE_THROWS(repo.list_roots("proj-1"));
-  REQUIRE_THROWS(repo.list_children("proj-1", parent.card_id));
+  REQUIRE_THROWS(repo.list_children("proj-1", "parent-lock"));
   REQUIRE_THROWS(repo.list_all("proj-1"));
   REQUIRE_THROWS(repo.count_all_not_deleted("proj-1"));
   REQUIRE_THROWS(repo.count_roots_not_deleted("proj-1"));
-  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", parent.card_id));
+  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", "parent-lock"));
   REQUIRE_THROWS(repo.next_sort_key("proj-1", std::nullopt));
-  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::optional<std::string>(parent.card_id)));
+  REQUIRE_THROWS(repo.next_sort_key("proj-1", std::optional<std::string>("parent-lock")));
 
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
@@ -408,4 +411,72 @@ TEST_CASE("CardRepo update/delete/move throw when sqlite step aborts", "[cardrep
   REQUIRE_THROWS(repo.restore(card.card_id, 6));
   REQUIRE_THROWS(repo.move(card.card_id, std::nullopt, 2.0, 7));
   REQUIRE_THROWS(repo.remove(card.card_id));
+}
+
+TEST_CASE("CardRepo read/count queries throw when sqlite step hits locked database", "[cardrepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::card::CardRepo repo(db);
+
+  holder::model::Card parent;
+  parent.card_id = "parent-lock";
+  parent.project_id = "proj-1";
+  parent.title = "Parent";
+  parent.rel_path = "cards/pa/re/parent-lock.md";
+  parent.sort_key = 1.0;
+  parent.created_at = 1;
+  parent.updated_at = 1;
+  repo.create(parent);
+
+  for (int i = 0; i < 5000; ++i) {
+    holder::model::Card root;
+    root.card_id = "root-lock-" + std::to_string(i);
+    root.project_id = "proj-1";
+    root.title = "Root";
+    root.rel_path = "cards/ro/ot/root-lock-" + std::to_string(i) + ".md";
+    root.sort_key = static_cast<double>(i + 10);
+    root.created_at = i + 10;
+    root.updated_at = i + 10;
+    repo.create(root);
+
+    holder::model::Card child;
+    child.card_id = "child-lock-" + std::to_string(i);
+    child.project_id = "proj-1";
+    child.title = "Child";
+    child.rel_path = "cards/ch/il/child-lock-" + std::to_string(i) + ".md";
+    child.parent_card_id = "parent-lock";
+    child.sort_key = static_cast<double>(i + 10);
+    child.created_at = i + 10;
+    child.updated_at = i + 10;
+    repo.create(child);
+  }
+
+  const auto expect_interrupted = [&](const std::function<void()>& fn) {
+    std::atomic<bool> done{false};
+    std::atomic<bool> threw{false};
+    std::thread t([&]() {
+      try {
+        fn();
+      } catch (const std::exception&) {
+        threw = true;
+      }
+      done = true;
+    });
+    for (int i = 0; i < 200 && !done.load(); ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      sqlite3_interrupt(db.handle());
+    }
+    t.join();
+    REQUIRE(threw.load());
+  };
+
+  expect_interrupted([&]() { (void) repo.list_roots("proj-1"); });
+  expect_interrupted([&]() { (void) repo.list_children("proj-1", "parent-lock"); });
+  expect_interrupted([&]() { (void) repo.list_all("proj-1"); });
 }
