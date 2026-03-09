@@ -1,4 +1,5 @@
 #include "http_test_helpers.h"
+#include "api/routes/ai/runs/AiRunPostRoute.h"
 #include "api/support/CloudClient.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
@@ -36,6 +37,192 @@ class ServerThreadGuard {
 };
 
 } // namespace
+
+TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thread runs", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig&,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: openrouter/auto\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 1\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+  const auto endpoint = acceptor.local_endpoint();
+  tcp::socket client(ioc);
+  client.connect(endpoint);
+  tcp::socket server_socket(ioc);
+  acceptor.accept(server_socket);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "openrouter/auto"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", "x"}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].context_json.has_value());
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "no_compact_model");
+
+  holder::ai::AiMessageRepo msg_repo(db, nullptr);
+  const auto msgs = msg_repo.list_by_thread("thread-1");
+  bool saw_user_model = false;
+  for (const auto& msg : msgs) {
+    if (msg.role == "user" && msg.model.has_value() && msg.model.value() == "openrouter/auto") {
+      saw_user_model = true;
+    }
+  }
+  REQUIRE(saw_user_model);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: openrouter/auto\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"provider", "switchyard"},
+      {"model", "openrouter/auto"},
+  }
+                   .dump();
+  req.prepare_payload();
+
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      unopened_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_project("proj-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "started");
+}
 
 TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
