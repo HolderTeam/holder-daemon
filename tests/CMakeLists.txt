@@ -27,6 +27,7 @@ add_executable(lockfile_tests
   HttpAiRouterConfig_test.cpp
   HttpAiProviderCatalog_test.cpp
   HttpAiProviderCredentials_test.cpp
+  AiRuntimeStatusRoutes_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
   HttpAiRunEvents_test.cpp
@@ -58,6 +59,7 @@ add_executable(lockfile_tests
   CloudQuota_test.cpp
   CloudConfig_test.cpp
   CloudClient_test.cpp
+  LocalModelRouting_test.cpp
   ThreadCompaction_test.cpp
   HttpCards_test.cpp
   HttpLinks_test.cpp

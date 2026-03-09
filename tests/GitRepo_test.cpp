@@ -83,6 +83,32 @@ void detach_head_to_current_commit(const std::filesystem::path& repo_path) {
   git_libgit2_shutdown();
 }
 
+void set_bare_head_contents(const std::filesystem::path& bare_repo_path, const std::string& contents) {
+  std::ofstream head(bare_repo_path / "HEAD", std::ios::trunc);
+  REQUIRE(head.is_open());
+  head << contents;
+}
+
+std::string read_text_file(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  REQUIRE(in.is_open());
+  std::stringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
+}
+
+void seed_bare_remote_branch(const std::filesystem::path& bare_remote_path, const std::string& branch_name) {
+  const auto seed_dir = make_temp_dir() / "seed";
+  holder::git::GitRepo seed;
+  seed.open_or_init(seed_dir);
+  seed.write_file("cards/a.md", "seed");
+  seed.stage_path("cards/a.md");
+  seed.commit("seed");
+  seed.set_remote("origin", bare_remote_path.string());
+  const auto pushed = seed.push_branch("origin", branch_name, true);
+  REQUIRE(pushed.status == holder::git::PushStatus::Pushed);
+}
+
 } // namespace
 
 TEST_CASE("GitRepo throws when not opened", "[git]") {
@@ -556,4 +582,149 @@ TEST_CASE("GitRepo push_branch can classify non-fast-forward rejection", "[git]"
   REQUIRE((res.status == holder::git::PushStatus::NonFastForward ||
            res.status == holder::git::PushStatus::UnknownError));
   REQUIRE_FALSE(res.error_message.empty());
+}
+
+TEST_CASE("GitRepo credential callback returns passthrough for unsupported types", "[git]") {
+  bool created = true;
+  const int rc = holder::git::GitRepo::credential_callback_for_tests(0U, "git", &created);
+  REQUIRE(rc == GIT_PASSTHROUGH);
+  REQUIRE(created == false);
+}
+
+TEST_CASE("GitRepo credential callback attempts SSH paths and can fallback to passthrough", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto fake_home = dir / "home";
+  std::filesystem::create_directories(fake_home / ".ssh");
+
+  EnvGuard home_guard("HOME", fake_home.string());
+  EnvGuard sock_guard("SSH_AUTH_SOCK", (dir / "missing-agent.sock").string());
+
+  bool created = false;
+  const int rc = holder::git::GitRepo::credential_callback_for_tests(
+      GIT_CREDENTIAL_SSH_KEY | GIT_CREDENTIAL_SSH_MEMORY,
+      "",
+      &created);
+
+  // Depending on libgit2 behavior, this may either return passthrough or
+  // construct an SSH key credential object from configured key paths.
+  REQUIRE((rc == GIT_PASSTHROUGH || rc == 0));
+  REQUIRE(created == (rc == 0));
+}
+
+TEST_CASE("GitRepo credential callback can create and free key credential", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto fake_home = dir / "home";
+  const auto ssh_dir = fake_home / ".ssh";
+  std::filesystem::create_directories(ssh_dir);
+
+  {
+    std::ofstream pub(ssh_dir / "id_ed25519.pub", std::ios::binary);
+    REQUIRE(pub.is_open());
+    pub << "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest holder@test\n";
+  }
+  {
+    std::ofstream priv(ssh_dir / "id_ed25519", std::ios::binary);
+    REQUIRE(priv.is_open());
+    priv << "-----BEGIN OPENSSH PRIVATE KEY-----\n";
+    priv << "dummy\n";
+    priv << "-----END OPENSSH PRIVATE KEY-----\n";
+  }
+
+  EnvGuard home_guard("HOME", fake_home.string());
+  EnvGuard sock_guard("SSH_AUTH_SOCK", (dir / "missing-agent.sock").string());
+
+  bool created = false;
+  const int rc = holder::git::GitRepo::credential_callback_for_tests(
+      GIT_CREDENTIAL_SSH_KEY,
+      "git",
+      &created);
+
+  REQUIRE((rc == 0 || rc == GIT_PASSTHROUGH));
+  if (rc == 0) {
+    REQUIRE(created == true);
+  }
+}
+
+TEST_CASE("GitRepo pull_remote_ff_only fallback branch selection covers configured/main/master and empty", "[git]") {
+  SECTION("configured default branch is used when remote default is unavailable") {
+    const auto dir = make_temp_dir();
+    const auto remote_dir = dir / "remote-zebra";
+    const auto local_dir = dir / "local-zebra";
+    init_bare_repo(remote_dir);
+    seed_bare_remote_branch(remote_dir, "zebra");
+
+    // Make remote HEAD non-symbolic so remote default branch lookup does not provide refs/heads/*.
+    const auto zebra_tip = read_text_file(remote_dir / "refs" / "heads" / "zebra");
+    set_bare_head_contents(remote_dir, zebra_tip);
+    EnvGuard branch_guard("GIT_DEFAULT_BRANCH", "zebra");
+
+    holder::git::GitRepo local_repo;
+    local_repo.open_or_init(local_dir);
+    local_repo.set_remote("origin", remote_dir.string());
+    REQUIRE_NOTHROW(local_repo.pull_remote_ff_only("origin"));
+    REQUIRE(std::filesystem::exists(local_dir / "cards" / "a.md"));
+  }
+
+  SECTION("fallback picks main branch") {
+    const auto dir = make_temp_dir();
+    const auto remote_dir = dir / "remote-main";
+    const auto local_dir = dir / "local-main";
+    init_bare_repo(remote_dir);
+    seed_bare_remote_branch(remote_dir, "main");
+
+    const auto main_tip = read_text_file(remote_dir / "refs" / "heads" / "main");
+    set_bare_head_contents(remote_dir, main_tip);
+    EnvGuard branch_guard("GIT_DEFAULT_BRANCH", "");
+
+    holder::git::GitRepo local_repo;
+    local_repo.open_or_init(local_dir);
+    local_repo.set_remote("origin", remote_dir.string());
+    REQUIRE_NOTHROW(local_repo.pull_remote_ff_only("origin"));
+    REQUIRE(std::filesystem::exists(local_dir / "cards" / "a.md"));
+  }
+
+  SECTION("fallback picks master branch") {
+    const auto dir = make_temp_dir();
+    const auto remote_dir = dir / "remote-master";
+    const auto local_dir = dir / "local-master";
+    init_bare_repo(remote_dir);
+    seed_bare_remote_branch(remote_dir, "master");
+
+    const auto master_tip = read_text_file(remote_dir / "refs" / "heads" / "master");
+    set_bare_head_contents(remote_dir, master_tip);
+    EnvGuard branch_guard("GIT_DEFAULT_BRANCH", "");
+
+    holder::git::GitRepo local_repo;
+    local_repo.open_or_init(local_dir);
+    local_repo.set_remote("origin", remote_dir.string());
+    REQUIRE_NOTHROW(local_repo.pull_remote_ff_only("origin"));
+    REQUIRE(std::filesystem::exists(local_dir / "cards" / "a.md"));
+  }
+
+  SECTION("fallback throws when no candidate remote branch exists") {
+    const auto dir = make_temp_dir();
+    const auto remote_dir = dir / "remote-empty";
+    const auto local_dir = dir / "local-empty";
+    init_bare_repo(remote_dir);
+
+    // Force no default branch resolution and no known branch refs.
+    set_bare_head_contents(remote_dir, "\n");
+    EnvGuard branch_guard("GIT_DEFAULT_BRANCH", "");
+
+    holder::git::GitRepo local_repo;
+    local_repo.open_or_init(local_dir);
+    local_repo.set_remote("origin", remote_dir.string());
+
+    try {
+      local_repo.pull_remote_ff_only("origin");
+      FAIL("Expected pull fallback to throw when no branch can be determined");
+    } catch (const std::runtime_error& e) {
+      const std::string msg = e.what();
+      INFO("pull error: " << msg);
+      REQUIRE((msg.find("Unable to determine remote default branch") != std::string::npos ||
+               msg.find("git_reference_lookup failed") != std::string::npos ||
+               msg.find("failed for refs/remotes/") != std::string::npos ||
+               msg.find("git_remote_fetch failed") != std::string::npos));
+    }
+  }
 }
