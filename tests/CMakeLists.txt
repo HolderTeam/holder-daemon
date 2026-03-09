@@ -49,6 +49,7 @@ add_executable(lockfile_tests
   HttpModels_test.cpp
   HttpCloudProviders_test.cpp
   HttpGitProviders_test.cpp
+  StaticRoutes_test.cpp
   HttpRunner_test.cpp
   LocalModelRunner_test.cpp
   Session_test.cpp

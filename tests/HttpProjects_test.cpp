@@ -493,3 +493,200 @@ TEST_CASE("HTTP project create tolerates invalid HOLDER_UUID_SEED", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP project routes cover validation and not-found branches", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+  ensure_uuid_seeded();
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  // list out_of_range branch
+  const auto bad_range = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::get,
+                                           "/projects?updated_after=999999999999999999999",
+                                           nlohmann::json::object(),
+                                           boost::beast::http::status::bad_request);
+  REQUIRE(bad_range["ok"] == false);
+
+  // create missing required fields
+  const auto create_missing_name = http_json_request(bound.bind,
+                                                     bound.port,
+                                                     token,
+                                                     boost::beast::http::verb::post,
+                                                     "/projects",
+                                                     nlohmann::json::object(),
+                                                     boost::beast::http::status::bad_request);
+  REQUIRE(create_missing_name["ok"] == false);
+
+  // create invalid privacy_mode
+  const auto create_bad_privacy = http_json_request(bound.bind,
+                                                    bound.port,
+                                                    token,
+                                                    boost::beast::http::verb::post,
+                                                    "/projects",
+                                                    {{"project_id", "proj-bad"},
+                                                     {"name", "Bad"},
+                                                     {"root_path", (dir / "bad").string()},
+                                                     {"privacy_mode", "invalid-mode"},
+                                                     {"updated_at", 1}},
+                                                    boost::beast::http::status::bad_request);
+  REQUIRE(create_bad_privacy["ok"] == false);
+
+  // create with optional git_provider + null project_key_id
+  const auto create_ok = http_json_request(bound.bind,
+                                           bound.port,
+                                           token,
+                                           boost::beast::http::verb::post,
+                                           "/projects",
+                                           {{"project_id", "proj-1"},
+                                            {"name", "Project One"},
+                                            {"root_path", (dir / "repo").string()},
+                                            {"git_provider", "github"},
+                                            {"project_key_id", nullptr},
+                                            {"privacy_mode", "plain"},
+                                            {"created_at", 1},
+                                            {"updated_at", 1}},
+                                           boost::beast::http::status::created);
+  REQUIRE(create_ok["ok"] == true);
+  REQUIRE(create_ok["data"]["git_provider"] == "github");
+  REQUIRE(create_ok["data"]["project_key_id"].is_null());
+
+  // git endpoints not found
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/nope/git/test-remote",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/nope/git/push",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::get,
+                            "/projects/nope/git/sync-status",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::get,
+                            "/projects/nope/encryption-check",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+
+  // recovery export/import validation + not found + missing key
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/proj-1/recovery-token/export",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::bad_request)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/nope/recovery-token/export",
+                            {{"pin", "1234"}},
+                            boost::beast::http::status::not_found)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/proj-1/recovery-token/export",
+                            {{"pin", "1234"}},
+                            boost::beast::http::status::bad_request)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/proj-1/recovery-token/import",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::bad_request)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::post,
+                            "/projects/nope/recovery-token/import",
+                            {{"pin", "1234"}, {"recovery_token", "abc"}},
+                            boost::beast::http::status::not_found)["ok"] == false);
+
+  // patch validation / not-found / root_path update / invalid privacy mode
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::patch,
+                            "/projects/proj-1",
+                            {{"name", "No Updated At"}},
+                            boost::beast::http::status::bad_request)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::patch,
+                            "/projects/proj-1",
+                            {{"updated_at", 2}},
+                            boost::beast::http::status::bad_request)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::patch,
+                            "/projects/nope",
+                            {{"updated_at", 2}, {"name", "x"}},
+                            boost::beast::http::status::not_found)["ok"] == false);
+  const auto patched_root = http_json_request(bound.bind,
+                                              bound.port,
+                                              token,
+                                              boost::beast::http::verb::patch,
+                                              "/projects/proj-1",
+                                              {{"updated_at", 3}, {"root_path", (dir / "repo2").string()}},
+                                              boost::beast::http::status::ok);
+  REQUIRE(patched_root["ok"] == true);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::patch,
+                            "/projects/proj-1",
+                            {{"updated_at", 4}, {"privacy_mode", "nope"}},
+                            boost::beast::http::status::bad_request)["ok"] == false);
+
+  // delete not found and unknown subroute
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::delete_,
+                            "/projects/nope",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+  REQUIRE(http_json_request(bound.bind,
+                            bound.port,
+                            token,
+                            boost::beast::http::verb::get,
+                            "/projects/proj-1/not-a-real-subroute",
+                            nlohmann::json::object(),
+                            boost::beast::http::status::not_found)["ok"] == false);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
