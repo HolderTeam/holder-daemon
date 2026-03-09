@@ -96,12 +96,16 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
   using tcp = boost::asio::ip::tcp;
 
   boost::asio::io_context ioc;
-  tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
-  const auto endpoint = acceptor.local_endpoint();
   tcp::socket client(ioc);
-  client.connect(endpoint);
   tcp::socket server_socket(ioc);
-  acceptor.accept(server_socket);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
 
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
@@ -184,6 +188,8 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
                       "VALUES('proj-1', 'Project', '") +
           repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("switchyard", "test-key", 1, 1);
 
@@ -196,8 +202,10 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   req.body() = nlohmann::json{
       {"prompt", "cloud prompt"},
       {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
       {"provider", "switchyard"},
       {"model", "openrouter/auto"},
+      {"context", {{"card_id", "card-1"}, {"card_title", "Card"}, {"card_body", "Body"}}},
   }
                    .dump();
   req.prepare_payload();
@@ -219,9 +227,10 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   REQUIRE(out.streamed);
 
   holder::ai::AiRunRepo run_repo(db);
-  const auto runs = run_repo.list_by_project("proj-1");
+  const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "started");
+  REQUIRE(runs[0].context_json.has_value());
 }
 
 TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
