@@ -153,6 +153,13 @@ TEST_CASE("GitRepo remove_path is idempotent for untracked paths", "[git]") {
   REQUIRE_NOTHROW(repo.remove_path("cards/missing.md"));
 }
 
+TEST_CASE("GitRepo pull_remote_ff_only throws when remote is not configured", "[git]") {
+  const auto dir = make_temp_dir();
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir);
+  REQUIRE_THROWS(repo.pull_remote_ff_only("origin"));
+}
+
 TEST_CASE("GitRepo probe_remote reports remote_unset when missing", "[git]") {
   const auto dir = make_temp_dir();
   holder::git::GitRepo repo;
@@ -436,6 +443,84 @@ TEST_CASE("GitRepo probe_remote can classify missing repository as not_found", "
   REQUIRE(result.status != holder::git::RemoteProbeStatus::RemoteUnset);
   REQUIRE(result.remote_has_head == false);
   REQUIRE_FALSE(result.error_message.empty());
+}
+
+TEST_CASE("GitRepo probe_remote and push_branch handle non-repository remote path", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto not_repo = dir / "not-a-repo";
+  std::filesystem::create_directories(not_repo);
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(dir / "local");
+  repo.write_file("cards/a.md", "seed");
+  repo.stage_path("cards/a.md");
+  repo.commit("seed");
+  repo.set_remote("origin", not_repo.string());
+
+  const auto probe = repo.probe_remote("origin");
+  REQUIRE((probe.status == holder::git::RemoteProbeStatus::NotFound ||
+           probe.status == holder::git::RemoteProbeStatus::UnknownError));
+  REQUIRE(probe.remote_has_head == false);
+  REQUIRE_FALSE(probe.error_message.empty());
+
+  const auto push = repo.push_branch("origin", "cards", false);
+  REQUIRE((push.status == holder::git::PushStatus::NotFound ||
+           push.status == holder::git::PushStatus::UnknownError));
+  REQUIRE_FALSE(push.error_message.empty());
+}
+
+TEST_CASE("GitRepo commit throws when HEAD is malformed", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto repo_dir = dir / "repo";
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(repo_dir);
+  repo.write_file("cards/a.md", "v1");
+  repo.stage_path("cards/a.md");
+  repo.commit("seed");
+
+  {
+    std::ofstream head(repo_dir / ".git" / "HEAD", std::ios::trunc);
+    REQUIRE(head.is_open());
+    head << "this is not a valid head ref\n";
+  }
+
+  repo.write_file("cards/b.md", "v2");
+  repo.stage_path("cards/b.md");
+  REQUIRE_THROWS(repo.commit("after malformed head"));
+}
+
+TEST_CASE("GitRepo commit throws when parent commit lookup fails", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto repo_dir = dir / "repo";
+
+  holder::git::GitRepo repo;
+  repo.open_or_init(repo_dir);
+  repo.write_file("cards/a.md", "v1");
+  repo.stage_path("cards/a.md");
+  repo.commit("seed");
+
+  git_libgit2_init();
+  git_repository* raw = nullptr;
+  REQUIRE(git_repository_open(&raw, repo_dir.string().c_str()) == 0);
+  git_reference* head = nullptr;
+  REQUIRE(git_repository_head(&head, raw) == 0);
+  const char* branch_ref = git_reference_name(head);
+  REQUIRE(branch_ref != nullptr);
+  const std::filesystem::path ref_path = repo_dir / ".git" / branch_ref;
+  git_reference_free(head);
+  git_repository_free(raw);
+  git_libgit2_shutdown();
+
+  {
+    std::ofstream ref(ref_path, std::ios::trunc);
+    REQUIRE(ref.is_open());
+    ref << "0000000000000000000000000000000000000000\n";
+  }
+
+  repo.write_file("cards/c.md", "v3");
+  repo.stage_path("cards/c.md");
+  REQUIRE_THROWS(repo.commit("after broken parent ref"));
 }
 
 TEST_CASE("GitRepo push_branch can classify non-fast-forward rejection", "[git]") {
