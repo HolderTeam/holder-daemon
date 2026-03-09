@@ -87,6 +87,9 @@ void LocalModelRunner::start_background_probe() {
 
 RunnerStatus LocalModelRunner::status() const {
   std::lock_guard<std::mutex> lock(mu_);
+  if (status_override_for_tests_.has_value()) {
+    return status_override_for_tests_.value();
+  }
   return status_;
 }
 
@@ -111,6 +114,22 @@ RunnerStatus LocalModelRunner::retry() {
 
 void LocalModelRunner::set_fake_mode(bool enabled) {
   fake_mode_ = enabled;
+}
+
+void LocalModelRunner::set_status_override_for_tests(const std::optional<RunnerStatus>& status) {
+  std::lock_guard<std::mutex> lock(mu_);
+  status_override_for_tests_ = status;
+}
+
+void LocalModelRunner::set_stream_generate_override_for_tests(StreamGenerateOverride override_fn) {
+  std::lock_guard<std::mutex> lock(mu_);
+  stream_generate_override_for_tests_ = std::move(override_fn);
+}
+
+void LocalModelRunner::clear_overrides_for_tests() {
+  std::lock_guard<std::mutex> lock(mu_);
+  status_override_for_tests_.reset();
+  stream_generate_override_for_tests_ = nullptr;
 }
 
 std::string LocalModelRunner::generate_job_id() {
@@ -227,6 +246,14 @@ bool LocalModelRunner::stream_generate(const std::string& model,
                                        const std::string& options_json,
                                        const std::function<void(const std::string&)>& on_chunk,
                                        std::string* error) {
+  StreamGenerateOverride override_fn;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    override_fn = stream_generate_override_for_tests_;
+  }
+  if (override_fn) {
+    return override_fn(model, prompt, options_json, on_chunk, error);
+  }
   if (fake_mode_) {
     if (model.empty()) {
       if (error) *error = "missing model";

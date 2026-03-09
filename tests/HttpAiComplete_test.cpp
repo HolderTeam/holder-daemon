@@ -4,6 +4,7 @@
 #include "api/support/CloudQuota.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
+#include "ai/AiRouterConfigRepo.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
@@ -392,6 +393,274 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "started");
+}
+
+TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router context", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiRouterConfigRepo router_cfg_repo(db);
+  router_cfg_repo.set_global("router-model", 1);
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "router-model", .size = 1},
+      holder::llm::LocalModel{.name = "model-a", .size = 100},
+      holder::llm::LocalModel{.name = "model-b", .size = 200},
+  };
+  runner.set_status_override_for_tests(status);
+
+  bool saw_router_call = false;
+  bool saw_model_a_call = false;
+  bool saw_model_b_call = false;
+  bool router_prompt_was_truncated = false;
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string& prompt,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string* error) -> bool {
+        if (model == "router-model") {
+          saw_router_call = true;
+          on_chunk("[\"model-a\",\"model-b\"]");
+          router_prompt_was_truncated = prompt.size() < 54000;
+          return true;
+        }
+        if (model == "model-a") {
+          saw_model_a_call = true;
+          on_chunk("partial-a");
+          if (error) *error = "model-a failed";
+          return false;
+        }
+        if (model == "model-b") {
+          saw_model_b_call = true;
+          on_chunk("final-b");
+          return true;
+        }
+        if (error) *error = "unexpected model";
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  const std::string huge_context(70000, 'x');
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "route locally"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", huge_context}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      &runner,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  REQUIRE(saw_router_call);
+  REQUIRE(saw_model_a_call);
+  REQUIRE(saw_model_b_call);
+  REQUIRE(router_prompt_was_truncated);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("model-b"));
+  REQUIRE(runs[0].ranked_json.has_value());
+  REQUIRE(runs[0].ranked_json.value().find("model-a") != std::string::npos);
+
+  holder::ai::AiMessageRepo msg_repo(db, nullptr);
+  const auto msgs = msg_repo.list_by_thread("thread-1");
+  bool saw_assistant = false;
+  for (const auto& msg : msgs) {
+    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "model-b") {
+      saw_assistant = true;
+    }
+  }
+  REQUIRE(saw_assistant);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute local routing falls back to largest model when router ranking is invalid", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "router-model", .size = 1},
+      holder::llm::LocalModel{.name = "small-model", .size = 10},
+      holder::llm::LocalModel{.name = "large-model", .size = 1000},
+  };
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string&,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string*) -> bool {
+        if (model == "router-model") {
+          on_chunk("not-json");
+          return true;
+        }
+        if (model == "large-model") {
+          on_chunk("large-output");
+          return true;
+        }
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "route locally"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      &runner,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("large-model"));
+  REQUIRE(runs[0].ranked_json == std::optional<std::string>("[\"large-model\"]"));
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {holder::llm::LocalModel{.name = "installed-model", .size = 1}};
+  runner.set_status_override_for_tests(status);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{
+      {"prompt", "force local"},
+      {"project_id", "proj-1"},
+      {"model", "missing-model"},
+  }
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      unopened_socket,
+      db,
+      nullptr,
+      &runner,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed == false);
+  REQUIRE(res.result() == http::status::bad_request);
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["error"]["code"] == "bad_request");
 }
 
 TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[http]") {
