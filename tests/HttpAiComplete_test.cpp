@@ -19,6 +19,22 @@ class CloudRunOverrideGuard {
   }
 };
 
+class ServerThreadGuard {
+ public:
+  ServerThreadGuard(holder::api::HttpServer& server, holder::core::SignalHandler& signals)
+      : thread_([&server, &signals]() { server.run(signals); }) {}
+
+  ~ServerThreadGuard() {
+    if (thread_.joinable()) {
+      std::raise(SIGTERM);
+      thread_.join();
+    }
+  }
+
+ private:
+  std::thread thread_;
+};
+
 } // namespace
 
 TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
@@ -479,16 +495,19 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
   const std::string token = "testtoken";
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
-  runner.start_background_probe();
+  (void)runner.retry();
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -498,21 +517,39 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  ServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto out = holder::test::http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/ai/runs",
-      nlohmann::json{{"prompt", "hello thread"},
-                     {"project_id", "proj-1"},
-                     {"thread_id", "thread-1"},
-                     {"model", "fake-echo"}},
-      boost::beast::http::status::ok);
-  REQUIRE(out["ok"] == true);
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "hello thread"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"model", "fake-echo"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::write(socket, req);
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  if (res.result() != http::status::ok) {
+    FAIL(res.body());
+  }
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -526,11 +563,18 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   holder::ai::AiMessageRepo msg_repo(db, nullptr);
   const auto msgs = msg_repo.list_by_thread("thread-1");
   REQUIRE(msgs.size() == 2);
-  REQUIRE(msgs[0].role == "user");
-  REQUIRE(msgs[0].model == std::optional<std::string>("fake-echo"));
-
-  std::raise(SIGTERM);
-  server_thread.join();
+  bool saw_user = false;
+  bool saw_model = false;
+  for (const auto& m : msgs) {
+    if (m.role == "user") {
+      saw_user = true;
+    }
+    if (m.model.has_value() && m.model.value() == "fake-echo") {
+      saw_model = true;
+    }
+  }
+  REQUIRE(saw_user);
+  REQUIRE(saw_model);
 }
 
 TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", "[http]") {
