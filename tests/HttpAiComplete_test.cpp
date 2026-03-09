@@ -1,6 +1,9 @@
 #include "http_test_helpers.h"
 #include "api/routes/ai/runs/AiRunPostRoute.h"
 #include "api/support/CloudClient.h"
+#include "api/support/CloudQuota.h"
+#include "api/support/ThreadCompaction.h"
+#include "api/support/Time.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
@@ -231,6 +234,1332 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "started");
   REQUIRE(runs[0].context_json.has_value());
+}
+
+TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog missing", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto missing_cfg = dir / "missing_ai_catalog.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  {
+    std::ofstream out(missing_cfg);
+    REQUIRE(out.is_open());
+    out << "invalid: true\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", missing_cfg.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+  }
+                   .dump();
+  req.prepare_payload();
+
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      unopened_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed == false);
+  REQUIRE(res.result() == http::status::service_unavailable);
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["error"]["code"] == "runner_unavailable");
+}
+
+TEST_CASE("AiRunPostRoute direct catches DB failures from thread creation path", "[http]") {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  holder::platform::Db unopened_db;
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{
+      {"prompt", "needs thread"},
+      {"project_id", "proj-1"},
+  }
+                   .dump();
+  req.prepare_payload();
+
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      unopened_socket,
+      unopened_db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(res.result() == http::status::bad_request);
+}
+
+TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_fallback.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: First\n";
+    out << "        provider_id: first\n";
+    out << "        credential_key: first\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-a\n";
+    out << "        endpoint: /v1/chat\n";
+    out << "      - provider: Second\n";
+    out << "        provider_id: second\n";
+    out << "        credential_key: second\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-b\n";
+    out << "        endpoint: /v1/chat\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("second", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{
+      {"prompt", "fallback provider selection"},
+      {"project_id", "proj-1"},
+  }
+                   .dump();
+  req.prepare_payload();
+
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      unopened_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_project("proj-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "started");
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "main-model") return std::string("cloud output");
+        return std::string("summary output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_threshold.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 5000\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 10000\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", "tiny"}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "below_threshold");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig&,
+         const std::string&,
+         const std::string&,
+         std::string* error) -> std::optional<std::string> {
+        if (error) *error = "forced cloud failure";
+        return std::nullopt;
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_failure.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "    cooldown:\n";
+    out << "      base_seconds: 30\n";
+    out << "      cap_seconds: 900\n";
+    out << "  provider_defaults:\n";
+    out << "    switchyard:\n";
+    out << "      provider: Switchyard\n";
+    out << "      credential_key: switchyard\n";
+    out << "      enabled: true\n";
+    out << "      base_url: https://127.0.0.1:1\n";
+    out << "      api_kind: generic_chat\n";
+    out << "      auth_type: bearer_header\n";
+    out << "      provider_cooldown:\n";
+    out << "        base_seconds: 50\n";
+    out << "        cap_seconds: 700\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider_id: switchyard\n";
+    out << "        model_id: failing-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        model_cooldown:\n";
+    out << "          base_seconds: 12\n";
+    out << "          cap_seconds: 180\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"provider", "switchyard"},
+                              {"model", "failing-model"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_project("proj-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "failed");
+  REQUIRE(runs[0].error.has_value());
+  REQUIRE(runs[0].error.value() == "forced cloud failure");
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["result"]["status"] == "failed");
+
+  const auto cooldown =
+      holder::api::support::load_cloud_model_cooldown(db, "switchyard", "failing-model");
+  REQUIRE(cooldown.has_value());
+  REQUIRE(cooldown->failure_count == 1);
+  REQUIRE(cooldown->last_error == "forced cloud failure");
+  REQUIRE(cooldown->cooldown_until - cooldown->updated_at == 12);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed run", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_attempt_reasons.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-cooldown\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-rpm\n";
+    out << "        limits:\n";
+    out << "          rpm: 1\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-rpd\n";
+    out << "        limits:\n";
+    out << "          rpd: 1\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: model-tpm\n";
+    out << "        limits:\n";
+    out << "          tpm: 100\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  const long long now = holder::api::support::now_epoch_seconds();
+  db.exec("INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
+          "last_error, updated_at) VALUES('switchyard', 'model-cooldown', 2, 4102444800, "
+          "'cooldown test', " +
+          std::to_string(now) + ");");
+  holder::api::support::record_cloud_usage_event(
+      db, "switchyard", "model-rpm", 10, 5, now, "rpm-seed");
+  holder::api::support::record_cloud_usage_event(
+      db, "switchyard", "model-rpd", 10, 5, now, "rpd-seed");
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "make this fail but keep context"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", "context body"}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "failed");
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["result"]["status"] == "failed");
+  REQUIRE(trace["attempts"].is_array());
+
+  bool saw_cooldown = false;
+  bool saw_rpm = false;
+  bool saw_rpd = false;
+  bool saw_tpm = false;
+  for (const auto& attempt : trace["attempts"]) {
+    if (!attempt.is_object() || !attempt.contains("reason")) continue;
+    const auto reason = attempt["reason"].get<std::string>();
+    if (reason == "cooldown_active") saw_cooldown = true;
+    if (reason == "rpm_exceeded") saw_rpm = true;
+    if (reason == "rpd_exceeded") saw_rpd = true;
+    if (reason == "tpm_exceeded") saw_tpm = true;
+  }
+  REQUIRE(saw_cooldown);
+  REQUIRE(saw_rpm);
+  REQUIRE(saw_rpd);
+  REQUIRE(saw_tpm);
+
+  const auto rolled = holder::api::support::load_thread_compaction_state(db, "thread-1");
+  REQUIRE(rolled.has_value());
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reason", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "main-model") return std::string("cloud output");
+        return std::string("summary output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_min_interval.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 86400\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 999999\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  holder::api::support::ThreadCompactionState state;
+  state.thread_id = "thread-1";
+  state.rolling_summary = std::string("existing summary");
+  state.updated_at = holder::api::support::now_epoch_seconds();
+  holder::api::support::upsert_thread_compaction_state(db, state);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context(6000, 'x');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"},
+                                           {"card_body", long_context}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "min_interval_not_elapsed");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "main-model") return std::string("cloud output");
+        return std::string("summary output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_min_delta.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 999999\n";
+    out << "    force_refresh_tokens: 999999\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  holder::api::support::ThreadCompactionState state;
+  state.thread_id = "thread-1";
+  state.rolling_summary = std::string(5000, 's');
+  state.updated_at = 1;
+  holder::api::support::upsert_thread_compaction_state(db, state);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_delta(6000, 'd');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_delta}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "min_delta_not_met");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "main-model") return std::string("cloud output");
+        return std::string("summary output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_compact_cooldown.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 999999\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  db.exec("INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
+          "last_error, updated_at) VALUES('switchyard', 'compact-model', 2, 4102444800, "
+          "'summary cooldown', 1);");
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_cooldown(6000, 'c');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_cooldown}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "cooldown_active");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normalized summary", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "compact-model") {
+          return std::string("## Decisions\n"
+                             "- Keep cloud-first fallback for low-end devices\n"
+                             "## Constraints\n"
+                             "- Avoid user editing yaml files\n"
+                             "## Open Questions\n"
+                             "- Should provider order be user-customizable?\n"
+                             "## Next Actions\n"
+                             "- Add client-facing bootstrap endpoint\n");
+        }
+        return std::string("cloud output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_refresh_complete.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 1\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_complete(6000, 'z');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"},
+                                           {"card_body", long_context_complete}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["status"] == "completed");
+  REQUIRE(trace["compaction"]["summary_refresh"]["model"] == "compact-model");
+
+  const auto state = holder::api::support::load_thread_compaction_state(db, "thread-1");
+  REQUIRE(state.has_value());
+  REQUIRE(state->rolling_summary.has_value());
+  REQUIRE(state->rolling_summary->find("## Decisions") != std::string::npos);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> {
+        if (model.id == "compact-model") {
+          return std::string("ok");
+        }
+        return std::string("cloud output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_quality_guard.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 1\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_quality(6000, 'q');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"},
+                                           {"card_body", long_context_quality}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "quality_guard_failed");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldown", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig& model,
+         const std::string&,
+         const std::string&,
+         std::string* error) -> std::optional<std::string> {
+        if (model.id == "compact-model") {
+          if (error) *error = "summary refresh failed (forced)";
+          return std::nullopt;
+        }
+        return std::string("cloud output");
+      });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_summary_fail.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "    cooldown:\n";
+    out << "      base_seconds: 30\n";
+    out << "      cap_seconds: 900\n";
+    out << "  provider_defaults:\n";
+    out << "    switchyard:\n";
+    out << "      provider: Switchyard\n";
+    out << "      credential_key: switchyard\n";
+    out << "      enabled: true\n";
+    out << "      base_url: https://127.0.0.1:1\n";
+    out << "      api_kind: generic_chat\n";
+    out << "      auth_type: bearer_header\n";
+    out << "      provider_cooldown:\n";
+    out << "        base_seconds: 50\n";
+    out << "        cap_seconds: 700\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider_id: switchyard\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider_id: switchyard\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "        model_cooldown:\n";
+    out << "          base_seconds: 7\n";
+    out << "          cap_seconds: 70\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 1\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_summary_fail(6000, 'f');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"},
+                                           {"card_body", long_context_summary_fail}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      nullptr,
+      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].policy_trace_json.has_value());
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["status"] == "failed");
+  REQUIRE(trace["compaction"]["summary_refresh"]["error"] == "summary refresh failed (forced)");
+
+  const auto cooldown =
+      holder::api::support::load_cloud_model_cooldown(db, "switchyard", "compact-model");
+  REQUIRE(cooldown.has_value());
+  REQUIRE(cooldown->failure_count == 1);
+  REQUIRE(cooldown->last_error == "summary refresh failed (forced)");
+  REQUIRE(cooldown->cooldown_until - cooldown->updated_at == 7);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
 }
 
 TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
