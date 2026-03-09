@@ -473,3 +473,158 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced installed model", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto out = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"prompt", "hello thread"},
+                     {"project_id", "proj-1"},
+                     {"thread_id", "thread-1"},
+                     {"model", "fake-echo"}},
+      boost::beast::http::status::ok);
+  REQUIRE(out["ok"] == true);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].mode == "model");
+  REQUIRE(runs[0].thread_id == std::optional<std::string>("thread-1"));
+  REQUIRE(runs[0].status == "completed");
+
+  holder::ai::AiMessageRepo msg_repo(db, nullptr);
+  const auto msgs = msg_repo.list_by_thread("thread-1");
+  REQUIRE(msgs.size() == 2);
+  REQUIRE(msgs[0].role == "user");
+  REQUIRE(msgs[0].model == std::optional<std::string>("fake-echo"));
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto out = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}, {"model", "missing-model"}},
+      boost::beast::http::status::bad_request);
+  REQUIRE(out["ok"] == false);
+  REQUIRE(out["error"]["code"] == "bad_request");
+  REQUIRE(out["error"]["message"] == "Requested model is not installed.");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provider has creds", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: openrouter/auto\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto out = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}},
+      boost::beast::http::status::service_unavailable);
+  REQUIRE(out["ok"] == false);
+  REQUIRE(out["error"]["code"] == "cloud_not_configured");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}

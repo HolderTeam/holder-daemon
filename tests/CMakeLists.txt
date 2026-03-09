@@ -30,6 +30,7 @@ add_executable(lockfile_tests
   AiRuntimeStatusRoutes_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
+  AiRunQueryRoutes_test.cpp
   HttpAiRunEvents_test.cpp
   HttpAiRunnerPullEvents_test.cpp
   HttpAiRunnerPullRoutes_test.cpp
