@@ -43,6 +43,11 @@ public:
   // Push local branch to remote.
   PushResult push_branch(const std::string& name, const std::string& branch, bool set_upstream);
 
+  // Test hook: invoke the internal credential callback and report whether a credential was produced.
+  static int credential_callback_for_tests(unsigned int allowed_types,
+                                           const char* username_from_url,
+                                           bool* out_credential_created);
+
   std::filesystem::path repo_dir() const { return repo_dir_; }
 
 private:

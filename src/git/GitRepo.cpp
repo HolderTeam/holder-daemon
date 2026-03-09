@@ -749,4 +749,19 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
   spdlog::info("Pulled {} (fast-forward)", name);
 }
 
+int GitRepo::credential_callback_for_tests(unsigned int allowed_types,
+                                           const char* username_from_url,
+                                           bool* out_credential_created) {
+  git_credential* cred = nullptr;
+  const int rc =
+      git_credential_acquire_cb(&cred, "ssh://example.invalid/repo.git", username_from_url, allowed_types, nullptr);
+  if (out_credential_created) {
+    *out_credential_created = (cred != nullptr);
+  }
+  if (cred != nullptr) {
+    git_credential_free(cred);
+  }
+  return rc;
+}
+
 } // namespace holder::git

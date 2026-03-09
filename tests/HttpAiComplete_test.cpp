@@ -1,6 +1,7 @@
 #include "http_test_helpers.h"
 #include "api/support/CloudClient.h"
 #include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiMessageRepo.h"
 
@@ -214,6 +215,260 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   const auto policy_trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
   REQUIRE(policy_trace["path"] == "cloud");
   REQUIRE(policy_trace["provider"] == "switchyard");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = "{";
+  req.prepare_payload();
+  http::write(socket, req);
+
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  REQUIRE(res.result() == http::status::bad_request);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  const auto missing_prompt = holder::test::http_json_request(bound.bind,
+                                                              bound.port,
+                                                              token,
+                                                              http::verb::post,
+                                                              "/ai/runs",
+                                                              nlohmann::json{{"mode", "auto"}},
+                                                              http::status::bad_request);
+  REQUIRE(missing_prompt["ok"] == false);
+  REQUIRE(missing_prompt["error"]["code"] == "bad_request");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  const std::string long_prompt(140, 'x');
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  nlohmann::json body = {
+      {"prompt", long_prompt},
+      {"project_id", "proj-1"},
+      {"mode", "model"},
+  };
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = body.dump();
+  req.prepare_payload();
+  http::write(socket, req);
+
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  REQUIRE(res.result() == http::status::ok);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  holder::ai::AiThreadRepo thread_repo(db);
+  const auto threads = thread_repo.list("proj-1");
+  REQUIRE(threads.size() == 1);
+  REQUIRE(threads[0].title.size() == 80);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: openrouter/auto\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  holder::ai::AiProviderSettingRepo setting_repo(db);
+  setting_repo.upsert("switchyard", false, 2);
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto out = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}, {"provider", "switchyard"}},
+      boost::beast::http::status::service_unavailable);
+  REQUIRE(out["ok"] == false);
+  REQUIRE(out["error"]["code"] == "cloud_not_configured");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        role: default\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::LocalModelRunner runner;
+  runner.start_background_probe();
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto out = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"prompt", "hello"},
+                     {"project_id", "proj-1"},
+                     {"provider", "switchyard"},
+                     {"model", "not-installed"}},
+      boost::beast::http::status::service_unavailable);
+  REQUIRE(out["ok"] == false);
+  REQUIRE(out["error"]["code"] == "cloud_not_configured");
 
   std::raise(SIGTERM);
   server_thread.join();
