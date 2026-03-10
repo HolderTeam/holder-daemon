@@ -76,6 +76,9 @@ void ResourceRepo::add(const holder::model::Resource& resource) {
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
+    if (rc == SQLITE_CONSTRAINT || rc == SQLITE_CONSTRAINT_PRIMARYKEY || rc == SQLITE_CONSTRAINT_UNIQUE) {
+      throw std::runtime_error("conflict: resource_id already exists");
+    }
     throw_sqlite(db_.handle(), "insert resource failed");
   }
 }
