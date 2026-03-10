@@ -764,4 +764,16 @@ int GitRepo::credential_callback_for_tests(unsigned int allowed_types,
   return rc;
 }
 
+RemoteProbeStatus GitRepo::classify_remote_probe_error_for_tests(const std::string& message) {
+  return classify_remote_probe_error(message);
+}
+
+PushStatus GitRepo::classify_push_error_for_tests(const std::string& message) {
+  return classify_push_error(message);
+}
+
+std::string GitRepo::configured_default_branch_name_for_tests() {
+  return configured_default_branch_name();
+}
+
 } // namespace holder::git

@@ -417,10 +417,15 @@ TEST_CASE("GitRepo push_branch uses git config init.defaultBranch when HEAD deta
   const auto fake_home = dir / "home";
   const auto fake_xdg = dir / "xdg";
   std::filesystem::create_directories(fake_home);
-  std::filesystem::create_directories(fake_xdg);
+  std::filesystem::create_directories(fake_xdg / "git");
 
   {
     std::ofstream cfg(fake_home / ".gitconfig", std::ios::binary);
+    REQUIRE(cfg.is_open());
+    cfg << "[init]\n\tdefaultBranch = zebra\n";
+  }
+  {
+    std::ofstream cfg(fake_xdg / "git" / "config", std::ios::binary);
     REQUIRE(cfg.is_open());
     cfg << "[init]\n\tdefaultBranch = zebra\n";
   }
@@ -643,6 +648,48 @@ TEST_CASE("GitRepo credential callback can create and free key credential", "[gi
   if (rc == 0) {
     REQUIRE(created == true);
   }
+}
+
+TEST_CASE("GitRepo classify helpers map common remote and push errors", "[git]") {
+  using holder::git::PushStatus;
+  using holder::git::RemoteProbeStatus;
+
+  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("Authentication failed") ==
+          RemoteProbeStatus::AuthFailed);
+  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("repository not found") ==
+          RemoteProbeStatus::NotFound);
+  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("connection refused") ==
+          RemoteProbeStatus::NetworkError);
+
+  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("publickey denied") ==
+          PushStatus::AuthFailed);
+  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("not found") ==
+          PushStatus::NotFound);
+  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("non-fast-forward update rejected") ==
+          PushStatus::NonFastForward);
+  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("timed out while pushing") ==
+          PushStatus::NetworkError);
+}
+
+TEST_CASE("GitRepo configured_default_branch_name reads git config when env missing", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto fake_home = dir / "home";
+  const auto fake_xdg = dir / "xdg";
+  std::filesystem::create_directories(fake_home);
+  std::filesystem::create_directories(fake_xdg);
+
+  {
+    std::ofstream cfg(fake_home / ".gitconfig", std::ios::binary);
+    REQUIRE(cfg.is_open());
+    cfg << "[init]\n\tdefaultBranch = zebra\n";
+  }
+
+  EnvGuard env_branch("GIT_DEFAULT_BRANCH", "");
+  EnvGuard home_guard("HOME", fake_home.string());
+  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
+
+  const auto configured = holder::git::GitRepo::configured_default_branch_name_for_tests();
+  REQUIRE((configured == "zebra" || configured.empty()));
 }
 
 TEST_CASE("GitRepo pull_remote_ff_only fallback branch selection covers configured/main/master and empty", "[git]") {

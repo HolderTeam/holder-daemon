@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sqlite3.h>
 #include <string>
 #include <vector>
 
@@ -372,4 +373,186 @@ TEST_CASE("AiMessageRepo sqlite prepare failures throw", "[aimessagerepo]") {
   REQUIRE_THROWS(repo.get("anything"));
   REQUIRE_THROWS(repo.list_by_thread("thread-1"));
   REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
+}
+
+TEST_CASE("AiMessageRepo append cleans file when DB insert fails", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  db.exec("CREATE TRIGGER fail_ai_messages_insert BEFORE INSERT ON ai_messages "
+          "BEGIN SELECT RAISE(ABORT, 'no insert'); END;");
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-insert-fail";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "insert fail";
+  msg.created_at = 20;
+
+  REQUIRE_THROWS(repo.append(msg));
+  const auto full_path = project_root / holder::core::ai_message_rel_path(msg.message_id);
+  REQUIRE_FALSE(std::filesystem::exists(full_path));
+}
+
+TEST_CASE("AiMessageRepo update throws when thread or project is missing", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-update-guard";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "body";
+  msg.created_at = 21;
+  repo.append(msg);
+
+  auto no_thread = msg;
+  no_thread.thread_id = "missing-thread";
+  REQUIRE_THROWS(repo.update(no_thread));
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-bad-project', 'missing-proj', 'T', 1, 1);");
+  db.exec("PRAGMA foreign_keys=ON;");
+  auto bad_project = msg;
+  bad_project.thread_id = "thread-bad-project";
+  REQUIRE_THROWS(repo.update(bad_project));
+}
+
+TEST_CASE("AiMessageRepo update/trash/restore/remove SQL step failures throw", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-step-fail";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "x";
+  msg.created_at = 22;
+  repo.append(msg);
+
+  db.exec("CREATE TRIGGER fail_ai_messages_update BEFORE UPDATE ON ai_messages "
+          "BEGIN SELECT RAISE(ABORT, 'no update'); END;");
+  REQUIRE_THROWS(repo.update(msg));
+  REQUIRE_THROWS(repo.trash(msg.message_id, 100));
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+  db.exec("DROP TRIGGER fail_ai_messages_update;");
+
+  db.exec("CREATE TRIGGER fail_ai_messages_delete BEFORE DELETE ON ai_messages "
+          "BEGIN SELECT RAISE(ABORT, 'no delete'); END;");
+  REQUIRE_THROWS(repo.remove(msg.message_id));
+}
+
+TEST_CASE("AiMessageRepo get/list step error paths via sqlite progress handler", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-progress";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "x";
+  msg.created_at = 23;
+  repo.append(msg);
+  repo.trash(msg.message_id, 200);
+
+  sqlite3_progress_handler(db.handle(), 1, [](void*) -> int { return 1; }, nullptr);
+  REQUIRE_THROWS(repo.get(msg.message_id));
+  REQUIRE_THROWS(repo.list_by_thread("thread-1"));
+  REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("AiMessageRepo trash/restore/update_links throw when thread or project missing", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-guard-2";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "x";
+  msg.created_at = 24;
+  repo.append(msg);
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("UPDATE ai_messages SET thread_id = 'missing-thread' WHERE message_id = 'msg-guard-2';");
+  db.exec("PRAGMA foreign_keys=ON;");
+  REQUIRE_THROWS(repo.trash(msg.message_id, 50));
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+  REQUIRE_THROWS(repo.update_links(msg.message_id));
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-bad-2', 'missing-proj', 'T', 1, 1);");
+  db.exec("UPDATE ai_messages SET thread_id = 'thread-bad-2' WHERE message_id = 'msg-guard-2';");
+  db.exec("PRAGMA foreign_keys=ON;");
+  REQUIRE_THROWS(repo.trash(msg.message_id, 51));
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+  REQUIRE_THROWS(repo.update_links(msg.message_id));
+}
+
+TEST_CASE("AiMessageRepo methods honor project remote set_remote path", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  update_project_remote(db, "proj-1", "git@example.com:repo.git", 3);
+  create_thread(db, "thread-1", "proj-1");
+
+  TrackingGitOps git;
+  holder::ai::AiMessageRepo repo(db, nullptr, nullptr, &git);
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-remote-all";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "x";
+  msg.created_at = 25;
+  repo.append(msg);
+  repo.update(msg);
+  repo.update_links(msg.message_id);
+  repo.trash(msg.message_id, 80);
+  repo.restore(msg.message_id);
+  repo.remove(msg.message_id);
+
+  REQUIRE(git.set_remote_calls >= 5);
 }

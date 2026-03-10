@@ -47,6 +47,9 @@ public:
   static int credential_callback_for_tests(unsigned int allowed_types,
                                            const char* username_from_url,
                                            bool* out_credential_created);
+  static RemoteProbeStatus classify_remote_probe_error_for_tests(const std::string& message);
+  static PushStatus classify_push_error_for_tests(const std::string& message);
+  static std::string configured_default_branch_name_for_tests();
 
   std::filesystem::path repo_dir() const { return repo_dir_; }
 
