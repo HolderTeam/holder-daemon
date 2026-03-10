@@ -721,3 +721,92 @@ TEST_CASE("AiMessageRepo prepare failures via authorizer for update/trash/restor
   REQUIRE_THROWS(repo.remove(msg_remove.message_id));
   REQUIRE(sqlite3_set_authorizer(db.handle(), nullptr, nullptr) == SQLITE_OK);
 }
+
+TEST_CASE("AiMessageRepo list_by_thread and list_deleted throw when interrupted mid-scan",
+          "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  for (int i = 0; i < 600; ++i) {
+    holder::model::AiMessage msg;
+    msg.message_id = "msg-list-int-" + std::to_string(i);
+    msg.thread_id = "thread-1";
+    msg.role = "user";
+    msg.source = "manual";
+    msg.content = "content";
+    msg.created_at = 1000 + i;
+    repo.append(msg);
+    if (i < 300) {
+      repo.trash(msg.message_id, 2000 + i);
+    }
+  }
+
+  int cb_count = 0;
+  sqlite3_progress_handler(
+      db.handle(), 1,
+      [](void* ctx) -> int {
+        auto* count = static_cast<int*>(ctx);
+        ++(*count);
+        return (*count > 3000) ? 1 : 0;
+      },
+      &cb_count);
+  REQUIRE_THROWS(repo.list_by_thread("thread-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+
+  cb_count = 0;
+  sqlite3_progress_handler(
+      db.handle(), 1,
+      [](void* ctx) -> int {
+        auto* count = static_cast<int*>(ctx);
+        ++(*count);
+        return (*count > 3000) ? 1 : 0;
+      },
+      &cb_count);
+  REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("AiMessageRepo restore covers missing trash file and SQL step failure", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage missing_file_msg;
+  missing_file_msg.message_id = "msg-restore-missing-trash";
+  missing_file_msg.thread_id = "thread-1";
+  missing_file_msg.role = "user";
+  missing_file_msg.source = "manual";
+  missing_file_msg.content = "x";
+  missing_file_msg.created_at = 50;
+  repo.append(missing_file_msg);
+  repo.trash(missing_file_msg.message_id, 500);
+  const auto missing_trash_rel = holder::core::ai_message_trash_rel_path(missing_file_msg.message_id);
+  std::filesystem::remove(project_root / missing_trash_rel);
+  REQUIRE_THROWS(repo.restore(missing_file_msg.message_id));
+
+  holder::model::AiMessage step_fail_msg;
+  step_fail_msg.message_id = "msg-restore-step-fail";
+  step_fail_msg.thread_id = "thread-1";
+  step_fail_msg.role = "user";
+  step_fail_msg.source = "manual";
+  step_fail_msg.content = "y";
+  step_fail_msg.created_at = 51;
+  repo.append(step_fail_msg);
+  repo.trash(step_fail_msg.message_id, 501);
+
+  db.exec("CREATE TRIGGER fail_ai_messages_restore_update BEFORE UPDATE ON ai_messages "
+          "BEGIN SELECT RAISE(ABORT, 'no restore update'); END;");
+  REQUIRE_THROWS(repo.restore(step_fail_msg.message_id));
+  db.exec("DROP TRIGGER fail_ai_messages_restore_update;");
+}

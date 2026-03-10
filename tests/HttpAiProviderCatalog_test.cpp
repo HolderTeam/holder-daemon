@@ -16,6 +16,17 @@ http::request<http::string_body> make_req(http::verb method, const std::string& 
   req.set(http::field::host, "127.0.0.1");
   return req;
 }
+
+class CwdGuard {
+public:
+  explicit CwdGuard(const std::filesystem::path& next) : prev_(std::filesystem::current_path()) {
+    std::filesystem::current_path(next);
+  }
+  ~CwdGuard() { std::filesystem::current_path(prev_); }
+
+private:
+  std::filesystem::path prev_;
+};
 } // namespace
 
 TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") {
@@ -136,6 +147,7 @@ TEST_CASE("AiProviderCatalogRoutes direct handles missing catalog and db failure
   http::response<http::string_body> res;
 
   SECTION("missing catalog path returns bad_request") {
+    CwdGuard cwd(dir);
     holder::test::EnvGuard missing_catalog("HOLDER_AI_CATALOG_PATH", (dir / "does-not-exist.yaml").string());
     auto req = make_req(http::verb::get, "/ai/providers/catalog");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_catalog_routes(

@@ -24,6 +24,7 @@ add_executable(lockfile_tests
   ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
   AiDispatch_test.cpp
+  AiResourceRoutes_test.cpp
   AiMessageRoutes_test.cpp
   AiMessageCrudRoutes_test.cpp
   HttpAiThreads_test.cpp
@@ -48,8 +49,10 @@ add_executable(lockfile_tests
   HttpAiComplete_test.cpp
   HttpResources_test.cpp
   HttpTrash_test.cpp
+  TrashRoutes_test.cpp
   HttpRebuild_test.cpp
   RebuildRoutes_test.cpp
+  ProjectRoutes_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
@@ -77,6 +80,7 @@ add_executable(lockfile_tests
   CardRoutes_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
+  SearchRoutes_test.cpp
   HttpSearchDisabled_test.cpp
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp

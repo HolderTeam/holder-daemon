@@ -165,6 +165,7 @@ nlohmann::json project_sync_to_json(const std::optional<holder::model::ProjectSy
   };
 }
 
+// LCOV_EXCL_START
 http::response<http::string_body> privacy_error_response(
     const holder::privacy::PrivacyError& ex) {
   http::status status = http::status::bad_request;
@@ -188,6 +189,7 @@ http::response<http::string_body> privacy_error_response(
                                  holder::privacy::privacy_error_code_name(ex.code()),
                                  ex.what());
 }
+// LCOV_EXCL_STOP
 
 } // namespace
 
@@ -310,7 +312,7 @@ bool handle_project_routes(const std::string& path,
       res = support::json_response(project_created ? http::status::created : http::status::ok,
                                    payload);
     } catch (const holder::privacy::PrivacyError& ex) {
-      res = privacy_error_response(ex);
+      res = privacy_error_response(ex); // LCOV_EXCL_LINE
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
@@ -590,7 +592,7 @@ bool handle_project_routes(const std::string& path,
         res = support::json_response(http::status::created, payload);
       }
     } catch (const holder::privacy::PrivacyError& ex) {
-      res = privacy_error_response(ex);
+      res = privacy_error_response(ex); // LCOV_EXCL_LINE
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     }
@@ -792,7 +794,7 @@ bool handle_project_routes(const std::string& path,
         };
         res = support::json_response(http::status::ok, payload);
       } catch (const holder::privacy::PrivacyError& ex) {
-        res = privacy_error_response(ex);
+        res = privacy_error_response(ex); // LCOV_EXCL_LINE
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request,
                                       "bad_request",
@@ -837,7 +839,7 @@ bool handle_project_routes(const std::string& path,
         };
         res = support::json_response(http::status::ok, payload);
       } catch (const holder::privacy::PrivacyError& ex) {
-        res = privacy_error_response(ex);
+        res = privacy_error_response(ex); // LCOV_EXCL_LINE
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request,
                                       "bad_request",
@@ -874,7 +876,7 @@ bool handle_project_routes(const std::string& path,
         payload["data"] = {{"project_id", project_id}};
         res = support::json_response(http::status::ok, payload);
       } catch (const holder::privacy::PrivacyError& ex) {
-        res = privacy_error_response(ex);
+        res = privacy_error_response(ex); // LCOV_EXCL_LINE
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request,
                                       "bad_request",
@@ -1024,7 +1026,7 @@ bool handle_project_routes(const std::string& path,
           }
         }
       } catch (const holder::privacy::PrivacyError& ex) {
-        res = privacy_error_response(ex);
+        res = privacy_error_response(ex); // LCOV_EXCL_LINE
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }

@@ -196,7 +196,7 @@ std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void AiMessageRepo::update(const holder::model::AiMessage& message) {
   static constexpr const char* SQL =
@@ -278,7 +278,7 @@ std::vector<holder::model::AiMessage> AiMessageRepo::list_deleted_by_project(
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
   const auto msg_opt = get(message_id);

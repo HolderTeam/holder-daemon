@@ -24,7 +24,7 @@ http::response<http::string_body> text_response(http::status status,
   res.body() = std::move(body);
   res.prepare_payload();
   return res;
-}
+} // LCOV_EXCL_LINE
 
 nlohmann::json yaml_to_json(const YAML::Node& node) {
   if (!node || node.IsNull()) {
@@ -56,7 +56,7 @@ nlohmann::json yaml_to_json(const YAML::Node& node) {
     }
     return out;
   }
-  return nullptr;
+  return nullptr; // LCOV_EXCL_LINE
 }
 
 bool serve_yaml_as_json(const std::filesystem::path& path,

@@ -39,6 +39,14 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
     REQUIRE_FALSE(out.streamed);
   }
 
+  SECTION("root-only slash path") {
+    auto req = make_request(http::verb::get, "/");
+    const auto out = holder::api::routes::ai::dispatch_ai_routes(
+        "/", req, res, socket, db, nullptr, nullptr, uuid_v4, param_get);
+    REQUIRE_FALSE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+  }
+
   SECTION("status family unmatched subroute") {
     auto req = make_request(http::verb::get, "/ai/status/unknown");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(

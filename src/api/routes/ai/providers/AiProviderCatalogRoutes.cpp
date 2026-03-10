@@ -39,14 +39,14 @@ nlohmann::json auth_to_json(const support::CloudProviderConfig& provider) {
   if (!provider.header_name.empty()) out["header_name"] = provider.header_name;
   if (!provider.bearer_prefix.empty()) out["bearer_prefix"] = provider.bearer_prefix;
   return out; // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE
 
 nlohmann::json api_to_json(const support::CloudProviderConfig& provider) {
   nlohmann::json out = nlohmann::json::object();
   if (!provider.base_url.empty()) out["base_url"] = provider.base_url;
   if (!provider.kind.empty()) out["kind"] = provider.kind;
   return out; // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 

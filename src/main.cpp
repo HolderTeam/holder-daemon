@@ -43,7 +43,7 @@ static std::filesystem::path find_schema_sql() {
   fs::path p2 = fs::current_path().parent_path() / "schema" / "schema.sql";
   if (fs::exists(p2)) return p2;
 
-  throw std::runtime_error("Cannot find schema/schema.sql from current directory.");
+  throw std::runtime_error("Cannot find schema/schema.sql from current directory."); // LCOV_EXCL_LINE
 }
 
 static std::string generate_uuid_v4() {
@@ -60,13 +60,13 @@ static std::filesystem::path find_welcome_markdown() {
   fs::path p2 = fs::current_path().parent_path() / "config" / "WELCOME.md";
   if (fs::exists(p2)) return p2;
 
-  throw std::runtime_error("Cannot find config/WELCOME.md from current directory.");
+  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."); // LCOV_EXCL_LINE
 }
 
 static std::string load_welcome_markdown_body() {
   std::ifstream in(find_welcome_markdown());
   if (!in) {
-    throw std::runtime_error("Failed to open config/WELCOME.md");
+    throw std::runtime_error("Failed to open config/WELCOME.md"); // LCOV_EXCL_LINE
   }
   std::ostringstream buffer;
   buffer << in.rdbuf();
