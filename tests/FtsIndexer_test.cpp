@@ -369,3 +369,18 @@ TEST_CASE("FtsIndexer upsert throws when insert prepare is denied by authorizer"
 
   sqlite3_set_authorizer(db.handle(), nullptr, nullptr);
 }
+
+TEST_CASE("FtsIndexer delete throws when sqlite handle is closed", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  db.close();
+
+  REQUIRE_THROWS(fts.delete_card("card-1"));
+  REQUIRE_THROWS(fts.delete_message("msg-1"));
+}

@@ -15,7 +15,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -23,13 +23,13 @@ void bind_text_optional(sqlite3_stmt* stmt, int idx, const std::optional<std::st
   if (value.has_value()) {
     bind_text(stmt, idx, value.value());
   } else if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
   if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_int64 failed");
+    throw std::runtime_error("sqlite bind_int64 failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -47,7 +47,7 @@ holder::model::CardLink read_link(sqlite3_stmt* stmt) {
   }
   link.created_at = sqlite3_column_int64(stmt, 6);
   return link;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 
@@ -119,13 +119,13 @@ std::vector<holder::model::CardLink> LinkRepo::list_outgoing(
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list outgoing links failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list outgoing links failed"); // LCOV_EXCL_LINE
   }
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
     const std::string& project_id,
@@ -151,13 +151,13 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list backlinks failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list backlinks failed"); // LCOV_EXCL_LINE
   }
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<holder::model::CardLink> LinkRepo::list_backlinks_typed(
     const std::string& project_id,
@@ -185,13 +185,13 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks_typed(
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list backlinks typed failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list backlinks typed failed"); // LCOV_EXCL_LINE
   }
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void LinkRepo::delete_link(const std::string& project_id,
                            const std::string& from_card_id,

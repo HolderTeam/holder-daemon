@@ -8,6 +8,18 @@ int sqlite_interrupt_cb(void* data) {
   auto* enabled = static_cast<int*>(data);
   return (enabled != nullptr && *enabled != 0) ? 1 : 0;
 }
+
+int deny_project_sync_insert(void*,
+                             int action,
+                             const char* detail1,
+                             const char*,
+                             const char*,
+                             const char*) {
+  if (action == SQLITE_INSERT && detail1 != nullptr && std::string(detail1) == "project_sync_state") {
+    return SQLITE_DENY;
+  }
+  return SQLITE_OK;
+}
 }
 
 TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][repo]") {
@@ -284,4 +296,47 @@ TEST_CASE("ProjectSyncRepo read/write/delete throw on interrupted sqlite step", 
   REQUIRE_THROWS(sync.remove("proj-1"));
 
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("ProjectSyncRepo upsert prepare fails when insert is not authorized", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+  REQUIRE(sqlite3_set_authorizer(db.handle(), deny_project_sync_insert, nullptr) == SQLITE_OK);
+  REQUIRE_THROWS(sync.record_push_result("proj-1", "failed", false, std::nullopt, 2));
+  REQUIRE(sqlite3_set_authorizer(db.handle(), nullptr, nullptr) == SQLITE_OK);
+}
+
+TEST_CASE("ProjectSyncRepo upsert step fails when trigger aborts insert", "[sync][repo]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo projects(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::project::ProjectSyncRepo sync(db);
+  db.exec(
+      "CREATE TRIGGER block_project_sync_insert "
+      "BEFORE INSERT ON project_sync_state "
+      "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
+
+  REQUIRE_THROWS(sync.record_push_result("proj-1", "failed", false, std::nullopt, 3));
 }
