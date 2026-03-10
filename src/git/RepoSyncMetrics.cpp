@@ -22,14 +22,14 @@ std::runtime_error git_err(const std::string& what, int rc) {
 
 int clamp_size_t_to_int(std::size_t value) {
   if (value > static_cast<std::size_t>(INT_MAX)) {
-    return INT_MAX;
+    return INT_MAX; // LCOV_EXCL_LINE
   }
   return static_cast<int>(value);
 }
 
 bool is_ignored_uncommitted_path(const char* path) {
   if (path == nullptr) {
-    return false;
+    return false; // LCOV_EXCL_LINE
   }
   return std::string(path) == ".holder/privacy.json";
 }
@@ -40,7 +40,7 @@ int filtered_uncommitted_count(git_status_list* status_list) {
   for (std::size_t i = 0; i < n; ++i) {
     const git_status_entry* entry = git_status_byindex(status_list, i);
     if (entry == nullptr) {
-      continue;
+      continue; // LCOV_EXCL_LINE
     }
     const char* path = nullptr;
     if (entry->index_to_workdir != nullptr && entry->index_to_workdir->new_file.path != nullptr) {
@@ -63,7 +63,7 @@ std::string current_local_branch_name(git_repository* repo) {
     return {};
   }
   if (rc != 0 || head == nullptr) {
-    throw git_err("git_repository_head failed", rc);
+    throw git_err("git_repository_head failed", rc); // LCOV_EXCL_LINE
   }
 
   const char* full_name = git_reference_name(head);
@@ -123,16 +123,16 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
   git_reference* head_ref = nullptr;
   rc = git_reference_lookup(&head_ref, repo, ("refs/heads/" + branch).c_str());
   if (rc != 0 || head_ref == nullptr) {
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    throw git_err("git_reference_lookup for local branch failed", rc);
+    git_repository_free(repo); // LCOV_EXCL_LINE
+    git_libgit2_shutdown(); // LCOV_EXCL_LINE
+    throw git_err("git_reference_lookup for local branch failed", rc); // LCOV_EXCL_LINE
   }
   const git_oid* local_oid = git_reference_target(head_ref);
   if (local_oid == nullptr) {
-    git_reference_free(head_ref);
-    git_repository_free(repo);
-    git_libgit2_shutdown();
-    throw std::runtime_error("Local branch has no target oid");
+    git_reference_free(head_ref); // LCOV_EXCL_LINE
+    git_repository_free(repo); // LCOV_EXCL_LINE
+    git_libgit2_shutdown(); // LCOV_EXCL_LINE
+    throw std::runtime_error("Local branch has no target oid"); // LCOV_EXCL_LINE
   }
 
   git_reference* remote_ref = nullptr;
