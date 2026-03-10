@@ -324,6 +324,37 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
   REQUIRE(created_ordered["data"].size() == 1);
   REQUIRE(created_ordered["data"][0]["project_id"] == "proj-1");
 
+  const auto updated_desc = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::get,
+                                              "/projects?order=updated_at_desc&limit=1&offset=0",
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::ok);
+  REQUIRE(updated_desc["data"].size() == 1);
+  REQUIRE(updated_desc["data"][0]["project_id"].is_string());
+
+  const auto created_desc = http_json_request(bound.bind, bound.port, token,
+                                              boost::beast::http::verb::get,
+                                              "/projects?order=created_at_desc&limit=1&offset=0",
+                                              nlohmann::json::object(),
+                                              boost::beast::http::status::ok);
+  REQUIRE(created_desc["data"].size() == 1);
+  REQUIRE(created_desc["data"][0]["project_id"].is_string());
+
+  const auto name_asc = http_json_request(bound.bind, bound.port, token,
+                                          boost::beast::http::verb::get,
+                                          "/projects?order=name_asc&limit=1&offset=0",
+                                          nlohmann::json::object(),
+                                          boost::beast::http::status::ok);
+  REQUIRE(name_asc["data"].size() == 1);
+  REQUIRE(name_asc["data"][0]["name"] == "Auto Project");
+
+  const auto clamped_limit = http_json_request(bound.bind, bound.port, token,
+                                               boost::beast::http::verb::get,
+                                               "/projects?order=updated_at_desc&limit=5001&offset=0",
+                                               nlohmann::json::object(),
+                                               boost::beast::http::status::ok);
+  REQUIRE(clamped_limit["data"].size() >= 3);
+
   const auto deleted = http_json_request(bound.bind, bound.port, token,
                                          boost::beast::http::verb::delete_,
                                          "/projects/proj-1",

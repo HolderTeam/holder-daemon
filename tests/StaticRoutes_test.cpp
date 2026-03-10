@@ -78,6 +78,20 @@ TEST_CASE("StaticRoutes ai_catalog json handles not-found and parse errors", "[s
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", req, missing_res));
   REQUIRE(missing_res.result() == http::status::not_found);
 
+  const auto ai_unreadable = dir / "ai-unreadable.yaml";
+  {
+    std::ofstream out(ai_unreadable);
+    REQUIRE(out.is_open());
+    out << "x: 1\n";
+  }
+  std::filesystem::permissions(ai_unreadable,
+                               std::filesystem::perms::none,
+                               std::filesystem::perm_options::replace);
+  holder::test::EnvGuard unreadable_env("HOLDER_AI_CATALOG_PATH", ai_unreadable.string());
+  http::response<http::string_body> unreadable_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", req, unreadable_res));
+  REQUIRE(unreadable_res.result() == http::status::not_found);
+
   const auto bad_yaml = dir / "bad-ai.yaml";
   {
     std::ofstream out(bad_yaml);
@@ -116,6 +130,23 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
   REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_res));
   REQUIRE(miss_json_res.result() == http::status::not_found);
 
+  const auto git_unreadable = dir / "git-unreadable.yaml";
+  {
+    std::ofstream out(git_unreadable);
+    REQUIRE(out.is_open());
+    out << "providers: []\n";
+  }
+  std::filesystem::permissions(git_unreadable,
+                               std::filesystem::perms::none,
+                               std::filesystem::perm_options::replace);
+  holder::test::EnvGuard unreadable_env("HOLDER_GIT_PROVIDERS_PATH", git_unreadable.string());
+  http::response<http::string_body> miss_yaml_read_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, miss_yaml_read_res));
+  REQUIRE(miss_yaml_read_res.result() == http::status::not_found);
+  http::response<http::string_body> miss_json_read_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_read_res));
+  REQUIRE(miss_json_read_res.result() == http::status::not_found);
+
   const auto bad_yaml = dir / "bad-git.yaml";
   {
     std::ofstream out(bad_yaml);
@@ -126,6 +157,31 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
   http::response<http::string_body> bad_json_res;
   REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, bad_json_res));
   REQUIRE(bad_json_res.result() == http::status::internal_server_error);
+}
+
+TEST_CASE("StaticRoutes ai_catalog yaml handles missing and unreadable path", "[static-routes]") {
+  const auto dir = holder::test::make_temp_dir();
+  CwdGuard cwd(dir);
+  auto req = make_request(http::verb::get, "/ai_catalog.yaml");
+
+  holder::test::EnvGuard missing_env("HOLDER_AI_CATALOG_PATH", (dir / "missing-ai-yaml.yaml").string());
+  http::response<http::string_body> missing_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, missing_res));
+  REQUIRE(missing_res.result() == http::status::not_found);
+
+  const auto ai_unreadable = dir / "ai-catalog-unreadable.yaml";
+  {
+    std::ofstream out(ai_unreadable);
+    REQUIRE(out.is_open());
+    out << "x: 1\n";
+  }
+  std::filesystem::permissions(ai_unreadable,
+                               std::filesystem::perms::none,
+                               std::filesystem::perm_options::replace);
+  holder::test::EnvGuard unreadable_env("HOLDER_AI_CATALOG_PATH", ai_unreadable.string());
+  http::response<http::string_body> unreadable_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, unreadable_res));
+  REQUIRE(unreadable_res.result() == http::status::not_found);
 }
 
 TEST_CASE("StaticRoutes docs paths handle missing root, unsafe relpath and missing files", "[static-routes]") {

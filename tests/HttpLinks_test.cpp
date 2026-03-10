@@ -66,7 +66,6 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
                     "/cards",
                     card_b,
                     boost::beast::http::status::created);
-
   nlohmann::json link_body = {
       {"to_card_id", "card-b"},
       {"to_type", "card"},
@@ -275,6 +274,19 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
                     "/cards",
                     card_b,
                     boost::beast::http::status::created);
+  nlohmann::json card_c_other_project = {
+      {"card_id", "card-c"},
+      {"project_id", "proj-2"},
+      {"title", "Card C"},
+      {"content", "gamma"},
+      {"created_at", 14},
+      {"updated_at", 14}
+  };
+  http_json_request(bound.bind, bound.port, token,
+                    boost::beast::http::verb::post,
+                    "/cards",
+                    card_c_other_project,
+                    boost::beast::http::status::created);
 
   auto create_link = [&](const nlohmann::json& body, boost::beast::http::status status) {
     return http_json_request(bound.bind, bound.port, token,
@@ -301,12 +313,27 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
 
   const auto thread_other_project = create_link({{"to_card_id", "thread-2"}, {"to_type", "ai_thread"}}, boost::beast::http::status::bad_request);
   REQUIRE(thread_other_project["error"]["message"] == "Target ai thread is in a different project.");
+  const auto thread_missing = create_link({{"to_card_id", "thread-missing"}, {"to_type", "ai_thread"}}, boost::beast::http::status::bad_request);
+  REQUIRE(thread_missing["error"]["message"] == "Target ai thread not found.");
 
   const auto resource_other_project = create_link({{"to_card_id", "res-2"}, {"to_type", "resource"}}, boost::beast::http::status::bad_request);
   REQUIRE(resource_other_project["error"]["message"] == "Target resource is in a different project.");
+  const auto resource_missing = create_link({{"to_card_id", "res-missing"}, {"to_type", "resource"}}, boost::beast::http::status::bad_request);
+  REQUIRE(resource_missing["error"]["message"] == "Target resource not found.");
 
   const auto message_other_project = create_link({{"to_card_id", "msg-3"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
   REQUIRE(message_other_project["error"]["message"] == "Target ai message is in a different project.");
+  const auto message_missing = create_link({{"to_card_id", "msg-missing"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
+  REQUIRE(message_missing["error"]["message"] == "Target ai message not found.");
+  const auto card_other_project = create_link({{"to_card_id", "card-c"}, {"to_type", "card"}}, boost::beast::http::status::bad_request);
+  REQUIRE(card_other_project["error"]["message"] == "Target card is in a different project.");
+
+  db.exec("PRAGMA foreign_keys = OFF;");
+  db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+          "VALUES('msg-orphan', 'thread-missing', 'user', 'manual', 'orphan', 20);");
+  db.exec("PRAGMA foreign_keys = ON;");
+  const auto orphan_thread = create_link({{"to_card_id", "msg-orphan"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
+  REQUIRE(orphan_thread["error"]["message"] == "Target ai message thread not found.");
 
   const auto unsupported = create_link({{"to_card_id", "whatever"}, {"to_type", "custom_type"}}, boost::beast::http::status::bad_request);
   REQUIRE(unsupported["error"]["message"] == "Unsupported to_type.");
