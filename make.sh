@@ -90,7 +90,12 @@ coverage_all() {
   ctest --test-dir "${build_dir}" --output-on-failure
   lcov --capture --directory "${build_dir}" --output-file "${info_tests}"
   lcov --add-tracefile "${info_base}" --add-tracefile "${info_tests}" --output-file "${info_total}"
-  lcov --remove "${info_total}" '/usr/*' '*/third_party/*' '*/tests/*' --output-file "${info_total}"
+  lcov --remove "${info_total}" \
+    '/usr/*' \
+    '*/third_party/*' \
+    '*/tests/*' \
+    '*/CMakeFiles/*/CompilerIdCXX/*' \
+    --output-file "${info_total}"
   genhtml "${info_total}" --output-directory "${report_dir}" --title "holder backend coverage"
   echo "Coverage report: ${report_dir}/index.html"
 }
