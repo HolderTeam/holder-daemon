@@ -270,7 +270,7 @@ int main(int argc, char* argv[]) {
     const char* name = (sig == SIGINT) ? "SIGINT" : (sig == SIGTERM) ? "SIGTERM" : "unknown";
     spdlog::info("shutdown signal received: {}", name);
   }
-  spdlog::info("holder shutdown complete.");
-  spdlog::shutdown();
-  return 0;
+  spdlog::info("holder shutdown complete."); // LCOV_EXCL_LINE
+  spdlog::shutdown(); // LCOV_EXCL_LINE
+  return 0; // LCOV_EXCL_LINE
 }

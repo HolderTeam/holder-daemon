@@ -7,6 +7,10 @@
 #include <fstream>
 #include <sqlite3.h>
 
+namespace {
+int sqlite_interrupt_cb(void*) { return 1; }
+}
+
 TEST_CASE("AiProviderCredentialRepo upsert/list/remove", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_credentials";
   std::filesystem::remove_all(dir);
@@ -106,4 +110,27 @@ TEST_CASE("AiProviderCredentialRepo throws when delete step fails", "[db]") {
   db.exec("CREATE TRIGGER fail_ai_provider_delete BEFORE DELETE ON ai_provider_credentials "
           "BEGIN SELECT RAISE(ABORT, 'no delete'); END;");
   REQUIRE_THROWS(repo.remove("openai"));
+}
+
+TEST_CASE("AiProviderCredentialRepo throws when list/get step is interrupted", "[db]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_credentials_step_interrupt";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  holder::ai::AiProviderCredentialRepo repo(db);
+  repo.upsert("openai", "k", 1, 1);
+
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, nullptr);
+  REQUIRE_THROWS(repo.list());
+  REQUIRE_THROWS(repo.get("openai"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

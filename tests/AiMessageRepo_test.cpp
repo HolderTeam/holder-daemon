@@ -134,6 +134,25 @@ public:
   std::filesystem::path repo_dir() const override { return repo_root; }
 };
 
+int deny_ai_messages_update_delete(void*,
+                                   int action,
+                                   const char* detail1,
+                                   const char*,
+                                   const char*,
+                                   const char*) {
+  if (detail1 == nullptr) {
+    return SQLITE_OK;
+  }
+  const std::string table(detail1);
+  if (table != "ai_messages") {
+    return SQLITE_OK;
+  }
+  if (action == SQLITE_UPDATE || action == SQLITE_DELETE) {
+    return SQLITE_DENY;
+  }
+  return SQLITE_OK;
+}
+
 } // namespace
 
 TEST_CASE("AiMessageRepo append/list", "[aimessagerepo]") {
@@ -200,6 +219,29 @@ TEST_CASE("AiMessageRepo append throws when thread is missing", "[aimessagerepo]
   holder::model::AiMessage msg;
   msg.message_id = "msg-missing-thread";
   msg.thread_id = "thread-missing";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "Hello";
+  msg.created_at = 10;
+
+  REQUIRE_THROWS(repo.append(msg));
+}
+
+TEST_CASE("AiMessageRepo append throws when thread project is missing", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-orphan', 'missing-proj', 'T', 1, 1);");
+  db.exec("PRAGMA foreign_keys=ON;");
+
+  holder::ai::AiMessageRepo repo(db, nullptr);
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-missing-proj";
+  msg.thread_id = "thread-orphan";
   msg.role = "user";
   msg.source = "manual";
   msg.content = "Hello";
@@ -302,6 +344,32 @@ TEST_CASE("AiMessageRepo trash restore and remove live file", "[aimessagerepo]")
   REQUIRE(std::find(git.removed_paths.begin(), git.removed_paths.end(), live_rel) != git.removed_paths.end());
 }
 
+TEST_CASE("AiMessageRepo trash throws for missing message and missing content", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+
+  holder::ai::AiMessageRepo repo(db, nullptr);
+  REQUIRE_THROWS(repo.trash("missing-message", 1));
+
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-trash-missing-content";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "x";
+  msg.created_at = 26;
+  repo.append(msg);
+
+  const auto rel_path = holder::core::ai_message_rel_path(msg.message_id);
+  std::filesystem::remove(project_root / rel_path);
+  REQUIRE_THROWS(repo.trash(msg.message_id, 2));
+}
+
 TEST_CASE("AiMessageRepo update_links guards and missing file path", "[aimessagerepo]") {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
@@ -350,6 +418,39 @@ TEST_CASE("AiMessageRepo restore throws when message is not deleted", "[aimessag
   REQUIRE_THROWS(repo.restore(msg.message_id));
 }
 
+TEST_CASE("AiMessageRepo restore throws when deleted message thread/project is missing", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+
+  holder::ai::AiMessageRepo repo(db, nullptr);
+  holder::model::AiMessage msg;
+  msg.message_id = "msg-restore-guards";
+  msg.thread_id = "thread-1";
+  msg.role = "user";
+  msg.source = "manual";
+  msg.content = "restore";
+  msg.created_at = 27;
+  repo.append(msg);
+  repo.trash(msg.message_id, 100);
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("UPDATE ai_messages SET thread_id = 'missing-thread' WHERE message_id = 'msg-restore-guards';");
+  db.exec("PRAGMA foreign_keys=ON;");
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+
+  db.exec("PRAGMA foreign_keys=OFF;");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-bad-restore', 'missing-proj', 'T', 1, 1);");
+  db.exec("UPDATE ai_messages SET thread_id = 'thread-bad-restore' WHERE message_id = 'msg-restore-guards';");
+  db.exec("PRAGMA foreign_keys=ON;");
+  REQUIRE_THROWS(repo.restore(msg.message_id));
+}
+
 TEST_CASE("AiMessageRepo sqlite prepare failures throw", "[aimessagerepo]") {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
@@ -373,6 +474,15 @@ TEST_CASE("AiMessageRepo sqlite prepare failures throw", "[aimessagerepo]") {
   REQUIRE_THROWS(repo.get("anything"));
   REQUIRE_THROWS(repo.list_by_thread("thread-1"));
   REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
+
+  holder::model::AiMessage update_msg;
+  update_msg.message_id = "msg-update-prepare";
+  update_msg.thread_id = "thread-1";
+  update_msg.role = "user";
+  update_msg.source = "manual";
+  update_msg.content = "u";
+  update_msg.created_at = 99;
+  REQUIRE_THROWS(repo.update(update_msg));
 }
 
 TEST_CASE("AiMessageRepo append cleans file when DB insert fails", "[aimessagerepo]") {
@@ -555,4 +665,59 @@ TEST_CASE("AiMessageRepo methods honor project remote set_remote path", "[aimess
   repo.remove(msg.message_id);
 
   REQUIRE(git.set_remote_calls >= 5);
+}
+
+TEST_CASE("AiMessageRepo prepare failures via authorizer for update/trash/restore/remove", "[aimessagerepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  const auto project_root = dir / "project_repo";
+  create_project(db, "proj-1", project_root.string());
+  create_thread(db, "thread-1", "proj-1");
+  holder::ai::AiMessageRepo repo(db, nullptr);
+
+  holder::model::AiMessage msg_update;
+  msg_update.message_id = "msg-authorizer-update";
+  msg_update.thread_id = "thread-1";
+  msg_update.role = "user";
+  msg_update.source = "manual";
+  msg_update.content = "x";
+  msg_update.created_at = 28;
+  repo.append(msg_update);
+
+  holder::model::AiMessage msg_trash;
+  msg_trash.message_id = "msg-authorizer-trash";
+  msg_trash.thread_id = "thread-1";
+  msg_trash.role = "user";
+  msg_trash.source = "manual";
+  msg_trash.content = "x";
+  msg_trash.created_at = 29;
+  repo.append(msg_trash);
+
+  holder::model::AiMessage msg_restore;
+  msg_restore.message_id = "msg-authorizer-restore";
+  msg_restore.thread_id = "thread-1";
+  msg_restore.role = "user";
+  msg_restore.source = "manual";
+  msg_restore.content = "x";
+  msg_restore.created_at = 30;
+  repo.append(msg_restore);
+  repo.trash(msg_restore.message_id, 201);
+
+  holder::model::AiMessage msg_remove;
+  msg_remove.message_id = "msg-authorizer-remove";
+  msg_remove.thread_id = "thread-1";
+  msg_remove.role = "user";
+  msg_remove.source = "manual";
+  msg_remove.content = "x";
+  msg_remove.created_at = 31;
+  repo.append(msg_remove);
+
+  REQUIRE(sqlite3_set_authorizer(db.handle(), deny_ai_messages_update_delete, nullptr) == SQLITE_OK);
+  REQUIRE_THROWS(repo.update(msg_update));
+  REQUIRE_THROWS(repo.trash(msg_trash.message_id, 200));
+  REQUIRE_THROWS(repo.restore(msg_restore.message_id));
+  REQUIRE_THROWS(repo.remove(msg_remove.message_id));
+  REQUIRE(sqlite3_set_authorizer(db.handle(), nullptr, nullptr) == SQLITE_OK);
 }

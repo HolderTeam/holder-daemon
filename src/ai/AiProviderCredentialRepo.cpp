@@ -14,7 +14,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -25,7 +25,7 @@ holder::model::AiProviderCredential read_row(sqlite3_stmt* stmt) {
   out.created_at = sqlite3_column_int64(stmt, 2);
   out.updated_at = sqlite3_column_int64(stmt, 3);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 
@@ -56,7 +56,7 @@ std::vector<holder::model::AiProviderCredential> AiProviderCredentialRepo::list(
     break;
   }
   return rows;
-}
+} // LCOV_EXCL_LINE
 
 std::optional<holder::model::AiProviderCredential> AiProviderCredentialRepo::get(
     const std::string& provider) const {

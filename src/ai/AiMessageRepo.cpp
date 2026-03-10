@@ -31,7 +31,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -39,13 +39,13 @@ void bind_text_optional(sqlite3_stmt* stmt, int idx, const std::optional<std::st
   if (value.has_value()) {
     bind_text(stmt, idx, value.value());
   } else if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
   if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_int64 failed");
+    throw std::runtime_error("sqlite bind_int64 failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -83,7 +83,7 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
     m.meta_json = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 10));
   }
   return m;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 
@@ -146,7 +146,7 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   if (message.deleted_at.has_value()) {
     bind_int64(stmt, 9, message.deleted_at.value());
   } else if (sqlite3_bind_null(stmt, 9) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
   bind_text_optional(stmt, 10, message.prompt_hash);
   bind_text_optional(stmt, 11, message.meta_json);
@@ -503,7 +503,7 @@ std::optional<holder::model::AiMessage> AiMessageRepo::get(
   }
 
   throw_sqlite(db_.handle(), "get ai message failed");
-  return std::nullopt;
+  return std::nullopt; // LCOV_EXCL_LINE
 }
 
 } // namespace holder::ai

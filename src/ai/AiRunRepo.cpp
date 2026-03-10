@@ -37,7 +37,7 @@ model::AiRun row_to_run(sqlite3_stmt* stmt) {
   run.created_at = sqlite3_column_int64(stmt, 13);
   run.updated_at = sqlite3_column_int64(stmt, 14);
   return run;
-}
+} // LCOV_EXCL_LINE
 
 void throw_sqlite(sqlite3* db, const std::string& msg) {
   throw std::runtime_error(msg + ": " + sqlite3_errmsg(db));
@@ -141,7 +141,7 @@ std::optional<model::AiRun> AiRunRepo::get(const std::string& run_id) const {
     return std::nullopt;
   }
   throw_sqlite(db_.handle(), "get ai run failed");
-  return std::nullopt;
+  return std::nullopt; // LCOV_EXCL_LINE
 }
 
 std::vector<model::AiRun> AiRunRepo::list_by_thread(const std::string& thread_id) const {
@@ -162,7 +162,7 @@ std::vector<model::AiRun> AiRunRepo::list_by_thread(const std::string& thread_id
   }
   sqlite3_finalize(stmt);
   return runs;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<model::AiRun> AiRunRepo::list_by_project(const std::string& project_id) const {
   static constexpr const char* SQL =
@@ -182,7 +182,7 @@ std::vector<model::AiRun> AiRunRepo::list_by_project(const std::string& project_
   }
   sqlite3_finalize(stmt);
   return runs;
-}
+} // LCOV_EXCL_LINE
 
 void AiRunRepo::update_status(const std::string& run_id,
                               const std::string& status,

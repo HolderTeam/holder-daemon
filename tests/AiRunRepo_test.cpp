@@ -7,6 +7,10 @@
 #include <fstream>
 #include <sqlite3.h>
 
+namespace {
+int sqlite_interrupt_cb(void*) { return 1; }
+}
+
 TEST_CASE("AiRunRepo create/get/update", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_runs";
   std::filesystem::remove_all(dir);
@@ -250,4 +254,33 @@ TEST_CASE("AiRunRepo throws when update step fails", "[db]") {
                                     std::optional<std::string>("[]"),
                                     std::optional<std::string>("{}"),
                                     2));
+}
+
+TEST_CASE("AiRunRepo throws when get step is interrupted", "[db]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_runs_get_interrupt";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  holder::ai::AiRunRepo repo(db);
+  holder::model::AiRun run;
+  run.run_id = "run-get-interrupt";
+  run.mode = "auto";
+  run.prompt = "x";
+  run.status = "started";
+  run.created_at = 1;
+  run.updated_at = 1;
+  repo.create(run);
+
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, nullptr);
+  REQUIRE_THROWS(repo.get("run-get-interrupt"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

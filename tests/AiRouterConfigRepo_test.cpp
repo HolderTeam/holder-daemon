@@ -7,6 +7,10 @@
 #include <fstream>
 #include <sqlite3.h>
 
+namespace {
+int sqlite_interrupt_cb(void*) { return 1; }
+}
+
 TEST_CASE("AiRouterConfigRepo global and project config", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_router_config";
   std::filesystem::remove_all(dir);
@@ -173,4 +177,30 @@ TEST_CASE("AiRouterConfigRepo throws when clear step fails", "[db]") {
           "BEGIN SELECT RAISE(ABORT, 'no delete'); END;");
   REQUIRE_THROWS(repo.clear_global());
   REQUIRE_THROWS(repo.clear_for_project("proj-1"));
+}
+
+TEST_CASE("AiRouterConfigRepo throws when get step is interrupted", "[db]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_router_config_get_step_interrupt";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  holder::ai::AiRouterConfigRepo repo(db);
+  repo.set_global("g", 1);
+  repo.set_for_project("proj-1", "p", 2);
+
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, nullptr);
+  REQUIRE_THROWS(repo.get_global());
+  REQUIRE_THROWS(repo.get_for_project("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
