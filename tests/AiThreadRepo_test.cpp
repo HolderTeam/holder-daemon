@@ -13,6 +13,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sqlite3.h>
 #include <string>
 
 namespace {
@@ -102,4 +103,106 @@ TEST_CASE("AiThreadRepo CRUD", "[aithreaddrepo]") {
 
   repo.remove("thread-1");
   REQUIRE_FALSE(repo.get("thread-1").has_value());
+}
+
+TEST_CASE("AiThreadRepo throws on insert/update/delete step failures", "[aithreaddrepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::ai::AiThreadRepo repo(db);
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-fail";
+  thread.project_id = "proj-1";
+  thread.title = "Fail";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+
+  db.exec("CREATE TRIGGER fail_ai_threads_insert BEFORE INSERT ON ai_threads "
+          "BEGIN SELECT RAISE(ABORT, 'no insert'); END;");
+  REQUIRE_THROWS(repo.create(thread));
+  db.exec("DROP TRIGGER fail_ai_threads_insert;");
+
+  thread.thread_id = "thread-ok";
+  repo.create(thread);
+
+  db.exec("CREATE TRIGGER fail_ai_threads_update BEFORE UPDATE ON ai_threads "
+          "BEGIN SELECT RAISE(ABORT, 'no update'); END;");
+  REQUIRE_THROWS(repo.update_title("thread-ok", "x", 2));
+  REQUIRE_THROWS(repo.touch_updated("thread-ok", 3));
+  db.exec("DROP TRIGGER fail_ai_threads_update;");
+
+  db.exec("CREATE TRIGGER fail_ai_threads_delete BEFORE DELETE ON ai_threads "
+          "BEGIN SELECT RAISE(ABORT, 'no delete'); END;");
+  REQUIRE_THROWS(repo.remove("thread-ok"));
+}
+
+TEST_CASE("AiThreadRepo throws on get/list step error paths", "[aithreaddrepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::ai::AiThreadRepo repo(db);
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-int";
+  thread.project_id = "proj-1";
+  thread.title = "Interrupt";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+  repo.create(thread);
+
+  sqlite3_progress_handler(db.handle(), 1, [](void*) -> int { return 1; }, nullptr);
+
+  REQUIRE_THROWS(repo.get("thread-int"));
+  REQUIRE_THROWS(repo.list("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("AiThreadRepo throws on prepare failures", "[aithreaddrepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::ai::AiThreadRepo repo(db);
+  db.exec("DROP TABLE ai_threads;");
+
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-prepare";
+  thread.project_id = "proj-1";
+  thread.title = "Prepare";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+
+  REQUIRE_THROWS(repo.create(thread));
+  REQUIRE_THROWS(repo.get("thread-prepare"));
+  REQUIRE_THROWS(repo.list("proj-1"));
+  REQUIRE_THROWS(repo.update_title("thread-prepare", "x", 2));
+  REQUIRE_THROWS(repo.update_card_id("thread-prepare", std::nullopt));
+  REQUIRE_THROWS(repo.touch_updated("thread-prepare", 3));
+  REQUIRE_THROWS(repo.remove("thread-prepare"));
+}
+
+TEST_CASE("AiThreadRepo update_card_id fails on invalid card fk", "[aithreaddrepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::ai::AiThreadRepo repo(db);
+  holder::model::AiThread thread;
+  thread.thread_id = "thread-card-fk";
+  thread.project_id = "proj-1";
+  thread.title = "Card FK";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+  repo.create(thread);
+
+  REQUIRE_THROWS(repo.update_card_id("thread-card-fk", std::optional<std::string>("missing-card")));
 }

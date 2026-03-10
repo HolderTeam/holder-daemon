@@ -888,6 +888,9 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
   REQUIRE(runs[0].policy_trace_json.has_value());
   const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
   REQUIRE(trace["result"]["status"] == "failed");
+  REQUIRE(trace["attempts"].is_array());
+  REQUIRE_FALSE(trace["attempts"].empty());
+  REQUIRE(trace["attempts"][0]["cooldown"]["remaining_seconds"].get<long long>() >= 0);
 
   const auto cooldown =
       holder::api::support::load_cloud_model_cooldown(db, "switchyard", "failing-model");
@@ -1047,6 +1050,11 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
   REQUIRE(saw_rpm);
   REQUIRE(saw_rpd);
   REQUIRE(saw_tpm);
+  for (const auto& attempt : trace["attempts"]) {
+    if (attempt.is_object() && attempt.value("reason", "") == "cooldown_active") {
+      REQUIRE(attempt["cooldown"]["remaining_seconds"].get<long long>() > 0);
+    }
+  }
 
   const auto rolled = holder::api::support::load_thread_compaction_state(db, "thread-1");
   REQUIRE(rolled.has_value());
@@ -1509,6 +1517,11 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiProviderCredentialRepo cred_repo(db);
   cred_repo.upsert("switchyard", "test-key", 1, 1);
+  holder::api::support::ThreadCompactionState prior_state;
+  prior_state.thread_id = "thread-1";
+  prior_state.rolling_summary = std::string("prior summary");
+  prior_state.updated_at = 1;
+  holder::api::support::upsert_thread_compaction_state(db, prior_state);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -1563,6 +1576,423 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
   REQUIRE(state.has_value());
   REQUIRE(state->rolling_summary.has_value());
   REQUIRE(state->rolling_summary->find("## Decisions") != std::string::npos);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "[http]") {
+  CloudRunOverrideGuard cloud_guard(
+      [](const holder::api::support::CloudProviderConfig&,
+         const holder::api::support::CloudModelConfig&,
+         const std::string&,
+         const std::string&,
+         std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto cloud_cfg_path = dir / "ai_catalog_compact_rpm.yaml";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  {
+    std::ofstream out(cloud_cfg_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: main-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: default\n";
+    out << "      - provider: Switchyard\n";
+    out << "        provider_id: switchyard\n";
+    out << "        credential_key: switchyard\n";
+    out << "        enabled: true\n";
+    out << "        base_url: https://127.0.0.1:1\n";
+    out << "        api_kind: generic_chat\n";
+    out << "        auth_type: bearer_header\n";
+    out << "        model_id: compact-model\n";
+    out << "        endpoint: /api/v1/chat/completions\n";
+    out << "        role: compact\n";
+    out << "        limits:\n";
+    out << "          rpm: 1\n";
+    out << "  runtime:\n";
+    out << "    route_policy:\n";
+    out << "      default_provider: switchyard\n";
+    out << "  summary_refresh:\n";
+    out << "    trigger_context_tokens: 1\n";
+    out << "    source_context_tokens: 256\n";
+    out << "    response_tokens_budget: 64\n";
+    out << "    max_summary_chars: 2048\n";
+    out << "    min_interval_seconds: 0\n";
+    out << "    min_delta_tokens: 0\n";
+    out << "    force_refresh_tokens: 1\n";
+  }
+  holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  const auto now = holder::api::support::now_epoch_seconds();
+  holder::api::support::record_cloud_usage_event(
+      db, "switchyard", "compact-model", 10, 5, now, "compact-rpm");
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  const std::string long_context_rpm(6000, 'r');
+  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"provider", "switchyard"},
+                              {"model", "main-model"},
+                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_rpm}}}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, nullptr, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  const auto trace = nlohmann::json::parse(runs[0].policy_trace_json.value());
+  REQUIRE(trace["compaction"]["summary_refresh"]["reason"] == "rpm_exceeded");
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {holder::llm::LocalModel{.name = "installed-model", .size = 1}};
+  runner.set_status_override_for_tests(status);
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket unopened_socket(ioc);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "local prompt"}, {"project_id", "proj-1"}}.dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, unopened_socket, db, nullptr, &runner, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+}
+
+TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "router-model", .size = 1},
+      holder::llm::LocalModel{.name = "model-a", .size = 10},
+      holder::llm::LocalModel{.name = "model-b", .size = 20},
+  };
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string&,
+          const std::string&,
+          const std::function<void(const std::string&)>&,
+          std::string* error) -> bool {
+        if (model == "router-model") return true;
+        if (error) *error = "forced failure";
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "local prompt"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "failed");
+  REQUIRE(runs[0].error == std::optional<std::string>("no output"));
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute local routing uses project router config and category metadata", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  const auto ai_catalog_path = dir / "ai_catalog_local_meta.yaml";
+  std::filesystem::create_directories(repo_dir);
+  {
+    std::ofstream out(ai_catalog_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  Models:\n";
+    out << "    Local:\n";
+    out << "      - tag: model-a\n";
+    out << "        category: coder\n";
+    out << "      - tag: model-b\n";
+    out << "        category: general\n";
+  }
+  holder::test::EnvGuard ai_catalog_env("HOLDER_AI_CATALOG_PATH", ai_catalog_path.string());
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiRouterConfigRepo router_cfg_repo(db);
+  router_cfg_repo.set_for_project("proj-1", "router-model", 1);
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "router-model", .size = 1},
+      holder::llm::LocalModel{.name = "model-a", .size = 100},
+      holder::llm::LocalModel{.name = "model-b", .size = 200},
+  };
+  runner.set_status_override_for_tests(status);
+  bool router_used_project_cfg = false;
+  bool saw_category_in_router_prompt = false;
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string& prompt,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string*) -> bool {
+        if (model == "router-model") {
+          router_used_project_cfg = true;
+          if (prompt.find(", category=coder") != std::string::npos) {
+            saw_category_in_router_prompt = true;
+          }
+          on_chunk("[\"model-a\"]");
+          return true;
+        }
+        if (model == "model-a") {
+          on_chunk("model-a-output");
+          return true;
+        }
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "route via project cfg"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  REQUIRE(router_used_project_cfg);
+  REQUIRE(saw_category_in_router_prompt);
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute local routing catches router config repo errors and falls back", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  db.exec("DROP TABLE ai_router_config;");
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "router-model", .size = 1},
+      holder::llm::LocalModel{.name = "model-a", .size = 50},
+  };
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string&,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string*) -> bool {
+        if (model == "router-model") {
+          on_chunk("[\"model-a\"]");
+          return true;
+        }
+        if (model == "model-a") {
+          on_chunk("ok");
+          return true;
+        }
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "fallback when cfg repo throws"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);
