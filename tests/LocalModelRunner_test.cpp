@@ -228,6 +228,55 @@ TEST_CASE("LocalModelRunner stop without process is a no-op", "[llm]") {
   REQUIRE_NOTHROW(runner.stop());
 }
 
+TEST_CASE("LocalModelRunner clear_overrides_for_tests resets status and stream overrides", "[llm]") {
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(true);
+  const auto baseline = runner.retry();
+  REQUIRE(baseline.available == true);
+  REQUIRE(baseline.version == "fake");
+
+  holder::llm::RunnerStatus forced;
+  forced.available = false;
+  forced.spawn_attempted = true;
+  forced.error = "forced status";
+  runner.set_status_override_for_tests(forced);
+  runner.set_stream_generate_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::string&,
+         const std::function<void(const std::string&)>&,
+         std::string* error) {
+        if (error) {
+          *error = "forced stream";
+        }
+        return false;
+      });
+
+  const auto overridden = runner.status();
+  REQUIRE(overridden.available == false);
+  REQUIRE(overridden.error == "forced status");
+
+  std::string out;
+  std::string err;
+  REQUIRE_FALSE(
+      runner.stream_generate("fake-echo", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE(out.empty());
+  REQUIRE(err == "forced stream");
+
+  runner.clear_overrides_for_tests();
+
+  const auto cleared = runner.status();
+  REQUIRE(cleared.available == true);
+  REQUIRE(cleared.version == "fake");
+
+  out.clear();
+  err.clear();
+  REQUIRE(
+      runner.stream_generate("fake-echo", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE(out == "hello");
+  REQUIRE(err.empty());
+}
+
 TEST_CASE("LocalModelRunner non-fake background probe runs once and sets status", "[llm]") {
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
   EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
