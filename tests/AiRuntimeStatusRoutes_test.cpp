@@ -13,6 +13,8 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
+#include <fstream>
+
 namespace {
 
 namespace http = boost::beast::http;
@@ -21,6 +23,24 @@ http::request<http::string_body> make_request(http::verb method, const std::stri
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
   return req;
+}
+
+std::filesystem::path write_local_meta_catalog(const std::filesystem::path& dir) {
+  const auto path = dir / "ai_catalog_capabilities.yaml";
+  std::ofstream out(path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  Models:\n";
+  out << "    Local:\n";
+  out << "      - tag: model-installed\n";
+  out << "        hardware_tier: mini\n";
+  out << "        quality: high\n";
+  out << "        speed: fast\n";
+  out << "      - tag: model-to-install\n";
+  out << "        hardware_tier: mini\n";
+  out << "        quality: medium\n";
+  out << "        speed: medium\n";
+  return path;
 }
 
 } // namespace
@@ -222,4 +242,63 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
   REQUIRE(payload["data"]["models"][0]["digest"] == "d1");
   REQUIRE(payload["data"]["models"][0]["size"] == 11);
   REQUIRE(payload["data"]["models"][0]["modified_at"] == "t1");
+}
+
+TEST_CASE("AiCapabilitiesRoutes without runner includes recommendation entries", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto catalog = write_local_meta_catalog(dir);
+  holder::test::EnvGuard catalog_env("HOLDER_AI_CATALOG_PATH", catalog.string());
+
+  auto req = make_request(http::verb::get, "/ai/capabilities");
+  http::response<http::string_body> res;
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
+
+  REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
+      "/ai/capabilities", req, res, db, nullptr, param_get));
+  REQUIRE(res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["runner_available"] == false);
+  REQUIRE(payload["data"]["recommended_models"].is_array());
+  REQUIRE(payload["data"]["recommended_models"].size() == 2);
+  REQUIRE(payload["data"]["recommended_install"].is_array());
+  REQUIRE(payload["data"]["recommended_install"].size() == 2);
+}
+
+TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto catalog = write_local_meta_catalog(dir);
+  holder::test::EnvGuard catalog_env("HOLDER_AI_CATALOG_PATH", catalog.string());
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.spawn_attempted = true;
+  status.last_checked = 456;
+  status.version = "runner-v";
+  status.models = {
+      holder::llm::LocalModel{.name = "model-installed", .digest = "d", .size = 11, .modified_at = "t"},
+  };
+  runner.set_status_override_for_tests(status);
+
+  auto req = make_request(http::verb::get, "/ai/capabilities");
+  http::response<http::string_body> res;
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
+
+  REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
+      "/ai/capabilities", req, res, db, &runner, param_get));
+  REQUIRE(res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["recommended_models"].is_array());
+  REQUIRE(payload["data"]["recommended_models"].size() == 2);
+  REQUIRE(payload["data"]["recommended_install"].is_array());
+  REQUIRE(payload["data"]["recommended_install"].size() == 1);
+  REQUIRE(payload["data"]["recommended_install"][0]["tag"] == "model-to-install");
+  REQUIRE(payload["data"]["recommended_install"][0]["installed"] == false);
 }
