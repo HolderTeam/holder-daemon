@@ -23,7 +23,9 @@ add_executable(lockfile_tests
   HttpListener_test.cpp
   ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
+  AiMessageCrudRoutes_test.cpp
   HttpAiThreads_test.cpp
+  AiThreadCollectionRoutes_test.cpp
   AiThreadItemRoutes_test.cpp
   HttpAiRouterConfig_test.cpp
   HttpAiProviderCatalog_test.cpp
