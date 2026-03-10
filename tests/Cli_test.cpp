@@ -274,6 +274,28 @@ TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be ope
   REQUIRE(run_command("\"" + bin + "\" --reindex") != 0);
 }
 
+TEST_CASE("CLI reindex fails when schema exists but welcome markdown is missing", "[cli]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto xdg_root = dir / "xdg";
+  std::filesystem::create_directories(xdg_root);
+
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                      (xdg_root / "keystore").string());
+
+  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  const auto isolated = dir / "with_schema_no_welcome";
+  std::filesystem::create_directories(isolated / "schema");
+  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
+                             isolated / "schema" / "schema.sql");
+  CwdGuard cwd(isolated);
+
+  const std::string bin = HOLDER_BIN_PATH;
+  REQUIRE(run_command("\"" + bin + "\" --reindex") != 0);
+}
+
 TEST_CASE("CLI welcome title falls back when first markdown line is not a heading", "[cli]") {
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";
@@ -294,6 +316,43 @@ TEST_CASE("CLI welcome title falls back when first markdown line is not a headin
   {
     std::ofstream out(isolated / "config" / "WELCOME.md", std::ios::trunc);
     out << "Not a heading first line\nBut still content\n";
+  }
+  CwdGuard cwd(isolated);
+
+  const std::string bin = HOLDER_BIN_PATH;
+  REQUIRE(run_command("\"" + bin + "\" --reindex") == 0);
+
+  holder::platform::Db db;
+  db.open(xdg_root / "data" / "holder" / "server" / "holder.db");
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  const auto projects = project_repo.list();
+  REQUIRE(projects.size() == 1);
+  const auto cards = card_repo.list_all(projects[0].project_id);
+  REQUIRE(cards.size() == 1);
+  REQUIRE(cards[0].title == "Welcome");
+}
+
+TEST_CASE("CLI welcome title falls back when first markdown line is blank", "[cli]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto xdg_root = dir / "xdg";
+  std::filesystem::create_directories(xdg_root);
+
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                      (xdg_root / "keystore").string());
+
+  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  const auto isolated = dir / "with_blank_first_line";
+  std::filesystem::create_directories(isolated / "schema");
+  std::filesystem::create_directories(isolated / "config");
+  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
+                             isolated / "schema" / "schema.sql");
+  {
+    std::ofstream out(isolated / "config" / "WELCOME.md", std::ios::trunc);
+    out << "   \n# Heading on second line\n";
   }
   CwdGuard cwd(isolated);
 

@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());
-  std::thread sync_thread([&sync_worker, &signals]() {
+  std::thread sync_thread([&sync_worker, &signals]() { // LCOV_EXCL_LINE
     sync_worker.run(signals);
   });
 
