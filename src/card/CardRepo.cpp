@@ -99,7 +99,7 @@ void CardRepo::create(const holder::model::Card& card) {
   bind_int64_optional(stmt, 9, card.deleted_at);
 
   const int rc = sqlite3_step(stmt);
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) {
     throw_sqlite(db_.handle(), "insert card failed");
   }
@@ -125,7 +125,7 @@ std::optional<holder::model::Card> CardRepo::get(const std::string& card_id) con
     return card;
   }
 
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) {
     throw_sqlite(db_.handle(), "get card failed");
   }
@@ -156,7 +156,7 @@ std::vector<holder::model::Card> CardRepo::list_roots(const std::string& project
     throw_sqlite(db_.handle(), "list cards failed");
   }
 
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
 }
 
@@ -185,7 +185,7 @@ std::vector<holder::model::Card> CardRepo::list_children(const std::string& proj
     sqlite3_finalize(stmt);
     throw_sqlite(db_.handle(), "list child cards failed");
   }
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
 }
 

@@ -190,12 +190,69 @@ TEST_CASE("LocalModelRouting build recommendations sorts by quality then speed",
   REQUIRE(out[1]["installed"] == true);
 }
 
+TEST_CASE("LocalModelRouting recommendation tie-break uses speed_rank and tag order", "[local_model_routing]") {
+  using namespace holder::api::support;
+
+  std::unordered_map<std::string, LocalModelMeta> meta;
+  {
+    LocalModelMeta m;
+    m.tag = "speed-fast";
+    m.hardware_tier = "developer";
+    m.quality = "low";
+    m.speed = "fast";
+    meta[m.tag] = m;
+  }
+  {
+    LocalModelMeta m;
+    m.tag = "speed-medium";
+    m.hardware_tier = "developer";
+    m.quality = "low";
+    m.speed = "medium";
+    meta[m.tag] = m;
+  }
+  {
+    LocalModelMeta m;
+    m.tag = "speed-slow";
+    m.hardware_tier = "developer";
+    m.quality = "low";
+    m.speed = "slow";
+    meta[m.tag] = m;
+  }
+  {
+    LocalModelMeta m;
+    m.tag = "speed-unknown-a";
+    m.hardware_tier = "developer";
+    m.quality = "unknown";
+    m.speed = "unknown";
+    meta[m.tag] = m;
+  }
+  {
+    LocalModelMeta m;
+    m.tag = "speed-unknown-b";
+    m.hardware_tier = "developer";
+    m.quality = "unknown";
+    m.speed = "unknown";
+    meta[m.tag] = m;
+  }
+
+  const std::vector<holder::llm::LocalModel> installed;
+  const auto out = build_caste_recommendations(installed, meta, "developer");
+
+  REQUIRE(out.size() == 5);
+  REQUIRE(out[0]["tag"] == "speed-fast");
+  REQUIRE(out[1]["tag"] == "speed-medium");
+  REQUIRE(out[2]["tag"] == "speed-slow");
+  REQUIRE(out[3]["tag"] == "speed-unknown-a");
+  REQUIRE(out[4]["tag"] == "speed-unknown-b");
+}
+
 TEST_CASE("LocalModelRouting parse_ranked_models filters and de-duplicates", "[local_model_routing]") {
   using namespace holder::api::support;
   const std::vector<std::string> candidates = {"m1", "m2", "m3"};
 
   REQUIRE(parse_ranked_models("no array here", candidates).empty());
   REQUIRE(parse_ranked_models("[broken", candidates).empty());
+  REQUIRE(parse_ranked_models(R"(prefix ["m1",] suffix)", candidates).empty());
   REQUIRE(parse_ranked_models(R"({"x":1})", candidates).empty());
 
   const auto ranked = parse_ranked_models(
@@ -245,4 +302,10 @@ TEST_CASE("LocalModelRouting model pickers choose expected tags", "[local_model_
   REQUIRE(pick_router_model(models, meta) == "m-small");
   meta.clear();
   REQUIRE(pick_router_model(models, meta).empty());
+
+  const std::vector<holder::llm::LocalModel> increasing = {
+      holder::llm::LocalModel{.name = "x-small", .digest = "", .size = 10, .modified_at = ""},
+      holder::llm::LocalModel{.name = "x-large", .digest = "", .size = 100, .modified_at = ""},
+  };
+  REQUIRE(pick_largest_model(increasing) == "x-large");
 }
