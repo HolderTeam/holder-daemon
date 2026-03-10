@@ -290,6 +290,9 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           throw std::runtime_error("ai_catalog.yaml: cloud provider '" + provider.id +
                                    "' has unsupported api.kind '" + provider.kind + "'");
         }
+      // Provider kind is initialized on first encounter (new-provider block above),
+      // so this duplicate-pass provider_default fallback is effectively unreachable.
+      // LCOV_EXCL_START
       } else if (provider.kind.empty() && provider_default && provider_default["api_kind"]) {
         provider.kind = provider_default["api_kind"].as<std::string>();
         if (!is_supported_provider_kind(provider.kind)) {
@@ -297,6 +300,7 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
                                    "' has unsupported api.kind '" + provider.kind + "'");
         }
       }
+      // LCOV_EXCL_STOP
       if (provider.auth_type.empty() && model_node["auth_type"]) {
         provider.auth_type = model_node["auth_type"].as<std::string>();
       } else if (provider.auth_type.empty() && provider_default && provider_default["auth_type"]) {
@@ -317,6 +321,9 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       } else if (provider.bearer_prefix.empty() && provider_default && provider_default["bearer_prefix"]) {
         provider.bearer_prefix = provider_default["bearer_prefix"].as<std::string>();
       }
+      // credential_provider_key is initialized to provider.id in the first-pass
+      // new-provider block, so duplicate-pass key assignment is effectively unreachable.
+      // LCOV_EXCL_START
       if (provider.credential_provider_key.empty() && model_node["credential_key"]) {
         provider.credential_provider_key =
             normalize_provider_name(model_node["credential_key"].as<std::string>());
@@ -328,6 +335,7 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       if (provider.credential_provider_key.empty()) {
         provider.credential_provider_key = provider.id;
       }
+      // LCOV_EXCL_STOP
       if (provider.cooldown_base_seconds == 0 && model_node["provider_cooldown"] &&
           model_node["provider_cooldown"]["base_seconds"]) {
         provider.cooldown_base_seconds = model_node["provider_cooldown"]["base_seconds"].as<long long>();

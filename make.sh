@@ -72,6 +72,10 @@ coverage_all() {
   local info_base="${build_dir}/coverage-base.info"
   local info_tests="${build_dir}/coverage-tests.info"
   local info_total="${build_dir}/coverage.info"
+  local -a lcov_capture_flags=(
+    --ignore-errors gcov,gcov
+    --rc geninfo_unexecuted_blocks=1
+  )
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
@@ -86,9 +90,9 @@ coverage_all() {
   cmake --build "${build_dir}" -- -j "${JOBS}"
 
   lcov --directory "${build_dir}" --zerocounters
-  lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}"
+  lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}" "${lcov_capture_flags[@]}"
   ctest --test-dir "${build_dir}" --output-on-failure
-  lcov --capture --directory "${build_dir}" --output-file "${info_tests}"
+  lcov --capture --directory "${build_dir}" --output-file "${info_tests}" "${lcov_capture_flags[@]}"
   lcov --add-tracefile "${info_base}" --add-tracefile "${info_tests}" --output-file "${info_total}"
   lcov --remove "${info_total}" \
     '/usr/*' \

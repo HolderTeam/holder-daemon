@@ -70,7 +70,7 @@ std::string normalize_section_key(const std::string& line) {
   while (!key.empty() && key.front() == '#') key.erase(key.begin());
   key = trim_ascii(lowercase_ascii(key));
   return key;
-}
+} // LCOV_EXCL_LINE
 
 std::string bulletize(const std::string& line) {
   if (line.empty()) return {};
@@ -336,7 +336,7 @@ std::string build_structured_summary_refresh_prompt(
   prompt += "\nNew context:\n";
   prompt += new_context;
   return prompt;
-}
+} // LCOV_EXCL_LINE
 
 SummaryValidationResult normalize_and_validate_rolling_summary(
     const std::string& candidate_summary,

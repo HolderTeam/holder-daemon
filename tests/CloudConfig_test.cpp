@@ -326,3 +326,158 @@ TEST_CASE("CloudConfig helper selectors cover null and requested branches", "[cl
   cfg.providers.push_back(provider);
   REQUIRE(holder::api::support::find_cloud_provider(cfg, "missing") == nullptr);
 }
+
+TEST_CASE("CloudConfig duplicate provider merge fills provider fields from model node", "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_model_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: zeta\n";
+  out << "      - provider_id: zeta\n";
+  out << "        provider_cost_tier: low\n";
+  out << "        setup_url: https://zeta/setup\n";
+  out << "        docs_url: https://zeta/docs\n";
+  out << "        api_key_label: Zeta Key\n";
+  out << "        api_key_hint: Put your key here\n";
+  out << "        base_url: https://zeta.base\n";
+  out << "        api_kind: generic_chat\n";
+  out << "        auth_type: bearer_header\n";
+  out << "        key_param: api_key\n";
+  out << "        header_name: Authorization\n";
+  out << "        bearer_prefix: Bearer\n";
+  out << "        credential_key: zeta-cred\n";
+  out << "        provider_cooldown:\n";
+  out << "          base_seconds: 11\n";
+  out << "          cap_seconds: 222\n";
+  out << "        model_id: zeta-2\n";
+  out << "        endpoint: /v1/zeta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* zeta = holder::api::support::find_cloud_provider(cfg.value(), "zeta");
+  REQUIRE(zeta != nullptr);
+  REQUIRE(zeta->cost_tier == "low");
+  REQUIRE(zeta->setup_url == "https://zeta/setup");
+  REQUIRE(zeta->docs_url == "https://zeta/docs");
+  REQUIRE(zeta->api_key_label == "Zeta Key");
+  REQUIRE(zeta->api_key_hint == "Put your key here");
+  REQUIRE(zeta->base_url == "https://zeta.base");
+  REQUIRE(zeta->kind == "generic_chat");
+  REQUIRE(zeta->auth_type == "bearer_header");
+  REQUIRE(zeta->key_param == "api_key");
+  REQUIRE(zeta->header_name == "Authorization");
+  REQUIRE(zeta->bearer_prefix == "Bearer");
+  REQUIRE(zeta->credential_provider_key == "zeta");
+  REQUIRE(zeta->cooldown_base_seconds == 11);
+  REQUIRE(zeta->cooldown_cap_seconds == 222);
+}
+
+TEST_CASE("CloudConfig duplicate provider merge fills provider fields from provider_defaults",
+          "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_default_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  provider_defaults:\n";
+  out << "    eta:\n";
+  out << "      provider_cost_tier: free\n";
+  out << "      setup_url: https://eta/setup\n";
+  out << "      docs_url: https://eta/docs\n";
+  out << "      api_key_label: Eta Key\n";
+  out << "      api_key_hint: Eta Hint\n";
+  out << "      base_url: https://eta.base\n";
+  out << "      api_kind: generic_chat\n";
+  out << "      auth_type: bearer_header\n";
+  out << "      key_param: key\n";
+  out << "      header_name: Authorization\n";
+  out << "      bearer_prefix: Bearer\n";
+  out << "      credential_key: eta-cred\n";
+  out << "      provider_cooldown:\n";
+  out << "        base_seconds: 17\n";
+  out << "        cap_seconds: 170\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: eta\n";
+  out << "        provider_cost_tier: \"\"\n";
+  out << "        setup_url: \"\"\n";
+  out << "        docs_url: \"\"\n";
+  out << "        api_key_label: \"\"\n";
+  out << "        api_key_hint: \"\"\n";
+  out << "        base_url: \"\"\n";
+  out << "        auth_type: \"\"\n";
+  out << "        key_param: \"\"\n";
+  out << "        header_name: \"\"\n";
+  out << "        bearer_prefix: \"\"\n";
+  out << "        credential_key: \"\"\n";
+  out << "      - provider_id: eta\n";
+  out << "        model_id: eta-2\n";
+  out << "        endpoint: /v1/eta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* eta = holder::api::support::find_cloud_provider(cfg.value(), "eta");
+  REQUIRE(eta != nullptr);
+  REQUIRE(eta->cost_tier == "free");
+  REQUIRE(eta->setup_url == "https://eta/setup");
+  REQUIRE(eta->docs_url == "https://eta/docs");
+  REQUIRE(eta->api_key_label == "Eta Key");
+  REQUIRE(eta->api_key_hint == "Eta Hint");
+  REQUIRE(eta->base_url == "https://eta.base");
+  REQUIRE(eta->kind == "generic_chat");
+  REQUIRE(eta->auth_type == "bearer_header");
+  REQUIRE(eta->key_param == "key");
+  REQUIRE(eta->header_name == "Authorization");
+  REQUIRE(eta->bearer_prefix == "Bearer");
+  REQUIRE(eta->credential_provider_key == "eta");
+  REQUIRE(eta->cooldown_base_seconds == 17);
+  REQUIRE(eta->cooldown_cap_seconds == 170);
+}
+
+TEST_CASE("CloudConfig duplicate provider merge validates unsupported api.kind in second pass",
+          "[cloud_config]") {
+  SECTION("model node api_kind branch throws") {
+    const auto dir =
+        std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_kind_model_throw";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto yaml_path = dir / "ai_catalog.yaml";
+
+    std::ofstream out(yaml_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  runtime: {}\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider_id: badmodel\n";
+    out << "        model_id: badmodel-1\n";
+    out << "        endpoint: /v1/badmodel-1\n";
+    out << "      - provider_id: badmodel\n";
+    out << "        api_kind: made_up_kind\n";
+    out << "        model_id: badmodel-2\n";
+    out << "        endpoint: /v1/badmodel-2\n";
+    out.close();
+
+    EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+    REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
+                        Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
+  }
+
+}
