@@ -186,13 +186,15 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
     }
 
     // Keepalive timeout path is intentionally excluded in unit tests to avoid long sleeps.
-    if (support::now_epoch_seconds() - started > 60) { // LCOV_EXCL_START
+    // LCOV_EXCL_START
+    if (support::now_epoch_seconds() - started > 60) {
       nlohmann::json keepalive;
       keepalive["run_id"] = run_id;
       keepalive["status"] = "pending";
       write_sse("pending", keepalive);
       return out;
-    } // LCOV_EXCL_STOP
+    }
+    // LCOV_EXCL_STOP
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200)); // LCOV_EXCL_LINE
   }

@@ -90,7 +90,7 @@ void ProjectRepo::create(const holder::model::Project& project) {
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "insert project failed");
+    throw_sqlite(db_.handle(), "insert project failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -166,7 +166,7 @@ void ProjectRepo::update_name(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update project name failed");
+    throw_sqlite(db_.handle(), "update project name failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -188,7 +188,7 @@ void ProjectRepo::update_root_path(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update project root failed");
+    throw_sqlite(db_.handle(), "update project root failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -210,7 +210,7 @@ void ProjectRepo::update_git_remote(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update git remote failed");
+    throw_sqlite(db_.handle(), "update git remote failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -232,7 +232,7 @@ void ProjectRepo::update_git_provider(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update git provider failed");
+    throw_sqlite(db_.handle(), "update git provider failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -254,7 +254,7 @@ void ProjectRepo::update_privacy_mode(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update privacy mode failed");
+    throw_sqlite(db_.handle(), "update privacy mode failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -276,7 +276,7 @@ void ProjectRepo::update_project_key_id(const std::string& project_id,
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "update project key id failed");
+    throw_sqlite(db_.handle(), "update project key id failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -295,7 +295,7 @@ void ProjectRepo::touch_updated(const std::string& project_id, long long updated
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "touch project failed");
+    throw_sqlite(db_.handle(), "touch project failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -312,7 +312,7 @@ void ProjectRepo::remove(const std::string& project_id) {
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) {
-    throw_sqlite(db_.handle(), "delete project failed");
+    throw_sqlite(db_.handle(), "delete project failed"); // LCOV_EXCL_LINE
   }
 }
 

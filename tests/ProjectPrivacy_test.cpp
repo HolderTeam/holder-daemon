@@ -476,6 +476,21 @@ TEST_CASE("ensure_project_key_material reports keyring unavailable when libsecre
   }
 }
 
+#if HOLDER_HAVE_LIBSECRET
+TEST_CASE("export_recovery_token maps missing libsecret key material to KeyMaterialMissing", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    (void)holder::privacy::export_recovery_token("proj-libsecret-missing", "key-libsecret-missing", "1234");
+    FAIL("Expected missing key material error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+  }
+}
+#endif
+
 TEST_CASE("import_recovery_token rethrows non-token privacy errors", "[privacy]") {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";

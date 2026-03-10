@@ -467,6 +467,41 @@ TEST_CASE("Rebuilder rebuilds cards/messages with defaults, links, trash and FTS
   REQUIRE(fts.search_messages(project_id, "answer", 10, 0).size() >= 1);
 }
 
+TEST_CASE("Rebuilder derive_title falls back when heading is blank", "[rebuild]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const std::string project_id = "proj-1";
+  const auto root = dir / "repo";
+  std::filesystem::create_directories(root);
+  create_project(db, project_id, root.string());
+
+  // First line is whitespace-only heading marker; derive_title should fall back to card_id.
+  const auto card_rel = holder::core::card_rel_path("abcd1234");
+  write_file(root / card_rel, "#    \nbody\n");
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::Rebuilder rebuilder(db, &fts);
+
+  holder::model::Project project;
+  project.project_id = project_id;
+  project.name = "Project";
+  project.root_path = root.string();
+  project.created_at = 1;
+  project.updated_at = 1;
+
+  const auto stats = rebuilder.rebuild_project(project);
+  REQUIRE(stats.cards == 1);
+
+  const auto title = select_text_optional(db,
+      "SELECT title FROM cards WHERE card_id = ?;",
+      "abcd1234");
+  REQUIRE(title.has_value());
+  REQUIRE(title.value() == "abcd1234");
+}
+
 TEST_CASE("Rebuilder rejects invalid card front matter", "[rebuild]") {
   const auto dir = make_temp_dir();
   holder::platform::Db db;

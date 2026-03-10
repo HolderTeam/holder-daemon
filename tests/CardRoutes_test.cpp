@@ -929,3 +929,239 @@ TEST_CASE("CardRoutes additional uncovered branches", "[card-routes]") {
     REQUIRE(delete_missing_payload["error"]["code"] == "bad_request");
   }
 }
+
+TEST_CASE("CardRoutes residual branch coverage", "[card-routes]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", (dir / "repo1").string());
+  holder::test::create_project(db, "proj-2", (dir / "repo2").string());
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto empty_param_get = [](const std::string&) { return std::string(); };
+
+  auto call = [&](http::verb method, const std::string& path, const nlohmann::json& body) {
+    auto req = make_request(method, path, body.dump());
+    http::response<http::string_body> res;
+    const bool handled = holder::api::routes::handle_card_routes(
+        path, req, res, db, &card_store, &fts, uuid_v4, empty_param_get);
+    REQUIRE(handled);
+    return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
+  };
+  auto call_with_params = [&](http::verb method,
+                              const std::string& path,
+                              const nlohmann::json& body,
+                              const std::unordered_map<std::string, std::string>& params) {
+    auto req = make_request(method, path, body.dump());
+    http::response<http::string_body> res;
+    const auto param_get = map_param_getter(params);
+    const bool handled = holder::api::routes::handle_card_routes(
+        path, req, res, db, &card_store, &fts, uuid_v4, param_get);
+    REQUIRE(handled);
+    return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
+  };
+  auto create_card = [&](const std::string& card_id,
+                         const std::string& project_id,
+                         const std::string& title,
+                         int t,
+                         const nlohmann::json& extra = nlohmann::json::object()) {
+    nlohmann::json body{
+        {"card_id", card_id},
+        {"project_id", project_id},
+        {"title", title},
+        {"content", title},
+        {"created_at", t},
+        {"updated_at", t},
+    };
+    for (auto it = extra.begin(); it != extra.end(); ++it) {
+      body[it.key()] = it.value();
+    }
+    auto [status, payload] = call(http::verb::post, "/cards", body);
+    REQUIRE(status == http::status::created);
+    REQUIRE(payload["ok"] == true);
+  };
+
+  create_card("00000000-0000-4000-8000-000000000001", "proj-1", "A", 10, {{"sort_key", 100.0}});
+  create_card("00000000-0000-4000-8000-000000000002", "proj-1", "B", 10, {{"sort_key", 100.0}});
+  create_card("00000000-0000-4000-8000-000000000003", "proj-1", "C", 11, {{"sort_key", 100.00001}});
+  create_card("00000000-0000-4000-8000-000000000004", "proj-2", "X", 20);
+
+  SECTION("context returns early on invalid count and catches db failure") {
+    auto [bad_count_status, bad_count_payload] = call_with_params(http::verb::get,
+                                                                  "/cards/context",
+                                                                  nlohmann::json::object(),
+                                                                  {{"project_id", "proj-1"},
+                                                                   {"count", "maybe"}});
+    REQUIRE(bad_count_status == http::status::bad_request);
+    REQUIRE(bad_count_payload["error"]["code"] == "bad_request");
+
+    holder::platform::Db unopened;
+    auto req = make_request(http::verb::get, "/cards/context");
+    http::response<http::string_body> res;
+    const auto param_get = map_param_getter({{"project_id", "proj-1"}});
+    const bool handled = holder::api::routes::handle_card_routes(
+        "/cards/context", req, res, unopened, &card_store, &fts, uuid_v4, param_get);
+    REQUIRE(handled);
+    REQUIRE(res.result() == http::status::bad_request);
+  }
+
+  SECTION("context skips deleted level cards and broken breadcrumb chain") {
+    auto [trash_status, trash_payload] = call(http::verb::delete_,
+                                              "/cards/00000000-0000-4000-8000-000000000002",
+                                              nlohmann::json::object());
+    REQUIRE(trash_status == http::status::ok);
+    REQUIRE(trash_payload["ok"] == true);
+
+    // Create a valid chain then delete the ancestor so breadcrumb traversal breaks.
+    create_card("00000000-0000-4000-8000-000000000099", "proj-1", "BrokenParent", 12);
+    create_card("00000000-0000-4000-8000-000000000100",
+                "proj-1",
+                "ChildBroken",
+                13,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000099"}});
+    auto [del_parent_status, del_parent_payload] = call(http::verb::delete_,
+                                                        "/cards/00000000-0000-4000-8000-000000000099",
+                                                        nlohmann::json::object());
+    REQUIRE(del_parent_status == http::status::ok);
+    REQUIRE(del_parent_payload["ok"] == true);
+
+    auto [status, payload] = call_with_params(
+        http::verb::get,
+        "/cards/context",
+        nlohmann::json::object(),
+        {{"project_id", "proj-1"}, {"parent_card_id", "00000000-0000-4000-8000-000000000100"}, {"count", "true"}});
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["ok"] == true);
+    for (const auto& row : payload["data"]["cards"]) {
+      REQUIRE(row["card_id"] != "00000000-0000-4000-8000-000000000002");
+    }
+  }
+
+  SECTION("recent updated_desc tie-breakers and cards get db catch path") {
+    auto [s1, p1] = call_with_params(http::verb::get,
+                                     "/cards",
+                                     nlohmann::json::object(),
+                                     {{"project_id", "proj-1"},
+                                      {"view", "recent"},
+                                      {"order", "updated_desc"},
+                                      {"count", "0"},
+                                      {"limit", "10"}});
+    REQUIRE(s1 == http::status::ok);
+    REQUIRE(p1["ok"] == true);
+
+    holder::platform::Db unopened;
+    auto req = make_request(http::verb::get, "/cards");
+    http::response<http::string_body> res;
+    const auto param_get =
+        map_param_getter({{"project_id", "proj-1"}, {"view", "tree"}});
+    const bool handled = holder::api::routes::handle_card_routes(
+        "/cards", req, res, unopened, &card_store, &fts, uuid_v4, param_get);
+    REQUIRE(handled);
+    REQUIRE(res.result() == http::status::internal_server_error);
+  }
+
+  SECTION("move covers null parent parse, deleted sibling skip, dense sort fallback and cross-project target") {
+    create_card("00000000-0000-4000-8000-000000000010", "proj-1", "P", 30);
+    create_card("00000000-0000-4000-8000-000000000011",
+                "proj-1",
+                "S1",
+                31,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000010"}, {"sort_key", 10.0}});
+    create_card("00000000-0000-4000-8000-000000000012",
+                "proj-1",
+                "S2",
+                31,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000010"}, {"sort_key", 10.00001}});
+    create_card("00000000-0000-4000-8000-000000000013",
+                "proj-1",
+                "S3",
+                31,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000010"}, {"sort_key", 10.00002}});
+    create_card("00000000-0000-4000-8000-000000000014",
+                "proj-1",
+                "S0",
+                31,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000010"}, {"sort_key", 10.0}});
+    auto [trash_status, _trash_payload] = call(http::verb::delete_,
+                                               "/cards/00000000-0000-4000-8000-000000000013",
+                                               nlohmann::json::object());
+    REQUIRE(trash_status == http::status::ok);
+
+    // Dense sort-gap fallback and sibling comparator branches.
+    auto [before_status, before_payload] = call(http::verb::post,
+                                                "/cards/00000000-0000-4000-8000-000000000012/move",
+                                                {{"project_id", "proj-1"},
+                                                 {"intent", "before"},
+                                                 {"target_card_id", "00000000-0000-4000-8000-000000000011"}});
+    REQUIRE(before_status == http::status::ok);
+    REQUIRE(before_payload["ok"] == true);
+
+    // parent_card_id null exercises normalize_parent_id(json null) branch.
+    auto [to_end_status, to_end_payload] = call(http::verb::post,
+                                                "/cards/00000000-0000-4000-8000-000000000011/move",
+                                                {{"project_id", "proj-1"},
+                                                 {"intent", "to_end"},
+                                                 {"parent_card_id", nullptr}});
+    REQUIRE(to_end_status == http::status::ok);
+    REQUIRE(to_end_payload["ok"] == true);
+
+    auto [left_status, left_payload] = call(http::verb::post,
+                                            "/cards/00000000-0000-4000-8000-000000000012/move",
+                                            {{"project_id", "proj-1"}, {"intent", "left"}});
+    REQUIRE(left_status == http::status::ok);
+    REQUIRE(left_payload["ok"] == true);
+
+  }
+
+  SECTION("backlinks and item get catch branches plus final route-not-found branch") {
+    // Create a card in db/card_store and then force route db failure for backlinks.
+    create_card("00000000-0000-4000-8000-000000000020", "proj-1", "Back", 40);
+
+    holder::platform::Db unopened;
+    auto backlinks_req = make_request(http::verb::get, "/cards/00000000-0000-4000-8000-000000000020/backlinks");
+    http::response<http::string_body> backlinks_res;
+    const bool backlinks_handled = holder::api::routes::handle_card_routes(
+        "/cards/00000000-0000-4000-8000-000000000020/backlinks",
+        backlinks_req,
+        backlinks_res,
+        unopened,
+        &card_store,
+        &fts,
+        uuid_v4,
+        empty_param_get);
+    REQUIRE(backlinks_handled);
+    REQUIRE(backlinks_res.result() == http::status::bad_request);
+
+    // Force item get exception by breaking rel_path invariant.
+    db.exec("UPDATE cards SET rel_path='cards/bad-path.md' WHERE card_id='00000000-0000-4000-8000-000000000020';");
+    auto get_req = make_request(http::verb::get, "/cards/00000000-0000-4000-8000-000000000020");
+    http::response<http::string_body> get_res;
+    const bool get_handled = holder::api::routes::handle_card_routes(
+        "/cards/00000000-0000-4000-8000-000000000020",
+        get_req,
+        get_res,
+        db,
+        &card_store,
+        &fts,
+        uuid_v4,
+        empty_param_get);
+    REQUIRE(get_handled);
+    REQUIRE(get_res.result() == http::status::internal_server_error);
+
+    // Method not handled by any item branch -> final not_found branch.
+    auto put_req = make_request(http::verb::put, "/cards/00000000-0000-4000-8000-000000000020");
+    http::response<http::string_body> put_res;
+    const bool put_handled = holder::api::routes::handle_card_routes(
+        "/cards/00000000-0000-4000-8000-000000000020",
+        put_req,
+        put_res,
+        db,
+        &card_store,
+        &fts,
+        uuid_v4,
+        empty_param_get);
+    REQUIRE(put_handled);
+    REQUIRE(put_res.result() == http::status::not_found);
+  }
+}

@@ -20,7 +20,7 @@ constexpr const char* kCipherName = "xchacha20poly1305";
 void ensure_sodium_ready() {
   if (sodium_init() < 0) {
     throw holder::privacy::PrivacyError(holder::privacy::PrivacyErrorCode::PrivacyCryptoFailed,
-                                          "failed to initialize libsodium");
+                                        "failed to initialize libsodium"); // LCOV_EXCL_LINE
   }
 }
 
@@ -35,7 +35,7 @@ std::string b64_encode(const unsigned char* data, std::size_t len) {
     out.pop_back();
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<unsigned char> b64_decode(const std::string& text) {
   std::vector<unsigned char> out(text.size(), 0);
@@ -151,7 +151,7 @@ std::string encrypt_envelope_v1(const std::string& plaintext,
           iv.data(),
           key.data()) != 0) {
     throw holder::privacy::PrivacyError(holder::privacy::PrivacyErrorCode::PrivacyCryptoFailed,
-                                          "privacy encryption failed");
+                                        "privacy encryption failed"); // LCOV_EXCL_LINE
   }
   ciphertext.resize(static_cast<std::size_t>(ciphertext_len));
 

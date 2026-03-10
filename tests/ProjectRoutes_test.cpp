@@ -45,15 +45,25 @@ public:
       .behind_count = 0,
       .error_message = {},
   };
+  bool throw_on_set_remote = false;
+  bool throw_on_pull = false;
 
   void open_or_init(const std::filesystem::path&) override {}
   void write_file(const std::filesystem::path&, const std::string&) override {}
   void stage_path(const std::filesystem::path&) override {}
   void remove_path(const std::filesystem::path&) override {}
   void commit(const std::string&) override {}
-  void set_remote(const std::string&, const std::string&) override {}
+  void set_remote(const std::string&, const std::string&) override {
+    if (throw_on_set_remote) {
+      throw std::runtime_error("set_remote failed");
+    }
+  }
   void remove_remote(const std::string&) override {}
-  void pull_remote_ff_only(const std::string&) override {}
+  void pull_remote_ff_only(const std::string&) override {
+    if (throw_on_pull) {
+      throw std::runtime_error("pull failed");
+    }
+  }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override { return push_result; }
   std::filesystem::path repo_dir() const override { return {}; }
@@ -195,6 +205,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
                                   {{"remote_url", nullptr}, {"branch", "main"}});
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "remote_unset");
+    REQUIRE(payload["data"]["error_code"] == "remote_unset");
+    REQUIRE(payload["data"]["remote_has_head"] == false);
   }
 
   SECTION("git test-remote bad json catch") {
@@ -218,6 +230,7 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "auth_failed");
+    REQUIRE(payload["data"]["error_code"] == "auth_failed");
   }
 
   SECTION("git push bad json catch") {
@@ -238,6 +251,30 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(payload["error"]["code"] == "bad_request");
   }
 
+  SECTION("sync-status returns default sync object when no row exists") {
+    auto [status, payload] = call(http::verb::get, "/projects/proj-1/git/sync-status");
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["sync"]["uncommitted_changes_count"] == 0);
+    REQUIRE(payload["data"]["sync"]["unpushed_commits_count"] == 0);
+    REQUIRE(payload["data"]["sync"]["retry_count"] == 0);
+    REQUIRE(payload["data"]["sync"]["pull_retry_count"] == 0);
+    REQUIRE(payload["data"]["sync"]["updated_at"].is_null());
+  }
+
+  SECTION("git push best-effort metrics catch still returns payload") {
+    // No repo exists at root_path; inspect_repo_sync_metrics will throw and be swallowed.
+    git.push_result = {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = {},
+    };
+    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["ok"] == true);
+    REQUIRE(payload["data"]["status"] == "pushed");
+  }
+
   SECTION("project get internal error catch with closed db") {
     db.close();
     auto [status, payload] = call(http::verb::get, "/projects/proj-1");
@@ -250,6 +287,101 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     auto [status, payload] = call(http::verb::delete_, "/projects/proj-1");
     REQUIRE(status == http::status::internal_server_error);
     REQUIRE(payload["error"]["code"] == "error");
+  }
+}
+
+TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[project-routes]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto empty_param_get = [](const std::string&) { return std::string(); };
+  ProjectRoutesTestGitOps git;
+
+  auto call = [&](http::verb method,
+                  const std::string& path,
+                  const nlohmann::json& body = nlohmann::json()) {
+    auto req = make_request(method, path, body);
+    http::response<http::string_body> res;
+    const bool handled = holder::api::routes::handle_project_routes(
+        path, req, res, db, &git, uuid_v4, empty_param_get);
+    REQUIRE(handled);
+    return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
+  };
+
+  SECTION("global recovery import can mark pull succeeded with remote hint") {
+    const auto repo_root = dir / "enc-repo";
+    std::filesystem::create_directories(repo_root);
+
+    auto [create_status, create_payload] = call(http::verb::post,
+                                                "/projects",
+                                                {{"project_id", "proj-enc"},
+                                                 {"name", "Encrypted"},
+                                                 {"root_path", repo_root.string()},
+                                                 {"privacy_mode", "encrypted_git"},
+                                                 {"git_remote_url", "https://example.com/recovered.git"},
+                                                 {"created_at", 10},
+                                                 {"updated_at", 10}});
+    REQUIRE(create_status == http::status::created);
+    REQUIRE(create_payload["ok"] == true);
+
+    auto [export_status, export_payload] = call(http::verb::post,
+                                                "/projects/proj-enc/recovery-token/export",
+                                                {{"pin", "1234"}});
+    REQUIRE(export_status == http::status::ok);
+    const std::string token = export_payload["data"]["recovery_token"].get<std::string>();
+
+    auto [del_status, del_payload] = call(http::verb::delete_, "/projects/proj-enc");
+    REQUIRE(del_status == http::status::ok);
+    REQUIRE(del_payload["ok"] == true);
+
+    auto [import_status, import_payload] = call(http::verb::post,
+                                                "/recovery-token/import",
+                                                {{"pin", "1234"}, {"recovery_token", token}});
+    REQUIRE(import_status == http::status::created);
+    REQUIRE(import_payload["ok"] == true);
+    REQUIRE(import_payload["data"]["remote_hint_present"] == true);
+    REQUIRE(import_payload["data"]["remote_configured"] == true);
+    REQUIRE(import_payload["data"]["pull_status"] == "succeeded");
+  }
+
+  SECTION("encryption-check plain and encrypted branches plus generic catch") {
+    holder::project::ProjectRepo repo(db);
+
+    holder::model::Project plain;
+    plain.project_id = "proj-plain";
+    plain.name = "Plain";
+    plain.root_path = (dir / "plain").string();
+    plain.privacy_mode = "plain";
+    plain.created_at = 1;
+    plain.updated_at = 1;
+    repo.create(plain);
+
+    auto [plain_status, plain_payload] =
+        call(http::verb::get, "/projects/proj-plain/encryption-check");
+    REQUIRE(plain_status == http::status::ok);
+    REQUIRE(plain_payload["data"]["check"]["checked_files"] == 0);
+    REQUIRE(plain_payload["data"]["check"]["unsafe_files"] == 0);
+
+    holder::model::Project enc;
+    enc.project_id = "proj-encrypted";
+    enc.name = "Encrypted";
+    enc.root_path = (dir / "encrypted").string();
+    enc.privacy_mode = "encrypted_git";
+    enc.created_at = 2;
+    enc.updated_at = 2;
+    repo.create(enc);
+    std::filesystem::create_directories(enc.root_path);
+
+    auto [enc_status, enc_payload] =
+        call(http::verb::get, "/projects/proj-encrypted/encryption-check");
+    REQUIRE(enc_status == http::status::ok);
+    REQUIRE(enc_payload["data"]["check"].contains("unsafe_files"));
+
+    db.close();
+    auto [err_status, err_payload] =
+        call(http::verb::get, "/projects/proj-encrypted/encryption-check");
+    REQUIRE(err_status == http::status::bad_request);
+    REQUIRE(err_payload["error"]["code"] == "bad_request");
   }
 }
 

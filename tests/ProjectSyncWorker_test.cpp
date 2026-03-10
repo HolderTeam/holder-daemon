@@ -286,6 +286,36 @@ TEST_CASE("ProjectSyncWorker skips project when metrics refresh fails", "[sync][
   REQUIRE_FALSE(state->last_push_at.has_value());
 }
 
+TEST_CASE("ProjectSyncWorker skips project without remote URL", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "hello");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    holder::model::Project project;
+    project.project_id = "proj-no-remote";
+    project.name = "Project";
+    project.root_path = local_dir.string();
+    project.privacy_mode = "plain";
+    project.created_at = 1;
+    project.updated_at = 1;
+    projects.create(project);
+  }
+
+  run_worker_with_intervals_for_seconds(db_path, 0, 0, 1, 2);
+
+  const auto state = load_sync_state(db_path, "proj-no-remote");
+  REQUIRE_FALSE(state.has_value());
+}
+
 TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[sync][worker]") {
   const auto dir = holder::test::make_temp_dir();
   // Point db_path at a directory so sqlite open fails in both startup and push cycle.
