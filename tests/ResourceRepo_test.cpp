@@ -233,3 +233,45 @@ TEST_CASE("ResourceRepo list throws sqlite error branch under heavy interrupt", 
   REQUIRE_THROWS(repo.list("proj-1"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
+
+TEST_CASE("ResourceRepo add throws sqlite error branch on interrupted insert step", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+
+  holder::model::Resource resource;
+  resource.resource_id = "res-int-add";
+  resource.project_id = "proj-1";
+  resource.kind = "url";
+  resource.uri = "https://example.com/interrupted";
+  resource.label = "Example";
+  resource.desc = std::nullopt;
+  resource.created_at = 10;
+  resource.updated_at = 10;
+
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
+  REQUIRE_THROWS(repo.add(resource));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
+
+TEST_CASE("ResourceRepo list throws sqlite error branch when resources table is missing", "[resourcerepo]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::resource::ResourceRepo repo(db);
+  db.exec("DROP TABLE resources;");
+
+  REQUIRE_THROWS(repo.list("proj-1"));
+}

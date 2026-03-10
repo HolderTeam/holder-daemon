@@ -31,7 +31,7 @@ void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
   if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
     throw std::runtime_error("sqlite bind_int64 failed");
   }
-}
+} // LCOV_EXCL_LINE
 
 holder::model::Resource read_resource(sqlite3_stmt* stmt) {
   holder::model::Resource r;
@@ -48,7 +48,7 @@ holder::model::Resource read_resource(sqlite3_stmt* stmt) {
   r.created_at = sqlite3_column_int64(stmt, 6);
   r.updated_at = sqlite3_column_int64(stmt, 7);
   return r;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 
@@ -109,7 +109,7 @@ std::vector<holder::model::Resource> ResourceRepo::list(const std::string& proje
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::optional<holder::model::Resource> ResourceRepo::get(const std::string& resource_id) const {
   static constexpr const char* SQL =

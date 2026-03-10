@@ -286,6 +286,26 @@ TEST_CASE("AiMessageCrudRoutes item and restore branches", "[http]") {
     REQUIRE(bad_res.result() == http::status::bad_request);
   }
 
+  SECTION("patch sets model, prompt_hash, and meta_json to non-null values") {
+    auto patch_set = make_request(http::verb::patch,
+                                  "/ai/messages/msg-1",
+                                  R"({"model":"m2","prompt_hash":"ph2","meta_json":"{\"a\":1}"})");
+    http::response<http::string_body> patch_res;
+    REQUIRE(holder::api::routes::ai::messages::handle_ai_message_crud_routes(
+        "/ai/messages/msg-1", patch_set, patch_res, db, &fts, [] { return std::string("u"); }, no_query));
+    REQUIRE(patch_res.result() == http::status::ok);
+
+    auto get_req = make_request(http::verb::get, "/ai/messages/msg-1");
+    http::response<http::string_body> get_res;
+    REQUIRE(holder::api::routes::ai::messages::handle_ai_message_crud_routes(
+        "/ai/messages/msg-1", get_req, get_res, db, &fts, [] { return std::string("u"); }, no_query));
+    REQUIRE(get_res.result() == http::status::ok);
+    const auto got = nlohmann::json::parse(get_res.body());
+    REQUIRE(got["data"]["model"] == "m2");
+    REQUIRE(got["data"]["prompt_hash"] == "ph2");
+    REQUIRE(got["data"]["meta_json"] == "{\"a\":1}");
+  }
+
   SECTION("item post route and item get catch") {
     auto post_req = make_request(http::verb::post, "/ai/messages/msg-1");
     http::response<http::string_body> post_res;

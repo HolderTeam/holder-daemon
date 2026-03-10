@@ -44,6 +44,7 @@ add_executable(lockfile_tests
   HttpAiRunnerPullRoutes_test.cpp
   AiRunnerRoutes_test.cpp
   HttpAiCapture_test.cpp
+  AiMessageCaptureRoutes_test.cpp
   HttpAiComplete_test.cpp
   HttpResources_test.cpp
   HttpTrash_test.cpp
@@ -73,6 +74,7 @@ add_executable(lockfile_tests
   LocalModelRouting_test.cpp
   ThreadCompaction_test.cpp
   HttpCards_test.cpp
+  CardRoutes_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
   HttpSearchDisabled_test.cpp
