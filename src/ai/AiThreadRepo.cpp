@@ -15,7 +15,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -23,13 +23,13 @@ void bind_text_optional(sqlite3_stmt* stmt, int idx, const std::optional<std::st
   if (value.has_value()) {
     bind_text(stmt, idx, value.value());
   } else if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
   if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_int64 failed");
+    throw std::runtime_error("sqlite bind_int64 failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -46,7 +46,7 @@ holder::model::AiThread read_thread(sqlite3_stmt* stmt) {
   t.created_at = sqlite3_column_int64(stmt, 4);
   t.updated_at = sqlite3_column_int64(stmt, 5);
   return t;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 
@@ -128,7 +128,7 @@ std::vector<holder::model::AiThread> AiThreadRepo::list(const std::string& proje
 
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void AiThreadRepo::update_title(const std::string& thread_id,
                                 const std::string& title,

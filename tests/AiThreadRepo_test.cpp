@@ -206,3 +206,34 @@ TEST_CASE("AiThreadRepo update_card_id fails on invalid card fk", "[aithreaddrep
 
   REQUIRE_THROWS(repo.update_card_id("thread-card-fk", std::optional<std::string>("missing-card")));
 }
+
+TEST_CASE("AiThreadRepo list throws when interrupted during large scan", "[aithreaddrepo]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+  create_project(db, "proj-1");
+
+  holder::ai::AiThreadRepo repo(db);
+  for (int i = 0; i < 5000; ++i) {
+    holder::model::AiThread thread;
+    thread.thread_id = "thread-many-" + std::to_string(i);
+    thread.project_id = "proj-1";
+    thread.title = "Many";
+    thread.created_at = i + 1;
+    thread.updated_at = i + 1;
+    repo.create(thread);
+  }
+
+  int callback_count = 0;
+  sqlite3_progress_handler(
+      db.handle(), 1,
+      [](void* ctx) -> int {
+        auto* count = static_cast<int*>(ctx);
+        ++(*count);
+        return (*count > 2000) ? 1 : 0;
+      },
+      &callback_count);
+  REQUIRE_THROWS(repo.list("proj-1"));
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+}
