@@ -17,7 +17,7 @@ inline boost::beast::http::response<boost::beast::http::string_body> json_respon
   res.body() = payload.dump();
   res.prepare_payload();
   return res;
-}
+} // LCOV_EXCL_LINE
 
 inline boost::beast::http::response<boost::beast::http::string_body> error_response(
     boost::beast::http::status status,

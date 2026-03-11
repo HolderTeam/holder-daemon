@@ -293,6 +293,7 @@ TEST_CASE("FtsIndexer delete/upsert throw on interrupted sqlite step", "[fts]") 
   sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
   REQUIRE_THROWS(fts.delete_card("card-1"));
   REQUIRE_THROWS(fts.delete_message("msg-1"));
+  REQUIRE_THROWS(fts.upsert_card("card-1", "proj-1", "Title", "Body"));
   REQUIRE_THROWS(fts.upsert_message("msg-2", "thread-2", "proj-1", "gamma"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
@@ -383,4 +384,18 @@ TEST_CASE("FtsIndexer delete throws when sqlite handle is closed", "[fts]") {
 
   REQUIRE_THROWS(fts.delete_card("card-1"));
   REQUIRE_THROWS(fts.delete_message("msg-1"));
+}
+
+TEST_CASE("FtsIndexer upsert_message throws when sqlite handle is closed", "[fts]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  holder::index::FtsIndexer fts(db);
+  db.close();
+
+  REQUIRE_THROWS(fts.upsert_message("msg-1", "thread-1", "proj-1", "alpha beta"));
 }

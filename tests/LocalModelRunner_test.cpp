@@ -684,16 +684,13 @@ TEST_CASE("LocalModelRunner retry non-fake reports missing executable and handle
   EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
   EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
   EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+  EnvGuard path_env("PATH", "");
 
   holder::llm::LocalModelRunner runner;
   const auto first = runner.retry();
   REQUIRE(first.spawn_attempted == true);
   REQUIRE_FALSE(first.error.empty());
-  REQUIRE((first.error.find("model runner executable not found") != std::string::npos ||
-           first.error.find("bind: address already in use") != std::string::npos ||
-           first.error.find("model runner not reachable") != std::string::npos ||
-           first.error.find("Connection refused") != std::string::npos ||
-           first.error.find("connection refused") != std::string::npos));
+  REQUIRE(first.error.find("model runner executable not found") != std::string::npos);
 
   // Second retry should not throw and should remain in a non-available state.
   const auto second = runner.retry();
