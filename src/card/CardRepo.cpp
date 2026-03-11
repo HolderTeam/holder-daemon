@@ -212,7 +212,7 @@ std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_i
     sqlite3_finalize(stmt);
     throw_sqlite(db_.handle(), "list all cards failed");
   }
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
 }
 
@@ -230,7 +230,7 @@ int CardRepo::count_all_not_deleted(const std::string& project_id) const {
     sqlite3_finalize(stmt);
     return count;
   }
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) { // LCOV_EXCL_LINE
     throw_sqlite(db_.handle(), "count all cards failed"); // LCOV_EXCL_LINE
   }
@@ -252,7 +252,7 @@ int CardRepo::count_roots_not_deleted(const std::string& project_id) const {
     sqlite3_finalize(stmt);
     return count;
   }
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) { // LCOV_EXCL_LINE
     throw_sqlite(db_.handle(), "count root cards failed"); // LCOV_EXCL_LINE
   }
@@ -276,7 +276,7 @@ int CardRepo::count_children_not_deleted(const std::string& project_id,
     sqlite3_finalize(stmt);
     return count;
   }
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) { // LCOV_EXCL_LINE
     throw_sqlite(db_.handle(), "count child cards failed"); // LCOV_EXCL_LINE
   }

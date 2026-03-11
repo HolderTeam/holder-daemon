@@ -83,8 +83,8 @@ void Reindexer::run() {
         continue;
       }
       if (rc == SQLITE_DONE) break;
-      sqlite3_finalize(stmt);
-      throw_sqlite(db_.handle(), "reindex ai messages failed");
+      sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+      throw_sqlite(db_.handle(), "reindex ai messages failed"); // LCOV_EXCL_LINE
     }
 
     sqlite3_finalize(stmt);

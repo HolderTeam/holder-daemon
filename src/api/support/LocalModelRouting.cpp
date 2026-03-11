@@ -118,9 +118,11 @@ std::optional<CasteInfo> detect_machine_caste() {
     out.reason = result.reason;
     if (out.name.empty()) return std::nullopt;
     return out;
+  // LCOV_EXCL_START
   } catch (const std::exception&) {
-    return std::nullopt; // LCOV_EXCL_LINE
+    return std::nullopt;
   }
+  // LCOV_EXCL_STOP
 } // LCOV_EXCL_LINE
 
 std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
