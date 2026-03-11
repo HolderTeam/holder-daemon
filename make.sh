@@ -108,7 +108,7 @@ case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
     ctest --test-dir build --output-on-failure
-    ./build/holder
+    ./build/holderd
     ;;
   perf-privacy)
     build_all "${BUILD_TYPE}"
@@ -121,6 +121,6 @@ case "${MODE}" in
     # Backward-compatible: treat first arg as build type in default flow.
     build_all "${MODE}"
     ctest --test-dir build --output-on-failure
-    ./build/holder
+    ./build/holderd
     ;;
 esac
