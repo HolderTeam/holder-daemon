@@ -9,6 +9,7 @@
 #include "git/GitOps.h"
 #include "model/Project.h"
 #include "project/ProjectRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -209,6 +210,21 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(payload["data"]["remote_has_head"] == false);
   }
 
+  SECTION("git test-remote emits reachable status with null error_code") {
+    git.probe_result = {
+        .status = holder::git::RemoteProbeStatus::Reachable,
+        .remote_has_head = true,
+        .error_message = {},
+    };
+    auto [status, payload] = call(http::verb::post,
+                                  "/projects/proj-1/git/test-remote",
+                                  {{"branch", "main"}});
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "reachable");
+    REQUIRE(payload["data"]["error_code"].is_null());
+    REQUIRE(payload["data"]["remote_has_head"] == true);
+  }
+
   SECTION("git test-remote bad json catch") {
     auto req = make_request(http::verb::post, "/projects/proj-1/git/test-remote");
     req.body() = "{";
@@ -258,6 +274,19 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(payload["data"]["sync"]["unpushed_commits_count"] == 0);
     REQUIRE(payload["data"]["sync"]["retry_count"] == 0);
     REQUIRE(payload["data"]["sync"]["pull_retry_count"] == 0);
+    REQUIRE(payload["data"]["sync"]["updated_at"].is_null());
+  }
+
+  SECTION("sync-status maps existing zero updated_at to null") {
+    holder::project::ProjectSyncRepo sync_repo(db);
+    (void)sync_repo;
+    db.exec(
+        "INSERT INTO project_sync_state(project_id,uncommitted_changes_count,unpushed_commits_count,"
+        "retry_count,pull_retry_count,updated_at) VALUES('proj-1',0,0,0,0,0) "
+        "ON CONFLICT(project_id) DO UPDATE SET updated_at=0;");
+
+    auto [status, payload] = call(http::verb::get, "/projects/proj-1/git/sync-status");
+    REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["sync"]["updated_at"].is_null());
   }
 
@@ -376,6 +405,9 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
         call(http::verb::get, "/projects/proj-encrypted/encryption-check");
     REQUIRE(enc_status == http::status::ok);
     REQUIRE(enc_payload["data"]["check"].contains("unsafe_files"));
+    const bool unsafe_files_is_int = enc_payload["data"]["check"]["unsafe_files"].is_number_unsigned() ||
+                                     enc_payload["data"]["check"]["unsafe_files"].is_number_integer();
+    REQUIRE(unsafe_files_is_int);
 
     db.close();
     auto [err_status, err_payload] =

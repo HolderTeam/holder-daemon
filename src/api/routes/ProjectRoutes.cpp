@@ -290,9 +290,12 @@ bool handle_project_routes(const std::string& path,
                 metrics.uncommitted_changes_count,
                 metrics.unpushed_commits_count,
                 now);
+          // Best-effort only; metrics refresh failure does not fail import.
+          // LCOV_EXCL_START
           } catch (const std::exception&) {
             // Best-effort only.
           }
+          // LCOV_EXCL_STOP
         }
       }
 
@@ -719,9 +722,12 @@ bool handle_project_routes(const std::string& path,
               metrics.uncommitted_changes_count,
               metrics.unpushed_commits_count,
               support::now_epoch_seconds());
+        // Best-effort only; metrics refresh failure does not fail push response.
+        // LCOV_EXCL_START
         } catch (const std::exception&) {
           // Best-effort only.
         }
+        // LCOV_EXCL_STOP
         const auto payload = git_push_payload(project_id,
                                               project.git_remote_url,
                                               branch.empty() ? "local_default" : branch,

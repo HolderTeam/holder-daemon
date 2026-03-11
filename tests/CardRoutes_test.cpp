@@ -1114,6 +1114,31 @@ TEST_CASE("CardRoutes residual branch coverage", "[card-routes]") {
 
   }
 
+  SECTION("move right ordering uses updated_at and title tie-breakers for equal sort_key") {
+    create_card("00000000-0000-4000-8000-000000000030", "proj-1", "P2", 50);
+    create_card("00000000-0000-4000-8000-000000000031",
+                "proj-1",
+                "M",
+                10,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000030"}, {"sort_key", 50.0}});
+    create_card("00000000-0000-4000-8000-000000000032",
+                "proj-1",
+                "Z",
+                20,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000030"}, {"sort_key", 50.0}});
+    create_card("00000000-0000-4000-8000-000000000033",
+                "proj-1",
+                "A",
+                20,
+                {{"parent_card_id", "00000000-0000-4000-8000-000000000030"}, {"sort_key", 50.0}});
+
+    auto [status, payload] = call(http::verb::post,
+                                  "/cards/00000000-0000-4000-8000-000000000033/move",
+                                  {{"project_id", "proj-1"}, {"intent", "right"}});
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["ok"] == true);
+  }
+
   SECTION("backlinks and item get catch branches plus final route-not-found branch") {
     // Create a card in db/card_store and then force route db failure for backlinks.
     create_card("00000000-0000-4000-8000-000000000020", "proj-1", "Back", 40);
