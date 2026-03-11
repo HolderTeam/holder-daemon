@@ -311,3 +311,70 @@ TEST_CASE("CloudClient run_cloud_model builds header-key auth and generic chat p
   REQUIRE_FALSE(out.has_value());
   REQUIRE(error.find("transport_error: invalid https base_url") != std::string::npos);
 }
+
+TEST_CASE("CloudClient run_cloud_model returns parsed text on transport success", "[cloud_client]") {
+  holder::api::support::CloudProviderConfig provider;
+  provider.id = "p";
+  provider.kind = "generic_chat";
+  provider.auth_type = "header_key";
+  provider.header_name = "x-api-key";
+  provider.base_url = "https://example.com";
+
+  holder::api::support::CloudModelConfig model;
+  model.id = "chat-test";
+  model.endpoint = "/v1/chat";
+
+  holder::api::support::set_cloud_transport_post_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::vector<std::pair<std::string, std::string>>&,
+         const std::string&,
+         int* out_status,
+         std::string* out_body,
+         std::string*) -> bool {
+        if (out_status) *out_status = 200;
+        if (out_body) *out_body = R"({"choices":[{"message":{"content":"ok text"}}]})";
+        return true;
+      });
+
+  std::string error;
+  const auto out = holder::api::support::run_cloud_model(provider, model, "k", "prompt", &error);
+  holder::api::support::clear_cloud_transport_post_override_for_tests();
+
+  REQUIRE(out.has_value());
+  REQUIRE(out.value() == "ok text");
+  REQUIRE(error.empty());
+}
+
+TEST_CASE("CloudClient run_cloud_model propagates parsed cloud error on transport success", "[cloud_client]") {
+  holder::api::support::CloudProviderConfig provider;
+  provider.id = "p";
+  provider.kind = "generic_chat";
+  provider.auth_type = "header_key";
+  provider.header_name = "x-api-key";
+  provider.base_url = "https://example.com";
+
+  holder::api::support::CloudModelConfig model;
+  model.id = "chat-test";
+  model.endpoint = "/v1/chat";
+
+  holder::api::support::set_cloud_transport_post_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::vector<std::pair<std::string, std::string>>&,
+         const std::string&,
+         int* out_status,
+         std::string* out_body,
+         std::string*) -> bool {
+        if (out_status) *out_status = 429;
+        if (out_body) *out_body = R"({"error":"too many requests"})";
+        return true;
+      });
+
+  std::string error;
+  const auto out = holder::api::support::run_cloud_model(provider, model, "k", "prompt", &error);
+  holder::api::support::clear_cloud_transport_post_override_for_tests();
+
+  REQUIRE_FALSE(out.has_value());
+  REQUIRE(error.find("rate_limited:") != std::string::npos);
+}
