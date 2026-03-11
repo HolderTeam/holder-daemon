@@ -10,6 +10,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <atomic>
 #include <chrono>
 #include <exception>
 #include <thread>
@@ -17,8 +18,8 @@
 namespace holder::sync {
 namespace {
 
-bool g_fail_post_pull_metrics_for_tests = false;
-bool g_fail_post_push_metrics_for_tests = false;
+std::atomic<bool> g_fail_post_pull_metrics_for_tests{false};
+std::atomic<bool> g_fail_post_push_metrics_for_tests{false};
 
 bool is_push_success(holder::git::PushStatus status) {
   return status == holder::git::PushStatus::Pushed ||
@@ -59,11 +60,11 @@ void ProjectSyncWorker::run(const holder::core::SignalHandler& signals) {
 }
 
 void ProjectSyncWorker::set_fail_post_pull_metrics_for_tests(bool enabled) {
-  g_fail_post_pull_metrics_for_tests = enabled;
+  g_fail_post_pull_metrics_for_tests.store(enabled, std::memory_order_relaxed);
 }
 
 void ProjectSyncWorker::set_fail_post_push_metrics_for_tests(bool enabled) {
-  g_fail_post_push_metrics_for_tests = enabled;
+  g_fail_post_push_metrics_for_tests.store(enabled, std::memory_order_relaxed);
 }
 
 long long ProjectSyncWorker::now_epoch_seconds() const {
@@ -175,7 +176,7 @@ void ProjectSyncWorker::run_push_cycle() {
       }
 
       try {
-        if (g_fail_post_pull_metrics_for_tests) {
+        if (g_fail_post_pull_metrics_for_tests.load(std::memory_order_relaxed)) {
           throw std::runtime_error("forced post-pull metrics failure for tests");
         }
         const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
@@ -220,7 +221,7 @@ void ProjectSyncWorker::run_push_cycle() {
                               now);
     }
     try {
-      if (g_fail_post_push_metrics_for_tests) {
+      if (g_fail_post_push_metrics_for_tests.load(std::memory_order_relaxed)) {
         throw std::runtime_error("forced post-push metrics failure for tests");
       }
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
