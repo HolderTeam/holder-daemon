@@ -66,7 +66,7 @@ void Db::exec(const std::string& sql) {
     std::string msg = err ? err : "unknown sqlite error";
     sqlite3_free(err);
     throw_sqlite("sqlite exec failed: " + msg, rc, db_);
-  }
+  } // LCOV_EXCL_LINE
 }
 
 } // namespace holder::platform
