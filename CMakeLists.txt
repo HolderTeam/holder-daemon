@@ -71,7 +71,7 @@ add_subdirectory(third_party/caste)
 # ----------------------------
 # Target
 # ----------------------------
-add_executable(holder
+add_executable(holderd
   src/main.cpp
   src/platform/Paths.cpp
   src/platform/LockFile.cpp
@@ -158,24 +158,24 @@ add_executable(holder
   # src/markdown/parse_links.cpp
 )
 
-target_include_directories(holder PRIVATE
+target_include_directories(holderd PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_compile_definitions(holder PRIVATE
+target_compile_definitions(holderd PRIVATE
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
 )
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
-  target_compile_definitions(holder PRIVATE
+  target_compile_definitions(holderd PRIVATE
     HOLDER_ENABLE_ENCRYPTED_GIT=1
   )
 else()
-  target_compile_definitions(holder PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
+  target_compile_definitions(holderd PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
 endif()
 
 # Warnings (GNU/Clang)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  target_compile_options(holder PRIVATE
+  target_compile_options(holderd PRIVATE
     -Wall -Wextra -Wpedantic
     -Wshadow -Wconversion -Wsign-conversion
     -Wno-unknown-pragmas
@@ -183,7 +183,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # Link libs
-target_link_libraries(holder PRIVATE
+target_link_libraries(holderd PRIVATE
   Boost::system
   Boost::filesystem
   OpenSSL::SSL
@@ -199,30 +199,30 @@ target_link_libraries(holder PRIVATE
 
 # Feature-linked deps
 if(CARD_SERVER_ENABLE_LIBGIT2)
-  target_link_libraries(holder PRIVATE PkgConfig::LIBGIT2)
-  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
+  target_link_libraries(holderd PRIVATE PkgConfig::LIBGIT2)
+  target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
 else()
-  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
+  target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
 endif()
 
 if(CARD_SERVER_ENABLE_MD4C)
-  target_link_libraries(holder PRIVATE PkgConfig::MD4C)
-  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=1)
+  target_link_libraries(holderd PRIVATE PkgConfig::MD4C)
+  target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_MD4C=1)
 else()
-  target_compile_definitions(holder PRIVATE CARD_SERVER_HAVE_MD4C=0)
+  target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_MD4C=0)
 endif()
 
 if(LIBSECRET_FOUND)
-  target_link_libraries(holder PRIVATE PkgConfig::LIBSECRET)
-  target_compile_definitions(holder PRIVATE HOLDER_HAVE_LIBSECRET=1)
+  target_link_libraries(holderd PRIVATE PkgConfig::LIBSECRET)
+  target_compile_definitions(holderd PRIVATE HOLDER_HAVE_LIBSECRET=1)
 else()
-  target_compile_definitions(holder PRIVATE HOLDER_HAVE_LIBSECRET=0)
+  target_compile_definitions(holderd PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
 
 # ----------------------------
 # Install (optional for later packaging)
 # ----------------------------
-install(TARGETS holder RUNTIME DESTINATION bin)
+install(TARGETS holderd RUNTIME DESTINATION bin)
 
 # ----------------------------
 # Tests

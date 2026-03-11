@@ -217,7 +217,7 @@ target_compile_definitions(lockfile_tests PRIVATE
   LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
   SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
-  HOLDER_BIN_PATH="$<TARGET_FILE:holder>"
+  HOLDER_BIN_PATH="$<TARGET_FILE:holderd>"
 )
 
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
