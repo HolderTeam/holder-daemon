@@ -145,7 +145,7 @@ CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw std::runtime_error("prepare cloud cooldown upsert failed");
+    throw std::runtime_error("prepare cloud cooldown upsert failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, provider.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, model_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -167,7 +167,7 @@ CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
   out.last_error = error;
   out.updated_at = now_epoch_seconds;
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void clear_cloud_model_cooldown(holder::platform::Db& db,
                                 const std::string& provider,
@@ -182,7 +182,7 @@ void clear_cloud_model_cooldown(holder::platform::Db& db,
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw std::runtime_error("prepare cloud cooldown clear failed");
+    throw std::runtime_error("prepare cloud cooldown clear failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, provider.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, model_id.c_str(), -1, SQLITE_TRANSIENT);

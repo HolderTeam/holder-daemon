@@ -70,6 +70,7 @@ add_executable(lockfile_tests
   StaticRoutes_test.cpp
   HttpRunner_test.cpp
   LocalModelRunner_test.cpp
+  PathDiscovery_test.cpp
   Session_test.cpp
   CloudQuota_test.cpp
   CloudConfig_test.cpp

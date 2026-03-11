@@ -350,10 +350,14 @@ SummaryValidationResult normalize_and_validate_rolling_summary(
   }
 
   const std::vector<std::string> lines = split_lines_trimmed(trimmed);
+  // Unreachable in practice: `trimmed` is non-empty and >=40 chars here, so
+  // split_lines_trimmed cannot produce an empty vector.
+  // LCOV_EXCL_START
   if (lines.empty()) {
     result.reason = "empty_lines";
     return result;
   }
+  // LCOV_EXCL_STOP
 
   const std::vector<std::pair<std::string, std::string>> sections = {
       {"decisions", "## Decisions"},

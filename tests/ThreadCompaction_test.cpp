@@ -221,6 +221,20 @@ TEST_CASE("ThreadCompaction handles zero token budget and oversize prefix trunca
   REQUIRE(out.size() <= 40);
   REQUIRE(compacted);
   REQUIRE(used_summary);
+
+  // Force prefix (summary + pinned facts block) to exceed max_bytes so build_compacted_context
+  // takes the explicit `out = prefix.substr(0, max_bytes)` truncation branch.
+  holder::api::support::ThreadCompactionState state_with_facts;
+  state_with_facts.thread_id = "thread-oversize-facts";
+  state_with_facts.rolling_summary = std::string(120, 'A');
+  state_with_facts.pinned_facts_json =
+      R"(["Fact 1 that is intentionally long to consume bytes","Fact 2 that is intentionally long to consume bytes","Fact 3 that is intentionally long to consume bytes"])";
+  const std::string out_with_facts = holder::api::support::build_compacted_context(
+      "tail", 10, state_with_facts, &compacted, &used_summary, &pinned_count);
+  REQUIRE(out_with_facts.size() == 40);
+  REQUIRE(compacted);
+  REQUIRE(used_summary);
+  REQUIRE(pinned_count >= 1);
 }
 
 TEST_CASE("ThreadCompaction robustly handles malformed pinned facts inputs", "[thread_compaction]") {
