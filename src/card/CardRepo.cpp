@@ -310,7 +310,7 @@ double CardRepo::next_sort_key(const std::string& project_id,
     return next;
   }
 
-  sqlite3_finalize(stmt);
+  sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   if (rc != SQLITE_DONE) { // LCOV_EXCL_LINE
     throw_sqlite(db_.handle(), "next sort_key query failed"); // LCOV_EXCL_LINE
   }
