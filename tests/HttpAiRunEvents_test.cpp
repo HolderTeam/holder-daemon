@@ -214,3 +214,18 @@ TEST_CASE("HTTP ai run events streams from in-memory event stream", "[http]") {
   std::raise(SIGTERM);
   server_thread.join();
 }
+
+TEST_CASE("RunEventStore trims in-memory event stream to last 512 events", "[http]") {
+  const std::string run_id = "run-trim-coverage-1";
+  for (int i = 0; i < 520; ++i) {
+    holder::api::support::append_run_event(
+        run_id, "progress", {{"idx", i}}, i == 519);
+  }
+
+  const auto stream_opt = holder::api::support::get_run_event_stream(run_id);
+  REQUIRE(stream_opt.has_value());
+  REQUIRE(stream_opt->events.size() == 512);
+  REQUIRE(stream_opt->events.front().data["idx"] == 8);
+  REQUIRE(stream_opt->events.back().data["idx"] == 519);
+  REQUIRE(stream_opt->finished == true);
+}

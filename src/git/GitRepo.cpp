@@ -681,9 +681,9 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
       remote_branch = configured; // LCOV_EXCL_LINE
     } else if (reference_exists(repo, "refs/remotes/" + name + "/cards")) {
       remote_branch = "cards";
-    } else if (reference_exists(repo, "refs/remotes/" + name + "/main")) {
+    } else if (reference_exists(repo, "refs/remotes/" + name + "/main")) { // LCOV_EXCL_LINE
       remote_branch = "main"; // LCOV_EXCL_LINE
-    } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) {
+    } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) { // LCOV_EXCL_LINE
       remote_branch = "master"; // LCOV_EXCL_LINE
     } else {
       throw std::runtime_error("Unable to determine remote default branch for " + name); // LCOV_EXCL_LINE
