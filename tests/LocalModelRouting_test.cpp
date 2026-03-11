@@ -131,17 +131,21 @@ TEST_CASE("LocalModelRouting load_local_model_meta parses local metadata and siz
     out << "      - tag: no-size\n";
     out << "        hardware_tier: rig\n";
     out << "        size: xyz\n";
+    out << "      - tag: huge-tb\n";
+    out << "        hardware_tier: rig\n";
+    out << "        size: 1tb\n";
   }
 
   EnvGuard env("HOLDER_AI_CATALOG_PATH", catalog.string());
   const auto meta = load_local_model_meta();
 
-  REQUIRE(meta.size() == 3);
+  REQUIRE(meta.size() == 4);
   REQUIRE(meta.at("small-router").hardware_tier == "mini");
   REQUIRE(meta.at("small-router").size_bytes == static_cast<long long>(1.5 * 1024.0 * 1024.0 * 1024.0));
   REQUIRE(meta.at("dev-model").hardware_tier == "developer");
   REQUIRE(meta.at("dev-model").size_bytes == 512LL * 1024LL * 1024LL);
   REQUIRE(meta.at("no-size").size_bytes == 0);
+  REQUIRE(meta.at("huge-tb").size_bytes == 1024LL * 1024LL * 1024LL * 1024LL);
 }
 
 TEST_CASE("LocalModelRouting build recommendations sorts by quality then speed", "[local_model_routing]") {
