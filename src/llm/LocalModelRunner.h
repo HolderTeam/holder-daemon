@@ -29,6 +29,13 @@ struct RunnerStatus {
 
 class LocalModelRunner {
  public:
+  using StreamGenerateOverride =
+      std::function<bool(const std::string&,
+                         const std::string&,
+                         const std::string&,
+                         const std::function<void(const std::string&)>&,
+                         std::string*)>;
+
   LocalModelRunner();
   ~LocalModelRunner();
 
@@ -62,6 +69,9 @@ class LocalModelRunner {
                        const std::function<void(const std::string&)>& on_chunk,
                        std::string* error);
   void set_fake_mode(bool enabled);
+  void set_status_override_for_tests(const std::optional<RunnerStatus>& status);
+  void set_stream_generate_override_for_tests(StreamGenerateOverride override_fn);
+  void clear_overrides_for_tests();
 
  private:
   void probe(bool allow_spawn);
@@ -80,6 +90,8 @@ class LocalModelRunner {
 
   mutable std::mutex mu_;
   RunnerStatus status_;
+  std::optional<RunnerStatus> status_override_for_tests_;
+  StreamGenerateOverride stream_generate_override_for_tests_;
   struct RunnerProcess;
   std::unique_ptr<RunnerProcess> process_;
 

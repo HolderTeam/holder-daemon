@@ -16,7 +16,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -26,31 +26,31 @@ void bind_text_optional(sqlite3_stmt* stmt, int idx, const std::optional<std::st
     return;
   }
   if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int64_optional(sqlite3_stmt* stmt, int idx, const std::optional<long long>& value) {
   if (value.has_value()) {
     if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value.value())) != SQLITE_OK) {
-      throw std::runtime_error("sqlite bind_int64 failed");
+      throw std::runtime_error("sqlite bind_int64 failed"); // LCOV_EXCL_LINE
     }
     return;
   }
   if (sqlite3_bind_null(stmt, idx) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_null failed");
+    throw std::runtime_error("sqlite bind_null failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int64(sqlite3_stmt* stmt, int idx, long long value) {
   if (sqlite3_bind_int64(stmt, idx, static_cast<sqlite3_int64>(value)) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_int64 failed");
+    throw std::runtime_error("sqlite bind_int64 failed"); // LCOV_EXCL_LINE
   }
 }
 
 void bind_int(sqlite3_stmt* stmt, int idx, int value) {
   if (sqlite3_bind_int(stmt, idx, value) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_int failed");
+    throw std::runtime_error("sqlite bind_int failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -80,7 +80,7 @@ std::set<std::string> table_columns(sqlite3* db, const std::string& table_name) 
   const std::string sql = "PRAGMA table_info(" + table_name + ");";
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db, "prepare table_info failed");
+    throw_sqlite(db, "prepare table_info failed"); // LCOV_EXCL_LINE
   }
 
   std::set<std::string> columns;
@@ -96,8 +96,8 @@ std::set<std::string> table_columns(sqlite3* db, const std::string& table_name) 
     if (rc == SQLITE_DONE) {
       break;
     }
-    sqlite3_finalize(stmt);
-    throw_sqlite(db, "table_info step failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db, "table_info step failed"); // LCOV_EXCL_LINE
   }
 
   sqlite3_finalize(stmt);

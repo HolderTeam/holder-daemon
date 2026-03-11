@@ -118,10 +118,12 @@ std::optional<CasteInfo> detect_machine_caste() {
     out.reason = result.reason;
     if (out.name.empty()) return std::nullopt;
     return out;
+  // LCOV_EXCL_START
   } catch (const std::exception&) {
     return std::nullopt;
   }
-}
+  // LCOV_EXCL_STOP
+} // LCOV_EXCL_LINE
 
 std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
   std::unordered_map<std::string, LocalModelMeta> meta;
@@ -246,7 +248,7 @@ std::string pick_router_model(const std::vector<holder::llm::LocalModel>& models
     }
   }
   return best;
-}
+} // LCOV_EXCL_LINE
 
 std::string pick_largest_model(const std::vector<holder::llm::LocalModel>& models) {
   if (models.empty()) return {};

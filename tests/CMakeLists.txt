@@ -23,18 +23,36 @@ add_executable(lockfile_tests
   HttpListener_test.cpp
   ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
+  AiDispatch_test.cpp
+  AiResourceRoutes_test.cpp
+  AiMessageRoutes_test.cpp
+  AiMessageCrudRoutes_test.cpp
   HttpAiThreads_test.cpp
+  AiThreadRoutes_test.cpp
+  AiThreadCollectionRoutes_test.cpp
+  AiThreadItemRoutes_test.cpp
   HttpAiRouterConfig_test.cpp
   HttpAiProviderCatalog_test.cpp
   HttpAiProviderCredentials_test.cpp
+  AiProviderRoutes_test.cpp
+  AiRuntimeStatusRoutes_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
+  AiRunRoutes_test.cpp
+  AiRunQueryRoutes_test.cpp
   HttpAiRunEvents_test.cpp
+  HttpAiRunnerPullEvents_test.cpp
+  HttpAiRunnerPullRoutes_test.cpp
+  AiRunnerRoutes_test.cpp
   HttpAiCapture_test.cpp
+  AiMessageCaptureRoutes_test.cpp
   HttpAiComplete_test.cpp
   HttpResources_test.cpp
   HttpTrash_test.cpp
+  TrashRoutes_test.cpp
   HttpRebuild_test.cpp
+  RebuildRoutes_test.cpp
+  ProjectRoutes_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
@@ -49,18 +67,26 @@ add_executable(lockfile_tests
   HttpModels_test.cpp
   HttpCloudProviders_test.cpp
   HttpGitProviders_test.cpp
+  StaticRoutes_test.cpp
   HttpRunner_test.cpp
+  LocalModelRunner_test.cpp
+  PathDiscovery_test.cpp
+  Session_test.cpp
   CloudQuota_test.cpp
   CloudConfig_test.cpp
   CloudClient_test.cpp
+  LocalModelRouting_test.cpp
   ThreadCompaction_test.cpp
   HttpCards_test.cpp
+  CardRoutes_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
+  SearchRoutes_test.cpp
   HttpSearchDisabled_test.cpp
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
   PrivacyCryptoService_test.cpp
+  PrivacyError_test.cpp
   Router_test.cpp
   Cli_test.cpp
   ProjectRepo_test.cpp
@@ -90,6 +116,8 @@ add_executable(lockfile_tests
   CardStoreFsFailure_test.cpp
   FtsIndexer_test.cpp
   GitRepo_test.cpp
+  PushResult_test.cpp
+  RemoteProbe_test.cpp
   GitOps_test.cpp
   RepoSyncMetrics_test.cpp
   FsAdapterFailure_test.cpp

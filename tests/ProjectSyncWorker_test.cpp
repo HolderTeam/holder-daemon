@@ -17,6 +17,15 @@
 
 namespace {
 
+class SyncWorkerHookGuard {
+public:
+  SyncWorkerHookGuard() = default;
+  ~SyncWorkerHookGuard() {
+    holder::sync::ProjectSyncWorker::set_fail_post_pull_metrics_for_tests(false);
+    holder::sync::ProjectSyncWorker::set_fail_post_push_metrics_for_tests(false);
+  }
+};
+
 void run_worker_for_seconds(const std::filesystem::path& db_path, int seconds) {
   holder::core::SignalHandler signals;
   holder::sync::ProjectSyncWorker worker(db_path, 2000000000, 1, 1);
@@ -275,4 +284,171 @@ TEST_CASE("ProjectSyncWorker skips project when metrics refresh fails", "[sync][
   const auto state = load_sync_state(db_path, "proj-invalid-root");
   REQUIRE(state.has_value());
   REQUIRE_FALSE(state->last_push_at.has_value());
+}
+
+TEST_CASE("ProjectSyncWorker skips project without remote URL", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "hello");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    holder::model::Project project;
+    project.project_id = "proj-no-remote";
+    project.name = "Project";
+    project.root_path = local_dir.string();
+    project.privacy_mode = "plain";
+    project.created_at = 1;
+    project.updated_at = 1;
+    projects.create(project);
+  }
+
+  run_worker_with_intervals_for_seconds(db_path, 0, 0, 1, 2);
+
+  const auto state = load_sync_state(db_path, "proj-no-remote");
+  REQUIRE_FALSE(state.has_value());
+}
+
+TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  // Point db_path at a directory so sqlite open fails in both startup and push cycle.
+  const auto bad_db_path = dir;
+
+  holder::core::SignalHandler signals;
+  holder::sync::ProjectSyncWorker worker(bad_db_path, 0, 0, 1);
+  std::exception_ptr thread_error;
+  std::thread thread([&worker, &signals, &thread_error]() {
+    try {
+      worker.run(signals);
+    } catch (...) {
+      thread_error = std::current_exception();
+    }
+  });
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+  std::raise(SIGTERM);
+  thread.join();
+
+  REQUIRE(thread_error == nullptr);
+}
+
+TEST_CASE("ProjectSyncWorker startup handles pull and metrics failures on corrupted repo",
+          "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto remote_dir = dir / "remote_repo";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  remote_repo.write_file("cards/a.md", "seed\n");
+  remote_repo.stage_path("cards/a.md");
+  remote_repo.commit("seed");
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "local\n");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  {
+    std::ofstream head(local_dir / ".git" / "HEAD");
+    REQUIRE(head.good());
+    head << "definitely-not-a-valid-head-ref\n";
+  }
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    create_project(
+        projects, "proj-startup-postpull", local_dir, remote_dir.string(), "plain");
+  }
+
+  run_worker_with_intervals_for_seconds(
+      db_path,
+      2000000000, // effectively disable push attempts
+      3600,       // pull interval irrelevant for startup pass
+      1,
+      2);
+
+  const auto state = load_sync_state(db_path, "proj-startup-postpull");
+  REQUIRE(state.has_value());
+  REQUIRE(state->last_pull_status.has_value());
+  REQUIRE(state->last_pull_status.value() == "failed");
+}
+
+TEST_CASE("ProjectSyncWorker catches post-pull metrics refresh failure", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "hello");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
+    create_project(projects, "proj-post-pull-metrics-fail", local_dir, (dir / "missing_remote").string(), "plain");
+    // Force pull attempt in push cycle.
+    sync.record_pull_result("proj-post-pull-metrics-fail",
+                            "succeeded",
+                            true,
+                            std::nullopt,
+                            now_epoch_seconds() - 10000);
+  }
+
+  SyncWorkerHookGuard guard;
+  holder::sync::ProjectSyncWorker::set_fail_post_pull_metrics_for_tests(true);
+  run_worker_with_intervals_for_seconds(db_path, 3600, 1, 1, 2);
+
+  const auto state = load_sync_state(db_path, "proj-post-pull-metrics-fail");
+  REQUIRE(state.has_value());
+  REQUIRE(state->last_pull_status.has_value());
+}
+
+TEST_CASE("ProjectSyncWorker catches post-push metrics refresh failure", "[sync][worker]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto remote_dir = dir / "remote_repo";
+  const auto local_dir = dir / "local_repo";
+
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "hello");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
+    create_project(projects, "proj-post-push-metrics-fail", local_dir, remote_dir.string(), "plain");
+    // Skip pull path; focus on push path.
+    sync.record_pull_result("proj-post-push-metrics-fail",
+                            "succeeded",
+                            true,
+                            std::nullopt,
+                            now_epoch_seconds());
+  }
+
+  SyncWorkerHookGuard guard;
+  holder::sync::ProjectSyncWorker::set_fail_post_push_metrics_for_tests(true);
+  run_worker_with_intervals_for_seconds(db_path, 0, 3600, 1, 2);
+
+  const auto state = load_sync_state(db_path, "proj-post-push-metrics-fail");
+  REQUIRE(state.has_value());
+  REQUIRE(state->last_push_status.has_value());
 }

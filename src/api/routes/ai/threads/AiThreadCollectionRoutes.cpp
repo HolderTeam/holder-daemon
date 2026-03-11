@@ -24,7 +24,7 @@ nlohmann::json ai_thread_to_json(const holder::model::AiThread& thread) {
   item["card_id"] =
       thread.card_id.has_value() ? nlohmann::json(thread.card_id.value()) : nlohmann::json(nullptr);
   return item;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 

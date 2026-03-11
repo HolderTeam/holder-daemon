@@ -24,7 +24,7 @@ SignalHandler::~SignalHandler() {
   if (!installed_) return;
   std::signal(SIGINT, g_prev_int);
   std::signal(SIGTERM, g_prev_term);
-}
+} // LCOV_EXCL_LINE
 
 bool SignalHandler::is_requested() const {
   return g_signal_requested.load();

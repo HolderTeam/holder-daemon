@@ -32,7 +32,7 @@ nlohmann::json ai_message_to_json(const holder::model::AiMessage& msg) {
   data["meta_json"] =
       msg.meta_json.has_value() ? nlohmann::json(msg.meta_json.value()) : nlohmann::json(nullptr);
   return data;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 

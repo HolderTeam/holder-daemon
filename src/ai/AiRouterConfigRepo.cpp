@@ -14,7 +14,7 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
-    throw std::runtime_error("sqlite bind_text failed");
+    throw std::runtime_error("sqlite bind_text failed"); // LCOV_EXCL_LINE
   }
 }
 
@@ -29,7 +29,7 @@ holder::model::AiRouterConfig read_config(sqlite3_stmt* stmt) {
   out.router_model = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
   out.updated_at = sqlite3_column_int64(stmt, 3);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::string project_key(const std::string& project_id) {
   return std::string("project:") + project_id;

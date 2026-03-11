@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -83,4 +84,92 @@ TEST_CASE("Reindexer rebuilds FTS tables", "[reindex]") {
 
   REQUIRE(count_table(db, "cards_fts") == 1);
   REQUIRE(count_table(db, "ai_fts") == 1);
+}
+
+TEST_CASE("Reindexer throws when cards query prepare fails", "[reindex]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  db.exec("DROP TABLE cards;");
+
+  holder::index::Reindexer reindexer(db);
+  REQUIRE_THROWS(reindexer.run());
+}
+
+TEST_CASE("Reindexer throws when ai messages query prepare fails", "[reindex]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+          "VALUES('card-1', 'proj-1', 'Title', 'cards/aa/bb/card-1.md', 0.0, 1, 1);");
+  db.exec("DROP TABLE ai_messages;");
+
+  holder::index::Reindexer reindexer(db);
+  REQUIRE_THROWS(reindexer.run());
+}
+
+TEST_CASE("Reindexer throws when cards scan is interrupted", "[reindex]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+
+  for (int i = 0; i < 5000; ++i) {
+    const std::string id = "card-" + std::to_string(i);
+    db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+            "VALUES('" + id + "', 'proj-1', 'Title', 'cards/aa/bb/" + id + ".md', 0.0, 1, 1);");
+  }
+
+  holder::index::Reindexer reindexer(db);
+  std::thread interrupter([&db]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    sqlite3_interrupt(db.handle());
+  });
+
+  REQUIRE_THROWS(reindexer.run());
+  interrupter.join();
+}
+
+TEST_CASE("Reindexer throws when ai messages scan is interrupted", "[reindex]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+  apply_schema(db);
+
+  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 2, 2);");
+
+  for (int i = 0; i < 5000; ++i) {
+    const std::string id = "msg-" + std::to_string(i);
+    db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+            "VALUES('" + id + "', 'thread-1', 'user', 'manual', 'Hello', 3);");
+  }
+
+  holder::index::Reindexer reindexer(db);
+  std::thread interrupter([&db]() {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    sqlite3_interrupt(db.handle());
+  });
+
+  REQUIRE_THROWS(reindexer.run());
+  interrupter.join();
 }

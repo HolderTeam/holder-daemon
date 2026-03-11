@@ -180,3 +180,340 @@ TEST_CASE("CloudConfig orders providers by configured order then cost tier", "[c
   REQUIRE(ordered[2]->id == "mechatropic");
   REQUIRE(ordered[3]->id == "unknown");
 }
+
+TEST_CASE("CloudConfig merges provider defaults and replaces duplicate model ids", "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_merge_test";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime:\n";
+  out << "    route_policy:\n";
+  out << "      default_provider: \" Bad Name! \"\n";
+  out << "      provider_order:\n";
+  out << "        - \"alpha\"\n";
+  out << "        - \" bad id! \"\n";
+  out << "        - \"beta\"\n";
+  out << "  provider_defaults:\n";
+  out << "    beta:\n";
+  out << "      provider: Beta Default\n";
+  out << "      enabled: true\n";
+  out << "      provider_cost_tier: low\n";
+  out << "      setup_url: https://beta/setup\n";
+  out << "      docs_url: https://beta/docs\n";
+  out << "      api_key_label: Beta Key\n";
+  out << "      api_key_hint: Get key\n";
+  out << "      base_url: https://beta.base\n";
+  out << "      api_kind: generic_chat\n";
+  out << "      auth_type: bearer_header\n";
+  out << "      key_param: key\n";
+  out << "      header_name: Authorization\n";
+  out << "      bearer_prefix: Bearer\n";
+  out << "      provider_cooldown:\n";
+  out << "        base_seconds: 7\n";
+  out << "        cap_seconds: 70\n";
+  out << "    gamma:\n";
+  out << "      provider: Gamma Default\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: alpha\n";
+  out << "        provider: \"\"\n";
+  out << "        enabled: false\n";
+  out << "        provider_cost_tier: free\n";
+  out << "        setup_url: https://alpha/setup\n";
+  out << "        docs_url: https://alpha/docs\n";
+  out << "        api_key_label: Alpha Key\n";
+  out << "        api_key_hint: Hint\n";
+  out << "        endpoint: https://alpha.endpoint\n";
+  out << "        api_kind: generic_responses\n";
+  out << "        auth_type: header_key\n";
+  out << "        key_param: k\n";
+  out << "        header_name: x-key\n";
+  out << "        bearer_prefix: BearerX\n";
+  out << "        credential_key: \"bad key!\"\n";
+  out << "        provider_cooldown:\n";
+  out << "          base_seconds: 3\n";
+  out << "          cap_seconds: 30\n";
+  out << "        model_id: alpha-model\n";
+  out << "        endpoint: /v1/alpha\n";
+  out << "        role: default\n";
+  out << "        model_cost_tier: paid\n";
+  out << "      - provider_id: alpha\n";
+  out << "        provider: Alpha Display\n";
+  out << "        model_id: alpha-model\n";
+  out << "        endpoint: /v2/alpha\n";
+  out << "      - provider_id: beta\n";
+  out << "        model_id: beta-model\n";
+  out << "        endpoint: /v1/beta\n";
+  out << "        cost_tier: free\n";
+  out << "      - provider_id: gamma\n";
+  out << "        provider: \"\"\n";
+  out << "        model_id: gamma-1\n";
+  out << "        endpoint: /v1/gamma\n";
+  out << "      - provider_id: gamma\n";
+  out << "        model_id: gamma-2\n";
+  out << "        endpoint: /v2/gamma\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+  REQUIRE(cfg->default_provider.empty());
+  REQUIRE(cfg->provider_order.size() == 2);
+  REQUIRE(cfg->provider_order[0] == "alpha");
+  REQUIRE(cfg->provider_order[1] == "beta");
+
+  const auto* alpha = holder::api::support::find_cloud_provider(cfg.value(), "alpha");
+  REQUIRE(alpha != nullptr);
+  REQUIRE(alpha->display_name == "Alpha Display");
+  REQUIRE(alpha->credential_provider_key == "alpha");
+  REQUIRE(alpha->cooldown_base_seconds == 3);
+  REQUIRE(alpha->cooldown_cap_seconds == 30);
+  REQUIRE(alpha->models.size() == 1);
+  REQUIRE(alpha->models[0].endpoint == "/v2/alpha");
+
+  const auto* beta = holder::api::support::find_cloud_provider(cfg.value(), "beta");
+  REQUIRE(beta != nullptr);
+  REQUIRE(beta->display_name == "Beta Default");
+  REQUIRE(beta->cost_tier == "low");
+  REQUIRE(beta->setup_url == "https://beta/setup");
+  REQUIRE(beta->docs_url == "https://beta/docs");
+  REQUIRE(beta->api_key_label == "Beta Key");
+  REQUIRE(beta->api_key_hint == "Get key");
+  REQUIRE(beta->base_url == "https://beta.base");
+  REQUIRE(beta->kind == "generic_chat");
+  REQUIRE(beta->auth_type == "bearer_header");
+  REQUIRE(beta->key_param == "key");
+  REQUIRE(beta->header_name == "Authorization");
+  REQUIRE(beta->bearer_prefix == "Bearer");
+  REQUIRE(beta->credential_provider_key == "beta");
+  REQUIRE(beta->models.size() == 1);
+  REQUIRE(beta->models[0].cost_tier == "free");
+
+  const auto* gamma = holder::api::support::find_cloud_provider(cfg.value(), "gamma");
+  REQUIRE(gamma != nullptr);
+  REQUIRE(gamma->display_name == "Gamma Default");
+}
+
+TEST_CASE("CloudConfig helper selectors cover null and requested branches", "[cloud_config]") {
+  holder::api::support::CloudProviderConfig provider;
+  provider.id = "p";
+  provider.models.push_back(holder::api::support::CloudModelConfig{
+      .id = "m-default", .endpoint = "/d", .role = "default"});
+  provider.models.push_back(holder::api::support::CloudModelConfig{
+      .id = "m-compact", .endpoint = "/c", .role = "compact"});
+  provider.models.push_back(holder::api::support::CloudModelConfig{
+      .id = "m-other", .endpoint = "/o", .role = ""});
+
+  REQUIRE(holder::api::support::find_cloud_model(provider, "missing") == nullptr);
+  REQUIRE(holder::api::support::find_cloud_model(provider, "m-other") != nullptr);
+  REQUIRE(holder::api::support::choose_cloud_model(provider, "m-other")->id == "m-other");
+  REQUIRE(holder::api::support::choose_cloud_model(provider, "missing")->id == "m-default");
+
+  const auto candidates = holder::api::support::cloud_model_candidates(provider, "m-compact");
+  REQUIRE(candidates.size() == 3);
+  REQUIRE(candidates[0]->id == "m-compact");
+  REQUIRE(candidates[1]->id == "m-default");
+  REQUIRE(candidates[2]->id == "m-other");
+
+  holder::api::support::CloudProviderConfig empty_provider;
+  REQUIRE(holder::api::support::choose_cloud_model(empty_provider, "") == nullptr);
+
+  holder::api::support::CloudProvidersConfig cfg;
+  cfg.providers.push_back(provider);
+  REQUIRE(holder::api::support::find_cloud_provider(cfg, "missing") == nullptr);
+}
+
+TEST_CASE("CloudConfig duplicate provider merge fills provider fields from model node", "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_model_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: zeta\n";
+  out << "      - provider_id: zeta\n";
+  out << "        provider_cost_tier: low\n";
+  out << "        setup_url: https://zeta/setup\n";
+  out << "        docs_url: https://zeta/docs\n";
+  out << "        api_key_label: Zeta Key\n";
+  out << "        api_key_hint: Put your key here\n";
+  out << "        base_url: https://zeta.base\n";
+  out << "        api_kind: generic_chat\n";
+  out << "        auth_type: bearer_header\n";
+  out << "        key_param: api_key\n";
+  out << "        header_name: Authorization\n";
+  out << "        bearer_prefix: Bearer\n";
+  out << "        credential_key: zeta-cred\n";
+  out << "        provider_cooldown:\n";
+  out << "          base_seconds: 11\n";
+  out << "          cap_seconds: 222\n";
+  out << "        model_id: zeta-2\n";
+  out << "        endpoint: /v1/zeta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* zeta = holder::api::support::find_cloud_provider(cfg.value(), "zeta");
+  REQUIRE(zeta != nullptr);
+  REQUIRE(zeta->cost_tier == "low");
+  REQUIRE(zeta->setup_url == "https://zeta/setup");
+  REQUIRE(zeta->docs_url == "https://zeta/docs");
+  REQUIRE(zeta->api_key_label == "Zeta Key");
+  REQUIRE(zeta->api_key_hint == "Put your key here");
+  REQUIRE(zeta->base_url == "https://zeta.base");
+  REQUIRE(zeta->kind == "generic_chat");
+  REQUIRE(zeta->auth_type == "bearer_header");
+  REQUIRE(zeta->key_param == "api_key");
+  REQUIRE(zeta->header_name == "Authorization");
+  REQUIRE(zeta->bearer_prefix == "Bearer");
+  REQUIRE(zeta->credential_provider_key == "zeta");
+  REQUIRE(zeta->cooldown_base_seconds == 11);
+  REQUIRE(zeta->cooldown_cap_seconds == 222);
+}
+
+TEST_CASE("CloudConfig duplicate provider merge fills provider fields from provider_defaults",
+          "[cloud_config]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_default_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  provider_defaults:\n";
+  out << "    eta:\n";
+  out << "      provider_cost_tier: free\n";
+  out << "      setup_url: https://eta/setup\n";
+  out << "      docs_url: https://eta/docs\n";
+  out << "      api_key_label: Eta Key\n";
+  out << "      api_key_hint: Eta Hint\n";
+  out << "      base_url: https://eta.base\n";
+  out << "      api_kind: generic_chat\n";
+  out << "      auth_type: bearer_header\n";
+  out << "      key_param: key\n";
+  out << "      header_name: Authorization\n";
+  out << "      bearer_prefix: Bearer\n";
+  out << "      credential_key: eta-cred\n";
+  out << "      provider_cooldown:\n";
+  out << "        base_seconds: 17\n";
+  out << "        cap_seconds: 170\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: eta\n";
+  out << "        provider_cost_tier: \"\"\n";
+  out << "        setup_url: \"\"\n";
+  out << "        docs_url: \"\"\n";
+  out << "        api_key_label: \"\"\n";
+  out << "        api_key_hint: \"\"\n";
+  out << "        base_url: \"\"\n";
+  out << "        auth_type: \"\"\n";
+  out << "        key_param: \"\"\n";
+  out << "        header_name: \"\"\n";
+  out << "        bearer_prefix: \"\"\n";
+  out << "        credential_key: \"\"\n";
+  out << "      - provider_id: eta\n";
+  out << "        model_id: eta-2\n";
+  out << "        endpoint: /v1/eta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* eta = holder::api::support::find_cloud_provider(cfg.value(), "eta");
+  REQUIRE(eta != nullptr);
+  REQUIRE(eta->cost_tier == "free");
+  REQUIRE(eta->setup_url == "https://eta/setup");
+  REQUIRE(eta->docs_url == "https://eta/docs");
+  REQUIRE(eta->api_key_label == "Eta Key");
+  REQUIRE(eta->api_key_hint == "Eta Hint");
+  REQUIRE(eta->base_url == "https://eta.base");
+  REQUIRE(eta->kind == "generic_chat");
+  REQUIRE(eta->auth_type == "bearer_header");
+  REQUIRE(eta->key_param == "key");
+  REQUIRE(eta->header_name == "Authorization");
+  REQUIRE(eta->bearer_prefix == "Bearer");
+  REQUIRE(eta->credential_provider_key == "eta");
+  REQUIRE(eta->cooldown_base_seconds == 17);
+  REQUIRE(eta->cooldown_cap_seconds == 170);
+}
+
+TEST_CASE("CloudConfig duplicate provider merge validates unsupported api.kind in second pass",
+          "[cloud_config]") {
+  SECTION("model node api_kind branch throws") {
+    const auto dir =
+        std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_kind_model_throw";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto yaml_path = dir / "ai_catalog.yaml";
+
+    std::ofstream out(yaml_path);
+    REQUIRE(out.is_open());
+    out << "models:\n";
+    out << "  runtime: {}\n";
+    out << "  Models:\n";
+    out << "    Cloud:\n";
+    out << "      - provider_id: badmodel\n";
+    out << "        model_id: badmodel-1\n";
+    out << "        endpoint: /v1/badmodel-1\n";
+    out << "      - provider_id: badmodel\n";
+    out << "        api_kind: made_up_kind\n";
+    out << "        model_id: badmodel-2\n";
+    out << "        endpoint: /v1/badmodel-2\n";
+    out.close();
+
+    EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+    REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
+                        Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
+  }
+
+}
+
+TEST_CASE("CloudConfig duplicate provider second pass applies provider_default cooldown fallback",
+          "[cloud_config]") {
+  const auto dir =
+      std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_cooldown_default_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  provider_defaults:\n";
+  out << "    theta:\n";
+  out << "      provider_cooldown:\n";
+  out << "        base_seconds: 33\n";
+  out << "        cap_seconds: 333\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: theta\n";
+  out << "        provider_cooldown: {}\n";
+  out << "      - provider_id: theta\n";
+  out << "        model_id: theta-2\n";
+  out << "        endpoint: /v1/theta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* theta = holder::api::support::find_cloud_provider(cfg.value(), "theta");
+  REQUIRE(theta != nullptr);
+  REQUIRE(theta->cooldown_base_seconds == 33);
+  REQUIRE(theta->cooldown_cap_seconds == 333);
+}

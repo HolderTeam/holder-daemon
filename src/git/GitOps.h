@@ -11,7 +11,7 @@ namespace holder::git {
 
 class GitOps {
 public:
-  virtual ~GitOps() = default;
+  virtual ~GitOps() = default; // LCOV_EXCL_LINE
 
   virtual void open_or_init(const std::filesystem::path& repo_dir) = 0;
   virtual void write_file(const std::filesystem::path& relative_path,

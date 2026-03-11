@@ -12,10 +12,15 @@
 #endif
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+
+#if CARD_SERVER_HAVE_LIBGIT2
+#include <git2.h>
+#endif
 
 namespace {
 
@@ -34,6 +39,31 @@ void write_file(const std::filesystem::path& path, const std::string& text) {
   REQUIRE(out.is_open());
   out << text;
 }
+
+class EnvUnsetGuard {
+public:
+  explicit EnvUnsetGuard(const char* key) : key_(key) {
+    const char* current = std::getenv(key_);
+    if (current != nullptr) {
+      had_old_ = true;
+      old_ = current;
+    }
+    unsetenv(key_);
+  }
+
+  ~EnvUnsetGuard() {
+    if (had_old_) {
+      setenv(key_, old_.c_str(), 1);
+    } else {
+      unsetenv(key_);
+    }
+  }
+
+private:
+  const char* key_;
+  bool had_old_ = false;
+  std::string old_;
+};
 
 } // namespace
 
@@ -331,3 +361,253 @@ TEST_CASE("index safety check errors when repository cannot be opened", "[privac
       holder::privacy::assert_encryption_index_paths_safe(root.string(), {"cards/aa/a.md"}),
       holder::privacy::PrivacyError);
 }
+
+TEST_CASE("inspect_recovery_token maps empty pin to RecoveryTokenInvalid", "[privacy]") {
+  const auto token = nlohmann::json{{"version", 1}}.dump();
+  try {
+    (void)holder::privacy::inspect_recovery_token("", token);
+    FAIL("Expected recovery token error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
+}
+
+TEST_CASE("inspect_recovery_token maps unsupported version to RecoveryTokenInvalid", "[privacy]") {
+  const auto token = nlohmann::json{{"version", 2}}.dump();
+  try {
+    (void)holder::privacy::inspect_recovery_token("1234", token);
+    FAIL("Expected recovery token error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
+}
+
+TEST_CASE("encrypt_project_blob rethrows PrivacyError for invalid key material", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                      (dir / "keystore").string());
+  std::filesystem::create_directories(dir / "keystore");
+  {
+    std::ofstream out(dir / "keystore" / "key-invalid.key", std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+    out << "not_base64";
+  }
+
+  try {
+    (void)holder::privacy::encrypt_project_blob("proj-1", "key-invalid", "hello");
+    FAIL("Expected privacy error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::EnvelopeInvalid);
+  }
+}
+
+TEST_CASE("ensure_project_key_material fails when test keystore key path is a directory", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-key-open-fail";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  const auto keystore_dir = dir / "keystore";
+  std::filesystem::create_directories(keystore_dir / "key-open-fail.key");
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+  REQUIRE_THROWS(holder::privacy::ensure_project_key_material(
+      repo,
+      project.project_id,
+      std::nullopt,
+      2,
+      []() { return std::string("key-open-fail"); }));
+}
+
+TEST_CASE("ensure_encrypted_git_setup fails when privacy metadata target is a directory", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_root = dir / "repo";
+
+  holder::git::RealGitOps git;
+  git.open_or_init(repo_root);
+
+  // Force std::ofstream open failure for .holder/privacy.json.
+  std::filesystem::create_directories(repo_root / ".holder" / "privacy.json");
+
+  REQUIRE_THROWS(holder::privacy::ensure_encrypted_git_setup(
+      git,
+      repo_root.string(),
+      "proj-meta-fail",
+      "key-meta-fail"));
+}
+
+TEST_CASE("ensure_project_key_material reports keyring unavailable when libsecret cannot be reached", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-keyring-store";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    (void)holder::privacy::ensure_project_key_material(
+        repo,
+        project.project_id,
+        std::nullopt,
+        2,
+        []() { return std::string("keyring-store"); });
+    FAIL("Expected keyring failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable);
+  }
+}
+
+#if HOLDER_HAVE_LIBSECRET
+TEST_CASE("export_recovery_token maps missing libsecret key material to KeyMaterialMissing", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    (void)holder::privacy::export_recovery_token("proj-libsecret-missing", "key-libsecret-missing", "1234");
+    FAIL("Expected missing key material error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+  }
+}
+#endif
+
+TEST_CASE("import_recovery_token rethrows non-token privacy errors", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::project::ProjectRepo repo(db);
+
+  holder::model::Project project;
+  project.project_id = "proj-import-rethrow";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  // Create token while test keystore override is enabled.
+  std::string token;
+  {
+    holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
+                                        (dir / "keystore").string());
+    holder::git::RealGitOps git;
+    holder::privacy::ensure_encrypted_project_ready(
+        git,
+        repo,
+        project.project_id,
+        project.root_path,
+        std::nullopt,
+        2,
+        []() { return std::string("key-import-rethrow"); });
+
+    const auto fetched = repo.get(project.project_id);
+    REQUIRE(fetched.has_value());
+    REQUIRE(fetched->project_key_id.has_value());
+    token = holder::privacy::export_recovery_token(
+        project.project_id,
+        fetched->project_key_id.value(),
+        "1234");
+  }
+
+  // Import with libsecret path forced and unreachable so store_key_material throws KeyringUnavailable.
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+
+  try {
+    holder::privacy::import_recovery_token(repo, project.project_id, "1234", token, 3);
+    FAIL("Expected keyring failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable);
+  }
+}
+
+TEST_CASE("inspect_recovery_token maps invalid base64 payload to RecoveryTokenInvalid", "[privacy]") {
+  nlohmann::json token;
+  token["version"] = 1;
+  token["kdf"] = {
+      {"name", "PBKDF2-HMAC-SHA256"},
+      {"iterations", 210000},
+      {"salt_b64", "!!!!not-b64!!!!"},
+  };
+  token["cipher"] = {
+      {"name", "holder-privacy-envelope-v1"},
+      {"wrapped", "ignored"},
+  };
+
+  try {
+    (void)holder::privacy::inspect_recovery_token("1234", token.dump());
+    FAIL("Expected recovery token invalid error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::RecoveryTokenInvalid);
+  }
+}
+
+#if CARD_SERVER_HAVE_LIBGIT2
+TEST_CASE("index safety check errors when git index cannot be loaded", "[privacy]") {
+  const auto root = make_temp_dir_local();
+  holder::git::RealGitOps git;
+  git.open_or_init(root);
+
+  const auto index_path = root / ".git" / "index";
+  if (std::filesystem::exists(index_path) && std::filesystem::is_regular_file(index_path)) {
+    std::filesystem::remove(index_path);
+  }
+  std::filesystem::create_directories(index_path);
+
+  REQUIRE_THROWS_AS(
+      holder::privacy::assert_encryption_index_paths_safe(root.string(), {"cards/aa/a.md"}),
+      holder::privacy::PrivacyError);
+}
+
+TEST_CASE("index safety check treats unreadable staged blob as unsafe", "[privacy]") {
+  const auto root = make_temp_dir_local();
+  holder::git::RealGitOps git;
+  git.open_or_init(root);
+
+  const std::string rel = "cards/aa/blob-missing.md";
+  git.write_file(rel, "HolderPriv1\n{}\nAA==\n");
+  git.stage_path(rel);
+
+  git_repository* repo = nullptr;
+  REQUIRE(git_repository_open(&repo, root.string().c_str()) == 0);
+  git_index* index = nullptr;
+  REQUIRE(git_repository_index(&index, repo) == 0);
+  const git_index_entry* entry = git_index_get_bypath(index, rel.c_str(), 0);
+  REQUIRE(entry != nullptr);
+  char oid_hex[GIT_OID_HEXSZ + 1]{};
+  git_oid_tostr(oid_hex, sizeof(oid_hex), &entry->id);
+  git_index_free(index);
+  git_repository_free(repo);
+
+  const std::string hex(oid_hex);
+  REQUIRE(hex.size() == GIT_OID_HEXSZ);
+  const auto object_path = root / ".git" / "objects" / hex.substr(0, 2) / hex.substr(2);
+  REQUIRE(std::filesystem::exists(object_path));
+  std::filesystem::remove(object_path);
+
+  REQUIRE_THROWS_AS(
+      holder::privacy::assert_encryption_index_paths_safe(root.string(), {rel}),
+      holder::privacy::PrivacyError);
+}
+#endif

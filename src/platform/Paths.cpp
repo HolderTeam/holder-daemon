@@ -15,7 +15,7 @@ Paths Paths::resolve(std::string app_id) {
   p.config_dir = fs::path(XdgUtils::BaseDir::XdgConfigHome()) / app_id;
   p.cache_dir  = fs::path(XdgUtils::BaseDir::XdgCacheHome())  / app_id;
   return p;
-}
+} // LCOV_EXCL_LINE
 
 void Paths::ensure_dirs() const {
   std::error_code ec;

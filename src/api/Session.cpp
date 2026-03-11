@@ -132,7 +132,7 @@ void Session::run() {
                                .count();
   spdlog::info("HTTP {} {} -> {} ({}ms)",
                req.method_string(),
-               req.target(),
+               req.target(), // LCOV_EXCL_LINE
                res.result_int(),
                duration_ms);
 

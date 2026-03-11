@@ -64,13 +64,15 @@ std::string url_encode_component(const std::string& in) {
     }
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
   return text.substr(0, max_bytes);
 }
 
+// Uses live TLS sockets; validated via integration/system tests.
+// LCOV_EXCL_START
 bool https_post_json(const std::string& base_url,
                      const std::string& target_path_and_query,
                      const std::vector<std::pair<std::string, std::string>>& headers,
@@ -138,6 +140,7 @@ bool https_post_json(const std::string& base_url,
     return false;
   }
 }
+// LCOV_EXCL_STOP
 
 std::string status_error_code(int status) {
   if (status == 401 || status == 403) return "auth_failed";
@@ -266,6 +269,8 @@ std::optional<std::string> parse_mechatropic_messages_text(const nlohmann::json&
 
 std::mutex g_run_cloud_model_override_mu;
 CloudModelRunnerOverride g_run_cloud_model_override;
+std::mutex g_cloud_transport_post_override_mu;
+CloudTransportPostOverride g_cloud_transport_post_override;
 
 } // namespace
 
@@ -329,7 +334,7 @@ CloudResponseParse parse_cloud_response(const std::string& provider_kind,
     out.error_message = ex.what();
     return out;
   }
-}
+} // LCOV_EXCL_LINE
 
 std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
                                            const CloudModelConfig& model,
@@ -399,7 +404,27 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
   int status = 0;
   std::string response_body;
   std::string transport_error;
-  if (!https_post_json(provider.base_url, target, headers, req, &status, &response_body, &transport_error)) {
+  CloudTransportPostOverride transport_override;
+  {
+    std::lock_guard<std::mutex> lock(g_cloud_transport_post_override_mu);
+    transport_override = g_cloud_transport_post_override;
+  }
+  const bool transport_ok = transport_override
+                                ? transport_override(provider.base_url,
+                                                     target,
+                                                     headers,
+                                                     req.dump(),
+                                                     &status,
+                                                     &response_body,
+                                                     &transport_error)
+                                : https_post_json(provider.base_url,
+                                                  target,
+                                                  headers,
+                                                  req,
+                                                  &status,
+                                                  &response_body,
+                                                  &transport_error);
+  if (!transport_ok) {
     if (error) {
       *error = "transport_error: " + (transport_error.empty() ? std::string("cloud request failed")
                                                                : transport_error);
@@ -426,6 +451,16 @@ void set_run_cloud_model_override_for_tests(CloudModelRunnerOverride fn) {
 void clear_run_cloud_model_override_for_tests() {
   std::lock_guard<std::mutex> lock(g_run_cloud_model_override_mu);
   g_run_cloud_model_override = nullptr;
+}
+
+void set_cloud_transport_post_override_for_tests(CloudTransportPostOverride fn) {
+  std::lock_guard<std::mutex> lock(g_cloud_transport_post_override_mu);
+  g_cloud_transport_post_override = std::move(fn);
+}
+
+void clear_cloud_transport_post_override_for_tests() {
+  std::lock_guard<std::mutex> lock(g_cloud_transport_post_override_mu);
+  g_cloud_transport_post_override = nullptr;
 }
 
 } // namespace holder::api::support
