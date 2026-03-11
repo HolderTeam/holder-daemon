@@ -481,3 +481,39 @@ TEST_CASE("CloudConfig duplicate provider merge validates unsupported api.kind i
   }
 
 }
+
+TEST_CASE("CloudConfig duplicate provider second pass applies provider_default cooldown fallback",
+          "[cloud_config]") {
+  const auto dir =
+      std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_cooldown_default_fill";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto yaml_path = dir / "ai_catalog.yaml";
+
+  std::ofstream out(yaml_path);
+  REQUIRE(out.is_open());
+  out << "models:\n";
+  out << "  runtime: {}\n";
+  out << "  provider_defaults:\n";
+  out << "    theta:\n";
+  out << "      provider_cooldown:\n";
+  out << "        base_seconds: 33\n";
+  out << "        cap_seconds: 333\n";
+  out << "  Models:\n";
+  out << "    Cloud:\n";
+  out << "      - provider_id: theta\n";
+  out << "        provider_cooldown: {}\n";
+  out << "      - provider_id: theta\n";
+  out << "        model_id: theta-2\n";
+  out << "        endpoint: /v1/theta-2\n";
+  out.close();
+
+  EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
+  const auto cfg = holder::api::support::load_cloudproviders_config();
+  REQUIRE(cfg.has_value());
+
+  const auto* theta = holder::api::support::find_cloud_provider(cfg.value(), "theta");
+  REQUIRE(theta != nullptr);
+  REQUIRE(theta->cooldown_base_seconds == 33);
+  REQUIRE(theta->cooldown_cap_seconds == 333);
+}

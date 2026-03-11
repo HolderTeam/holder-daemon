@@ -621,6 +621,34 @@ TEST_CASE("LocalModelRunner stream_generate can succeed without explicit done ma
   REQUIRE(out == "hello world");
 }
 
+TEST_CASE("LocalModelRunner stream_generate accepts valid options JSON", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200, "{\"response\":\"ok\",\"done\":true}\n"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  std::string out;
+  std::string err;
+  const bool ok = runner.stream_generate(
+      "model-with-options",
+      "prompt",
+      R"({"temperature":0.1})",
+      [&](const std::string& chunk) { out += chunk; },
+      &err);
+  REQUIRE(ok);
+  REQUIRE(err.empty());
+  REQUIRE(out == "ok");
+}
+
 TEST_CASE("LocalModelRunner start_pull reuses job when existing status is verifying", "[llm]") {
   const uint16_t port = reserve_loopback_port();
   StubHttpServer server(port, {HttpResponseSpec{200, "{\"status\":\"verifying\"}\n"}});
@@ -649,6 +677,103 @@ TEST_CASE("LocalModelRunner start_pull reuses job when existing status is verify
 
   auto second = runner.start_pull("model-verifying");
   REQUIRE(second.job_id == first.job_id);
+}
+
+TEST_CASE("LocalModelRunner retry non-fake reports missing executable and handles repeat attempts", "[llm]") {
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  const auto first = runner.retry();
+  REQUIRE(first.spawn_attempted == true);
+  REQUIRE_FALSE(first.error.empty());
+  REQUIRE((first.error.find("model runner executable not found") != std::string::npos ||
+           first.error.find("bind: address already in use") != std::string::npos ||
+           first.error.find("model runner not reachable") != std::string::npos ||
+           first.error.find("Connection refused") != std::string::npos ||
+           first.error.find("connection refused") != std::string::npos));
+
+  // Second retry should not throw and should remain in a non-available state.
+  const auto second = runner.retry();
+  REQUIRE(second.last_checked > 0);
+  REQUIRE(second.available == false);
+}
+
+TEST_CASE("LocalModelRunner retry non-fake handles malformed tags JSON", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200, R"({"version":"v1"})"},
+          HttpResponseSpec{200, "{not-json"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.available == true);
+  REQUIRE(status.version == "v1");
+  REQUIRE_FALSE(status.error.empty());
+}
+
+TEST_CASE("LocalModelRunner retry non-fake surfaces tags transport error when version is OK", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200, R"({"version":"v1"})"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  const auto status = runner.retry();
+  REQUIRE(status.available == true);
+  REQUIRE(status.version == "v1");
+  REQUIRE_FALSE(status.error.empty());
+}
+
+TEST_CASE("LocalModelRunner start_pull maps non-terminal status to downloading", "[llm]") {
+  const uint16_t port = reserve_loopback_port();
+  StubHttpServer server(
+      port,
+      {
+          HttpResponseSpec{200, "{\"status\":\"pulling\",\"completed\":1,\"total\":2}\n"},
+      });
+  server.start();
+
+  EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
+  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
+  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
+  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "");
+
+  holder::llm::LocalModelRunner runner;
+  auto job = runner.start_pull("model-pulling");
+  REQUIRE_FALSE(job.job_id.empty());
+
+  bool seen = false;
+  for (int i = 0; i < 100; ++i) {
+    auto fetched = runner.get_pull(job.job_id);
+    REQUIRE(fetched.has_value());
+    if (fetched->progress.stage == "pulling") {
+      seen = true;
+      REQUIRE(fetched->status == "downloading");
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(seen);
 }
 
 TEST_CASE("LocalModelRunner start_pull marks failed on transport exception", "[llm]") {

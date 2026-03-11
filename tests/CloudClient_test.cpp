@@ -294,6 +294,24 @@ TEST_CASE("CloudClient run_cloud_model reaches https parse with host/port/base_p
   REQUIRE(error.find("transport_error:") != std::string::npos);
 }
 
+TEST_CASE("CloudClient run_cloud_model reaches https parse with host only", "[cloud_client]") {
+  holder::api::support::CloudProviderConfig provider;
+  provider.id = "p";
+  provider.kind = "generic_chat";
+  provider.auth_type = "header_key";
+  provider.header_name = "x-api-key";
+  provider.base_url = "https://localhost";
+
+  holder::api::support::CloudModelConfig model;
+  model.id = "chat-test";
+  model.endpoint = "/v1/chat";
+
+  std::string error;
+  const auto out = holder::api::support::run_cloud_model(provider, model, "k", "prompt", &error);
+  REQUIRE_FALSE(out.has_value());
+  REQUIRE(error.find("transport_error:") != std::string::npos);
+}
+
 TEST_CASE("CloudClient run_cloud_model builds header-key auth and generic chat payload", "[cloud_client]") {
   holder::api::support::CloudProviderConfig provider;
   provider.id = "p";

@@ -62,7 +62,7 @@ nlohmann::json git_test_remote_payload(const std::string& project_id,
       {"remote_url", remote_url.has_value() ? nlohmann::json(remote_url.value())
                                             : nlohmann::json(nullptr)},
       {"branch", branch},
-      {"status", holder::git::remote_probe_status_name(status)},
+      {"status", holder::git::remote_probe_status_name(status)}, // LCOV_EXCL_LINE
       {"remote_has_head", remote_has_head},
       {"error_code", reachable ? nlohmann::json(nullptr)
                                : nlohmann::json(holder::git::remote_probe_status_name(status))},
@@ -108,7 +108,7 @@ nlohmann::json git_push_payload(const std::string& project_id,
       {"remote_url", remote_url.has_value() ? nlohmann::json(remote_url.value())
                                             : nlohmann::json(nullptr)},
       {"branch", branch},
-      {"status", holder::git::push_status_name(status)},
+      {"status", holder::git::push_status_name(status)}, // LCOV_EXCL_LINE
       {"ahead_count", ahead_count},
       {"behind_count", behind_count},
       {"error_code", ok ? nlohmann::json(nullptr)

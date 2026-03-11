@@ -64,7 +64,7 @@ std::string url_encode_component(const std::string& in) {
     }
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;

@@ -106,6 +106,52 @@ TEST_CASE("Project git push returns remote_unset when no remote configured", "[g
   server_thread.join();
 }
 
+TEST_CASE("Project git sync-status returns zero defaults when sync row is absent", "[git][http]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  holder::project::ProjectRepo repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-1";
+  project.name = "Project";
+  project.root_path = (dir / "repo").string();
+  project.created_at = 1;
+  project.updated_at = 1;
+  repo.create(project);
+
+  PushGitOps git;
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr, &git);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  const auto sync = holder::test::http_json_request(bound.bind,
+                                                    bound.port,
+                                                    token,
+                                                    boost::beast::http::verb::get,
+                                                    "/projects/proj-1/git/sync-status",
+                                                    nlohmann::json::object(),
+                                                    boost::beast::http::status::ok);
+  REQUIRE(sync["ok"] == true);
+  REQUIRE(sync["data"]["project_id"] == "proj-1");
+  REQUIRE(sync["data"]["sync"]["uncommitted_changes_count"] == 0);
+  REQUIRE(sync["data"]["sync"]["unpushed_commits_count"] == 0);
+  REQUIRE(sync["data"]["sync"]["retry_count"] == 0);
+  REQUIRE(sync["data"]["sync"]["pull_retry_count"] == 0);
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("Project git push returns structured non_fast_forward result", "[git][http]") {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
