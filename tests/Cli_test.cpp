@@ -213,12 +213,11 @@ TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
                                       (xdg_root / "keystore").string());
 
-  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
-  const auto build_dir = repo_root / "build";
+  const std::string bin = HOLDER_BIN_PATH;
+  const auto build_dir = std::filesystem::path(bin).parent_path();
   REQUIRE(std::filesystem::exists(build_dir));
   CwdGuard cwd(build_dir);
 
-  const std::string bin = HOLDER_BIN_PATH;
   REQUIRE(run_command("\"" + bin + "\" --reindex") == 0);
 }
 
