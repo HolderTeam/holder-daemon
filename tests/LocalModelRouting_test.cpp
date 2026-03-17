@@ -250,6 +250,55 @@ TEST_CASE("LocalModelRouting recommendation tie-break uses speed_rank and tag or
   REQUIRE(out[4]["tag"] == "speed-unknown-b");
 }
 
+TEST_CASE("LocalModelRouting treats bare tags and :latest as the same installed model",
+          "[local_model_routing]") {
+  using namespace holder::api::support;
+
+  std::unordered_map<std::string, LocalModelMeta> meta;
+  {
+    LocalModelMeta m;
+    m.tag = "llama3.2";
+    m.hardware_tier = "developer";
+    meta[m.tag] = m;
+  }
+  {
+    LocalModelMeta m;
+    m.tag = "phi4-mini";
+    m.hardware_tier = "developer";
+    meta[m.tag] = m;
+  }
+
+  SECTION("installed model has :latest but recommendation is bare tag") {
+    const std::vector<holder::llm::LocalModel> installed = {
+        holder::llm::LocalModel{.name = "llama3.2:latest", .digest = "", .size = 10, .modified_at = ""},
+    };
+
+    const auto out = build_caste_recommendations(installed, meta, "developer");
+    REQUIRE(out.size() == 2);
+    REQUIRE(out[0]["tag"] == "llama3.2");
+    REQUIRE(out[0]["installed"] == true);
+  }
+
+  SECTION("installed model is bare tag but recommendation uses :latest") {
+    std::unordered_map<std::string, LocalModelMeta> latest_meta;
+    {
+      LocalModelMeta m;
+      m.tag = "llama3.2:latest";
+      m.hardware_tier = "developer";
+      latest_meta[m.tag] = m;
+    }
+
+    const std::vector<holder::llm::LocalModel> installed = {
+        holder::llm::LocalModel{.name = "llama3.2", .digest = "", .size = 10, .modified_at = ""},
+    };
+
+    const auto out = build_caste_recommendations(installed, latest_meta, "developer");
+    REQUIRE(out.size() == 1);
+    REQUIRE(out[0]["tag"] == "llama3.2:latest");
+    REQUIRE(out[0]["installed"] == true);
+  }
+}
+
 TEST_CASE("LocalModelRouting parse_ranked_models filters and de-duplicates", "[local_model_routing]") {
   using namespace holder::api::support;
   const std::vector<std::string> candidates = {"m1", "m2", "m3"};

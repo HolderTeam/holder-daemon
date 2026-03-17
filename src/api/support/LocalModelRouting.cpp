@@ -74,6 +74,18 @@ std::optional<std::string> extract_json_array(const std::string& text) {
   return text.substr(start, end - start + 1);
 }
 
+std::string normalize_model_tag_for_match(std::string name) {
+  name = lowercase_ascii(trim_ascii(std::move(name)));
+  if (name.empty()) return {};
+  if (const auto colon = name.rfind(':'); colon != std::string::npos) {
+    const auto suffix = name.substr(colon + 1);
+    if (suffix == "latest") {
+      return name.substr(0, colon);
+    }
+  }
+  return name;
+}
+
 } // namespace
 
 std::string trim_ascii(std::string s) {
@@ -164,7 +176,7 @@ std::vector<nlohmann::json> build_caste_recommendations(
     const std::string& machine_caste) {
   std::unordered_set<std::string> installed;
   for (const auto& model : installed_models) {
-    installed.insert(model.name);
+    installed.insert(normalize_model_tag_for_match(model.name));
   }
 
   std::vector<nlohmann::json> out;
@@ -178,7 +190,7 @@ std::vector<nlohmann::json> build_caste_recommendations(
     item["engine"] = meta.engine.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.engine);
     item["category"] = meta.category.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.category);
     item["required_caste"] = meta.hardware_tier;
-    item["installed"] = installed.find(tag) != installed.end();
+    item["installed"] = installed.find(normalize_model_tag_for_match(tag)) != installed.end();
     out.push_back(std::move(item));
   }
 
