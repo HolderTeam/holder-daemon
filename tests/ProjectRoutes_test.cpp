@@ -249,6 +249,34 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(payload["data"]["error_code"] == "auth_failed");
   }
 
+  SECTION("git push serializes empty local_head_commit as null") {
+    git.push_result = {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .local_head_commit = "",
+        .error_message = {},
+    };
+    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "pushed");
+    REQUIRE(payload["data"]["local_head_commit"].is_null());
+  }
+
+  SECTION("git push serializes non-empty local_head_commit") {
+    git.push_result = {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .local_head_commit = "abc123def456",
+        .error_message = {},
+    };
+    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "pushed");
+    REQUIRE(payload["data"]["local_head_commit"] == "abc123def456");
+  }
+
   SECTION("git push bad json catch") {
     auto req = make_request(http::verb::post, "/projects/proj-1/git/push");
     req.body() = "{";
