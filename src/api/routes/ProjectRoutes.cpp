@@ -79,6 +79,7 @@ nlohmann::json git_push_payload(const std::string& project_id,
                                 holder::git::PushStatus status,
                                 int ahead_count,
                                 int behind_count,
+                                const std::optional<std::string>& local_head_commit,
                                 const std::optional<std::string>& error_message) {
   const bool ok = status == holder::git::PushStatus::Pushed ||
                   status == holder::git::PushStatus::UpToDate;
@@ -111,6 +112,9 @@ nlohmann::json git_push_payload(const std::string& project_id,
       {"status", holder::git::push_status_name(status)}, // LCOV_EXCL_LINE
       {"ahead_count", ahead_count},
       {"behind_count", behind_count},
+      {"local_head_commit", local_head_commit.has_value() && !local_head_commit->empty()
+                                ? nlohmann::json(local_head_commit.value())
+                                : nlohmann::json(nullptr)},
       {"error_code", ok ? nlohmann::json(nullptr)
                         : nlohmann::json(holder::git::push_status_name(status))},
       {"error_message", error_message.has_value() && !error_message->empty()
@@ -697,6 +701,7 @@ bool handle_project_routes(const std::string& path,
                                                 holder::git::PushStatus::RemoteUnset,
                                                 0,
                                                 0,
+                                                std::optional<std::string>{},
                                                 "Remote URL is not configured.");
           res = support::json_response(http::status::ok, payload);
           return true;
@@ -734,6 +739,9 @@ bool handle_project_routes(const std::string& path,
                                               push.status,
                                               push.ahead_count,
                                               push.behind_count,
+                                              push.local_head_commit.empty()
+                                                  ? std::optional<std::string>()
+                                                  : std::optional<std::string>(push.local_head_commit),
                                               push.error_message.empty()
                                                   ? std::optional<std::string>()
                                                   : std::optional<std::string>(push.error_message));

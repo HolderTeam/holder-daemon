@@ -1,6 +1,7 @@
 #include "api/routes/ai/AiDispatch.h"
 
 #include "api/routes/ai/AiMessageRoutes.h"
+#include "api/routes/ai/AiNudgeRoutes.h"
 #include "api/routes/ai/AiProviderRoutes.h"
 #include "api/routes/ai/AiRunnerRoutes.h"
 #include "api/routes/ai/AiRunRoutes.h"
@@ -57,6 +58,12 @@ DispatchResult dispatch_ai_routes(
   }
   if (ai_resource == "providers") {
     if (handle_ai_provider_routes(path, req, res, db)) {
+      return {.handled = true, .streamed = false};
+    }
+    return {.handled = false, .streamed = false};
+  }
+  if (ai_resource == "nudges") {
+    if (handle_ai_nudge_routes(path, req, res)) {
       return {.handled = true, .streamed = false};
     }
     return {.handled = false, .streamed = false};

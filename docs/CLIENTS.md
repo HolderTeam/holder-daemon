@@ -1,128 +1,193 @@
-# Client Integration Guide
+# Holder Daemon Client Integration (Codebase-Accurate)
 
-This document describes how clients should connect to Holder safely and predictably.
+This document reflects the current `holder-daemon` backend behavior and route surface.
 
-## 1) Discover the Running Server
+## 1) Discover Running Daemon + Token
 
-Read `holder.json`.
+Read server info file:
 
-Expected fields:
+- `~/.local/share/holder/server/holder.json` (XDG-based; see `platform/Paths`)
+
+Current fields written by backend:
 
 - `pid`
-- `api_version`
-- `server_version`
 - `bind`
 - `port`
-- `auth_token`
 - `started_at`
+- `api_version`
+- `server_version`
+- `auth_token`
 
-If the file does not exist, server may not be running.
+Important:
 
-## 2) Health Check
+- `auth_token` is generated at daemon startup.
+- If daemon restarts, old token becomes invalid and clients must reread `holder.json`.
 
-Call:
+## 2) Authentication Model
 
-- `GET /health`
-- Header: `Authorization: Bearer <auth_token>`
+Most endpoints require:
 
-Use this to validate API compatibility and process health.
+- `Authorization: Bearer <auth_token>`
 
-## 3) Auth Model
+Unauthenticated endpoints are static/docs only:
 
-All API requests require bearer auth.
+- `GET /openapi.yaml`
+- `GET /ai_catalog.yaml`
+- `GET /ai_catalog.json`
+- `GET /git_providers.yaml`
+- `GET /git_providers.json`
+- `GET /docs` and `/docs/*`
 
-Header:
+`GET /health` is authenticated in current code path.
 
-`Authorization: Bearer <auth_token>`
-
-## 4) Response Conventions
+## 3) Response Shape
 
 - Success: `{ "ok": true, "data": ... }`
 - Error: `{ "ok": false, "error": { "code": "...", "message": "..." } }`
 
-## 5) First-Run Project Flow
+Common error codes include `bad_request`, `not_found`, `unauthorized`, `conflict`, `method_not_allowed`.
 
-1. `GET /projects`
-2. If empty: `POST /projects` with `{ "name": "My Project" }`
-3. Create first card: `POST /cards`
-4. List cards: `GET /cards?project_id=...`
-5. Load card: `GET /cards/{card_id}`
-6. Autosave edits: `PATCH /cards/{card_id}`
+## 4) Core Non-AI Endpoints
 
-## 6) AI Onboarding Flow (Local Models)
+Project/card clients usually use:
 
-1. `GET /ai/capabilities`
-2. Read:
-   - `runner_available`
-   - `error`
-   - `caste` (`name`, `reason`)
-   - `models` (installed)
-   - `recommended_models`
-   - `recommended_install`
-3. If required, start install:
-   - `POST /ai/runner/pull` with `{ "model": "<tag>" }`
-4. Track install:
-   - Poll: `GET /ai/runner/pull/{job_id}`
-   - Stream: `GET /ai/runner/pull/{job_id}/events`
-5. Refresh `GET /ai/capabilities` after pull completes.
-6. Use `GET /ai/status` for live operational state (active runs/pulls, runner health).
+- `GET/POST /projects`
+- `GET/PATCH/DELETE /projects/{project_id}`
+- `POST /projects/{project_id}/git/test-remote`
+- `POST /projects/{project_id}/git/push`
+- `GET /projects/{project_id}/git/sync-status`
+- `GET /projects/{project_id}/encryption-check`
+- `POST /projects/{project_id}/recovery-token/export`
+- `POST /projects/{project_id}/recovery-token/import`
+- `POST /recovery-token/import`
 
-## 7) AI Execution + History
+- `GET/POST /cards`
+- `GET/PATCH/DELETE /cards/{card_id}`
+- `GET /cards/context`
 
-Primary execution endpoint:
+- `GET/POST /resources`
+- `PATCH/DELETE /resources/{resource_id}`
 
-- `POST /ai/runs` (SSE stream)
+- `GET/DELETE /trash`
+- `DELETE /trash/{item_id}`
 
-Persisted run history:
+- `GET /search/cards`
+- `GET /search/ai`
+
+## 5) AI: Status + Onboarding Surface
+
+### Runtime/capabilities
+
+- `GET /ai/capabilities`
+  - Local runner availability and installed local models
+  - Machine caste detection + recommended local models
+  - Router config snapshot (`global`, `project`, `effective`)
+- `GET /ai/status`
+  - Active runs count
+  - Runner state
+  - Pull jobs summary
+  - Configured cloud provider credentials (masked preview)
+- `POST /ai/runner/retry`
+  - Retry local runner probe/start
+
+### Local model pull/install
+
+- `POST /ai/runner/pull` body: `{ "model": "<tag>" }`
+- `GET /ai/runner/pull/{job_id}`
+- `GET /ai/runner/pull/{job_id}/events` (SSE)
+
+## 6) AI: Provider Catalog + Credentials + Router Config
+
+### Provider catalog (from `config/ai_catalog.yaml`)
+
+- `GET /ai/providers/catalog`
+  - Includes providers, models, limits, auth/api metadata, setup/docs URLs
+  - Merges YAML defaults with DB state for `enabled` + `configured`
+
+### Provider settings (enabled flags)
+
+- `GET /ai/providers/settings`
+- `PUT /ai/providers/settings` with `{ "provider": "...", "enabled": true|false }`
+- `DELETE /ai/providers/settings/{provider}`
+
+### Provider credentials
+
+- `GET /ai/providers/credentials`
+- `PUT /ai/providers/credentials` with `{ "provider": "...", "api_key": "..." }`
+- `DELETE /ai/providers/credentials/{provider}`
+
+Notes:
+
+- On credential PUT, backend also enables that provider in settings.
+- Credential values are stored in DB (`ai_provider_credentials`), returned masked in read APIs.
+
+### Router config
+
+- `GET /ai/router/config?project_id=...`
+- `PUT /ai/router/config` with:
+  - `scope`: `global` or `project`
+  - `project_id` (required for `scope=project`)
+  - `router_model` (optional; omit/null to clear)
+
+Effective precedence is project override > global override > auto.
+
+## 7) AI: Runs (Execution + History)
+
+### Start run
+
+- `POST /ai/runs` (SSE response)
+
+Backend behavior:
+
+- Uses local path when local runner is ready and no explicit cloud provider is requested.
+- Uses cloud path when local runner unavailable or provider is explicitly requested.
+- Auto-creates thread when `project_id` is provided and `thread_id` is missing.
+
+### Query runs
 
 - `GET /ai/runs?project_id=...` or `GET /ai/runs?thread_id=...`
 - `GET /ai/runs/{run_id}`
-- `GET /ai/runs/{run_id}/events` (SSE reconnect stream)
+- `GET /ai/runs/{run_id}/events` (SSE stream/reconnect)
 
-Cloud runs expose structured routing/compaction trace in:
+Stored run record includes:
 
-- `data.policy_trace`
-- `data.policy_trace_json` (string form)
+- mode, prompt, context
+- router/chosen model
+- ranked candidates (local)
+- policy trace (cloud)
+- status/error
 
-Compaction trace fields to render in clients:
+## 8) AI: Threads + Messages
 
-- `policy_trace.compaction.strategy` (currently `summary_plus_pinned_plus_tail`)
-- `policy_trace.compaction.summary_refresh.status`
-  - `completed`
-  - `skipped`
-  - `failed`
-- `policy_trace.compaction.summary_refresh.reason` (when skipped/failed), including:
-  - `below_threshold`
-  - `min_interval_not_elapsed`
-  - `min_delta_not_met`
-  - `cooldown_active`
-  - `rpm_exceeded` / `rpd_exceeded` / `tpm_exceeded`
-  - `quality_guard_failed`
-- `policy_trace.compaction.summary_refresh.quality_reason` (present when `reason=quality_guard_failed`)
-- `policy_trace.compaction.summary_refresh.quality_items`
-- `policy_trace.compaction.summary_refresh.quality_fallback_sections`
+### Threads
 
-Thread/message APIs:
+- `GET /ai/threads?project_id=...`
+- `POST /ai/threads`
+- `GET /ai/threads/{thread_id}`
+- `PATCH /ai/threads/{thread_id}`
+- `DELETE /ai/threads/{thread_id}`
 
-- `GET/POST /ai/threads`
-- `GET/PATCH /ai/threads/{thread_id}`
-- `GET/POST /ai/messages`
-- `POST /ai/messages/capture` (one-call prompt+response capture with provenance)
-- `GET/PATCH/DELETE /ai/messages/{message_id}`
+### Messages
 
-For manual capture (copy/paste cloud responses), prefer `POST /ai/messages/capture`.
+- `GET /ai/messages?thread_id=...`
+- `POST /ai/messages`
+- `GET /ai/messages/{message_id}`
+- `PATCH /ai/messages/{message_id}`
+- `DELETE /ai/messages/{message_id}` (soft delete/trash)
+- `POST /ai/messages/{message_id}/restore`
+- `POST /ai/messages/capture` (single call prompt+response capture; creates thread if needed)
 
-## 8) Search
+## 9) AI Catalog / Config Source
 
-- `GET /search/cards?project_id=...&q=...`
-- `GET /search/ai?project_id=...&q=...`
+Cloud/local model metadata is loaded from:
 
-## 9) Docs Endpoints
+- `config/ai_catalog.yaml`
+- or `HOLDER_AI_CATALOG_PATH` override
 
-- Swagger UI: `GET /docs`
-- OpenAPI: `GET /openapi.yaml`
-- Model catalog: `GET /models.yaml`
+If missing, cloud catalog endpoints and cloud run selection paths return config-related errors.
 
-## 10) Local-First Rule
+## 10) Client Rules
 
-Clients must never write project files or DB directly. Server owns persistence/indexing.
+- Do not write project files, git metadata, or SQLite directly.
+- Treat daemon as source of truth for state transitions.
+- On 401, reread `holder.json` and retry with fresh bearer token.

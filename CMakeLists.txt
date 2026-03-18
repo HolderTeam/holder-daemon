@@ -91,6 +91,7 @@ add_executable(holderd
   src/api/routes/ai/AiProviderRoutes.cpp
   src/api/routes/ai/providers/AiProviderCatalogRoutes.cpp
   src/api/routes/ai/providers/AiProviderCredentialRoutes.cpp
+  src/api/routes/ai/AiNudgeRoutes.cpp
   src/api/routes/AuthenticatedRoutes.cpp
   src/api/routes/ai/AiDispatch.cpp
   src/api/routes/ai/AiMessageRoutes.cpp

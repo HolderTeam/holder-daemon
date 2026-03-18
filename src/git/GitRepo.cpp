@@ -143,6 +143,25 @@ static std::string resolve_branch_name(git_repository* repo, const std::string& 
   return "cards";
 }
 
+static std::string local_head_commit_or_empty(git_repository* repo) {
+  git_reference* head = nullptr;
+  const int rc = git_repository_head(&head, repo);
+  if (rc != 0 || head == nullptr) {
+    return {};
+  }
+
+  const git_oid* oid = git_reference_target(head);
+  std::string out;
+  if (oid != nullptr) {
+    const char* text = git_oid_tostr_s(oid);
+    if (text != nullptr) {
+      out = text;
+    }
+  }
+  git_reference_free(head);
+  return out;
+}
+
 static int git_credential_acquire_cb(git_credential** out,
                                      const char* url,
                                      const char* username_from_url,
@@ -558,12 +577,14 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
 PushResult GitRepo::push_branch(const std::string& name, const std::string& branch, bool set_upstream) {
   ensure_open();
   auto* repo = reinterpret_cast<git_repository*>(repo_);
+  const auto local_head_commit = local_head_commit_or_empty(repo);
   const auto resolved_branch = resolve_branch_name(repo, branch);
   if (resolved_branch.empty()) {
     return {
         .status = PushStatus::UnknownError,
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = "No branch configured. Set GIT_DEFAULT_BRANCH or git config init.defaultBranch.", // LCOV_EXCL_LINE
     }; // LCOV_EXCL_LINE
   }
@@ -575,6 +596,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .status = PushStatus::RemoteUnset,
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = "Remote not configured: " + name,
     };
   }
@@ -583,6 +605,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .status = PushStatus::UnknownError,
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = git_error_message_or_default("git_remote_lookup failed"), // LCOV_EXCL_LINE
     }; // LCOV_EXCL_LINE
   }
@@ -595,6 +618,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .status = PushStatus::UpToDate,
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = {},
     };
   }
@@ -605,6 +629,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .status = classify_push_error(error), // LCOV_EXCL_LINE
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = error, // LCOV_EXCL_LINE
     }; // LCOV_EXCL_LINE
   } // LCOV_EXCL_LINE
@@ -625,6 +650,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .status = classify_push_error(error),
         .ahead_count = 0,
         .behind_count = 0,
+        .local_head_commit = local_head_commit,
         .error_message = error,
     };
   }
@@ -645,6 +671,7 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
       .status = PushStatus::Pushed,
       .ahead_count = 0,
       .behind_count = 0,
+      .local_head_commit = local_head_commit,
       .error_message = {},
   };
 }

@@ -19,6 +19,7 @@ struct PushResult {
   PushStatus status = PushStatus::UnknownError;
   int ahead_count = 0;
   int behind_count = 0;
+  std::string local_head_commit;
   std::string error_message;
 };
 
