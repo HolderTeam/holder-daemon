@@ -44,7 +44,7 @@ NudgeDecision evaluate_candidate(const std::string& kind, const nlohmann::json& 
     return {.accepted = true,
             .should_nudge = should_nudge,
             .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable"};
-  }
+  } // LCOV_EXCL_LINE: closing brace coverage artifact after aggregate return
   if (kind == "card.stuck_drafting") {
     const auto autosave_count = facts.value("autosave_count", 0);
     const auto body_chars = facts.value("body_chars", 0);
@@ -60,7 +60,7 @@ NudgeDecision evaluate_candidate(const std::string& kind, const nlohmann::json& 
     return {.accepted = true,
             .should_nudge = should_nudge,
             .reason = should_nudge ? "git_push_failure_candidate_ready" : "git_push_failure_not_actionable"};
-  }
+  } // LCOV_EXCL_LINE: closing brace coverage artifact after aggregate return
   return {.accepted = false, .should_nudge = false, .reason = "unknown_candidate_kind"};
 }
 
