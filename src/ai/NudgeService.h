@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -48,7 +49,7 @@ public:
   NudgeDecision evaluate_and_record(const NudgeCandidateInput& input);
 
   std::vector<Nudge> list(const std::string& project_id,
-                          const std::optional<std::string>& card_id = std::nullopt) const;
+                          const std::optional<std::string>& card_id = std::nullopt);
 
   bool dismiss(const std::string& nudge_id);
 
@@ -62,6 +63,15 @@ private:
   static std::string build_nudge_title(const NudgeCandidateInput& input);
   static std::string build_nudge_body(const NudgeCandidateInput& input);
   static std::string build_nudge_id(const NudgeCandidateInput& input);
+  static std::string short_content_fingerprint(const std::string& content);
+  static std::optional<std::string> current_card_fingerprint(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::string& card_id);
+  static std::optional<std::string> current_project_head_commit(
+      holder::platform::Db& db,
+      const std::string& project_id);
+  static bool is_stale(holder::platform::Db& db, const Nudge& nudge);
 };
 
 } // namespace holder::ai

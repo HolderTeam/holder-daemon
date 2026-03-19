@@ -1,9 +1,19 @@
 #include "ai/NudgeService.h"
 
 #include "ai/AiNudgeRepo.h"
+#include "card/CardFrontMatter.h"
+#include "card/CardRepo.h"
+#include "privacy/ProjectPrivacy.h"
+#include "project/ProjectRepo.h"
+
+#include <openssl/sha.h>
+
+#include <git2.h>
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -26,6 +36,14 @@ std::string fnv1a_hex(const std::string& value) {
   std::ostringstream out;
   out << std::hex << std::setfill('0') << std::setw(16) << hash;
   return out.str();
+}
+
+std::optional<std::string> read_file(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return std::nullopt;
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  return buffer.str();
 }
 
 } // namespace
@@ -121,6 +139,105 @@ std::string NudgeService::build_nudge_id(const NudgeCandidateInput& input) {
   return "nudge-" + fnv1a_hex(key.str());
 }
 
+std::string NudgeService::short_content_fingerprint(const std::string& content) {
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+  SHA256(reinterpret_cast<const unsigned char*>(content.data()),
+         content.size(),
+         digest);
+  std::ostringstream out;
+  out << std::hex << std::setfill('0');
+  for (int i = 0; i < 6; ++i) {
+    out << std::setw(2) << static_cast<unsigned int>(digest[i]);
+  }
+  return out.str();
+}
+
+std::optional<std::string> NudgeService::current_card_fingerprint(holder::platform::Db& db,
+                                                                  const std::string& project_id,
+                                                                  const std::string& card_id) {
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  const auto project = project_repo.get(project_id);
+  const auto card = card_repo.get(card_id);
+  if (!project.has_value() || !card.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto raw = read_file(std::filesystem::path(project->root_path) / card->rel_path);
+  if (!raw.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string plain = raw.value();
+  if (project->privacy_mode == "encrypted_git") {
+    if (!project->project_key_id.has_value() || project->project_key_id->empty()) {
+      return std::nullopt;
+    }
+    try {
+      plain = holder::privacy::decrypt_project_blob(
+          project->project_id, project->project_key_id.value(), plain);
+    } catch (...) {
+      return std::nullopt;
+    }
+  }
+
+  return short_content_fingerprint(holder::core::parse_card_file(plain).body);
+}
+
+std::optional<std::string> NudgeService::current_project_head_commit(
+    holder::platform::Db& db,
+    const std::string& project_id) {
+  holder::project::ProjectRepo project_repo(db);
+  const auto project = project_repo.get(project_id);
+  if (!project.has_value()) {
+    return std::nullopt;
+  }
+
+  git_repository* repo = nullptr;
+  if (git_repository_open(&repo, project->root_path.c_str()) != 0 || repo == nullptr) {
+    return std::nullopt;
+  }
+
+  git_reference* head = nullptr;
+  const int rc = git_repository_head(&head, repo);
+  if (rc != 0 || head == nullptr) {
+    git_repository_free(repo);
+    return std::nullopt;
+  }
+
+  const git_oid* oid = git_reference_target(head);
+  std::optional<std::string> out;
+  if (oid != nullptr) {
+    const char* text = git_oid_tostr_s(oid);
+    if (text != nullptr && text[0] != '\0') {
+      out = std::string(text);
+    }
+  }
+  git_reference_free(head);
+  git_repository_free(repo);
+  return out;
+}
+
+bool NudgeService::is_stale(holder::platform::Db& db, const Nudge& nudge) {
+  if (nudge.basis_fingerprint.has_value()) {
+    if (!nudge.card_id.has_value()) return false;
+    const auto current =
+        current_card_fingerprint(db, nudge.project_id, nudge.card_id.value());
+    if (current.has_value() && current.value() != nudge.basis_fingerprint.value()) {
+      return true;
+    }
+  }
+
+  if (nudge.basis_commit.has_value()) {
+    const auto current = current_project_head_commit(db, nudge.project_id);
+    if (current.has_value() && current.value() != nudge.basis_commit.value()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input) {
   auto decision = evaluate_candidate(input);
   if (!decision.accepted || !decision.should_nudge) {
@@ -160,8 +277,19 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
 }
 
 std::vector<Nudge> NudgeService::list(const std::string& project_id,
-                                      const std::optional<std::string>& card_id) const {
-  return AiNudgeRepo(db_).list_active(project_id, card_id);
+                                      const std::optional<std::string>& card_id) {
+  AiNudgeRepo repo(db_);
+  const auto active = repo.list_active(project_id, card_id);
+  std::vector<Nudge> out;
+  out.reserve(active.size());
+  for (const auto& nudge : active) {
+    if (is_stale(db_, nudge)) {
+      repo.dismiss(nudge.nudge_id);
+      continue;
+    }
+    out.push_back(nudge);
+  }
+  return out;
 }
 
 bool NudgeService::dismiss(const std::string& nudge_id) {

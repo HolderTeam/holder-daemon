@@ -11,6 +11,9 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
+#include <fstream>
+
 namespace {
 
 namespace http = boost::beast::http;
@@ -29,6 +32,13 @@ void create_card_fixture(holder::platform::Db& db,
   db.exec(
       "INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
       "VALUES('" + card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);");
+}
+
+void write_text(const std::filesystem::path& path, const std::string& content) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  REQUIRE(out.is_open());
+  out << content;
 }
 
 } // namespace
@@ -263,6 +273,51 @@ TEST_CASE("AiNudgeRoutes rejects malformed or non-actionable candidates", "[ai][
     REQUIRE(payload["data"]["should_nudge"] == false);
     REQUIRE(payload["data"]["reason"] == "unknown_candidate_kind");
   }
+}
+
+TEST_CASE("AiNudgeRoutes list prunes stale nudges", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  create_card_fixture(db, "proj-1", "card-1");
+  write_text(repo_dir / "cards" / "card-1.md", "# Frog\n\nNow with body.\n");
+  holder::ai::NudgeService service(db);
+
+  auto create_req = make_request(http::verb::post,
+                                 "/ai/nudges/evaluate",
+                                 R"({
+                                   "kind":"card.title_only",
+                                   "project_id":"proj-1",
+                                   "card_id":"card-1",
+                                   "created_at":123,
+                                   "basis_fingerprint":"deadbeefcafe",
+                                   "facts":{
+                                     "title":"Frog",
+                                     "body_empty":true,
+                                     "doc_chars":12,
+                                     "body_chars":0
+                                   }
+                                 })");
+  http::response<http::string_body> create_res;
+  REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges/evaluate",
+                                                      create_req,
+                                                      create_res,
+                                                      &service));
+  REQUIRE(create_res.result() == http::status::ok);
+
+  auto list_req = make_request(http::verb::get, "/ai/nudges?project_id=proj-1&card_id=card-1", "");
+  http::response<http::string_body> list_res;
+  REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges",
+                                                      list_req,
+                                                      list_res,
+                                                      &service));
+  REQUIRE(list_res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(list_res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["nudges"].is_array());
+  REQUIRE(payload["data"]["nudges"].empty());
 }
 
 TEST_CASE("AiNudgeRoutes lists and dismisses created nudges", "[ai][nudges]") {

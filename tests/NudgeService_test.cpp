@@ -5,7 +5,16 @@
 #endif
 
 #include "ai/NudgeService.h"
+#include "git/GitRepo.h"
 #include "http_test_helpers.h"
+
+#include <git2.h>
+#include <openssl/sha.h>
+
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 
 namespace {
 
@@ -27,6 +36,41 @@ holder::ai::NudgeCandidateInput title_only_candidate(const std::string& fingerpr
       .basis_commit = std::nullopt,
       .facts = {{"title", "Frog"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
   };
+}
+
+std::string short_content_fingerprint(const std::string& content) {
+  unsigned char digest[SHA256_DIGEST_LENGTH];
+  SHA256(reinterpret_cast<const unsigned char*>(content.data()),
+         content.size(),
+         digest);
+  std::ostringstream out;
+  out << std::hex << std::setfill('0');
+  for (int i = 0; i < 6; ++i) {
+    out << std::setw(2) << static_cast<unsigned int>(digest[i]);
+  }
+  return out.str();
+}
+
+void write_text(const std::filesystem::path& path, const std::string& content) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  REQUIRE(out.is_open());
+  out << content;
+}
+
+std::string current_head_commit(const std::filesystem::path& repo_path) {
+  git_repository* repo = nullptr;
+  REQUIRE(git_repository_open(&repo, repo_path.c_str()) == 0);
+  git_reference* head = nullptr;
+  REQUIRE(git_repository_head(&head, repo) == 0);
+  const git_oid* oid = git_reference_target(head);
+  REQUIRE(oid != nullptr);
+  const char* text = git_oid_tostr_s(oid);
+  REQUIRE(text != nullptr);
+  std::string out(text);
+  git_reference_free(head);
+  git_repository_free(repo);
+  return out;
 }
 
 } // namespace
@@ -66,4 +110,71 @@ TEST_CASE("NudgeService persists dedupe and dismiss across service instances", "
 
   holder::ai::NudgeService service4(db);
   REQUIRE(service4.list("proj-1", std::optional<std::string>("card-1")).empty());
+}
+
+TEST_CASE("NudgeService prunes stale nudges on list", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+
+  SECTION("card fingerprint mismatch dismisses stale nudge") {
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir / "cards");
+
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::test::create_project(db, "proj-1", repo_dir.string());
+    create_card_fixture(db, "proj-1", "card-1");
+
+    const std::string original = "# Frog\n\n";
+    const std::string updated = "# Frog\n\nNow with body.\n";
+    write_text(repo_dir / "cards" / "card-1.md", updated);
+
+    holder::ai::NudgeService service(db);
+    auto created = service.evaluate_and_record(title_only_candidate(short_content_fingerprint(original)));
+    REQUIRE(created.accepted);
+    REQUIRE(created.should_nudge);
+    REQUIRE(created.nudge.has_value());
+
+    auto listed = service.list("proj-1", std::optional<std::string>("card-1"));
+    REQUIRE(listed.empty());
+
+    holder::ai::NudgeService fresh_service(db);
+    REQUIRE(fresh_service.list("proj-1", std::optional<std::string>("card-1")).empty());
+  }
+
+  SECTION("project head mismatch dismisses stale git nudge") {
+    const auto repo_dir = dir / "repo-git";
+    holder::git::GitRepo repo;
+    repo.open_or_init(repo_dir);
+    repo.write_file("README.md", "first\n");
+    repo.stage_path("README.md");
+    repo.commit("first");
+    const auto first_head = current_head_commit(repo_dir);
+
+    auto db = holder::test::open_db_with_schema(dir / "holder-git.db");
+    holder::test::create_project(db, "proj-1", repo_dir.string());
+
+    holder::ai::NudgeService service(db);
+    holder::ai::NudgeCandidateInput input{
+        .kind = "git.push_failed_repeated",
+        .project_id = "proj-1",
+        .card_id = std::nullopt,
+        .created_at = 123,
+        .basis_fingerprint = std::nullopt,
+        .basis_commit = first_head,
+        .facts = {{"failure_count", 3}, {"latest_status", "auth_failed"}, {"branch", "main"}},
+    };
+    auto created = service.evaluate_and_record(input);
+    REQUIRE(created.accepted);
+    REQUIRE(created.should_nudge);
+    REQUIRE(created.nudge.has_value());
+
+    repo.write_file("README.md", "second\n");
+    repo.stage_path("README.md");
+    repo.commit("second");
+
+    auto listed = service.list("proj-1");
+    REQUIRE(listed.empty());
+
+    holder::ai::NudgeService fresh_service(db);
+    REQUIRE(fresh_service.list("proj-1").empty());
+  }
 }
