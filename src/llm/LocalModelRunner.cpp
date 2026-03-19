@@ -271,7 +271,7 @@ bool LocalModelRunner::stream_generate(const std::string& model,
     auto endpoints = resolver.resolve(host_, port_);
 
     boost::beast::tcp_stream stream(ioc);
-    stream.expires_after(std::chrono::seconds(30));
+    stream.expires_never();
     stream.connect(endpoints);
 
     nlohmann::json body;
