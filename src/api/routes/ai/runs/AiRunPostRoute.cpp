@@ -21,6 +21,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -34,6 +35,152 @@ namespace http = boost::beast::http;
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
   return text.substr(0, max_bytes);
+}
+
+std::string trim_copy(const std::string& input) {
+  std::size_t start = 0;
+  while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start]))) {
+    ++start;
+  }
+  std::size_t end = input.size();
+  while (end > start && std::isspace(static_cast<unsigned char>(input[end - 1]))) {
+    --end;
+  }
+  return input.substr(start, end - start);
+}
+
+std::string collapse_whitespace(const std::string& input) {
+  std::string out;
+  out.reserve(input.size());
+  bool in_space = false;
+  for (const char ch : input) {
+    if (std::isspace(static_cast<unsigned char>(ch))) {
+      if (!out.empty() && !in_space) {
+        out.push_back(' ');
+      }
+      in_space = true;
+      continue;
+    }
+    out.push_back(ch);
+    in_space = false;
+  }
+  return trim_copy(out);
+}
+
+std::string strip_wrapping_quotes(std::string value) {
+  value = trim_copy(value);
+  if (value.size() >= 2) {
+    const char first = value.front();
+    const char last = value.back();
+    const bool matching_double = (first == '"' && last == '"');
+    const bool matching_single = (first == '\'' && last == '\'');
+    if (matching_double || matching_single) {
+      value = trim_copy(value.substr(1, value.size() - 2));
+    }
+  }
+  return value;
+}
+
+bool should_refresh_thread_title(const std::string& current_title, const std::string& prompt) {
+  const auto normalized_title = collapse_whitespace(current_title);
+  if (normalized_title.empty()) return true;
+  if (normalized_title.rfind("Thread ", 0) == 0 || normalized_title.rfind("AI Thread ", 0) == 0) {
+    return true;
+  }
+  const auto prompt_seed = collapse_whitespace(truncate_bytes(prompt, 80));
+  return !prompt_seed.empty() && normalized_title == prompt_seed;
+}
+
+std::string fallback_thread_title(const std::string& prompt) {
+  auto title = collapse_whitespace(prompt);
+  if (title.empty()) return "New thread";
+  constexpr std::size_t max_title_bytes = 60;
+  if (title.size() <= max_title_bytes) return title;
+  title = title.substr(0, max_title_bytes);
+  const auto last_space = title.find_last_of(' ');
+  if (last_space != std::string::npos && last_space >= 24) {
+    title = title.substr(0, last_space);
+  }
+  return trim_copy(title);
+}
+
+std::optional<std::string> pick_local_title_model(holder::llm::LocalModelRunner* runner) {
+  if (runner == nullptr) return std::nullopt;
+  const auto status = runner->status();
+  if (!status.available || status.models.empty()) return std::nullopt;
+
+  const holder::llm::LocalModel* best = nullptr;
+  for (const auto& model : status.models) {
+    if (best == nullptr) {
+      best = &model;
+      continue;
+    }
+    if (model.size > 0 && (best->size == 0 || model.size < best->size)) {
+      best = &model;
+    }
+  }
+  if (best == nullptr || best->name.empty()) return std::nullopt;
+  return best->name;
+}
+
+std::string generate_thread_title(holder::llm::LocalModelRunner* runner,
+                                  const std::string& prompt,
+                                  const std::string& assistant_text) {
+  const auto fallback = fallback_thread_title(prompt);
+  const auto model = pick_local_title_model(runner);
+  if (!model.has_value()) return fallback;
+
+  std::ostringstream prompt_ss;
+  prompt_ss << "Write a short human-readable thread title for this conversation.\n";
+  prompt_ss << "Constraints:\n";
+  prompt_ss << "- Output only the title.\n";
+  prompt_ss << "- Keep it under 7 words.\n";
+  prompt_ss << "- No quotes, no markdown, no trailing punctuation.\n";
+  prompt_ss << "User:\n" << truncate_bytes(prompt, 600) << "\n\n";
+  if (!assistant_text.empty()) {
+    prompt_ss << "Assistant:\n" << truncate_bytes(assistant_text, 600) << "\n\n";
+  }
+  prompt_ss << "Title:";
+
+  std::string generated;
+  std::string error;
+  const bool ok = runner->stream_generate(
+      model.value(),
+      prompt_ss.str(),
+      "{}",
+      [&](const std::string& chunk) { generated += chunk; },
+      &error);
+  if (!ok) return fallback;
+
+  auto title = strip_wrapping_quotes(collapse_whitespace(generated));
+  if (!title.empty() && title.back() == '.') {
+    title.pop_back();
+    title = trim_copy(title);
+  }
+  if (title.empty()) return fallback;
+  constexpr std::size_t max_title_bytes = 60;
+  if (title.size() > max_title_bytes) {
+    title = trim_copy(title.substr(0, max_title_bytes));
+  }
+  return title.empty() ? fallback : title;
+}
+
+void maybe_update_thread_title(holder::platform::Db& db,
+                               holder::llm::LocalModelRunner* runner,
+                               const std::optional<std::string>& thread_id,
+                               const std::string& prompt,
+                               const std::string& assistant_text,
+                               long long updated_at) {
+  if (!thread_id.has_value() || assistant_text.empty()) return;
+
+  holder::ai::AiThreadRepo thread_repo(db);
+  const auto thread = thread_repo.get(thread_id.value());
+  if (!thread.has_value()) return;
+  if (!should_refresh_thread_title(thread->title, prompt)) return;
+
+  const auto next_title = generate_thread_title(runner, prompt, assistant_text);
+  if (next_title.empty() || next_title == thread->title) return;
+  thread_repo.update_title(thread_id.value(), next_title, updated_at);
 }
 
 struct AiRunPostInput {
@@ -136,6 +283,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::optional<std::string>& project_id,
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
+    holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
@@ -668,6 +816,9 @@ RouteDispatchResult execute_cloud_post_path(
           message_id = assistant_msg.message_id;
         }
 
+        maybe_update_thread_title(
+            db, runner, thread_id, prompt, output.value(), updated_at);
+
         run_repo.update_status(
             run.run_id,
             "completed",
@@ -972,6 +1123,8 @@ RouteDispatchResult execute_local_post_path(
       msg_repo.append(assistant_msg);
       message_id = assistant_msg.message_id;
     }
+    maybe_update_thread_title(
+        db, runner, thread_id, prompt, assistant_text, updated_at);
     run_repo.update_status(run.run_id,
                            "completed",
                            std::nullopt,
@@ -1036,7 +1189,7 @@ RouteDispatchResult handle_ai_runs_post_route(
 
     if (!local_runner_ready || cloud_provider_requested) {
       return execute_cloud_post_path(
-          body, prompt, mode, project_id, thread_id, context_json, uuid_v4, socket, res, db, fts);
+          body, prompt, mode, project_id, thread_id, context_json, runner, uuid_v4, socket, res, db, fts);
     }
     return execute_local_post_path(body,
                                    prompt,
