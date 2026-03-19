@@ -36,6 +36,7 @@ add_executable(lockfile_tests
   HttpAiProviderCredentials_test.cpp
   AiProviderRoutes_test.cpp
   AiNudgeRoutes_test.cpp
+  NudgeService_test.cpp
   AiRuntimeStatusRoutes_test.cpp
   HttpAiMessageLinks_test.cpp
   HttpAiRuns_test.cpp
@@ -134,6 +135,7 @@ add_executable(lockfile_tests
   ../src/ai/AiMessagePaths.cpp
   ../src/card/CardFrontMatter.cpp
   ../src/ai/AiMessageFrontMatter.cpp
+  ../src/ai/AiNudgeRepo.cpp
   ../src/ai/NudgeService.cpp
   ../src/project/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp

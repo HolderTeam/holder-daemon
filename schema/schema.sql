@@ -268,6 +268,31 @@ CREATE TABLE IF NOT EXISTS ai_thread_compaction_state (
 );
 
 -- ----------------------------
+-- AI nudges
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_nudges (
+  nudge_id           TEXT PRIMARY KEY,
+  kind               TEXT NOT NULL,
+  project_id         TEXT NOT NULL,
+  card_id            TEXT NULL,
+  title              TEXT NOT NULL,
+  body               TEXT NOT NULL,
+  basis_fingerprint  TEXT NULL,
+  basis_commit       TEXT NULL,
+  created_at         INTEGER NOT NULL,
+  dismissed_at       INTEGER NULL,
+
+  FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
+  FOREIGN KEY(card_id)    REFERENCES cards(card_id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_nudges_project_created
+  ON ai_nudges(project_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_nudges_project_card_created
+  ON ai_nudges(project_id, card_id, created_at);
+
+-- ----------------------------
 -- Full-text search (FTS5)
 -- ----------------------------
 -- Contentless FTS: server maintains rows explicitly.

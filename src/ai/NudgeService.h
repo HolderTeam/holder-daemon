@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/Db.h"
+
 #include <cstdint>
 #include <nlohmann/json.hpp>
 
@@ -41,6 +43,8 @@ struct NudgeDecision {
 
 class NudgeService {
 public:
+  explicit NudgeService(holder::platform::Db& db);
+
   NudgeDecision evaluate_and_record(const NudgeCandidateInput& input);
 
   std::vector<Nudge> list(const std::string& project_id,
@@ -49,8 +53,7 @@ public:
   bool dismiss(const std::string& nudge_id);
 
 private:
-  std::vector<Nudge> nudges_;
-  std::size_t next_id_ = 1;
+  holder::platform::Db& db_;
 
   static bool is_placeholder_title(const std::string& title);
   static bool is_successful_push_status(const std::string& status);
@@ -58,9 +61,7 @@ private:
   static NudgeDecision evaluate_candidate(const NudgeCandidateInput& input);
   static std::string build_nudge_title(const NudgeCandidateInput& input);
   static std::string build_nudge_body(const NudgeCandidateInput& input);
-
-  std::optional<Nudge> find_active_exact_match(const NudgeCandidateInput& input) const;
-  void dismiss_stale_variants(const NudgeCandidateInput& input);
+  static std::string build_nudge_id(const NudgeCandidateInput& input);
 };
 
 } // namespace holder::ai

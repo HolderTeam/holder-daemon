@@ -6,6 +6,7 @@
 
 #include "api/routes/ai/AiNudgeRoutes.h"
 #include "ai/NudgeService.h"
+#include "http_test_helpers.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -22,10 +23,22 @@ http::request<http::string_body> make_request(http::verb method, const std::stri
   return req;
 }
 
+void create_card_fixture(holder::platform::Db& db,
+                         const std::string& project_id,
+                         const std::string& card_id) {
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
+      "VALUES('" + card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);");
+}
+
 } // namespace
 
 TEST_CASE("AiNudgeRoutes evaluates known nudge candidates", "[ai][nudges]") {
-  holder::ai::NudgeService service;
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+  holder::ai::NudgeService service(db);
 
   SECTION("card title only candidate can be accepted for nudging") {
     auto req = make_request(http::verb::post,
@@ -114,7 +127,11 @@ TEST_CASE("AiNudgeRoutes evaluates known nudge candidates", "[ai][nudges]") {
 }
 
 TEST_CASE("AiNudgeRoutes rejects malformed or non-actionable candidates", "[ai][nudges]") {
-  holder::ai::NudgeService service;
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+  holder::ai::NudgeService service(db);
 
   SECTION("unrelated path returns false") {
     auto req = make_request(http::verb::post, "/ai/nudges/nope", "{}");
@@ -249,7 +266,11 @@ TEST_CASE("AiNudgeRoutes rejects malformed or non-actionable candidates", "[ai][
 }
 
 TEST_CASE("AiNudgeRoutes lists and dismisses created nudges", "[ai][nudges]") {
-  holder::ai::NudgeService service;
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+  holder::ai::NudgeService service(db);
 
   auto create_req = make_request(http::verb::post,
                                  "/ai/nudges/evaluate",

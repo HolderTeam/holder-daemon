@@ -1,7 +1,10 @@
 #include "ai/NudgeService.h"
 
+#include "ai/AiNudgeRepo.h"
+
 #include <algorithm>
 #include <cctype>
+#include <iomanip>
 #include <sstream>
 
 namespace holder::ai {
@@ -14,7 +17,20 @@ std::string lower_copy(std::string value) {
   return value;
 }
 
+std::string fnv1a_hex(const std::string& value) {
+  std::uint64_t hash = 1469598103934665603ull;
+  for (unsigned char ch : value) {
+    hash ^= static_cast<std::uint64_t>(ch);
+    hash *= 1099511628211ull;
+  }
+  std::ostringstream out;
+  out << std::hex << std::setfill('0') << std::setw(16) << hash;
+  return out.str();
+}
+
 } // namespace
+
+NudgeService::NudgeService(holder::platform::Db& db) : db_(db) {}
 
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
@@ -33,7 +49,8 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
         body_empty && !title.empty() && !is_placeholder_title(title) && doc_chars <= 160;
     return {.accepted = true,
             .should_nudge = should_nudge,
-            .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable"};
+            .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
+            .nudge = std::nullopt};
   }
   if (input.kind == "card.stuck_drafting") {
     const auto autosave_count = input.facts.value("autosave_count", 0);
@@ -42,7 +59,8 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     return {.accepted = true,
             .should_nudge = should_nudge,
             .reason = should_nudge ? "stuck_drafting_candidate_ready"
-                                   : "stuck_drafting_not_actionable"};
+                                   : "stuck_drafting_not_actionable",
+            .nudge = std::nullopt};
   }
   if (input.kind == "git.push_failed_repeated") {
     const auto failure_count = input.facts.value("failure_count", 0);
@@ -51,21 +69,19 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     return {.accepted = true,
             .should_nudge = should_nudge,
             .reason = should_nudge ? "git_push_failure_candidate_ready"
-                                   : "git_push_failure_not_actionable"};
+                                   : "git_push_failure_not_actionable",
+            .nudge = std::nullopt};
   }
-  return {.accepted = false, .should_nudge = false, .reason = "unknown_candidate_kind"};
+  return {.accepted = false,
+          .should_nudge = false,
+          .reason = "unknown_candidate_kind",
+          .nudge = std::nullopt};
 }
 
 std::string NudgeService::build_nudge_title(const NudgeCandidateInput& input) {
-  if (input.kind == "card.title_only") {
-    return "Start this card";
-  }
-  if (input.kind == "card.stuck_drafting") {
-    return "Unstick this draft";
-  }
-  if (input.kind == "git.push_failed_repeated") {
-    return "Fix git push";
-  }
+  if (input.kind == "card.title_only") return "Start this card";
+  if (input.kind == "card.stuck_drafting") return "Unstick this draft";
+  if (input.kind == "git.push_failed_repeated") return "Fix git push";
   return "Suggestion";
 }
 
@@ -94,34 +110,15 @@ std::string NudgeService::build_nudge_body(const NudgeCandidateInput& input) {
   return "No suggestion available.";
 }
 
-std::optional<Nudge> NudgeService::find_active_exact_match(const NudgeCandidateInput& input) const {
-  for (const auto& nudge : nudges_) {
-    if (nudge.dismissed) {
-      continue;
-    }
-    if (nudge.kind != input.kind || nudge.project_id != input.project_id ||
-        nudge.card_id != input.card_id || nudge.basis_fingerprint != input.basis_fingerprint ||
-        nudge.basis_commit != input.basis_commit) {
-      continue;
-    }
-    return nudge;
-  }
-  return std::nullopt;
-}
-
-void NudgeService::dismiss_stale_variants(const NudgeCandidateInput& input) {
-  for (auto& nudge : nudges_) {
-    if (nudge.dismissed) {
-      continue;
-    }
-    if (nudge.kind != input.kind || nudge.project_id != input.project_id || nudge.card_id != input.card_id) {
-      continue;
-    }
-    if (nudge.basis_fingerprint == input.basis_fingerprint && nudge.basis_commit == input.basis_commit) {
-      continue;
-    }
-    nudge.dismissed = true;
-  }
+std::string NudgeService::build_nudge_id(const NudgeCandidateInput& input) {
+  std::ostringstream key;
+  key << input.kind << '\n' << input.project_id << '\n';
+  if (input.card_id.has_value()) key << input.card_id.value();
+  key << '\n';
+  if (input.basis_fingerprint.has_value()) key << input.basis_fingerprint.value();
+  key << '\n';
+  if (input.basis_commit.has_value()) key << input.basis_commit.value();
+  return "nudge-" + fnv1a_hex(key.str());
 }
 
 NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input) {
@@ -130,15 +127,23 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
     return decision;
   }
 
-  if (const auto existing = find_active_exact_match(input); existing.has_value()) {
+  AiNudgeRepo repo(db_);
+  if (const auto existing =
+          repo.find_active_exact_match(input.kind,
+                                       input.project_id,
+                                       input.card_id,
+                                       input.basis_fingerprint,
+                                       input.basis_commit);
+      existing.has_value()) {
     decision.nudge = existing;
     return decision;
   }
 
-  dismiss_stale_variants(input);
+  repo.dismiss_stale_variants(
+      input.kind, input.project_id, input.card_id, input.basis_fingerprint, input.basis_commit);
 
   Nudge nudge{
-      .nudge_id = "nudge-" + std::to_string(next_id_++),
+      .nudge_id = build_nudge_id(input),
       .kind = input.kind,
       .project_id = input.project_id,
       .card_id = input.card_id,
@@ -149,40 +154,18 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
       .created_at = input.created_at,
       .dismissed = false,
   };
-  nudges_.push_back(nudge);
+  repo.create(nudge);
   decision.nudge = nudge;
   return decision;
 }
 
 std::vector<Nudge> NudgeService::list(const std::string& project_id,
                                       const std::optional<std::string>& card_id) const {
-  std::vector<Nudge> out;
-  for (const auto& nudge : nudges_) {
-    if (nudge.dismissed || nudge.project_id != project_id) {
-      continue;
-    }
-    if (!card_id.has_value()) {
-      if (nudge.card_id.has_value()) {
-        continue;
-      }
-      out.push_back(nudge);
-      continue;
-    }
-    if (!nudge.card_id.has_value() || nudge.card_id == card_id) {
-      out.push_back(nudge);
-    }
-  }
-  return out;
+  return AiNudgeRepo(db_).list_active(project_id, card_id);
 }
 
 bool NudgeService::dismiss(const std::string& nudge_id) {
-  for (auto& nudge : nudges_) {
-    if (nudge.nudge_id == nudge_id && !nudge.dismissed) {
-      nudge.dismissed = true;
-      return true;
-    }
-  }
-  return false;
+  return AiNudgeRepo(db_).dismiss(nudge_id);
 }
 
 } // namespace holder::ai

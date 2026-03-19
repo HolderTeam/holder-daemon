@@ -19,6 +19,14 @@ http::request<http::string_body> make_request(http::verb method, const std::stri
   return req;
 }
 
+void create_card_fixture(holder::platform::Db& db,
+                         const std::string& project_id,
+                         const std::string& card_id) {
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
+      "VALUES('" + card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);");
+}
+
 } // namespace
 
 TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai][dispatch]") {
@@ -28,7 +36,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   boost::asio::io_context ioc;
   boost::asio::ip::tcp::socket socket(ioc);
   http::response<http::string_body> res;
-  holder::ai::NudgeService nudge_service;
+  holder::ai::NudgeService nudge_service(db);
 
   const auto uuid_v4 = []() { return std::string("generated-id"); };
   const auto param_get = [](const std::string&) { return std::string(); };
@@ -109,11 +117,13 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
 TEST_CASE("AiDispatch handles nudge evaluation routes", "[ai][dispatch]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
 
   boost::asio::io_context ioc;
   boost::asio::ip::tcp::socket socket(ioc);
   http::response<http::string_body> res;
-  holder::ai::NudgeService nudge_service;
+  holder::ai::NudgeService nudge_service(db);
 
   const auto uuid_v4 = []() { return std::string("generated-id"); };
   const auto param_get = [](const std::string&) { return std::string(); };

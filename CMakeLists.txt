@@ -82,6 +82,7 @@ add_executable(holderd
   src/card/CardFrontMatter.cpp
   src/ai/AiMessagePaths.cpp
   src/ai/AiMessageFrontMatter.cpp
+  src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
   src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
