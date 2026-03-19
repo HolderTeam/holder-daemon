@@ -92,6 +92,7 @@ add_executable(lockfile_tests
   Router_test.cpp
   Cli_test.cpp
   ProjectRepo_test.cpp
+  StartupRecovery_test.cpp
   ProjectSyncRepo_test.cpp
   ProjectSyncPolicy_test.cpp
   ProjectSyncWorker_test.cpp
@@ -191,6 +192,7 @@ add_executable(lockfile_tests
   ../src/sync/ProjectSyncPolicy.cpp
   ../src/sync/ProjectSyncWorker.cpp
   ../src/project/ProjectRepo.cpp
+  ../src/project/StartupRecovery.cpp
   ../src/project/ProjectSyncRepo.cpp
   ../src/card/CardRepo.cpp
   ../src/card/LinkRepo.cpp

@@ -16,6 +16,7 @@
 #include "platform/Db.h"
 #include "platform/Migrations.h"
 #include "project/ProjectPaths.h"
+#include "project/StartupRecovery.h"
 #include "privacy/ProjectPrivacy.h"
 #include "git/GitOps.h"
 #include "sync/ProjectSyncWorker.h"
@@ -203,6 +204,16 @@ int main(int argc, char* argv[]) {
   const auto schema_path = find_schema_sql();
   holder::platform::Migrations::ensure_schema(db, schema_path);
   holder::platform::Migrations::ensure_schema_version(db, 1);
+  holder::index::FtsIndexer fts(db);
+
+  holder::project::ProjectRepo project_repo(db);
+  if (project_repo.list().empty()) {
+    holder::project::recover_projects_from_disk(
+        db,
+        &fts,
+        holder::core::default_projects_root(),
+        generate_uuid_v4);
+  }
   const auto bootstrapped_home = ensure_default_home_project(db);
 
   holder::core::ServerInfo info;
@@ -215,7 +226,6 @@ int main(int argc, char* argv[]) {
 
   spdlog::info("holder boot complete.");
 
-  holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
   if (bootstrapped_home.has_value()) {
     holder::project::ProjectRepo repo(db);

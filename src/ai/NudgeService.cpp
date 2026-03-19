@@ -29,13 +29,25 @@ std::string lower_copy(std::string value) {
 
 std::string fnv1a_hex(const std::string& value) {
   std::uint64_t hash = 1469598103934665603ull;
-  for (unsigned char ch : value) {
-    hash ^= static_cast<std::uint64_t>(ch);
+  for (const char ch : value) {
+    hash ^= static_cast<std::uint64_t>(static_cast<unsigned char>(ch));
     hash *= 1099511628211ull;
   }
   std::ostringstream out;
   out << std::hex << std::setfill('0') << std::setw(16) << hash;
   return out.str();
+}
+
+std::string trim_copy(const std::string& input) {
+  std::size_t start = 0;
+  while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start]))) {
+    ++start;
+  }
+  std::size_t end = input.size();
+  while (end > start && std::isspace(static_cast<unsigned char>(input[end - 1]))) {
+    --end;
+  }
+  return input.substr(start, end - start);
 }
 
 std::optional<std::string> read_file(const std::filesystem::path& path) {
@@ -48,7 +60,9 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
 
 } // namespace
 
-NudgeService::NudgeService(holder::platform::Db& db) : db_(db) {}
+NudgeService::NudgeService(holder::platform::Db& db,
+                           holder::llm::LocalModelRunner* runner)
+    : db_(db), runner_(runner) {}
 
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
@@ -126,6 +140,63 @@ std::string NudgeService::build_nudge_body(const NudgeCandidateInput& input) {
     return body.str();
   }
   return "No suggestion available.";
+}
+
+std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
+                                             const std::string& deterministic_body) {
+  std::ostringstream prompt;
+  prompt << "Rewrite this app nudge for a local personal knowledge tool.\n";
+  prompt << "Constraints:\n";
+  prompt << "- Output exactly one short paragraph.\n";
+  prompt << "- Keep it under 35 words.\n";
+  prompt << "- Be concrete and helpful, not chatty.\n";
+  prompt << "- Do not mention AI, models, or that this was rewritten.\n";
+  prompt << "- Do not use markdown bullets.\n";
+  prompt << "Candidate kind: " << input.kind << "\n";
+  prompt << "Facts: " << input.facts.dump() << "\n";
+  prompt << "Fallback wording: " << deterministic_body << "\n";
+  prompt << "Return only the rewritten body text.";
+  return prompt.str();
+}
+
+std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
+  if (runner_ == nullptr) return std::nullopt;
+  const auto status = runner_->status();
+  if (!status.available || status.models.empty()) return std::nullopt;
+
+  const holder::llm::LocalModel* best = nullptr;
+  for (const auto& model : status.models) {
+    if (best == nullptr) {
+      best = &model;
+      continue;
+    }
+    if (model.size > 0 && (best->size == 0 || model.size < best->size)) {
+      best = &model;
+    }
+  }
+  if (best == nullptr || best->name.empty()) return std::nullopt;
+  return best->name;
+}
+
+std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
+  const auto deterministic = build_nudge_body(input);
+  const auto model = pick_local_model_for_nudges();
+  if (!model.has_value()) return deterministic;
+
+  std::string generated;
+  std::string error;
+  const auto prompt = build_nudge_prompt(input, deterministic);
+  const bool ok = runner_->stream_generate(
+      model.value(),
+      prompt,
+      "{}",
+      [&](const std::string& chunk) { generated += chunk; },
+      &error);
+  if (!ok) return deterministic;
+
+  const auto trimmed = trim_copy(generated);
+  if (trimmed.empty()) return deterministic;
+  return trimmed;
 }
 
 std::string NudgeService::build_nudge_id(const NudgeCandidateInput& input) {
@@ -265,7 +336,7 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
       .project_id = input.project_id,
       .card_id = input.card_id,
       .title = build_nudge_title(input),
-      .body = build_nudge_body(input),
+      .body = build_nudge_body_with_runner(input),
       .basis_fingerprint = input.basis_fingerprint,
       .basis_commit = input.basis_commit,
       .created_at = input.created_at,

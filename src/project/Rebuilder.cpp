@@ -9,14 +9,17 @@
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
 #include "platform/Tx.h"
+#include "privacy/ProjectPrivacy.h"
 
 #include <sqlite3.h>
+#include <spdlog/spdlog.h>
 
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -96,9 +99,28 @@ std::string derive_title(const std::string& body, const std::string& fallback) {
   return fallback;
 }
 
+std::string decode_blob_for_project(const holder::model::Project& project, const std::string& raw) {
+  if (project.privacy_mode != "encrypted_git") {
+    return raw;
+  }
+  if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
+    throw std::runtime_error("encrypted project missing project_key_id");
+  }
+  return holder::privacy::decrypt_project_blob(
+      project.project_id,
+      project.project_key_id.value(),
+      raw);
+}
+
 struct MessageRecord {
   holder::model::AiMessage message;
   std::string project_id;
+  std::vector<holder::model::CardLink> links;
+};
+
+struct CardRecord {
+  holder::model::Card card;
+  std::string body;
   std::vector<holder::model::CardLink> links;
 };
 
@@ -156,9 +178,10 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   const auto card_files = collect_files(root / "cards");
   const auto trash_card_files = collect_files(root / "trash" / "cards");
 
-  auto rebuild_card_file = [&](const std::filesystem::path& path, bool is_trash) {
+  std::vector<CardRecord> card_records;
+  auto load_card_file = [&](const std::filesystem::path& path, bool is_trash) {
     const std::string raw = fs.read_file(path);
-    const auto parsed = holder::core::parse_card_file(raw);
+    const auto parsed = holder::core::parse_card_file(decode_blob_for_project(project, raw));
     if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
       throw std::runtime_error("invalid card front matter");
     }
@@ -205,30 +228,60 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
       card.deleted_at.reset();
     }
 
-    card_repo.create(card);
-    if (!parsed.links.empty()) {
-      std::vector<holder::model::CardLink> links = parsed.links;
-      for (auto& link : links) {
-        link.project_id = card.project_id;
-        link.from_card_id = card.card_id;
-        if (link.to_type.empty()) link.to_type = "card";
-        if (link.kind.empty()) link.kind = "ref";
-        if (link.created_at <= 0) link.created_at = card.created_at;
-      }
-      link_repo.upsert_links(card.project_id, card.card_id, links);
-      stats.links += links.size();
+    CardRecord record;
+    record.card = std::move(card);
+    record.body = parsed.body;
+    record.links = parsed.links;
+    for (auto& link : record.links) {
+      link.project_id = record.card.project_id;
+      link.from_card_id = record.card.card_id;
+      if (link.to_type.empty()) link.to_type = "card";
+      if (link.kind.empty()) link.kind = "ref";
+      if (link.created_at <= 0) link.created_at = record.card.created_at;
     }
-    if (fts_ && !card.deleted_at.has_value()) {
-      fts_->upsert_card(card.card_id, card.project_id, card.title, parsed.body);
-    }
-    stats.cards += 1;
+    card_records.push_back(std::move(record));
   };
 
   for (const auto& path : card_files) {
-    rebuild_card_file(path, false);
+    load_card_file(path, false);
   }
   for (const auto& path : trash_card_files) {
-    rebuild_card_file(path, true);
+    load_card_file(path, true);
+  }
+
+  std::unordered_set<std::string> inserted_cards;
+  std::vector<bool> inserted(card_records.size(), false);
+  std::size_t remaining_cards = card_records.size();
+  while (remaining_cards > 0) {
+    bool progress = false;
+    for (std::size_t i = 0; i < card_records.size(); ++i) {
+      if (inserted[i]) continue;
+      const auto& record = card_records[i];
+      if (record.card.parent_card_id.has_value() &&
+          inserted_cards.find(record.card.parent_card_id.value()) == inserted_cards.end()) {
+        continue;
+      }
+
+      card_repo.create(record.card);
+      if (fts_ && !record.card.deleted_at.has_value()) {
+        fts_->upsert_card(record.card.card_id, record.card.project_id, record.card.title, record.body);
+      }
+      inserted_cards.insert(record.card.card_id);
+      inserted[i] = true;
+      --remaining_cards;
+      ++stats.cards;
+      progress = true;
+    }
+    if (!progress) {
+      throw std::runtime_error("unresolved parent_card_id during rebuild");
+    }
+  }
+
+  for (const auto& record : card_records) {
+    if (!record.links.empty()) {
+      link_repo.upsert_links(record.card.project_id, record.card.card_id, record.links);
+      stats.links += record.links.size();
+    }
   }
 
   const auto message_files = collect_files(root / "ai_messages");
@@ -238,7 +291,7 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   std::vector<MessageRecord> records;
   auto rebuild_message_file = [&](const std::filesystem::path& path, bool is_trash) {
     const std::string raw = fs.read_file(path);
-    const auto parsed = holder::core::parse_ai_message_file(raw);
+    const auto parsed = holder::core::parse_ai_message_file(decode_blob_for_project(project, raw));
     if (raw.rfind("---\n", 0) == 0 && !parsed.has_front_matter) {
       throw std::runtime_error("invalid ai message front matter");
     }
@@ -305,10 +358,18 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   };
 
   for (const auto& path : message_files) {
-    rebuild_message_file(path, false);
+    try {
+      rebuild_message_file(path, false);
+    } catch (const std::exception& ex) {
+      spdlog::warn("Skipping ai message during rebuild at {}: {}", path.string(), ex.what());
+    }
   }
   for (const auto& path : trash_message_files) {
-    rebuild_message_file(path, true);
+    try {
+      rebuild_message_file(path, true);
+    } catch (const std::exception& ex) {
+      spdlog::warn("Skipping ai message during rebuild at {}: {}", path.string(), ex.what());
+    }
   }
 
   holder::ai::AiThreadRepo thread_repo(db_);

@@ -131,6 +131,7 @@ add_executable(holderd
   src/api/Session.cpp
   src/api/Router.cpp
   src/project/ProjectRepo.cpp
+  src/project/StartupRecovery.cpp
   src/project/ProjectSyncRepo.cpp
   src/card/CardRepo.cpp
   src/card/LinkRepo.cpp

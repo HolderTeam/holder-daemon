@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/Db.h"
+#include "llm/LocalModelRunner.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -44,7 +45,8 @@ struct NudgeDecision {
 
 class NudgeService {
 public:
-  explicit NudgeService(holder::platform::Db& db);
+  explicit NudgeService(holder::platform::Db& db,
+                        holder::llm::LocalModelRunner* runner = nullptr);
 
   NudgeDecision evaluate_and_record(const NudgeCandidateInput& input);
 
@@ -55,6 +57,7 @@ public:
 
 private:
   holder::platform::Db& db_;
+  holder::llm::LocalModelRunner* runner_ = nullptr;
 
   static bool is_placeholder_title(const std::string& title);
   static bool is_successful_push_status(const std::string& status);
@@ -62,6 +65,10 @@ private:
   static NudgeDecision evaluate_candidate(const NudgeCandidateInput& input);
   static std::string build_nudge_title(const NudgeCandidateInput& input);
   static std::string build_nudge_body(const NudgeCandidateInput& input);
+  std::string build_nudge_body_with_runner(const NudgeCandidateInput& input) const;
+  std::optional<std::string> pick_local_model_for_nudges() const;
+  static std::string build_nudge_prompt(const NudgeCandidateInput& input,
+                                        const std::string& deterministic_body);
   static std::string build_nudge_id(const NudgeCandidateInput& input);
   static std::string short_content_fingerprint(const std::string& content);
   static std::optional<std::string> current_card_fingerprint(

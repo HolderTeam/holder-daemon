@@ -7,6 +7,7 @@
 #include "ai/NudgeService.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
+#include "llm/LocalModelRunner.h"
 
 #include <git2.h>
 #include <openssl/sha.h>
@@ -176,5 +177,61 @@ TEST_CASE("NudgeService prunes stale nudges on list", "[ai][nudges]") {
 
     holder::ai::NudgeService fresh_service(db);
     REQUIRE(fresh_service.list("proj-1").empty());
+  }
+}
+
+TEST_CASE("NudgeService can use local runner wording with deterministic fallback", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+
+  SECTION("runner-generated wording is used when available") {
+    holder::llm::LocalModelRunner runner;
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
+    runner.set_status_override_for_tests(status);
+    runner.set_stream_generate_override_for_tests(
+        [](const std::string& model,
+           const std::string& prompt,
+           const std::string& options_json,
+           const std::function<void(const std::string&)>& on_chunk,
+           std::string* error) {
+          (void)prompt;
+          (void)options_json;
+          (void)error;
+          if (model != "fake-echo") return false;
+          on_chunk("Try drafting the first two sentences next.");
+          return true;
+        });
+
+    holder::ai::NudgeService service(db, &runner);
+    auto decision = service.evaluate_and_record(title_only_candidate("fp-1"));
+    REQUIRE(decision.nudge.has_value());
+    REQUIRE(decision.nudge->body == "Try drafting the first two sentences next.");
+  }
+
+  SECTION("runner failure falls back to deterministic wording") {
+    holder::llm::LocalModelRunner runner;
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
+    runner.set_status_override_for_tests(status);
+    runner.set_stream_generate_override_for_tests(
+        [](const std::string&,
+           const std::string&,
+           const std::string&,
+           const std::function<void(const std::string&)>&,
+           std::string* error) {
+          if (error) *error = "boom";
+          return false;
+        });
+
+    holder::ai::NudgeService service(db, &runner);
+    auto decision = service.evaluate_and_record(title_only_candidate("fp-2"));
+    REQUIRE(decision.nudge.has_value());
+    REQUIRE(decision.nudge->body ==
+            "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
   }
 }
