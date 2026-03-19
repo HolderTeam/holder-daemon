@@ -44,6 +44,7 @@ DispatchResult dispatch_ai_routes(
     boost::asio::ip::tcp::socket& socket,
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param) {
@@ -63,7 +64,7 @@ DispatchResult dispatch_ai_routes(
     return {.handled = false, .streamed = false};
   }
   if (ai_resource == "nudges") {
-    if (handle_ai_nudge_routes(path, req, res)) {
+    if (handle_ai_nudge_routes(path, req, res, nudge_service)) {
       return {.handled = true, .streamed = false};
     }
     return {.handled = false, .streamed = false};

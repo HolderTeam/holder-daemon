@@ -1,12 +1,12 @@
 #include "api/routes/ai/AiNudgeRoutes.h"
 
+#include "api/support/HttpQuery.h"
 #include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
-#include <algorithm>
-#include <cctype>
+#include <optional>
 #include <string>
 
 namespace holder::api::routes {
@@ -14,63 +14,120 @@ namespace {
 
 namespace http = boost::beast::http;
 
-struct NudgeDecision {
-  bool accepted{false};
-  bool should_nudge{false};
-  std::string reason;
-};
-
-std::string lower_copy(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::tolower(ch));
-  });
-  return value;
+nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
+  return {
+      {"nudge_id", nudge.nudge_id},
+      {"kind", nudge.kind},
+      {"project_id", nudge.project_id},
+      {"card_id", nudge.card_id.has_value() ? nlohmann::json(nudge.card_id.value())
+                                             : nlohmann::json(nullptr)},
+      {"title", nudge.title},
+      {"body", nudge.body},
+      {"basis_fingerprint",
+       nudge.basis_fingerprint.has_value() ? nlohmann::json(nudge.basis_fingerprint.value())
+                                           : nlohmann::json(nullptr)},
+      {"basis_commit", nudge.basis_commit.has_value() ? nlohmann::json(nudge.basis_commit.value())
+                                                      : nlohmann::json(nullptr)},
+      {"created_at", nudge.created_at},
+  };
 }
 
-bool is_placeholder_title(const std::string& title) {
-  return lower_copy(title).rfind("untitled", 0) == 0;
-}
-
-bool is_successful_push_status(const std::string& status) {
-  return status == "pushed" || status == "up_to_date";
-}
-
-NudgeDecision evaluate_candidate(const std::string& kind, const nlohmann::json& facts) {
-  if (kind == "card.title_only") {
-    const auto title = facts.value("title", "");
-    const auto body_empty = facts.value("body_empty", false);
-    const auto doc_chars = facts.value("doc_chars", 0);
-    const auto should_nudge = body_empty && !title.empty() && !is_placeholder_title(title) && doc_chars <= 160;
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable"};
-  } // LCOV_EXCL_LINE: closing brace coverage artifact after aggregate return
-  if (kind == "card.stuck_drafting") {
-    const auto autosave_count = facts.value("autosave_count", 0);
-    const auto body_chars = facts.value("body_chars", 0);
-    const auto should_nudge = autosave_count >= 3 && body_chars > 0 && body_chars <= 160;
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "stuck_drafting_candidate_ready" : "stuck_drafting_not_actionable"};
+bool handle_nudge_list_route(const std::string& path,
+                             const http::request<http::string_body>& req,
+                             http::response<http::string_body>& res,
+                             holder::ai::NudgeService* nudge_service) {
+  if (path != "/ai/nudges" || req.method() != http::verb::get) {
+    return false;
   }
-  if (kind == "git.push_failed_repeated") {
-    const auto failure_count = facts.value("failure_count", 0);
-    const auto latest_status = facts.value("latest_status", "");
-    const auto should_nudge = failure_count >= 2 && !is_successful_push_status(latest_status);
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "git_push_failure_candidate_ready" : "git_push_failure_not_actionable"};
-  } // LCOV_EXCL_LINE: closing brace coverage artifact after aggregate return
-  return {.accepted = false, .should_nudge = false, .reason = "unknown_candidate_kind"};
+  if (nudge_service == nullptr) {
+    res = support::error_response(http::status::internal_server_error,
+                                  "service_unavailable",
+                                  "Nudge service unavailable.");
+    return true;
+  }
+
+  const auto target = std::string(req.target());
+  const auto query_pos = target.find('?');
+  const auto query_string =
+      query_pos == std::string::npos ? std::string() : target.substr(query_pos + 1);
+  const auto project_id = support::query_param_value(query_string, "project_id");
+  const auto card_id_raw = support::query_param_value(query_string, "card_id");
+  if (project_id.empty()) {
+    res = support::error_response(http::status::bad_request,
+                                  "invalid_query",
+                                  "project_id is required.");
+    return true;
+  }
+
+  const auto nudges = nudge_service->list(
+      project_id,
+      card_id_raw.empty() ? std::optional<std::string>() : std::optional<std::string>(card_id_raw));
+
+  nlohmann::json items = nlohmann::json::array();
+  for (const auto& nudge : nudges) {
+    items.push_back(nudge_to_json(nudge));
+  }
+
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = {{"nudges", items}};
+  res = support::json_response(http::status::ok, payload);
+  return true;
+}
+
+bool handle_nudge_dismiss_route(const std::string& path,
+                                const http::request<http::string_body>& req,
+                                http::response<http::string_body>& res,
+                                holder::ai::NudgeService* nudge_service) {
+  static constexpr std::string_view prefix = "/ai/nudges/";
+  static constexpr std::string_view suffix = "/dismiss";
+  if (!path.starts_with(prefix) || !path.ends_with(suffix) || req.method() != http::verb::post) {
+    return false;
+  }
+  if (nudge_service == nullptr) {
+    res = support::error_response(http::status::internal_server_error,
+                                  "service_unavailable",
+                                  "Nudge service unavailable.");
+    return true;
+  }
+
+  const auto nudge_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+  if (nudge_id.empty()) {
+    res = support::error_response(http::status::not_found, "not_found", "Nudge not found.");
+    return true;
+  }
+  if (!nudge_service->dismiss(nudge_id)) {
+    res = support::error_response(http::status::not_found, "not_found", "Nudge not found.");
+    return true;
+  }
+
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = {{"nudge_id", nudge_id}, {"dismissed", true}};
+  res = support::json_response(http::status::ok, payload);
+  return true;
 }
 
 } // namespace
 
 bool handle_ai_nudge_routes(const std::string& path,
                             const http::request<http::string_body>& req,
-                            http::response<http::string_body>& res) {
+                            http::response<http::string_body>& res,
+                            holder::ai::NudgeService* nudge_service) {
+  if (handle_nudge_list_route(path, req, res, nudge_service)) {
+    return true;
+  }
+  if (handle_nudge_dismiss_route(path, req, res, nudge_service)) {
+    return true;
+  }
   if (path != "/ai/nudges/evaluate" || req.method() != http::verb::post) {
     return false;
+  }
+  if (nudge_service == nullptr) {
+    res = support::error_response(http::status::internal_server_error,
+                                  "service_unavailable",
+                                  "Nudge service unavailable.");
+    return true;
   }
 
   nlohmann::json body;
@@ -81,8 +138,9 @@ bool handle_ai_nudge_routes(const std::string& path,
     return true;
   }
 
-  if (!body.is_object() || !body.contains("kind") || !body["kind"].is_string() || !body.contains("project_id") ||
-      !body["project_id"].is_string() || !body.contains("created_at") || !body["created_at"].is_number_integer() ||
+  if (!body.is_object() || !body.contains("kind") || !body["kind"].is_string() ||
+      !body.contains("project_id") || !body["project_id"].is_string() ||
+      !body.contains("created_at") || !body["created_at"].is_number_integer() ||
       !body.contains("facts") || !body["facts"].is_object()) {
     res = support::error_response(http::status::bad_request,
                                   "invalid_body",
@@ -97,7 +155,22 @@ bool handle_ai_nudge_routes(const std::string& path,
     return true;
   }
 
-  const auto decision = evaluate_candidate(kind, body["facts"]);
+  holder::ai::NudgeCandidateInput input{
+      .kind = kind,
+      .project_id = project_id,
+      .card_id = body.contains("card_id") && body["card_id"].is_string()
+                     ? std::optional<std::string>(body["card_id"].get<std::string>())
+                     : std::optional<std::string>(),
+      .created_at = body.value("created_at", std::int64_t{0}),
+      .basis_fingerprint = body.contains("basis_fingerprint") && body["basis_fingerprint"].is_string()
+                               ? std::optional<std::string>(body["basis_fingerprint"].get<std::string>())
+                               : std::optional<std::string>(),
+      .basis_commit = body.contains("basis_commit") && body["basis_commit"].is_string()
+                          ? std::optional<std::string>(body["basis_commit"].get<std::string>())
+                          : std::optional<std::string>(),
+      .facts = body["facts"],
+  };
+  const auto decision = nudge_service->evaluate_and_record(input);
 
   nlohmann::json payload;
   payload["ok"] = true;
@@ -106,6 +179,8 @@ bool handle_ai_nudge_routes(const std::string& path,
       {"accepted", decision.accepted},
       {"should_nudge", decision.should_nudge},
       {"reason", decision.reason},
+      {"nudge", decision.nudge.has_value() ? nudge_to_json(decision.nudge.value())
+                                            : nlohmann::json(nullptr)},
   };
   res = support::json_response(http::status::ok, payload);
   return true;

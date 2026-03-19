@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ai/NudgeService.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
@@ -27,6 +28,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::platform::Db& db,
     holder::card::CardStore* card_store,
     holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
     holder::git::GitOps* git_ops,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4);

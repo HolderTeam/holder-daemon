@@ -63,6 +63,7 @@ HttpServer::BoundInfo HttpServer::start() {
                                          started_at_,
                                          card_store_,
                                          fts_,
+                                         &nudge_service_,
                                          git_ops_,
                                          runner_);
   const auto bound = listener_->start();

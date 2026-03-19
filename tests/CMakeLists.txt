@@ -134,6 +134,7 @@ add_executable(lockfile_tests
   ../src/ai/AiMessagePaths.cpp
   ../src/card/CardFrontMatter.cpp
   ../src/ai/AiMessageFrontMatter.cpp
+  ../src/ai/NudgeService.cpp
   ../src/project/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp

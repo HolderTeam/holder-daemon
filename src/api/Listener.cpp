@@ -22,6 +22,7 @@ Listener::Listener(std::string bind,
                    std::chrono::steady_clock::time_point started_at,
                    holder::card::CardStore* card_store,
                    holder::index::FtsIndexer* fts,
+                   holder::ai::NudgeService* nudge_service,
                    holder::git::GitOps* git_ops,
                    holder::llm::LocalModelRunner* runner)
     : acceptor_(ioc_),
@@ -33,6 +34,7 @@ Listener::Listener(std::string bind,
       started_at_(started_at),
       card_store_(card_store),
       fts_(fts),
+      nudge_service_(nudge_service),
       git_ops_(git_ops),
       runner_(runner) {}
 
@@ -86,6 +88,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
                     started_at_,
                     card_store_,
                     fts_,
+                    nudge_service_,
                     git_ops_,
                     runner_);
     session.run();

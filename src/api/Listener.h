@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ai/NudgeService.h"
 #include "api/Router.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
@@ -30,6 +31,7 @@ public:
            std::chrono::steady_clock::time_point started_at,
            holder::card::CardStore* card_store,
            holder::index::FtsIndexer* fts,
+           holder::ai::NudgeService* nudge_service,
            holder::git::GitOps* git_ops = nullptr,
            holder::llm::LocalModelRunner* runner = nullptr);
 
@@ -50,6 +52,7 @@ private:
   std::chrono::steady_clock::time_point started_at_;
   holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
+  holder::ai::NudgeService* nudge_service_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::LocalModelRunner* runner_ = nullptr;
 };

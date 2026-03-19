@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ai/NudgeService.h"
 #include "api/Router.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
@@ -51,6 +52,7 @@ private:
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::LocalModelRunner* runner_ = nullptr;
+  holder::ai::NudgeService nudge_service_;
 };
 
 } // namespace holder::api

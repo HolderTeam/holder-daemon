@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ai/NudgeService.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
@@ -25,6 +26,7 @@ DispatchResult dispatch_ai_routes(
     boost::asio::ip::tcp::socket& socket,
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param);

@@ -38,6 +38,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::platform::Db& db,
     holder::card::CardStore* card_store,
     holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
     holder::git::GitOps* git_ops,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4) {
@@ -57,7 +58,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     if (handle_search_routes(path, req, res, fts, param)) return {};
   } else if (resource == "ai") {
     const auto route_result =
-        ai::dispatch_ai_routes(path, req, res, socket, db, fts, runner, uuid_v4, param);
+        ai::dispatch_ai_routes(path, req, res, socket, db, fts, nudge_service, runner, uuid_v4, param);
     if (route_result.handled) {
       return {.streamed = route_result.streamed};
     }

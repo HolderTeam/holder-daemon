@@ -25,6 +25,7 @@ TEST_CASE("Listener accept error branch is exercised", "[listener]") {
                                  router,
                                  std::chrono::steady_clock::now(),
                                  nullptr,
+                                 nullptr,
                                  nullptr);
   holder::api::Listener::BoundInfo bound{};
   try {
