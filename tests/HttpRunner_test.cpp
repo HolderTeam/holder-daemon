@@ -2,6 +2,7 @@
 #include "api/support/CloudClient.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiRunRepo.h"
+#include "privacy/SecretStore.h"
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -18,6 +19,19 @@ class CloudRunOverrideGuard {
     holder::api::support::clear_run_cloud_model_override_for_tests();
   }
 };
+
+void seed_provider_credential(holder::platform::Db& db,
+                              holder::privacy::SecretStore& secret_store,
+                              const std::string& provider,
+                              const std::string& api_key,
+                              long long created_at,
+                              long long updated_at) {
+  static constexpr const char* kSecretService = "holder.ai_provider_credentials";
+  const std::string preview = "stored-preview";
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  secret_store.set(kSecretService, provider, api_key, preview, created_at, updated_at);
+  cred_repo.upsert(provider, preview, created_at, updated_at);
+}
 
 } // namespace
 
@@ -138,6 +152,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  holder::test::EnvGuard xdg_data_home("XDG_DATA_HOME", (dir / "xdg-data").string());
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   {
     std::ofstream out(cloud_cfg_path);
@@ -170,8 +186,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -260,6 +276,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  holder::test::EnvGuard xdg_data_home("XDG_DATA_HOME", (dir / "xdg-data").string());
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   {
     std::ofstream out(cloud_cfg_path);
@@ -292,8 +310,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("chadjeopardy", "test-key", 1, 1);
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  seed_provider_credential(db, *secret_store, "chadjeopardy", "test-key", 1, 1);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -382,6 +400,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+  holder::test::EnvGuard xdg_data_home("XDG_DATA_HOME", (dir / "xdg-data").string());
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   {
     std::ofstream out(cloud_cfg_path);
@@ -413,8 +433,8 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("mechatropic", "test-key", 1, 1);
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  seed_provider_credential(db, *secret_store, "mechatropic", "test-key", 1, 1);
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
