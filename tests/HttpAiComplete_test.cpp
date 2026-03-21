@@ -9,6 +9,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiMessageRepo.h"
+#include "privacy/SecretStore.h"
 
 using holder::test::make_temp_dir;
 
@@ -42,6 +43,23 @@ class ServerThreadGuard {
 
 } // namespace
 
+namespace {
+
+void seed_provider_credential(holder::platform::Db& db,
+                              holder::privacy::SecretStore& secret_store,
+                              const std::string& provider,
+                              const std::string& api_key,
+                              long long created_at,
+                              long long updated_at) {
+  static constexpr const char* kSecretService = "holder.ai_provider_credentials";
+  const std::string preview = "stored-preview";
+  holder::ai::AiProviderCredentialRepo cred_repo(db);
+  secret_store.set(kSecretService, provider, api_key, preview, created_at, updated_at);
+  cred_repo.upsert(provider, preview, created_at, updated_at);
+}
+
+} // namespace
+
 TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thread runs", "[http]") {
   CloudRunOverrideGuard cloud_guard(
       [](const holder::api::support::CloudProviderConfig&,
@@ -51,6 +69,8 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
          std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   const auto repo_dir = dir / "repo";
@@ -93,8 +113,7 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -131,7 +150,7 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -165,6 +184,8 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
 
 TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   const auto repo_dir = dir / "repo";
@@ -195,8 +216,7 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -225,7 +245,7 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
       unopened_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -241,6 +261,8 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
 
 TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog missing", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto missing_cfg = dir / "missing_ai_catalog.yaml";
   const auto repo_dir = dir / "repo";
@@ -280,7 +302,7 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
       unopened_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -326,6 +348,8 @@ TEST_CASE("AiRunPostRoute direct catches DB failures from thread creation path",
 
 TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_fallback.yaml";
   const auto repo_dir = dir / "repo";
@@ -362,8 +386,7 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
                       "VALUES('proj-1', 'Project', '") +
           repo_dir.string() + "', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("second", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "second", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -388,7 +411,7 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
       unopened_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -402,6 +425,8 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
 
 TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router context", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -528,6 +553,8 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
 
 TEST_CASE("AiRunPostRoute local routing falls back to largest model when router ranking is invalid", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -620,6 +647,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
 
 TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -683,6 +712,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_threshold.yaml";
   const auto repo_dir = dir / "repo";
@@ -734,8 +765,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -772,7 +802,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -805,6 +835,8 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_failure.yaml";
   const auto repo_dir = dir / "repo";
@@ -846,8 +878,7 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
                       "VALUES('proj-1', 'Project', '") +
           repo_dir.string() + "', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -882,7 +913,7 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -918,6 +949,8 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
 
 TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed run", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_attempt_reasons.yaml";
   const auto repo_dir = dir / "repo";
@@ -983,8 +1016,7 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const long long now = holder::api::support::now_epoch_seconds();
   db.exec("INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
@@ -1029,7 +1061,7 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -1089,6 +1121,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_min_interval.yaml";
   const auto repo_dir = dir / "repo";
@@ -1140,8 +1174,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
   holder::api::support::ThreadCompactionState state;
   state.thread_id = "thread-1";
   state.rolling_summary = std::string("existing summary");
@@ -1184,7 +1217,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -1217,6 +1250,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_min_delta.yaml";
   const auto repo_dir = dir / "repo";
@@ -1268,8 +1303,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   holder::api::support::ThreadCompactionState state;
   state.thread_id = "thread-1";
@@ -1312,7 +1346,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -1344,6 +1378,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_compact_cooldown.yaml";
   const auto repo_dir = dir / "repo";
@@ -1395,8 +1431,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   db.exec("INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
           "last_error, updated_at) VALUES('switchyard', 'compact-model', 2, 4102444800, "
@@ -1437,7 +1472,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -1478,6 +1513,8 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_refresh_complete.yaml";
   const auto repo_dir = dir / "repo";
@@ -1529,8 +1566,7 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
   holder::api::support::ThreadCompactionState prior_state;
   prior_state.thread_id = "thread-1";
   prior_state.rolling_summary = std::string("prior summary");
@@ -1573,7 +1609,7 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -1608,6 +1644,8 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
          std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_compact_rpm.yaml";
   const auto repo_dir = dir / "repo";
@@ -1661,8 +1699,7 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
   const auto now = holder::api::support::now_epoch_seconds();
   holder::api::support::record_cloud_usage_event(
       db, "switchyard", "compact-model", 10, 5, now, "compact-rpm");
@@ -1697,7 +1734,7 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, nullptr, nullptr, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), nullptr, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1717,6 +1754,8 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
 
 TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -1746,7 +1785,7 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, unopened_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
+      req, res, unopened_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1755,6 +1794,8 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
 
 TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -1812,7 +1853,7 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1832,6 +1873,8 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
 
 TEST_CASE("AiRunPostRoute local routing uses project router config and category metadata", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   const auto ai_catalog_path = dir / "ai_catalog_local_meta.yaml";
@@ -1917,7 +1960,7 @@ TEST_CASE("AiRunPostRoute local routing uses project router config and category 
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1934,6 +1977,8 @@ TEST_CASE("AiRunPostRoute local routing uses project router config and category 
 
 TEST_CASE("AiRunPostRoute local routing catches router config repo errors and falls back", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -1998,7 +2043,7 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -2030,6 +2075,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_quality_guard.yaml";
   const auto repo_dir = dir / "repo";
@@ -2081,8 +2128,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2120,7 +2166,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -2155,6 +2201,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog_summary_fail.yaml";
   const auto repo_dir = dir / "repo";
@@ -2211,8 +2259,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
           repo_dir.string() + "', 1, 1);");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2250,7 +2297,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
       server_socket,
       db,
       nullptr,
-      nullptr,
+      secret_store.get(),
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -2282,6 +2329,8 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
@@ -2379,6 +2428,8 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
       });
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   {
@@ -2409,8 +2460,7 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
                       "VALUES('proj-1', 'Project', '") +
           repo_dir.string() + "', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
   holder::card::CardStore card_store(db, nullptr);
@@ -2481,6 +2531,8 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -2544,6 +2596,8 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -2608,6 +2662,8 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   {
@@ -2632,8 +2688,7 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
   holder::ai::AiProviderSettingRepo setting_repo(db);
   setting_repo.upsert("switchyard", false, 2);
 
@@ -2672,6 +2727,8 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   {
@@ -2694,8 +2751,7 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  holder::ai::AiProviderCredentialRepo cred_repo(db);
-  cred_repo.upsert("switchyard", "test-key", 1, 1);
+  seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
   holder::card::CardStore card_store(db, nullptr);
@@ -2735,6 +2791,8 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
@@ -2822,6 +2880,8 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
@@ -2861,6 +2921,8 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
 
 TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provider has creds", "[http]") {
   const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   const auto db_path = dir / "holder.db";
   const auto cloud_cfg_path = dir / "ai_catalog.yaml";
   {

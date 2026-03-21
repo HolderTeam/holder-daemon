@@ -357,25 +357,21 @@ RouteDispatchResult execute_cloud_post_path(
   }
 
   if (selected_provider) {
-    std::string provider_api_key;
-    if (secret_store != nullptr) {
-      const auto selected_secret =
-          secret_store->get(kSecretService, selected_provider->credential_provider_key);
-      if (selected_secret.has_value()) {
-        provider_api_key = selected_secret->secret;
-      }
+    if (secret_store == nullptr) {
+      res = support::error_response(http::status::service_unavailable,
+                                    "cloud_not_configured",
+                                    "Cloud provider credential secret store is unavailable.");
+      return out;
     }
-    if (provider_api_key.empty()) {
-      const auto legacy_it = creds_by_key.find(selected_provider->credential_provider_key);
-      if (legacy_it == creds_by_key.end() ||
-          legacy_it->second.api_key_preview.find('*') != std::string::npos) {
-        res = support::error_response(http::status::service_unavailable,
-                                      "cloud_not_configured",
-                                      "Cloud provider credential secret is missing.");
-        return out;
-      }
-      provider_api_key = legacy_it->second.api_key_preview;
+    const auto selected_secret =
+        secret_store->get(kSecretService, selected_provider->credential_provider_key);
+    if (!selected_secret.has_value()) {
+      res = support::error_response(http::status::service_unavailable,
+                                    "cloud_not_configured",
+                                    "Cloud provider credential secret is missing.");
+      return out;
     }
+    const std::string provider_api_key = selected_secret->secret;
     const auto candidate_models = support::cloud_model_candidates(*selected_provider, requested_model);
     if (candidate_models.empty()) {
       res = support::error_response(http::status::service_unavailable,
