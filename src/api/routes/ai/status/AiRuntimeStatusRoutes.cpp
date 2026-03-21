@@ -32,6 +32,10 @@ long long count_started_runs(holder::platform::Db& db) {
   return out;
 }
 
+std::string preview_for_output(const std::string& stored) {
+  return stored.find('*') != std::string::npos ? stored : support::mask_api_key(stored);
+}
+
 } // namespace
 
 bool handle_ai_runtime_status_routes(const std::string& path,
@@ -97,7 +101,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
       cloud.push_back({
           {"provider", credential.provider},
           {"configured", true},
-          {"api_key_preview", support::mask_api_key(credential.api_key)},
+          {"api_key_preview", preview_for_output(credential.api_key_preview)},
           {"created_at", credential.created_at},
           {"updated_at", credential.updated_at},
       });

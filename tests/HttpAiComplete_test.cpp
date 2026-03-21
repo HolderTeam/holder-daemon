@@ -132,6 +132,7 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -225,6 +226,7 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -279,6 +281,7 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -312,6 +315,7 @@ TEST_CASE("AiRunPostRoute direct catches DB failures from thread creation path",
       res,
       unopened_socket,
       unopened_db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -383,6 +387,7 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
       res,
       unopened_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -484,6 +489,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       &runner,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -591,6 +597,7 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
       server_socket,
       db,
       nullptr,
+      nullptr,
       &runner,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
@@ -652,6 +659,7 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
       res,
       unopened_socket,
       db,
+      nullptr,
       nullptr,
       &runner,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -765,6 +773,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -872,6 +881,7 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -1018,6 +1028,7 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -1174,6 +1185,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -1301,6 +1313,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -1423,6 +1436,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -1560,6 +1574,7 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
       db,
       nullptr,
       nullptr,
+      nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -1682,7 +1697,7 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, nullptr, [&id_seq]() {
+      req, res, server_socket, db, nullptr, nullptr, nullptr, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1731,7 +1746,7 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, unopened_socket, db, nullptr, &runner, [&id_seq]() {
+      req, res, unopened_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1797,7 +1812,7 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1902,7 +1917,7 @@ TEST_CASE("AiRunPostRoute local routing uses project router config and category 
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1983,7 +1998,7 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, nullptr, &runner, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -2104,6 +2119,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
@@ -2233,6 +2249,7 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
       res,
       server_socket,
       db,
+      nullptr,
       nullptr,
       nullptr,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });

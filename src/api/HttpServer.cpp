@@ -2,6 +2,7 @@
 
 #include "api/Listener.h"
 #include "api/support/Health.h"
+#include "platform/Paths.h"
 
 #include <boost/beast/http.hpp>
 
@@ -33,6 +34,7 @@ HttpServer::HttpServer(std::string bind,
       auth_token_(std::move(auth_token)),
       router_(),
       nudge_service_(db, runner),
+      secret_store_(holder::privacy::make_default_secret_store(holder::core::Paths::resolve("holder").server_dir())),
       card_store_(card_store),
       fts_(fts),
       git_ops_(git_ops),
@@ -65,6 +67,7 @@ HttpServer::BoundInfo HttpServer::start() {
                                          card_store_,
                                          fts_,
                                          &nudge_service_,
+                                         secret_store_.get(),
                                          git_ops_,
                                          runner_);
   const auto bound = listener_->start();

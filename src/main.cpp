@@ -17,7 +17,9 @@
 #include "platform/Migrations.h"
 #include "project/ProjectPaths.h"
 #include "project/StartupRecovery.h"
+#include "ai/AiProviderCredentialRecovery.h"
 #include "privacy/ProjectPrivacy.h"
+#include "privacy/SecretStore.h"
 #include "git/GitOps.h"
 #include "sync/ProjectSyncWorker.h"
 
@@ -205,6 +207,7 @@ int main(int argc, char* argv[]) {
   holder::platform::Migrations::ensure_schema(db, schema_path);
   holder::platform::Migrations::ensure_schema_version(db, 1);
   holder::index::FtsIndexer fts(db);
+  auto secret_store = holder::privacy::make_default_secret_store(paths.server_dir());
 
   holder::project::ProjectRepo project_repo(db);
   if (project_repo.list().empty()) {
@@ -214,6 +217,7 @@ int main(int argc, char* argv[]) {
         holder::core::default_projects_root(),
         generate_uuid_v4);
   }
+  holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
   const auto bootstrapped_home = ensure_default_home_project(db);
 
   holder::core::ServerInfo info;

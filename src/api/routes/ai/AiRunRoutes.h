@@ -3,6 +3,7 @@
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
 #include "platform/Db.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
@@ -24,6 +25,7 @@ RouteDispatchResult handle_ai_run_routes(
     boost::asio::ip::tcp::socket& socket,
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get);

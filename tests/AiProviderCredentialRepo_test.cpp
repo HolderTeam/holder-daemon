@@ -32,14 +32,14 @@ TEST_CASE("AiProviderCredentialRepo upsert/list/remove", "[db]") {
   auto one = repo.get("chocolatefactory");
   REQUIRE(one.has_value());
   REQUIRE(one->provider == "chocolatefactory");
-  REQUIRE(one->api_key == "key-1");
+  REQUIRE(one->api_key_preview == "key-1");
   REQUIRE(one->created_at == 100);
   REQUIRE(one->updated_at == 100);
 
   repo.upsert("chocolatefactory", "key-2", 999, 200);
   one = repo.get("chocolatefactory");
   REQUIRE(one.has_value());
-  REQUIRE(one->api_key == "key-2");
+  REQUIRE(one->api_key_preview == "key-2");
   REQUIRE(one->created_at == 100);
   REQUIRE(one->updated_at == 200);
 

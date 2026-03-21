@@ -6,6 +6,7 @@
 #include "llm/LocalModelRunner.h"
 #include "card/CardStore.h"
 #include "platform/Db.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
@@ -29,6 +30,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::card::CardStore* card_store,
     holder::index::FtsIndexer* fts,
     holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4);

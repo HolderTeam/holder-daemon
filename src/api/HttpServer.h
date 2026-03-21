@@ -7,6 +7,7 @@
 #include "llm/LocalModelRunner.h"
 #include "index/FtsIndexer.h"
 #include "platform/Db.h"
+#include "privacy/SecretStore.h"
 
 #include <chrono>
 #include <memory>
@@ -49,6 +50,7 @@ private:
   Router router_;
   std::unique_ptr<Listener> listener_;
   holder::ai::NudgeService nudge_service_;
+  std::unique_ptr<holder::privacy::SecretStore> secret_store_;
   holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;

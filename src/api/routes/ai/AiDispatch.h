@@ -5,6 +5,7 @@
 #include "index/FtsIndexer.h"
 #include "llm/LocalModelRunner.h"
 #include "platform/Db.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
@@ -27,6 +28,7 @@ DispatchResult dispatch_ai_routes(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param);

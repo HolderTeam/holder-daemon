@@ -275,6 +275,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::optional<std::string>& project_id,
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
@@ -315,8 +316,8 @@ RouteDispatchResult execute_cloud_post_path(
   }
 
   const support::CloudProviderConfig* selected_provider = nullptr;
-  const holder::model::AiProviderCredential* selected_cred = nullptr;
   bool selection_failed = false;
+  static constexpr const char* kSecretService = "holder.ai_provider_credentials";
 
   auto try_select = [&](const support::CloudProviderConfig& provider) -> bool {
     const auto enabled_it = enabled_by_provider.find(provider.id);
@@ -326,7 +327,6 @@ RouteDispatchResult execute_cloud_post_path(
     const auto it = creds_by_key.find(provider.credential_provider_key);
     if (it == creds_by_key.end()) return false;
     selected_provider = &provider;
-    selected_cred = &it->second;
     return true;
   };
 
@@ -356,7 +356,26 @@ RouteDispatchResult execute_cloud_post_path(
                                   "No enabled cloud provider with stored API key.");
   }
 
-  if (selected_provider && selected_cred) {
+  if (selected_provider) {
+    std::string provider_api_key;
+    if (secret_store != nullptr) {
+      const auto selected_secret =
+          secret_store->get(kSecretService, selected_provider->credential_provider_key);
+      if (selected_secret.has_value()) {
+        provider_api_key = selected_secret->secret;
+      }
+    }
+    if (provider_api_key.empty()) {
+      const auto legacy_it = creds_by_key.find(selected_provider->credential_provider_key);
+      if (legacy_it == creds_by_key.end() ||
+          legacy_it->second.api_key_preview.find('*') != std::string::npos) {
+        res = support::error_response(http::status::service_unavailable,
+                                      "cloud_not_configured",
+                                      "Cloud provider credential secret is missing.");
+        return out;
+      }
+      provider_api_key = legacy_it->second.api_key_preview;
+    }
     const auto candidate_models = support::cloud_model_candidates(*selected_provider, requested_model);
     if (candidate_models.empty()) {
       res = support::error_response(http::status::service_unavailable,
@@ -539,7 +558,7 @@ RouteDispatchResult execute_cloud_post_path(
                 std::string summary_error;
                 const auto summary_output = support::run_cloud_model(*selected_provider,
                                                                      *compact_model,
-                                                                     selected_cred->api_key,
+                                                                     provider_api_key,
                                                                      summarize_prompt,
                                                                      &summary_error);
                 if (summary_output.has_value()) {
@@ -708,7 +727,7 @@ RouteDispatchResult execute_cloud_post_path(
         std::string cloud_error;
         const auto candidate_output = support::run_cloud_model(*selected_provider,
                                                                *candidate,
-                                                               selected_cred->api_key,
+                                                               provider_api_key,
                                                                prompt_full,
                                                                &cloud_error);
         if (candidate_output.has_value()) {
@@ -1150,6 +1169,7 @@ RouteDispatchResult handle_ai_runs_post_route(
     boost::asio::ip::tcp::socket& socket,
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4) {
   RouteDispatchResult out{};
@@ -1181,7 +1201,19 @@ RouteDispatchResult handle_ai_runs_post_route(
 
     if (!local_runner_ready || cloud_provider_requested) {
       return execute_cloud_post_path(
-          body, prompt, mode, project_id, thread_id, context_json, runner, uuid_v4, socket, res, db, fts);
+          body,
+          prompt,
+          mode,
+          project_id,
+          thread_id,
+          context_json,
+          secret_store,
+          runner,
+          uuid_v4,
+          socket,
+          res,
+          db,
+          fts);
     }
     return execute_local_post_path(body,
                                    prompt,
