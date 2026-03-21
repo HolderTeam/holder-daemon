@@ -170,12 +170,17 @@ LocalModelRunner::PullJob LocalModelRunner::start_pull(const std::string& model)
     pulls_[job.job_id] = job;
   }
 
+  if (fake_mode_) {
+    return job;
+  }
+
   std::thread([this, job_id = job.job_id, model]() { run_pull(job_id, model); }).detach();
   return job;
 }
 
 std::optional<LocalModelRunner::PullJob> LocalModelRunner::get_pull(const std::string& job_id) const {
   std::lock_guard<std::mutex> lock(pulls_mu_);
+  maybe_complete_fake_pulls_locked();
   const auto it = pulls_.find(job_id);
   if (it == pulls_.end()) {
     return std::nullopt;
@@ -185,6 +190,7 @@ std::optional<LocalModelRunner::PullJob> LocalModelRunner::get_pull(const std::s
 
 std::vector<LocalModelRunner::PullJob> LocalModelRunner::list_pulls() const {
   std::lock_guard<std::mutex> lock(pulls_mu_);
+  maybe_complete_fake_pulls_locked();
   std::vector<PullJob> out;
   out.reserve(pulls_.size());
   for (const auto& [id, job] : pulls_) {
@@ -192,6 +198,21 @@ std::vector<LocalModelRunner::PullJob> LocalModelRunner::list_pulls() const {
     out.push_back(job);
   }
   return out;
+}
+
+void LocalModelRunner::maybe_complete_fake_pulls_locked() const {
+  if (!fake_mode_) return;
+
+  for (auto& [id, job] : pulls_) {
+    (void)id;
+    if (job.status != "queued") continue;
+    job.status = "completed";
+    job.progress.stage = "success";
+    job.progress.total = 1;
+    job.progress.completed = 1;
+    job.progress.percent = 100.0;
+    job.updated_at = now_epoch_seconds();
+  }
 }
 
 bool LocalModelRunner::http_get_json(const std::string& target,

@@ -114,7 +114,7 @@ std::vector<holder::model::Project> recover_projects_from_disk(
   std::sort(roots.begin(), roots.end());
 
   holder::project::ProjectRepo repo(db);
-  holder::store::Rebuilder rebuilder(db, fts);
+  holder::store::Rebuilder rebuilder(db, fts, nullptr, true);
   for (const auto& root : roots) {
     holder::model::Project project;
     project.project_id = uuid_v4();

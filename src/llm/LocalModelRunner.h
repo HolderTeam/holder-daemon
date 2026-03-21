@@ -78,6 +78,7 @@ class LocalModelRunner {
   bool http_get_json(const std::string& target, std::string* out, std::string* error);
   bool try_spawn(std::string* error);
   void run_pull(const std::string& job_id, const std::string& model);
+  void maybe_complete_fake_pulls_locked() const;
   static std::string generate_job_id();
 
   std::string host_;
@@ -96,7 +97,7 @@ class LocalModelRunner {
   std::unique_ptr<RunnerProcess> process_;
 
   mutable std::mutex pulls_mu_;
-  std::unordered_map<std::string, PullJob> pulls_;
+  mutable std::unordered_map<std::string, PullJob> pulls_;
 };
 
 } // namespace holder::llm

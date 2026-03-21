@@ -68,7 +68,8 @@ private:
   std::string build_nudge_body_with_runner(const NudgeCandidateInput& input) const;
   std::optional<std::string> pick_local_model_for_nudges() const;
   static std::string build_nudge_prompt(const NudgeCandidateInput& input,
-                                        const std::string& deterministic_body);
+                                        const std::string& deterministic_body,
+                                        const std::string& context_summary);
   static std::string build_nudge_id(const NudgeCandidateInput& input);
   static std::string short_content_fingerprint(const std::string& content);
   static std::optional<std::string> current_card_fingerprint(

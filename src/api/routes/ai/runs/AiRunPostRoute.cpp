@@ -91,19 +91,6 @@ bool should_refresh_thread_title(const std::string& current_title, const std::st
   return !prompt_seed.empty() && normalized_title == prompt_seed;
 }
 
-std::string fallback_thread_title(const std::string& prompt) {
-  auto title = collapse_whitespace(prompt);
-  if (title.empty()) return "New thread";
-  constexpr std::size_t max_title_bytes = 60;
-  if (title.size() <= max_title_bytes) return title;
-  title = title.substr(0, max_title_bytes);
-  const auto last_space = title.find_last_of(' ');
-  if (last_space != std::string::npos && last_space >= 24) {
-    title = title.substr(0, last_space);
-  }
-  return trim_copy(title);
-}
-
 std::optional<std::string> pick_local_title_model(holder::llm::LocalModelRunner* runner) {
   if (runner == nullptr) return std::nullopt;
   const auto status = runner->status();
@@ -123,12 +110,11 @@ std::optional<std::string> pick_local_title_model(holder::llm::LocalModelRunner*
   return best->name;
 }
 
-std::string generate_thread_title(holder::llm::LocalModelRunner* runner,
-                                  const std::string& prompt,
-                                  const std::string& assistant_text) {
-  const auto fallback = fallback_thread_title(prompt);
+std::optional<std::string> generate_thread_title(holder::llm::LocalModelRunner* runner,
+                                                 const std::string& prompt,
+                                                 const std::string& assistant_text) {
   const auto model = pick_local_title_model(runner);
-  if (!model.has_value()) return fallback;
+  if (!model.has_value()) return std::nullopt;
 
   std::ostringstream prompt_ss;
   prompt_ss << "Write a short human-readable thread title for this conversation.\n";
@@ -150,19 +136,25 @@ std::string generate_thread_title(holder::llm::LocalModelRunner* runner,
       "{}",
       [&](const std::string& chunk) { generated += chunk; },
       &error);
-  if (!ok) return fallback;
+  if (!ok) return std::nullopt;
 
   auto title = strip_wrapping_quotes(collapse_whitespace(generated));
   if (!title.empty() && title.back() == '.') {
     title.pop_back();
     title = trim_copy(title);
   }
-  if (title.empty()) return fallback;
+  if (title.empty()) return std::nullopt;
+  if (title.find(':') != std::string::npos) return std::nullopt;
+  if (title.find('\n') != std::string::npos) return std::nullopt;
+  if (title.rfind("User", 0) == 0 || title.rfind("Assistant", 0) == 0 ||
+      title.rfind("Title", 0) == 0) {
+    return std::nullopt;
+  }
   constexpr std::size_t max_title_bytes = 60;
   if (title.size() > max_title_bytes) {
     title = trim_copy(title.substr(0, max_title_bytes));
   }
-  return title.empty() ? fallback : title;
+  return title.empty() ? std::nullopt : std::optional<std::string>(title);
 }
 
 void maybe_update_thread_title(holder::platform::Db& db,
@@ -179,8 +171,8 @@ void maybe_update_thread_title(holder::platform::Db& db,
   if (!should_refresh_thread_title(thread->title, prompt)) return;
 
   const auto next_title = generate_thread_title(runner, prompt, assistant_text);
-  if (next_title.empty() || next_title == thread->title) return;
-  thread_repo.update_title(thread_id.value(), next_title, updated_at);
+  if (!next_title.has_value() || next_title.value() == thread->title) return;
+  thread_repo.update_title(thread_id.value(), next_title.value(), updated_at);
 }
 
 struct AiRunPostInput {

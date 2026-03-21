@@ -104,7 +104,7 @@ std::string decode_blob_for_project(const holder::model::Project& project, const
     return raw;
   }
   if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
-    throw std::runtime_error("encrypted project missing project_key_id");
+    return raw;
   }
   return holder::privacy::decrypt_project_blob(
       project.project_id,
@@ -126,8 +126,14 @@ struct CardRecord {
 
 } // namespace
 
-Rebuilder::Rebuilder(holder::platform::Db& db, holder::index::FtsIndexer* fts, holder::core::Fs* fs)
-    : db_(db), fts_(fts), fs_(&resolve_fs(fs)) {}
+Rebuilder::Rebuilder(holder::platform::Db& db,
+                     holder::index::FtsIndexer* fts,
+                     holder::core::Fs* fs,
+                     bool tolerate_invalid_ai_messages)
+    : db_(db),
+      fts_(fts),
+      fs_(&resolve_fs(fs)),
+      tolerate_invalid_ai_messages_(tolerate_invalid_ai_messages) {}
 
 Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project& project) {
   RebuildStats stats;
@@ -358,6 +364,10 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
   };
 
   for (const auto& path : message_files) {
+    if (!tolerate_invalid_ai_messages_) {
+      rebuild_message_file(path, false);
+      continue;
+    }
     try {
       rebuild_message_file(path, false);
     } catch (const std::exception& ex) {
@@ -365,6 +375,10 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
     }
   }
   for (const auto& path : trash_message_files) {
+    if (!tolerate_invalid_ai_messages_) {
+      rebuild_message_file(path, true);
+      continue;
+    }
     try {
       rebuild_message_file(path, true);
     } catch (const std::exception& ex) {

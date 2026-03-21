@@ -1,6 +1,8 @@
 #include "ai/NudgeService.h"
 
 #include "ai/AiNudgeRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardRepo.h"
 #include "privacy/ProjectPrivacy.h"
@@ -50,12 +52,292 @@ std::string trim_copy(const std::string& input) {
   return input.substr(start, end - start);
 }
 
+std::string truncate_for_prompt(const std::string& text, std::size_t max_bytes) {
+  if (text.size() <= max_bytes) {
+    return text;
+  }
+  return text.substr(0, max_bytes);
+}
+
+std::string join_titles(const std::vector<std::string>& titles) {
+  std::ostringstream out;
+  bool first = true;
+  for (const auto& title : titles) {
+    if (!first) {
+      out << "; ";
+    }
+    out << title;
+    first = false;
+  }
+  return out.str();
+}
+
 std::optional<std::string> read_file(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) return std::nullopt;
   std::ostringstream buffer;
   buffer << in.rdbuf();
   return buffer.str();
+}
+
+std::optional<std::string> load_card_body(holder::platform::Db& db,
+                                          const std::string& project_id,
+                                          const std::string& card_id) {
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  const auto project = project_repo.get(project_id);
+  const auto card = card_repo.get(card_id);
+  if (!project.has_value() || !card.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto raw = read_file(std::filesystem::path(project->root_path) / card->rel_path);
+  if (!raw.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string plain = raw.value();
+  if (project->privacy_mode == "encrypted_git") {
+    if (!project->project_key_id.has_value() || project->project_key_id->empty()) {
+      return std::nullopt;
+    }
+    try {
+      plain = holder::privacy::decrypt_project_blob(
+          project->project_id, project->project_key_id.value(), plain);
+    } catch (...) {
+      return std::nullopt;
+    }
+  }
+
+  return holder::core::parse_card_file(plain).body;
+}
+
+std::vector<std::string> sibling_card_titles(holder::platform::Db& db,
+                                             const std::string& project_id,
+                                             const std::string& card_id) {
+  holder::card::CardRepo card_repo(db);
+  const auto card = card_repo.get(card_id);
+  if (!card.has_value()) {
+    return {};
+  }
+
+  std::vector<holder::model::Card> siblings;
+  if (card->parent_card_id.has_value()) {
+    siblings = card_repo.list_children(project_id, card->parent_card_id.value());
+  } else {
+    siblings = card_repo.list_roots(project_id);
+  }
+
+  std::vector<std::string> titles;
+  for (const auto& sibling : siblings) {
+    if (sibling.card_id == card_id) {
+      continue;
+    }
+    if (sibling.title.empty()) {
+      continue;
+    }
+    titles.push_back(sibling.title);
+    if (titles.size() >= 8) {
+      break;
+    }
+  }
+  return titles;
+}
+
+std::optional<holder::model::Card> parent_card(holder::platform::Db& db,
+                                               const std::string& card_id) {
+  holder::card::CardRepo card_repo(db);
+  const auto card = card_repo.get(card_id);
+  if (!card.has_value() || !card->parent_card_id.has_value()) {
+    return std::nullopt;
+  }
+  return card_repo.get(card->parent_card_id.value());
+}
+
+std::vector<holder::model::Card> sibling_cards(holder::platform::Db& db,
+                                               const std::string& project_id,
+                                               const std::string& card_id) {
+  holder::card::CardRepo card_repo(db);
+  const auto card = card_repo.get(card_id);
+  if (!card.has_value()) {
+    return {};
+  }
+
+  std::vector<holder::model::Card> siblings;
+  if (card->parent_card_id.has_value()) {
+    siblings = card_repo.list_children(project_id, card->parent_card_id.value());
+  } else {
+    siblings = card_repo.list_roots(project_id);
+  }
+
+  siblings.erase(
+      std::remove_if(
+          siblings.begin(),
+          siblings.end(),
+          [&](const holder::model::Card& sibling) { return sibling.card_id == card_id; }),
+      siblings.end());
+  return siblings;
+}
+
+std::string card_excerpt_line(holder::platform::Db& db,
+                              const std::string& project_id,
+                              const holder::model::Card& card) {
+  const auto body = load_card_body(db, project_id, card.card_id);
+  if (!body.has_value()) {
+    return "";
+  }
+  const auto text = trim_copy(body.value());
+  if (text.empty()) {
+    return "";
+  }
+  std::ostringstream out;
+  out << card.title << ": " << truncate_for_prompt(text, 180);
+  return out.str();
+}
+
+std::vector<std::string> sibling_card_excerpts(holder::platform::Db& db,
+                                               const std::string& project_id,
+                                               const std::string& card_id,
+                                               std::size_t limit) {
+  const auto siblings = sibling_cards(db, project_id, card_id);
+  std::vector<std::string> excerpts;
+  for (const auto& sibling : siblings) {
+    const auto line = card_excerpt_line(db, project_id, sibling);
+    if (line.empty()) {
+      continue;
+    }
+    excerpts.push_back(line);
+    if (excerpts.size() >= limit) {
+      break;
+    }
+  }
+  return excerpts;
+}
+
+std::vector<std::string> recent_project_card_excerpts(holder::platform::Db& db,
+                                                      const std::string& project_id,
+                                                      const std::optional<std::string>& exclude_card_id,
+                                                      std::size_t limit) {
+  holder::card::CardRepo card_repo(db);
+  auto cards = card_repo.list_all(project_id);
+  std::sort(cards.begin(), cards.end(), [](const holder::model::Card& a, const holder::model::Card& b) {
+    return a.updated_at > b.updated_at;
+  });
+
+  std::vector<std::string> excerpts;
+  for (const auto& card : cards) {
+    if (exclude_card_id.has_value() && card.card_id == exclude_card_id.value()) {
+      continue;
+    }
+    const auto line = card_excerpt_line(db, project_id, card);
+    if (line.empty()) {
+      continue;
+    }
+    excerpts.push_back(line);
+    if (excerpts.size() >= limit) {
+      break;
+    }
+  }
+  return excerpts;
+}
+
+std::optional<std::string> latest_ai_thread_excerpt(holder::platform::Db& db,
+                                                    const std::string& project_id,
+                                                    const std::optional<std::string>& card_id) {
+  holder::ai::AiThreadRepo thread_repo(db);
+  const auto threads = thread_repo.list(project_id);
+  std::optional<holder::model::AiThread> selected_thread;
+  if (card_id.has_value()) {
+    for (const auto& thread : threads) {
+      if (thread.card_id.has_value() && thread.card_id.value() == card_id.value()) {
+        selected_thread = thread;
+        break;
+      }
+    }
+  }
+  if (!selected_thread.has_value() && !threads.empty()) {
+    selected_thread = threads.front();
+  }
+  if (!selected_thread.has_value()) {
+    return std::nullopt;
+  }
+
+  holder::ai::AiMessageRepo message_repo(db, nullptr);
+  const auto messages = message_repo.list_by_thread(selected_thread->thread_id);
+  if (messages.empty()) {
+    return std::nullopt;
+  }
+
+  std::ostringstream out;
+  const std::size_t start = (messages.size() > 4) ? (messages.size() - 4) : 0;
+  for (std::size_t i = start; i < messages.size(); ++i) {
+    const auto& message = messages[i];
+    out << (message.role == "assistant" ? "Assistant" : "User") << ": "
+        << truncate_for_prompt(trim_copy(message.content), 220) << "\n";
+  }
+  return trim_copy(out.str());
+}
+
+std::string build_nudge_context_summary(holder::platform::Db& db,
+                                        const holder::ai::NudgeCandidateInput& input) {
+  std::ostringstream out;
+  const bool title_only_candidate = input.kind == "card.title_only";
+  if (input.card_id.has_value()) {
+    const auto title = input.facts.value("title", "");
+    if (!title.empty()) {
+      out << "Current card title: " << title << "\n";
+    }
+
+    const auto body = load_card_body(db, input.project_id, input.card_id.value());
+    const auto trimmed_body = body.has_value() ? trim_copy(body.value()) : std::string();
+    if (!trimmed_body.empty()) {
+      out << "Current card body:\n" << truncate_for_prompt(trim_copy(body.value()), 700) << "\n";
+    }
+
+    const auto siblings = sibling_card_titles(db, input.project_id, input.card_id.value());
+    if (!siblings.empty()) {
+      out << "Sibling cards: " << join_titles(siblings) << "\n";
+    }
+
+    if (title_only_candidate && trimmed_body.empty()) {
+      const auto parent = parent_card(db, input.card_id.value());
+      if (parent.has_value()) {
+        out << "Parent card title: " << parent->title << "\n";
+        const auto parent_body = load_card_body(db, input.project_id, parent->card_id);
+        if (parent_body.has_value()) {
+          const auto trimmed_parent_body = trim_copy(parent_body.value());
+          if (!trimmed_parent_body.empty()) {
+            out << "Parent card excerpt: "
+                << truncate_for_prompt(trimmed_parent_body, 220) << "\n";
+          }
+        }
+      }
+
+      const auto sibling_excerpts =
+          sibling_card_excerpts(db, input.project_id, input.card_id.value(), 4);
+      if (!sibling_excerpts.empty()) {
+        out << "Sibling card excerpts:\n";
+        for (const auto& excerpt : sibling_excerpts) {
+          out << "- " << excerpt << "\n";
+        }
+      }
+
+      const auto recent_excerpts =
+          recent_project_card_excerpts(db, input.project_id, input.card_id, 4);
+      if (!recent_excerpts.empty()) {
+        out << "Recent project card excerpts:\n";
+        for (const auto& excerpt : recent_excerpts) {
+          out << "- " << excerpt << "\n";
+        }
+      }
+    }
+  }
+
+  const auto ai_excerpt = latest_ai_thread_excerpt(db, input.project_id, input.card_id);
+  if (ai_excerpt.has_value()) {
+    out << "Recent AI thread:\n" << ai_excerpt.value() << "\n";
+  }
+  return trim_copy(out.str());
 }
 
 } // namespace
@@ -143,7 +425,8 @@ std::string NudgeService::build_nudge_body(const NudgeCandidateInput& input) {
 }
 
 std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
-                                             const std::string& deterministic_body) {
+                                             const std::string& deterministic_body,
+                                             const std::string& context_summary) {
   std::ostringstream prompt;
   prompt << "Rewrite this app nudge for a local personal knowledge tool.\n";
   prompt << "Constraints:\n";
@@ -154,6 +437,9 @@ std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
   prompt << "- Do not use markdown bullets.\n";
   prompt << "Candidate kind: " << input.kind << "\n";
   prompt << "Facts: " << input.facts.dump() << "\n";
+  if (!context_summary.empty()) {
+    prompt << "Context:\n" << context_summary << "\n";
+  }
   prompt << "Fallback wording: " << deterministic_body << "\n";
   prompt << "Return only the rewritten body text.";
   return prompt.str();
@@ -185,7 +471,8 @@ std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput
 
   std::string generated;
   std::string error;
-  const auto prompt = build_nudge_prompt(input, deterministic);
+  const auto context_summary = build_nudge_context_summary(db_, input);
+  const auto prompt = build_nudge_prompt(input, deterministic, context_summary);
   const bool ok = runner_->stream_generate(
       model.value(),
       prompt,
@@ -194,8 +481,27 @@ std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput
       &error);
   if (!ok) return deterministic;
 
-  const auto trimmed = trim_copy(generated);
+  auto trimmed = trim_copy(generated);
   if (trimmed.empty()) return deterministic;
+  if (trimmed.size() > 240) return deterministic;
+
+  const auto lowered = lower_copy(trimmed);
+  if (lowered.find("current card") != std::string::npos ||
+      lowered.find("sibling cards") != std::string::npos ||
+      lowered.find("recent ai thread") != std::string::npos ||
+      lowered.find("recent project card excerpts") != std::string::npos ||
+      lowered.find("parent card") != std::string::npos ||
+      lowered.find("fallback wording") != std::string::npos ||
+      lowered.find("candidate kind") != std::string::npos ||
+      lowered.find("facts:") != std::string::npos ||
+      lowered.find('\n') != std::string::npos ||
+      lowered.find('#') != std::string::npos) {
+    return deterministic;
+  }
+
+  if (!trimmed.empty() && trimmed.back() == '"') {
+    return deterministic;
+  }
   return trimmed;
 }
 
