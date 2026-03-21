@@ -84,6 +84,7 @@ add_executable(holderd
   src/ai/AiMessageFrontMatter.cpp
   src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
+  src/ai/AiProviderCredentialRecovery.cpp
   src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
@@ -151,6 +152,7 @@ add_executable(holderd
   src/git/GitOps.cpp
   src/git/RepoSyncMetrics.cpp
   src/privacy/ProjectPrivacy.cpp
+  src/privacy/SecretStore.cpp
   src/privacy/CryptoService.cpp
   src/sync/ProjectSyncPolicy.cpp
   src/sync/ProjectSyncWorker.cpp

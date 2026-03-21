@@ -1,5 +1,7 @@
 #include "http_test_helpers.h"
 #include "api/routes/ai/providers/AiProviderCredentialRoutes.h"
+#include "platform/Paths.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -134,11 +136,12 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
   const auto dir = make_temp_dir();
   auto db = open_db_with_schema(dir / "holder.db");
   http::response<http::string_body> res;
+  auto secret_store = holder::privacy::make_default_secret_store(dir);
 
   SECTION("settings put missing provider/enabled") {
     auto req = make_req(http::verb::put, "/ai/providers/settings", nlohmann::json::object().dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings", req, res, db));
+        "/ai/providers/settings", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "Missing provider or enabled.");
@@ -149,21 +152,21 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
                         "/ai/providers/settings",
                         nlohmann::json{{"provider", "!!!"}, {"enabled", true}}.dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings", req, res, db));
+        "/ai/providers/settings", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
   }
 
   SECTION("settings put malformed json catches exception") {
     auto req = make_req(http::verb::put, "/ai/providers/settings", "{");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings", req, res, db));
+        "/ai/providers/settings", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
   }
 
   SECTION("settings delete invalid provider") {
     auto req = make_req(http::verb::delete_, "/ai/providers/settings/%");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings/%", req, res, db));
+        "/ai/providers/settings/%", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "Invalid provider.");
@@ -174,12 +177,12 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
                         "/ai/providers/settings",
                         nlohmann::json{{"provider", "switchyard"}, {"enabled", true}}.dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings", put, res, db));
+        "/ai/providers/settings", put, res, db, *secret_store));
     REQUIRE(res.result() == http::status::ok);
 
     auto del = make_req(http::verb::delete_, "/ai/providers/settings/switchyard");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/settings/switchyard", del, res, db));
+        "/ai/providers/settings/switchyard", del, res, db, *secret_store));
     REQUIRE(res.result() == http::status::ok);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["data"]["provider"] == "switchyard");
@@ -188,7 +191,7 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
   SECTION("credentials put missing provider/api_key") {
     auto req = make_req(http::verb::put, "/ai/providers/credentials", nlohmann::json::object().dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/credentials", req, res, db));
+        "/ai/providers/credentials", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "Missing provider or api_key.");
@@ -199,7 +202,7 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
                         "/ai/providers/credentials",
                         nlohmann::json{{"provider", "!!!"}, {"api_key", "x"}}.dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/credentials", req, res, db));
+        "/ai/providers/credentials", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
   }
 
@@ -208,7 +211,7 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
                         "/ai/providers/credentials",
                         nlohmann::json{{"provider", "switchyard"}, {"api_key", "   "}}.dump());
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/credentials", req, res, db));
+        "/ai/providers/credentials", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "api_key cannot be empty.");
@@ -217,14 +220,14 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
   SECTION("credentials put malformed json catches exception") {
     auto req = make_req(http::verb::put, "/ai/providers/credentials", "{");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/credentials", req, res, db));
+        "/ai/providers/credentials", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
   }
 
   SECTION("credentials delete invalid provider") {
     auto req = make_req(http::verb::delete_, "/ai/providers/credentials/%");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/credentials/%", req, res, db));
+        "/ai/providers/credentials/%", req, res, db, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "Invalid provider.");
@@ -233,18 +236,20 @@ TEST_CASE("AiProviderCredentialRoutes direct validation and error branches", "[h
   SECTION("unmatched route returns false") {
     auto req = make_req(http::verb::get, "/ai/providers/credentials");
     REQUIRE_FALSE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        "/ai/providers/unknown", req, res, db));
+        "/ai/providers/unknown", req, res, db, *secret_store));
   }
 }
 
 TEST_CASE("AiProviderCredentialRoutes direct DB exception branches", "[http]") {
   holder::platform::Db unopened;
   http::response<http::string_body> res;
+  const auto dir = make_temp_dir();
+  auto secret_store = holder::privacy::make_default_secret_store(dir);
 
   auto expect_bad_request = [&](http::verb method, const std::string& path, const std::string& body = "") {
     auto req = make_req(method, path, body);
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
-        path, req, res, unopened));
+        path, req, res, unopened, *secret_store));
     REQUIRE(res.result() == http::status::bad_request);
   };
 

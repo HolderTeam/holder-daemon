@@ -23,6 +23,7 @@ Listener::Listener(std::string bind,
                    holder::card::CardStore* card_store,
                    holder::index::FtsIndexer* fts,
                    holder::ai::NudgeService* nudge_service,
+                   holder::privacy::SecretStore* secret_store,
                    holder::git::GitOps* git_ops,
                    holder::llm::LocalModelRunner* runner)
     : acceptor_(ioc_),
@@ -35,6 +36,7 @@ Listener::Listener(std::string bind,
       card_store_(card_store),
       fts_(fts),
       nudge_service_(nudge_service),
+      secret_store_(secret_store),
       git_ops_(git_ops),
       runner_(runner) {}
 
@@ -89,6 +91,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
                     card_store_,
                     fts_,
                     nudge_service_,
+                    secret_store_,
                     git_ops_,
                     runner_);
     session.run();

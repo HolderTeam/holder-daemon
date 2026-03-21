@@ -6,6 +6,7 @@
 
 #include "api/routes/ai/AiProviderRoutes.h"
 #include "http_test_helpers.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/beast/http.hpp>
 
@@ -23,11 +24,13 @@ http::request<http::string_body> make_request(http::verb method, const std::stri
 TEST_CASE("AiProviderRoutes returns false when no provider sub-route matches", "[ai][providers]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  auto secret_store = holder::privacy::make_default_secret_store(dir);
 
   auto req = make_request(http::verb::get, "/ai/providers/unknown");
   http::response<http::string_body> res;
 
   const bool handled =
-      holder::api::routes::handle_ai_provider_routes("/ai/providers/unknown", req, res, db);
+      holder::api::routes::handle_ai_provider_routes(
+          "/ai/providers/unknown", req, res, db, *secret_store);
   REQUIRE_FALSE(handled);
 }

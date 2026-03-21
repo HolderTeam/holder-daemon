@@ -5,6 +5,7 @@
 #include "api/support/Time.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -16,12 +17,18 @@ namespace {
 
 namespace http = boost::beast::http;
 
+std::string preview_for_output(const std::string& stored) {
+  return stored.find('*') != std::string::npos ? stored : support::mask_api_key(stored);
+}
+
 } // namespace
 
 bool handle_ai_provider_credential_routes(const std::string& path,
                                           const http::request<http::string_body>& req,
                                           http::response<http::string_body>& res,
-                                          holder::platform::Db& db) {
+                                          holder::platform::Db& db,
+                                          holder::privacy::SecretStore& secret_store) {
+  static constexpr const char* kSecretService = "holder.ai_provider_credentials";
   if (path == "/ai/providers/settings" && req.method() == http::verb::get) {
     try {
       holder::ai::AiProviderSettingRepo repo(db);
@@ -116,7 +123,7 @@ bool handle_ai_provider_credential_routes(const std::string& path,
         providers.push_back({
             {"provider", credential.provider},
             {"configured", true},
-            {"api_key_preview", support::mask_api_key(credential.api_key)},
+            {"api_key_preview", preview_for_output(credential.api_key_preview)},
             {"created_at", credential.created_at},
             {"updated_at", credential.updated_at},
         });
@@ -163,11 +170,13 @@ bool handle_ai_provider_credential_routes(const std::string& path,
       const long long ts = (body.contains("updated_at") && !body.at("updated_at").is_null())
                                ? body.at("updated_at").get<long long>()
                                : support::now_epoch_seconds();
+      const std::string api_key_preview = support::mask_api_key(api_key);
 
       holder::ai::AiProviderCredentialRepo repo(db);
       const auto existing = repo.get(provider);
       const long long created_at = existing.has_value() ? existing->created_at : ts;
-      repo.upsert(provider, api_key, created_at, ts);
+      secret_store.set(kSecretService, provider, api_key, api_key_preview, created_at, ts);
+      repo.upsert(provider, api_key_preview, created_at, ts);
       holder::ai::AiProviderSettingRepo setting_repo(db);
       setting_repo.upsert(provider, true, ts);
 
@@ -176,11 +185,16 @@ bool handle_ai_provider_credential_routes(const std::string& path,
       payload["data"] = {
           {"provider", provider},
           {"configured", true},
-          {"api_key_preview", support::mask_api_key(api_key)},
+          {"api_key_preview", api_key_preview},
           {"created_at", created_at},
           {"updated_at", ts},
       };
       res = support::json_response(http::status::ok, payload);
+      return true;
+    } catch (const holder::privacy::PrivacyError& ex) {
+      res = support::error_response(http::status::service_unavailable,
+                                    holder::privacy::privacy_error_code_name(ex.code()),
+                                    ex.what());
       return true;
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());
@@ -196,6 +210,7 @@ bool handle_ai_provider_credential_routes(const std::string& path,
         res = support::error_response(http::status::bad_request, "bad_request", "Invalid provider.");
         return true;
       }
+      secret_store.remove(kSecretService, provider);
       holder::ai::AiProviderCredentialRepo repo(db);
       repo.remove(provider);
       holder::ai::AiProviderSettingRepo setting_repo(db);
@@ -204,6 +219,11 @@ bool handle_ai_provider_credential_routes(const std::string& path,
       payload["ok"] = true;
       payload["data"] = {{"provider", provider}};
       res = support::json_response(http::status::ok, payload);
+      return true;
+    } catch (const holder::privacy::PrivacyError& ex) {
+      res = support::error_response(http::status::service_unavailable,
+                                    holder::privacy::privacy_error_code_name(ex.code()),
+                                    ex.what());
       return true;
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());

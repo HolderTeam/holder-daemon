@@ -7,6 +7,7 @@
 #include "ai/NudgeService.h"
 #include "api/routes/ai/AiDispatch.h"
 #include "http_test_helpers.h"
+#include "privacy/SecretStore.h"
 
 #include <boost/asio/ip/tcp.hpp>
 
@@ -37,6 +38,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   boost::asio::ip::tcp::socket socket(ioc);
   http::response<http::string_body> res;
   holder::ai::NudgeService nudge_service(db);
+  auto secret_store = holder::privacy::make_default_secret_store(dir);
 
   const auto uuid_v4 = []() { return std::string("generated-id"); };
   const auto param_get = [](const std::string&) { return std::string(); };
@@ -44,7 +46,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("path without leading slash") {
     auto req = make_request(http::verb::get, "ai/status");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "ai/status", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "ai/status", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -52,7 +54,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("root-only slash path") {
     auto req = make_request(http::verb::get, "/");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -60,7 +62,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("status family unmatched subroute") {
     auto req = make_request(http::verb::get, "/ai/status/unknown");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/status/unknown", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/status/unknown", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -68,7 +70,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("providers unmatched subroute") {
     auto req = make_request(http::verb::get, "/ai/providers/unknown");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/providers/unknown", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/providers/unknown", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -76,7 +78,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("nudges unmatched method/path combo") {
     auto req = make_request(http::verb::get, "/ai/nudges/evaluate");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/nudges/evaluate", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/nudges/evaluate", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -84,7 +86,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("runs unmatched method/path combo") {
     auto req = make_request(http::verb::delete_, "/ai/runs");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/runs", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/runs", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -92,7 +94,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("runner unmatched subroute") {
     auto req = make_request(http::verb::get, "/ai/runner/unknown");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/runner/unknown", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/runner/unknown", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -100,7 +102,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("threads unmatched subroute") {
     auto req = make_request(http::verb::delete_, "/ai/threads");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/threads", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/threads", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -108,7 +110,7 @@ TEST_CASE("AiDispatch returns unhandled for malformed and unknown routes", "[ai]
   SECTION("messages unmatched subroute") {
     auto req = make_request(http::verb::get, "/ai/messages/msg-1/other");
     const auto out = holder::api::routes::ai::dispatch_ai_routes(
-        "/ai/messages/msg-1/other", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+        "/ai/messages/msg-1/other", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
     REQUIRE_FALSE(out.handled);
     REQUIRE_FALSE(out.streamed);
   }
@@ -124,6 +126,7 @@ TEST_CASE("AiDispatch handles nudge evaluation routes", "[ai][dispatch]") {
   boost::asio::ip::tcp::socket socket(ioc);
   http::response<http::string_body> res;
   holder::ai::NudgeService nudge_service(db);
+  auto secret_store = holder::privacy::make_default_secret_store(dir);
 
   const auto uuid_v4 = []() { return std::string("generated-id"); };
   const auto param_get = [](const std::string&) { return std::string(); };
@@ -144,7 +147,7 @@ TEST_CASE("AiDispatch handles nudge evaluation routes", "[ai][dispatch]") {
   req.prepare_payload();
 
   const auto out = holder::api::routes::ai::dispatch_ai_routes(
-      "/ai/nudges/evaluate", req, res, socket, db, nullptr, &nudge_service, nullptr, uuid_v4, param_get);
+      "/ai/nudges/evaluate", req, res, socket, db, nullptr, &nudge_service, secret_store.get(), nullptr, uuid_v4, param_get);
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
   REQUIRE(res.result() == http::status::ok);

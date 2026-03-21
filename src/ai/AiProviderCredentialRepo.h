@@ -16,7 +16,7 @@ class AiProviderCredentialRepo {
   std::vector<holder::model::AiProviderCredential> list() const;
   std::optional<holder::model::AiProviderCredential> get(const std::string& provider) const;
   void upsert(const std::string& provider,
-              const std::string& api_key,
+              const std::string& api_key_preview,
               long long created_at,
               long long updated_at);
   void remove(const std::string& provider);

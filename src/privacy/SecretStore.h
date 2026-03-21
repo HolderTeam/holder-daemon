@@ -1,0 +1,44 @@
+#pragma once
+
+#include "privacy/PrivacyError.h"
+
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace holder::privacy {
+
+struct SecretMetadata {
+  std::string service;
+  std::string account;
+  std::string preview;
+  long long created_at = 0;
+  long long updated_at = 0;
+};
+
+struct StoredSecret {
+  SecretMetadata metadata;
+  std::string secret;
+};
+
+class SecretStore {
+public:
+  virtual ~SecretStore() = default;
+
+  virtual std::optional<StoredSecret> get(const std::string& service,
+                                          const std::string& account) const = 0;
+  virtual std::vector<SecretMetadata> list(const std::string& service) const = 0;
+  virtual void set(const std::string& service,
+                   const std::string& account,
+                   const std::string& secret,
+                   const std::string& preview,
+                   long long created_at,
+                   long long updated_at) = 0;
+  virtual void remove(const std::string& service, const std::string& account) = 0;
+};
+
+std::unique_ptr<SecretStore> make_default_secret_store(const std::filesystem::path& server_dir);
+
+} // namespace holder::privacy

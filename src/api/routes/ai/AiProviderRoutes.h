@@ -1,5 +1,6 @@
 #pragma once
 
+#include "privacy/SecretStore.h"
 #include "platform/Db.h"
 
 #include <boost/beast/http.hpp>
@@ -11,6 +12,7 @@ namespace holder::api::routes {
 bool handle_ai_provider_routes(const std::string& path,
                                const boost::beast::http::request<boost::beast::http::string_body>& req,
                                boost::beast::http::response<boost::beast::http::string_body>& res,
-                               holder::platform::Db& db);
+                               holder::platform::Db& db,
+                               holder::privacy::SecretStore& secret_store);
 
 } // namespace holder::api::routes

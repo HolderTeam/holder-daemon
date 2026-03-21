@@ -45,6 +45,7 @@ DispatchResult dispatch_ai_routes(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param) {
@@ -58,7 +59,7 @@ DispatchResult dispatch_ai_routes(
     return {.handled = false, .streamed = false};
   }
   if (ai_resource == "providers") {
-    if (handle_ai_provider_routes(path, req, res, db)) {
+    if (secret_store && handle_ai_provider_routes(path, req, res, db, *secret_store)) {
       return {.handled = true, .streamed = false};
     }
     return {.handled = false, .streamed = false};
@@ -71,7 +72,7 @@ DispatchResult dispatch_ai_routes(
   }
   if (ai_resource == "runs") {
     if (const auto route_result =
-            handle_ai_run_routes(path, req, res, socket, db, fts, runner, uuid_v4, param);
+            handle_ai_run_routes(path, req, res, socket, db, fts, secret_store, runner, uuid_v4, param);
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
     }

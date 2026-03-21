@@ -21,13 +21,14 @@ RouteDispatchResult handle_ai_run_routes(
     boost::asio::ip::tcp::socket& socket,
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
+    holder::privacy::SecretStore* secret_store,
     holder::llm::LocalModelRunner* runner,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param_get) {
   RouteDispatchResult out{};
 
   if (path == "/ai/runs" && req.method() == http::verb::post) {
-    return ai::runs::handle_ai_runs_post_route(req, res, socket, db, fts, runner, uuid_v4);
+    return ai::runs::handle_ai_runs_post_route(req, res, socket, db, fts, secret_store, runner, uuid_v4);
   }
 
   if (path == "/ai/runs" && req.method() == http::verb::get) {

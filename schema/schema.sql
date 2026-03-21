@@ -205,7 +205,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_router_config_project
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS ai_provider_credentials (
   provider   TEXT PRIMARY KEY,          -- provider key, e.g. chocolatefactory
-  api_key    TEXT NOT NULL,             -- stored locally for outbound REST calls
+  api_key_preview TEXT NOT NULL,        -- masked preview only; raw secret lives in SecretStore
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
