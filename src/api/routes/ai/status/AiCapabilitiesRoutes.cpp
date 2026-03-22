@@ -3,7 +3,7 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/LocalModelRouting.h"
 #include "api/support/Time.h"
-#include "ai/AiRouterConfigRepo.h"
+#include "ai/AiLocalModelConfigRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -29,51 +29,26 @@ bool handle_ai_capabilities_routes(const std::string& path,
   }
 
   nlohmann::json data;
-  const std::string project_id = param_get("project_id");
-  std::optional<holder::model::AiRouterConfig> global_router_cfg;
-  std::optional<holder::model::AiRouterConfig> project_router_cfg;
+  (void)param_get;
+  std::optional<holder::model::AiLocalModelConfig> local_model_cfg;
   try {
-    holder::ai::AiRouterConfigRepo router_cfg_repo(db);
-    global_router_cfg = router_cfg_repo.get_global();
-    project_router_cfg = project_id.empty() ? std::optional<holder::model::AiRouterConfig>{}
-                                            : router_cfg_repo.get_for_project(project_id);
+    holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
+    local_model_cfg = local_model_cfg_repo.get();
   } catch (const std::exception&) {
-    global_router_cfg.reset();
-    project_router_cfg.reset();
+    local_model_cfg.reset();
   }
-  data["router_config"] = {
-      {"global",
-       {
-           {"router_model", global_router_cfg.has_value() ? nlohmann::json(global_router_cfg->router_model)
-                                                          : nlohmann::json(nullptr)},
-           {"updated_at", global_router_cfg.has_value() ? nlohmann::json(global_router_cfg->updated_at)
-                                                        : nlohmann::json(nullptr)},
-       }},
-      {"project",
-       project_id.empty()
-           ? nlohmann::json(nullptr)
-           : nlohmann::json{
-                 {"project_id", project_id},
-                 {"router_model", project_router_cfg.has_value()
-                                      ? nlohmann::json(project_router_cfg->router_model)
-                                      : nlohmann::json(nullptr)},
-                 {"updated_at", project_router_cfg.has_value()
-                                    ? nlohmann::json(project_router_cfg->updated_at)
-                                    : nlohmann::json(nullptr)},
-             }},
-  };
-  std::string router_effective_scope = "auto";
-  nlohmann::json router_effective_model = nullptr;
-  if (project_router_cfg.has_value()) {
-    router_effective_scope = "project";
-    router_effective_model = project_router_cfg->router_model;
-  } else if (global_router_cfg.has_value()) {
-    router_effective_scope = "global";
-    router_effective_model = global_router_cfg->router_model;
-  }
-  data["router_config"]["effective"] = {
-      {"scope", router_effective_scope},
-      {"router_model", router_effective_model},
+  data["local_model_config"] = {
+      {"fast_model", local_model_cfg.has_value() && local_model_cfg->fast_model.has_value()
+                         ? nlohmann::json(local_model_cfg->fast_model.value())
+                         : nlohmann::json(nullptr)},
+      {"strong_model", local_model_cfg.has_value() && local_model_cfg->strong_model.has_value()
+                           ? nlohmann::json(local_model_cfg->strong_model.value())
+                           : nlohmann::json(nullptr)},
+      {"deep_model", local_model_cfg.has_value() && local_model_cfg->deep_model.has_value()
+                         ? nlohmann::json(local_model_cfg->deep_model.value())
+                         : nlohmann::json(nullptr)},
+      {"updated_at", local_model_cfg.has_value() ? nlohmann::json(local_model_cfg->updated_at)
+                                                 : nlohmann::json(nullptr)},
   };
   const auto machine_caste = support::detect_machine_caste();
   const auto model_meta = support::load_local_model_meta();

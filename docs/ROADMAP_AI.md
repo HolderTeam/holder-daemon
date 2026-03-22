@@ -20,17 +20,16 @@ Already in place:
   - `GET /ai/runs/{run_id}`
   - `GET /ai/runs/{run_id}/events`
 - Thread/message storage APIs (`/ai/threads`, `/ai/messages`)
-- Persisted router config:
-  - schema: `ai_router_config`
+- Persisted local model config:
+  - schema: `ai_local_model_config`
   - endpoints:
-    - `GET /ai/router/config`
-    - `PUT /ai/router/config`
-  - `/ai/runs` router precedence:
+    - `GET /ai/local-models/config`
+    - `PUT /ai/local-models/config`
+  - `/ai/runs` local precedence:
     1. forced request model
-    2. project router config
-    3. global router config
-    4. auto fallback
-- `/ai/capabilities` includes router config and effective scope/model
+    2. configured strong local model
+    3. router-driven auto fallback using configured fast local model when available
+- `/ai/capabilities` includes local model config
 - Operational status endpoint:
   - `GET /ai/status`
   - exposes live runtime state (runner health, active runs, active pulls)

@@ -1,5 +1,6 @@
 #include "ai/NudgeService.h"
 
+#include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiNudgeRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
@@ -449,6 +450,23 @@ std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
   if (runner_ == nullptr) return std::nullopt;
   const auto status = runner_->status();
   if (!status.available || status.models.empty()) return std::nullopt;
+
+  try {
+    holder::ai::AiLocalModelConfigRepo repo(db_);
+    const auto cfg = repo.get();
+    if (cfg.has_value() && cfg->fast_model.has_value() && !cfg->fast_model->empty()) {
+      const auto it = std::find_if(status.models.begin(),
+                                   status.models.end(),
+                                   [&](const holder::llm::LocalModel& model) {
+                                     return model.name == cfg->fast_model.value();
+                                   });
+      if (it != status.models.end()) {
+        return it->name;
+      }
+    }
+  } catch (const std::exception&) {
+    // Ignore config read failures and fall back to auto-pick.
+  }
 
   const holder::llm::LocalModel* best = nullptr;
   for (const auto& model : status.models) {

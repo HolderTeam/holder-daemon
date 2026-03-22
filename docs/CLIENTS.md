@@ -121,15 +121,15 @@ Notes:
 - On credential PUT, backend also enables that provider in settings.
 - Credential values are stored in DB (`ai_provider_credentials`), returned masked in read APIs.
 
-### Router config
+### Local model config
 
-- `GET /ai/router/config?project_id=...`
-- `PUT /ai/router/config` with:
-  - `scope`: `global` or `project`
-  - `project_id` (required for `scope=project`)
-  - `router_model` (optional; omit/null to clear)
+- `GET /ai/local-models/config`
+- `PUT /ai/local-models/config` with:
+  - `fast_model` (optional; omit/null to clear)
+  - `strong_model` (optional; omit/null to clear)
+  - `deep_model` (optional; omit/null to clear)
 
-Effective precedence is project override > global override > auto.
+Configured models are global. Fast is used for quick background local tasks, Strong for normal local replies, and Deep is reserved for slower higher-effort local work.
 
 ## 7) AI: Runs (Execution + History)
 

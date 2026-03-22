@@ -52,7 +52,7 @@ Inspect:
 - `data.caste`
 - `data.models` (installed)
 - `data.recommended_install` (good next pulls)
-- `data.router_config` (effective routing model source)
+- `data.local_model_config` (configured Fast/Strong/Deep local slots)
 
 For live runtime state (active runs/pulls), call:
 

@@ -31,7 +31,7 @@ add_executable(lockfile_tests
   AiThreadRoutes_test.cpp
   AiThreadCollectionRoutes_test.cpp
   AiThreadItemRoutes_test.cpp
-  HttpAiRouterConfig_test.cpp
+  HttpAiLocalModelConfig_test.cpp
   HttpAiProviderCatalog_test.cpp
   HttpAiProviderCredentials_test.cpp
   AiProviderRoutes_test.cpp
@@ -103,7 +103,7 @@ add_executable(lockfile_tests
   AiThreadRepo_test.cpp
   AiMessageRepo_test.cpp
   AiRunRepo_test.cpp
-  AiRouterConfigRepo_test.cpp
+  AiLocalModelConfigRepo_test.cpp
   AiProviderCredentialRepo_test.cpp
   SecretStore_test.cpp
   AiProviderSettingRepo_test.cpp
@@ -166,7 +166,7 @@ add_executable(lockfile_tests
   ../src/api/routes/ai/AiStatusRoutes.cpp
   ../src/api/routes/ai/status/AiCapabilitiesRoutes.cpp
   ../src/api/routes/ai/status/AiRuntimeStatusRoutes.cpp
-  ../src/api/routes/ai/status/AiRouterConfigRoutes.cpp
+  ../src/api/routes/ai/status/AiLocalModelConfigRoutes.cpp
   ../src/api/routes/ai/AiThreadRoutes.cpp
   ../src/api/routes/ai/threads/AiThreadCollectionRoutes.cpp
   ../src/api/routes/ai/threads/AiThreadItemRoutes.cpp
@@ -203,7 +203,7 @@ add_executable(lockfile_tests
   ../src/ai/AiThreadRepo.cpp
   ../src/ai/AiMessageRepo.cpp
   ../src/ai/AiRunRepo.cpp
-  ../src/ai/AiRouterConfigRepo.cpp
+  ../src/ai/AiLocalModelConfigRepo.cpp
   ../src/ai/AiProviderCredentialRepo.cpp
   ../src/ai/AiProviderSettingRepo.cpp
   ../src/project/Rebuilder.cpp

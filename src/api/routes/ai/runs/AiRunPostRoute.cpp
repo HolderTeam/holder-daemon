@@ -9,10 +9,10 @@
 #include "api/support/RunEventStore.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
+#include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
-#include "ai/AiRouterConfigRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiThreadRepo.h"
 
@@ -91,10 +91,33 @@ bool should_refresh_thread_title(const std::string& current_title, const std::st
   return !prompt_seed.empty() && normalized_title == prompt_seed;
 }
 
-std::optional<std::string> pick_local_title_model(holder::llm::LocalModelRunner* runner) {
+bool is_installed_model(const holder::llm::RunnerStatus& status, const std::string& name) {
+  return std::find_if(status.models.begin(),
+                      status.models.end(),
+                      [&](const holder::llm::LocalModel& model) { return model.name == name; }) !=
+         status.models.end();
+}
+
+std::optional<holder::model::AiLocalModelConfig> load_local_model_config(holder::platform::Db& db) {
+  try {
+    holder::ai::AiLocalModelConfigRepo repo(db);
+    return repo.get();
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
+std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
+                                                  holder::llm::LocalModelRunner* runner) {
   if (runner == nullptr) return std::nullopt;
   const auto status = runner->status();
   if (!status.available || status.models.empty()) return std::nullopt;
+
+  const auto cfg = load_local_model_config(db);
+  if (cfg.has_value() && cfg->fast_model.has_value() &&
+      is_installed_model(status, cfg->fast_model.value())) {
+    return cfg->fast_model.value();
+  }
 
   const holder::llm::LocalModel* best = nullptr;
   for (const auto& model : status.models) {
@@ -111,9 +134,10 @@ std::optional<std::string> pick_local_title_model(holder::llm::LocalModelRunner*
 }
 
 std::optional<std::string> generate_thread_title(holder::llm::LocalModelRunner* runner,
+                                                 holder::platform::Db& db,
                                                  const std::string& prompt,
                                                  const std::string& assistant_text) {
-  const auto model = pick_local_title_model(runner);
+  const auto model = pick_local_title_model(db, runner);
   if (!model.has_value()) return std::nullopt;
 
   std::ostringstream prompt_ss;
@@ -170,7 +194,7 @@ void maybe_update_thread_title(holder::platform::Db& db,
   if (!thread.has_value()) return;
   if (!should_refresh_thread_title(thread->title, prompt)) return;
 
-  const auto next_title = generate_thread_title(runner, prompt, assistant_text);
+  const auto next_title = generate_thread_title(runner, db, prompt, assistant_text);
   if (!next_title.has_value() || next_title.value() == thread->title) return;
   thread_repo.update_title(thread_id.value(), next_title.value(), updated_at);
 }
@@ -872,6 +896,7 @@ RouteDispatchResult execute_local_post_path(
   }
 
   const auto model_meta = support::load_local_model_meta();
+  const auto local_model_cfg = load_local_model_config(db);
   const bool forced_model_installed =
       forced_model.empty() || std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
   if (!forced_model_installed) {
@@ -891,6 +916,23 @@ RouteDispatchResult execute_local_post_path(
     if (!caste_candidates.empty()) {
       candidates = std::move(caste_candidates);
     }
+
+    auto keep_configured = [&](const std::optional<std::string>& configured_model) {
+      if (!configured_model.has_value() || configured_model->empty()) {
+        return;
+      }
+      if (!is_installed_model(runner_status, configured_model.value())) {
+        return;
+      }
+      if (std::find(candidates.begin(), candidates.end(), configured_model.value()) == candidates.end()) {
+        candidates.push_back(configured_model.value());
+      }
+    };
+    if (local_model_cfg.has_value()) {
+      keep_configured(local_model_cfg->fast_model);
+      keep_configured(local_model_cfg->strong_model);
+      keep_configured(local_model_cfg->deep_model);
+    }
   }
 
   if (!forced_model_installed) {
@@ -898,30 +940,22 @@ RouteDispatchResult execute_local_post_path(
   }
 
   std::string router_model;
-  if (forced_model.empty() && candidates.size() > 1) {
-    auto is_installed = [&](const std::string& name) {
-      return std::find_if(runner_status.models.begin(),
-                          runner_status.models.end(),
-                          [&](const holder::llm::LocalModel& model) { return model.name == name; }) !=
-             runner_status.models.end();
-    };
+  std::string configured_strong_model;
+  if (forced_model.empty() && local_model_cfg.has_value() && local_model_cfg->strong_model.has_value() &&
+      std::find(candidates.begin(), candidates.end(), local_model_cfg->strong_model.value()) !=
+          candidates.end()) {
+    configured_strong_model = local_model_cfg->strong_model.value();
+  }
 
-    try {
-      holder::ai::AiRouterConfigRepo router_cfg_repo(db);
-      if (project_id.has_value()) {
-        const auto cfg = router_cfg_repo.get_for_project(project_id.value());
-        if (cfg.has_value() && is_installed(cfg->router_model)) {
-          router_model = cfg->router_model;
-        }
-      }
-      if (router_model.empty()) {
-        const auto global_cfg = router_cfg_repo.get_global();
-        if (global_cfg.has_value() && is_installed(global_cfg->router_model)) {
-          router_model = global_cfg->router_model;
-        }
-      }
-    } catch (const std::exception&) {
-      // Router config storage unavailable; fallback to auto pick.
+  if (!configured_strong_model.empty()) {
+    candidates = {configured_strong_model};
+  }
+
+  if (forced_model.empty() && candidates.size() > 1) {
+    if (local_model_cfg.has_value() && local_model_cfg->fast_model.has_value() &&
+        std::find(candidates.begin(), candidates.end(), local_model_cfg->fast_model.value()) !=
+            candidates.end()) {
+      router_model = local_model_cfg->fast_model.value();
     }
 
     std::vector<holder::llm::LocalModel> candidate_models;
