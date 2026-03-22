@@ -6,7 +6,7 @@
 
 #include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
 #include "api/routes/ai/status/AiCapabilitiesRoutes.h"
-#include "ai/AiRouterConfigRepo.h"
+#include "ai/AiLocalModelConfigRepo.h"
 #include "http_test_helpers.h"
 #include "llm/LocalModelRunner.h"
 
@@ -121,22 +121,15 @@ TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be pre
   REQUIRE(payload["data"]["active_runs"] == 0);
 }
 
-TEST_CASE("AiCapabilitiesRoutes returns router config with project/global effective selection", "[http]") {
+TEST_CASE("AiCapabilitiesRoutes returns local model config", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-
-  holder::ai::AiRouterConfigRepo repo(db);
-  repo.set_global("global-router", 10);
-  repo.set_for_project("proj-1", "project-router", 20);
+  holder::ai::AiLocalModelConfigRepo repo(db);
+  repo.set(std::string("fast-model"), std::string("strong-model"), std::string("deep-model"), 20);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string& key) -> std::string {
-    if (key == "project_id") return "proj-1";
-    return {};
-  };
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
       "/ai/capabilities", req, res, db, nullptr, param_get));
@@ -144,28 +137,19 @@ TEST_CASE("AiCapabilitiesRoutes returns router config with project/global effect
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["router_config"]["global"]["router_model"] == "global-router");
-  REQUIRE(payload["data"]["router_config"]["project"]["project_id"] == "proj-1");
-  REQUIRE(payload["data"]["router_config"]["project"]["router_model"] == "project-router");
-  REQUIRE(payload["data"]["router_config"]["effective"]["scope"] == "project");
-  REQUIRE(payload["data"]["router_config"]["effective"]["router_model"] == "project-router");
+  REQUIRE(payload["data"]["local_model_config"]["fast_model"] == "fast-model");
+  REQUIRE(payload["data"]["local_model_config"]["strong_model"] == "strong-model");
+  REQUIRE(payload["data"]["local_model_config"]["deep_model"] == "deep-model");
+  REQUIRE(payload["data"]["local_model_config"]["updated_at"] == 20);
 }
 
-TEST_CASE("AiCapabilitiesRoutes falls back to global effective router when project override missing", "[http]") {
+TEST_CASE("AiCapabilitiesRoutes returns null local model config when unset", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-
-  holder::ai::AiRouterConfigRepo repo(db);
-  repo.set_global("global-router", 10);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string& key) -> std::string {
-    if (key == "project_id") return "proj-1";
-    return {};
-  };
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
       "/ai/capabilities", req, res, db, nullptr, param_get));
@@ -173,22 +157,19 @@ TEST_CASE("AiCapabilitiesRoutes falls back to global effective router when proje
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["router_config"]["project"]["router_model"].is_null());
-  REQUIRE(payload["data"]["router_config"]["effective"]["scope"] == "global");
-  REQUIRE(payload["data"]["router_config"]["effective"]["router_model"] == "global-router");
+  REQUIRE(payload["data"]["local_model_config"]["fast_model"].is_null());
+  REQUIRE(payload["data"]["local_model_config"]["strong_model"].is_null());
+  REQUIRE(payload["data"]["local_model_config"]["deep_model"].is_null());
 }
 
-TEST_CASE("AiCapabilitiesRoutes catches router config repo errors", "[http]") {
+TEST_CASE("AiCapabilitiesRoutes catches local model config repo errors", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  db.exec("DROP TABLE ai_router_config;");
+  db.exec("DROP TABLE ai_local_model_config;");
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string& key) -> std::string {
-    if (key == "project_id") return "proj-1";
-    return {};
-  };
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
       "/ai/capabilities", req, res, db, nullptr, param_get));
@@ -196,9 +177,9 @@ TEST_CASE("AiCapabilitiesRoutes catches router config repo errors", "[http]") {
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["router_config"]["global"]["router_model"].is_null());
-  REQUIRE(payload["data"]["router_config"]["project"]["router_model"].is_null());
-  REQUIRE(payload["data"]["router_config"]["effective"]["scope"] == "auto");
+  REQUIRE(payload["data"]["local_model_config"]["fast_model"].is_null());
+  REQUIRE(payload["data"]["local_model_config"]["strong_model"].is_null());
+  REQUIRE(payload["data"]["local_model_config"]["deep_model"].is_null());
 }
 
 TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]") {

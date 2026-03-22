@@ -69,9 +69,10 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   REQUIRE(caps["data"]["recommended_models"].is_array());
   REQUIRE(caps["data"]["recommended_install"].is_array());
   REQUIRE(caps["data"].contains("caste"));
-  REQUIRE(caps["data"].contains("router_config"));
-  REQUIRE(caps["data"]["router_config"].contains("effective"));
-  REQUIRE(caps["data"]["router_config"]["effective"]["scope"] == "auto");
+  REQUIRE(caps["data"].contains("local_model_config"));
+  REQUIRE(caps["data"]["local_model_config"]["fast_model"].is_null());
+  REQUIRE(caps["data"]["local_model_config"]["strong_model"].is_null());
+  REQUIRE(caps["data"]["local_model_config"]["deep_model"].is_null());
 
   const auto status = http_json_request(bound.bind,
                                         bound.port,

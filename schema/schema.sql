@@ -181,24 +181,15 @@ CREATE INDEX IF NOT EXISTS idx_ai_runs_thread_time
   ON ai_runs(thread_id, created_at);
 
 -- ----------------------------
--- AI router configuration (global + per-project)
+-- AI local model configuration (global)
 -- ----------------------------
-CREATE TABLE IF NOT EXISTS ai_router_config (
-  key          TEXT PRIMARY KEY,         -- 'global' | 'project:<project_id>'
-  scope        TEXT NOT NULL,            -- 'global' | 'project'
-  project_id   TEXT NULL,
-  router_model TEXT NOT NULL,
-  updated_at   INTEGER NOT NULL,
-
-  FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
-  CHECK(scope IN ('global', 'project'))
+CREATE TABLE IF NOT EXISTS ai_local_model_config (
+  key          TEXT PRIMARY KEY,         -- always 'global'
+  fast_model   TEXT NULL,
+  strong_model TEXT NULL,
+  deep_model   TEXT NULL,
+  updated_at   INTEGER NOT NULL
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_ai_router_config_scope_project
-  ON ai_router_config(scope, project_id);
-
-CREATE INDEX IF NOT EXISTS idx_ai_router_config_project
-  ON ai_router_config(project_id);
 
 -- ----------------------------
 -- Cloud provider credentials

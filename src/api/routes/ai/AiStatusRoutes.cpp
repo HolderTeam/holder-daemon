@@ -1,7 +1,7 @@
 #include "api/routes/ai/AiStatusRoutes.h"
 
 #include "api/routes/ai/status/AiCapabilitiesRoutes.h"
-#include "api/routes/ai/status/AiRouterConfigRoutes.h"
+#include "api/routes/ai/status/AiLocalModelConfigRoutes.h"
 #include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
 
 namespace holder::api::routes {
@@ -18,7 +18,7 @@ bool handle_ai_status_routes(const std::string& path,
   if (ai::status::handle_ai_runtime_status_routes(path, req, res, db, runner)) {
     return true;
   }
-  if (ai::status::handle_ai_router_config_routes(path, req, res, db, param_get)) {
+  if (ai::status::handle_ai_local_model_config_routes(path, req, res, db)) {
     return true;
   }
   return false;
