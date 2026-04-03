@@ -4,6 +4,8 @@
 
 This plan addresses the failure mode seen in Holder when the Linux frontend generates repeated Connections refresh requests and the daemon handles HTTP sessions one at a time.
 
+The top-level product rule is: handwritten user work comes first. If the system is under pressure, card editing and autosave must be protected ahead of Connections, nudges, AI status, and other secondary features.
+
 The work is split into three phases:
 
 1. Stop unnecessary frontend request bursts.
@@ -31,6 +33,7 @@ Current contributing causes:
 
 ## Goals
 
+- Protect the handwritten-work path above all other features.
 - Editing one card should not generate repeated duplicate Connections requests.
 - One slow request must not freeze unrelated requests.
 - Cheap routes such as health, status, and normal CRUD should remain responsive under load.
@@ -41,6 +44,36 @@ Current contributing causes:
 - Switching away from HTTP in phase 1.
 - Rewriting the entire daemon around a new transport.
 - Doing a single large concurrency rewrite in one step.
+
+## Priority Model
+
+Holder should treat request classes differently based on user value.
+
+### Foreground
+
+This lane protects current-user editing flow and durable handwritten work.
+
+- Editor-adjacent card loads needed to keep typing
+- Card writes and autosave
+- Project and card selection requests required to continue editing
+- Minimal health or status requests needed to keep the app usable
+
+### Background
+
+This lane is useful but must yield under pressure.
+
+- Connections graph and related metadata refreshes
+- Links and backlinks refreshes that are not required for editing
+- AI nudges
+- Background AI status polling
+- Toolbox refreshes and speculative prefetches
+
+### Design Rules
+
+- Foreground work must not sit behind background work.
+- Background work should debounce, coalesce, and cancel aggressively.
+- If capacity is constrained, background work should delay, degrade, or drop first.
+- It is better to miss a nudge or show stale connections than to risk losing user-written text.
 
 ## Phase 1: Frontend Burst Containment
 
@@ -65,6 +98,7 @@ Current contributing causes:
 - The main fix is to stop hidden or redundant graph refreshes.
 - Autosave behavior should remain functionally unchanged.
 - Single-flight plus debounce is the minimum acceptable behavior for this phase.
+- While the user is actively editing, the frontend should avoid generating low-value background traffic wherever practical.
 
 ## Phase 2: Safe Backend Concurrency
 
@@ -76,6 +110,8 @@ Current contributing causes:
 - [ ] Make DB usage safe before enabling multiple concurrent request workers.
 - [ ] Add concurrency limits or queues for expensive work if needed.
 - [ ] Preserve existing route behavior while removing the single-request bottleneck.
+- [ ] Introduce at least two execution lanes: foreground for card editing/autosave paths, background for best-effort work.
+- [ ] Ensure foreground write paths are not queued behind nudge, Connections, or other background work.
 
 ### DB Safety Requirements
 
@@ -103,6 +139,7 @@ Candidate strategies:
 - This phase is about safe concurrency, not about becoming fully async.
 - A worker pool is an interim containment step.
 - The point of this phase is that one slow request no longer freezes all request handling.
+- This phase should already encode product priority, not just raw concurrency.
 
 ## Phase 3: Real Async Architecture
 
@@ -114,12 +151,14 @@ Candidate strategies:
 - [ ] Add backpressure so expensive work cannot starve cheap routes.
 - [ ] Add cancellation or supersession behavior for stale UI-driven work where appropriate.
 - [ ] Keep route semantics stable unless a deliberate API change is approved.
+- [ ] Preserve an explicit foreground lane for handwritten-work protection even after the deeper async refactor.
 
 ### Executor Targets
 
 - [ ] DB executor
 - [ ] Git/filesystem executor
 - [ ] AI/nudge executor
+- [ ] Foreground request executor or reserved capacity for card read/write paths
 
 ### Notes
 
@@ -135,6 +174,7 @@ Candidate strategies:
 - [ ] Verify selection churn does not duplicate refreshes for the same effective target.
 - [ ] Verify only one graph refresh is in flight at a time.
 - [ ] Verify stale results are ignored cleanly.
+- [ ] Verify active editing suppresses or coalesces non-essential background traffic where intended.
 
 ### Backend
 
@@ -142,15 +182,19 @@ Candidate strategies:
 - [ ] Verify cheap routes still complete while a slow route is running.
 - [ ] Verify DB behavior is correct under concurrent request load with the chosen DB strategy.
 - [ ] Verify card, nudge, and AI routes do not regress.
+- [ ] Verify autosave is not blocked behind background work under load.
+- [ ] Verify background work can degrade or queue without affecting foreground save paths.
 
 ### Integration
 
 - [ ] Reproduce repeated Connections refresh triggers while editing one card and confirm request volume stays bounded.
 - [ ] Verify autosave still succeeds under moderate concurrent read load.
 - [ ] Reproduce the prior timeout pattern and confirm cheap routes no longer get trapped behind one slow request.
+- [ ] Reproduce background load while typing and confirm handwritten work still saves reliably.
 
 ## Success Criteria
 
+- [ ] The handwritten-work path remains responsive and durable under background load.
 - [ ] Editing a card no longer causes repeated duplicate `/links` and `/backlinks` bursts for the same card.
 - [ ] The daemon remains responsive to unrelated requests while one request is slow.
 - [ ] Slow nudge, AI, or git work no longer freezes normal card CRUD and status routes.
@@ -167,3 +211,5 @@ Candidate strategies:
 - Transport remains HTTP for the initial fix.
 - Frontend request burst containment is required even if the backend becomes concurrent.
 - Backend concurrency must not be enabled by simply sharing the current DB handle across threads.
+- Handwritten user work is the highest-priority path and must be protected ahead of background features.
+- The architecture should model at least two classes of work: foreground and background.
