@@ -6,6 +6,10 @@ This plan addresses the failure mode seen in Holder when the Linux frontend gene
 
 The top-level product rule is: handwritten user work comes first. If the system is under pressure, card editing and autosave must be protected ahead of Connections, nudges, AI status, and other secondary features.
 
+In particular, card save capacity must be reserved. Best-effort work must never be able to consume all execution capacity while user-written text is waiting to be persisted.
+
+If the backend dies or the system becomes unstable, the frontend should still preserve unsaved handwritten work through a local crash-recovery draft path.
+
 The work is split into three phases:
 
 1. Stop unnecessary frontend request bursts.
@@ -34,6 +38,8 @@ Current contributing causes:
 ## Goals
 
 - Protect the handwritten-work path above all other features.
+- Protect card saves as the single most important execution path in the system.
+- Preserve unsaved handwritten work even if the backend is unavailable or crashes.
 - Editing one card should not generate repeated duplicate Connections requests.
 - One slow request must not freeze unrelated requests.
 - Cheap routes such as health, status, and normal CRUD should remain responsive under load.
@@ -71,9 +77,46 @@ This lane is useful but must yield under pressure.
 ### Design Rules
 
 - Foreground work must not sit behind background work.
+- Card writes must have reserved capacity and must not be starved even by other foreground tasks.
 - Background work should debounce, coalesce, and cancel aggressively.
 - If capacity is constrained, background work should delay, degrade, or drop first.
 - It is better to miss a nudge or show stale connections than to risk losing user-written text.
+- If backend persistence is unavailable, the frontend must still preserve unsaved handwritten work locally.
+
+## Crash Recovery Model
+
+The frontend should own a local recovery-draft mechanism that does not depend on the daemon being healthy.
+
+### Recovery Rules
+
+- Dirty editor state is tracked locally as soon as the user types.
+- Failed backend saves must not clear dirty state.
+- When save attempts fail or the backend becomes unavailable, the frontend should write or update a local recovery draft.
+- Recovery drafts should be removed only after a confirmed successful save makes them unnecessary.
+- On next launch, the app should detect recovery drafts and offer restore when they contain newer or unsaved handwritten work.
+
+### Recovery Draft Requirements
+
+- [ ] One recovery draft per dirty card
+- [ ] Atomic write behavior
+- [ ] Enough metadata to match and restore safely
+- [ ] Separate storage path from normal project persistence
+- [ ] Safe cleanup only after confirmed durable save
+
+Suggested metadata:
+
+- `project_id`
+- `card_id`
+- title
+- body
+- timestamp
+- last known saved fingerprint or revision marker
+
+### Notes
+
+- This is not a replacement for normal saves.
+- This is the last-resort protection path when the daemon or system is unhealthy.
+- Recovery drafts should be frontend-owned because the backend may be the failing component.
 
 ## Phase 1: Frontend Burst Containment
 
@@ -99,6 +142,8 @@ This lane is useful but must yield under pressure.
 - Autosave behavior should remain functionally unchanged.
 - Single-flight plus debounce is the minimum acceptable behavior for this phase.
 - While the user is actively editing, the frontend should avoid generating low-value background traffic wherever practical.
+- Frontend state should continue to track card dirtiness independently from background feature success or failure.
+- Recovery drafts are not the main deliverable of phase 1, but phase 1 should not make later recovery integration harder.
 
 ## Phase 2: Safe Backend Concurrency
 
@@ -112,6 +157,9 @@ This lane is useful but must yield under pressure.
 - [ ] Preserve existing route behavior while removing the single-request bottleneck.
 - [ ] Introduce at least two execution lanes: foreground for card editing/autosave paths, background for best-effort work.
 - [ ] Ensure foreground write paths are not queued behind nudge, Connections, or other background work.
+- [ ] Reserve execution capacity specifically for card save operations.
+- [ ] Introduce retry behavior and failure handling for save operations that preserves dirty state until save confirmation.
+- [ ] Define how backend save confirmation interacts with frontend recovery-draft cleanup.
 
 ### DB Safety Requirements
 
@@ -140,6 +188,7 @@ Candidate strategies:
 - A worker pool is an interim containment step.
 - The point of this phase is that one slow request no longer freezes all request handling.
 - This phase should already encode product priority, not just raw concurrency.
+- Save-path protection is a product invariant, not an optimization.
 
 ## Phase 3: Real Async Architecture
 
@@ -152,6 +201,8 @@ Candidate strategies:
 - [ ] Add cancellation or supersession behavior for stale UI-driven work where appropriate.
 - [ ] Keep route semantics stable unless a deliberate API change is approved.
 - [ ] Preserve an explicit foreground lane for handwritten-work protection even after the deeper async refactor.
+- [ ] Preserve dedicated save-path capacity even after the deeper async refactor.
+- [ ] Add a full frontend crash-recovery flow for unsaved handwritten work.
 
 ### Executor Targets
 
@@ -159,6 +210,7 @@ Candidate strategies:
 - [ ] Git/filesystem executor
 - [ ] AI/nudge executor
 - [ ] Foreground request executor or reserved capacity for card read/write paths
+- [ ] Dedicated save queue or executor, or an equivalent reserved-capacity mechanism for card writes
 
 ### Notes
 
@@ -175,6 +227,11 @@ Candidate strategies:
 - [ ] Verify only one graph refresh is in flight at a time.
 - [ ] Verify stale results are ignored cleanly.
 - [ ] Verify active editing suppresses or coalesces non-essential background traffic where intended.
+- [ ] Verify dirty state remains accurate even when background requests fail.
+- [ ] Verify failed saves leave the card marked unsaved until confirmation of a later successful save.
+- [ ] Verify recovery drafts are written when backend saves fail.
+- [ ] Verify recovery drafts survive app restart and can be restored.
+- [ ] Verify confirmed successful saves clean up obsolete recovery drafts safely.
 
 ### Backend
 
@@ -184,6 +241,8 @@ Candidate strategies:
 - [ ] Verify card, nudge, and AI routes do not regress.
 - [ ] Verify autosave is not blocked behind background work under load.
 - [ ] Verify background work can degrade or queue without affecting foreground save paths.
+- [ ] Verify reserved save capacity still allows card writes when background capacity is saturated.
+- [ ] Verify save retries do not lose or incorrectly clear pending handwritten changes.
 
 ### Integration
 
@@ -191,10 +250,14 @@ Candidate strategies:
 - [ ] Verify autosave still succeeds under moderate concurrent read load.
 - [ ] Reproduce the prior timeout pattern and confirm cheap routes no longer get trapped behind one slow request.
 - [ ] Reproduce background load while typing and confirm handwritten work still saves reliably.
+- [ ] Simulate backend death during editing and confirm the frontend preserves recoverable handwritten work.
+- [ ] Simulate app restart after failed saves and confirm recovery detection offers restore.
 
 ## Success Criteria
 
 - [ ] The handwritten-work path remains responsive and durable under background load.
+- [ ] Card saves retain reserved execution capacity under system pressure.
+- [ ] Unsaved handwritten work remains recoverable even if the backend crashes or is unavailable.
 - [ ] Editing a card no longer causes repeated duplicate `/links` and `/backlinks` bursts for the same card.
 - [ ] The daemon remains responsive to unrelated requests while one request is slow.
 - [ ] Slow nudge, AI, or git work no longer freezes normal card CRUD and status routes.
@@ -213,3 +276,5 @@ Candidate strategies:
 - Backend concurrency must not be enabled by simply sharing the current DB handle across threads.
 - Handwritten user work is the highest-priority path and must be protected ahead of background features.
 - The architecture should model at least two classes of work: foreground and background.
+- Card save operations are the most important execution path and should have reserved capacity by design.
+- The frontend must provide a local recovery path for unsaved handwritten work when backend persistence is unavailable.
