@@ -21,6 +21,7 @@ Top-level product rule:
 
 - handwritten user work comes first
 - card save capacity must be reserved
+- card writes jump the queue over every other class of work
 - background AI/runtime work must yield before save/load paths
 - if the backend is unavailable, the frontend must still preserve unsaved handwritten work locally
 
@@ -66,12 +67,31 @@ Consequence:
 
 ## Product Priority Model
 
+Think of Holder as a three-lane road, not one shared queue.
+
+- save lane: highest priority, reserved capacity, card writes jump ahead of all other queued work
+- foreground lane: user-visible editing flow needed to keep working
+- background lane: best-effort work that must yield first under pressure
+
+### Save Lane
+
+This is the fast lane for durable handwritten work.
+
+- card writes
+- autosave commits
+- any write-confirmation path needed to clear dirty state safely
+
+Rules:
+
+- save work jumps the queue ahead of foreground and background work
+- save capacity is reserved and cannot be consumed by any other lane
+- save work should use short transactions and do blocking non-DB work outside the transaction where possible
+
 ### Foreground
 
 This lane protects current-user editing flow and durable handwritten work.
 
 - editor-adjacent card loads needed to keep typing
-- card writes and autosave
 - project and card selection requests required to continue editing
 - minimal status/health requests needed to keep the app usable
 
@@ -90,11 +110,13 @@ This lane is useful but must yield under pressure.
 
 ### Design Rules
 
+- save work must not sit behind foreground or background work
 - foreground work must not sit behind background work
 - card writes must have reserved capacity and must not be starved even by other foreground work
 - more configured runners must not linearly consume all request-worker capacity
 - background work should debounce, coalesce, cancel, queue, degrade, or drop before foreground work is affected
 - it is better to miss a nudge or show stale runner/connections status than to risk losing handwritten text
+- OS niceness is not the mechanism here; priority must be enforced in the daemon scheduler and queueing model
 
 ## Architecture Direction
 
@@ -129,8 +151,8 @@ Before deeper async work:
 
 - stop running accepted sessions inline on the listener loop
 - introduce bounded request execution
-- make DB usage safe for concurrent request handling
-- keep save-path protection explicit
+- make DB usage safe for concurrent request handling using one SQLite connection per worker thread
+- keep save-lane protection explicit
 - keep AI runtime operations behind bounded execution lanes rather than detached-thread sprawl
 
 ### 4. Deeper Async End State
@@ -139,7 +161,7 @@ The eventual shape is:
 
 - async network I/O
 - bounded executors for blocking subsystems
-- explicit foreground/background isolation
+- explicit save/foreground/background isolation
 - dedicated save-path capacity
 - AI runtime operations scheduled through explicit executors, not ambient threads
 
@@ -179,6 +201,30 @@ API direction:
 - add explicit runner CRUD and retry routes
 - preserve singular compatibility fields only as a transition aid, not as the long-term model
 
+## DB Strategy
+
+Chosen strategy for this plan:
+
+- one SQLite connection per worker thread
+
+Why this is the default choice:
+
+- it removes the current unsafe shared-handle assumption
+- it keeps connection ownership simple and predictable
+- it works naturally with SQLite WAL mode for concurrent reads plus serialized writes
+- it avoids the extra churn of opening a fresh connection for every request
+- it avoids turning the DB into a new artificial single-lane bottleneck
+
+Rules for this strategy:
+
+- never share a SQLite connection across worker threads
+- each request worker owns one long-lived connection to the same DB file
+- keep `WAL`, `foreign_keys`, and `synchronous = NORMAL`
+- add a reasonable `busy_timeout`
+- keep transactions short
+- keep non-DB blocking work outside write transactions
+- writes still serialize at SQLite level, so app-level queue priority must ensure saves reach the write lock ahead of low-value work
+
 ## Single TODO List
 
 ### Phase 1: Frontend Burst Containment
@@ -217,13 +263,13 @@ API direction:
 - [ ] Introduce a small bounded worker pool for request/session execution
 - [ ] Keep the listener thread lightweight: accept, dispatch, continue accepting
 - [ ] Make DB usage safe before enabling concurrent request workers
-- [ ] Choose and document the DB strategy:
-- [ ] one DB connection per worker thread, or
-- [ ] one DB connection per request/session, or
-- [ ] dedicated serialized DB executor
-- [ ] Introduce foreground/background execution lanes
-- [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
+- [ ] Implement one SQLite connection per worker thread
+- [ ] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
+- [ ] Introduce explicit save, foreground, and background execution lanes
+- [ ] Route card writes through a dedicated highest-priority save queue
 - [ ] Reserve execution capacity specifically for card save operations
+- [ ] Ensure save work jumps queued foreground/background work at dispatch time
+- [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
 
 ### Phase 5: API And Frontend Migration
 
@@ -258,6 +304,7 @@ API direction:
 - [ ] Add backpressure so expensive work cannot starve cheap routes
 - [ ] Add cancellation or supersession for stale UI-driven background work where appropriate
 - [ ] Keep route semantics stable unless a deliberate API change is approved
+- [ ] Preserve the three-lane scheduler model in the deeper async architecture
 - [ ] Keep explicit foreground/save protection after the deeper refactor
 
 ### Phase 8: Cleanup
@@ -283,10 +330,11 @@ API direction:
 
 - [ ] Verify the listener continues accepting requests while one request is slow
 - [ ] Verify cheap routes still complete while a slow route is running
-- [ ] Verify DB behavior is correct under concurrent request load with the chosen DB strategy
+- [ ] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
 - [ ] Verify card, nudge, and AI routes do not regress
 - [ ] Verify autosave is not blocked behind background work under load
 - [ ] Verify reserved save capacity still allows card writes when background capacity is saturated
+- [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
 - [ ] Verify multi-runner status aggregation and runner CRUD
 - [ ] Verify migration from plain model names to runner-qualified refs
 - [ ] Verify AI run routing goes to the selected runner
@@ -324,6 +372,7 @@ This order preserves the most important product invariant first:
 
 - handwritten work remains responsive and durable under background load
 - card saves retain reserved execution capacity under system pressure
+- card writes jump the queue ahead of non-save work
 - unsaved handwritten work remains recoverable if the backend crashes or is unavailable
 - editing a card no longer causes repeated duplicate `/links` and `/backlinks` bursts
 - the daemon remains responsive to unrelated requests while one request is slow
