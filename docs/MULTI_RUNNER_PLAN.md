@@ -35,6 +35,7 @@ This is a cross-cutting feature. It touches:
 - Full runner authentication or TLS management.
 - Cross-device synchronization of runner settings.
 - Reworking cloud-provider routing in the same tranche.
+- Reworking the daemon transport or request scheduler in the same tranche.
 
 ## Current State
 
@@ -257,6 +258,29 @@ Important rule:
 - do not special-case the local runner throughout the whole system forever
 - special handling should mostly be limited to creation and default labeling
 
+## Interaction With Async Work
+
+This plan should not fight the async/concurrency work tracked in `docs/ASYNC_PLAN.md`.
+
+- This plan generalizes runner topology and model routing.
+- The async plan defines execution priority, bounded concurrency, backpressure, and save-path protection.
+- Multi-runner work must fit inside those execution rules rather than inventing a separate AI-specific scheduling model.
+
+Required constraints:
+
+- The runner registry and per-runner clients must be safe to call from whatever bounded worker/executor model the async work introduces.
+- Runner probes, model-list refreshes, status polling, and pull jobs are background work by default.
+- Nudge and AI-assistant execution are also background relative to card editing and autosave unless a route is explicitly promoted for product reasons.
+- More configured runners must not linearly consume all request-worker capacity or save-path reserved capacity.
+- Any replacement for `LocalModelRunner` should avoid detached-thread sprawl and should be able to move under explicit executors later.
+
+Recommended sequencing:
+
+1. Define runner IDs, model refs, and persistence format.
+2. Introduce a runner registry/manager abstraction.
+3. Make async Phase 2 depend on that abstraction rather than on a single concrete runner pointer where practical.
+4. Keep the foreground/save-priority rules from `ASYNC_PLAN.md` authoritative for all AI routes.
+
 ## Backend Architecture Direction
 
 ### Generalization
@@ -287,6 +311,7 @@ That should be split conceptually into:
   - list active runner clients
   - resolve `runner_id`
   - refresh or retry a runner
+  - expose operations in a way that can later be scheduled on bounded executors
 
 - `RunnerRepo`
   - persist manual runners
@@ -302,6 +327,7 @@ That means:
 - pull job IDs should include runner ownership logically
 - status APIs should expose which runner owns each pull
 - UI should display that association
+- pull execution should remain bounded background work and must not compete with reserved save capacity
 
 ## AI Run Routing
 
@@ -326,6 +352,12 @@ That implies:
 - any runner pull/install paths
 
 all need to resolve a runner-qualified model reference, not just a flat model string.
+
+Routing must also preserve async-plan priority:
+
+- Card save/load flows remain foreground.
+- AI runs, nudges, probes, and pull/install operations remain background unless explicitly elevated.
+- Aggregate AI status endpoints should degrade before handwritten-work paths under pressure.
 
 ## Discovery
 
@@ -373,6 +405,7 @@ Recommended compatibility approach:
 - [ ] Build a runner registry or manager that exposes multiple runners
 - [ ] Generalize current `LocalModelRunner` behavior into per-runner client logic
 - [ ] Make status probing runner-specific
+- [ ] Keep registry/client APIs compatible with future bounded executors rather than detached-thread-only behavior
 
 ## Phase 3: API Evolution
 
@@ -399,6 +432,7 @@ Recommended compatibility approach:
 - [ ] Update title generation paths
 - [ ] Update nudge paths that rely on local models
 - [ ] Make pull jobs runner-aware
+- [ ] Preserve the async plan's foreground/background priority model and save-path reserved capacity while routing AI work
 
 ## Phase 6: Migration And Cleanup
 
@@ -417,6 +451,7 @@ Recommended compatibility approach:
 - [ ] Add tests for runner-qualified model config persistence
 - [ ] Add tests for AI run routing to the selected runner
 - [ ] Add tests for migration from plain model names to runner-qualified refs
+- [ ] Add tests that multiple configured runners do not block card save paths or consume reserved save capacity under load
 
 ### Frontend
 

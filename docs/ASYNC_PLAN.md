@@ -18,6 +18,28 @@ The work is split into three phases:
 
 For now, transport stays as HTTP. Unix sockets, WebSockets, or other transport changes are not part of the first implementation tranche.
 
+## Interaction With Multi-Runner Work
+
+The async and multi-runner plans should be treated as compatible tracks.
+
+- Multi-runner changes the AI runtime data model, routing, and API payloads.
+- This plan changes request execution, prioritization, and isolation under load.
+- Multi-runner does not require a different transport or a different overall concurrency strategy.
+
+Constraints for implementation:
+
+- Phase 2 should avoid baking the current single `LocalModelRunner*` shape deeper into listener, session, or route-worker APIs.
+- Any new worker-pool or executor boundary should accept a higher-level AI runtime abstraction so the later runner-registry work does not require another transport-layer rewrite.
+- Multi-runner AI work must still respect this plan's foreground/background priority model.
+- Runner probes, model inventory refreshes, pull jobs, nudges, and other AI background work should be deprioritized before card load/save paths under pressure.
+- Adding more runners must not consume save-path reserved capacity.
+
+Recommended sequencing:
+
+1. Frontend burst containment can proceed independently.
+2. Multi-runner data-model and registry work can proceed independently if it does not assume a single inline request lane forever.
+3. Safe backend concurrency should be implemented against abstractions that can later host many runners, not just one concrete runner instance.
+
 ## Incident Summary
 
 Observed behavior:
@@ -189,6 +211,7 @@ Candidate strategies:
 - The point of this phase is that one slow request no longer freezes all request handling.
 - This phase should already encode product priority, not just raw concurrency.
 - Save-path protection is a product invariant, not an optimization.
+- If AI runtime plumbing is generalized during nearby multi-runner work, this phase should depend on that abstraction rather than hard-coding `LocalModelRunner` deeper into the transport path.
 
 ## Phase 3: Real Async Architecture
 
@@ -209,6 +232,7 @@ Candidate strategies:
 - [ ] DB executor
 - [ ] Git/filesystem executor
 - [ ] AI/nudge executor
+- [ ] Runner-registry and per-runner probe/pull execution should live behind AI executors or equivalent bounded runtime lanes rather than ad hoc detached threads
 - [ ] Foreground request executor or reserved capacity for card read/write paths
 - [ ] Dedicated save queue or executor, or an equivalent reserved-capacity mechanism for card writes
 
