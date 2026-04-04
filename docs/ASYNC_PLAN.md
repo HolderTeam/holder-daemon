@@ -170,6 +170,18 @@ Worker classes:
 - `save_reserved_worker_count`: at least 1 worker slot reserved for `save_queue`
 - `general_worker_count`: remaining worker slots that primarily serve `foreground_queue` and then `background_queue`
 
+Recommended initial counts:
+
+- `save_reserved_worker_count = 1`
+- `general_worker_count = 3`
+
+Rationale:
+
+- one reserved save worker is enough to guarantee save-lane admission without overcommitting the process to write-heavy capacity that SQLite cannot use concurrently anyway
+- three general workers are enough to break the current single-request bottleneck while keeping the first concurrency step small and debuggable
+- this gives an initial total of four request workers, which is a pragmatic default for a local desktop daemon
+- tune later from measurements, but do not reduce reserved save capacity to zero
+
 Dispatch rules:
 
 - `save_queue` is always checked first
@@ -191,6 +203,50 @@ AI runtime rules:
 - runner probes, model refreshes, pull jobs, nudges, and normal AI runs enter `background_queue` by default
 - future exceptions that promote an AI route above background must be explicit and justified in docs and code
 - adding more runners must not increase `save_reserved_worker_count` pressure or reduce save-lane guarantees
+
+### 3.2 Initial Route To Lane Mapping
+
+The first implementation should classify routes and work items like this.
+
+`save_queue`
+
+- `PATCH /cards/{card_id}`
+- any future explicit autosave/write-confirmation path
+- any future recovery-draft cleanup step that must run immediately after confirmed durable save
+
+`foreground_queue`
+
+- `GET /cards/{card_id}`
+- `GET /cards?project_id=...`
+- `GET /cards/context`
+- `GET /projects`
+- `GET /projects/{project_id}`
+- minimal `GET /health` and minimal app-usable status checks
+- any project/card selection path whose result is required to continue editing
+
+`background_queue`
+
+- `GET /cards/{card_id}/links`
+- `GET /cards/{card_id}/backlinks`
+- Connections graph refresh work
+- `/ai/status` polling beyond minimal app-usable status
+- `POST /ai/runner/retry`
+- `POST /ai/runner/pull`
+- `GET /ai/runner/pull/{job_id}`
+- `GET /ai/runner/pull/{job_id}/events`
+- future `/ai/runners` probe/refresh work
+- `POST /ai/runs`
+- `GET /ai/runs`
+- `GET /ai/runs/{run_id}`
+- `GET /ai/runs/{run_id}/events`
+- nudge generation and related AI background work
+
+Classification notes:
+
+- some routes may perform mixed work; classify them by the user-criticality of the request, not by the most expensive internal substep
+- `GET /ai/status` may expose both minimal foreground-safe status and richer background runner/pull detail, but the richer polling behavior should still be treated as background
+- if a route starts foreground and then spawns follow-up refreshes, those follow-up refreshes should enter `background_queue`
+- git, indexing, and AI side work triggered from foreground flows should avoid holding up the foreground response unless they are strictly required for correctness
 
 ### 4. Deeper Async End State
 
@@ -312,7 +368,8 @@ Recommended implementation details:
 - [ ] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
 - [ ] Introduce explicit save, foreground, and background execution lanes
 - [ ] Define concrete queue names and admission rules in code comments/docs to match this plan
-- [ ] Choose initial worker counts for `save_reserved_worker_count` and `general_worker_count`
+- [ ] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
+- [ ] Add route-to-lane mapping in code comments/docs to match this plan
 - [ ] Route card writes through a dedicated highest-priority save queue
 - [ ] Reserve execution capacity specifically for card save operations
 - [ ] Ensure save work jumps queued foreground/background work at dispatch time
