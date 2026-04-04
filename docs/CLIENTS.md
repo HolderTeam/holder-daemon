@@ -5,8 +5,7 @@ This document reflects the current `holder-daemon` backend behavior and route su
 Planning note:
 
 - This is a current-behavior document, not the forward plan.
-- Upcoming runner-topology changes are tracked in `docs/MULTI_RUNNER_PLAN.md`.
-- Upcoming request-priority and backend concurrency changes are tracked in `docs/ASYNC_PLAN.md`.
+- Upcoming execution-priority, concurrency, recovery, and multi-runner changes are tracked in `docs/ASYNC_PLAN.md`.
 - Where this document describes singular local-runner fields, treat them as current compatibility behavior rather than a permanent API design guarantee.
 
 ## 1) Discover Running Daemon + Token

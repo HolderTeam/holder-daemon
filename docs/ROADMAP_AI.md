@@ -6,9 +6,8 @@ Guiding rule: do not duplicate existing APIs that already solve the problem.
 
 Planning note:
 
-- Runner-topology generalization is tracked in `docs/MULTI_RUNNER_PLAN.md`.
-- Request prioritization, save-path protection, and backend concurrency changes are tracked in `docs/ASYNC_PLAN.md`.
-- This roadmap should be read as additive to those two plans, not as a competing source of truth for runner execution architecture.
+- The merged execution plus runner plan is tracked in `docs/ASYNC_PLAN.md`.
+- This roadmap should be read as additive to that plan, not as a competing source of truth for runner execution architecture.
 
 ## Current Baseline
 
