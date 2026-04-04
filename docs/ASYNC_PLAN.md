@@ -155,6 +155,43 @@ Before deeper async work:
 - keep save-lane protection explicit
 - keep AI runtime operations behind bounded execution lanes rather than detached-thread sprawl
 
+### 3.1 Dispatch Contract
+
+The interim worker-pool design should follow an explicit dispatch contract rather than ad hoc prioritization.
+
+Queues:
+
+- `save_queue`: card writes and autosave only
+- `foreground_queue`: editor-adjacent card loads, project/card selection, minimal health/status needed to keep the app usable
+- `background_queue`: Connections refreshes, links/backlinks refreshes, nudges, AI runs, runner probes, runner pulls, AI status polling, speculative refreshes
+
+Worker classes:
+
+- `save_reserved_worker_count`: at least 1 worker slot reserved for `save_queue`
+- `general_worker_count`: remaining worker slots that primarily serve `foreground_queue` and then `background_queue`
+
+Dispatch rules:
+
+- `save_queue` is always checked first
+- reserved save workers only consume `save_queue`
+- general workers prefer `save_queue`, then `foreground_queue`, then `background_queue`
+- background work must never run on reserved save workers
+- if `save_queue` is non-empty, queued save work jumps ahead of queued foreground/background work
+- foreground work must never be dispatched behind queued background work when a general worker becomes available
+
+Admission and degradation rules:
+
+- background work may be delayed, coalesced, canceled, or dropped under pressure
+- foreground work may queue briefly but should not be dropped silently
+- save work should not be dropped; it should either run, retry under explicit policy, or fail visibly while dirty state remains preserved
+- duplicate background refreshes for the same effective target should be coalesced before entering the queue where possible
+
+AI runtime rules:
+
+- runner probes, model refreshes, pull jobs, nudges, and normal AI runs enter `background_queue` by default
+- future exceptions that promote an AI route above background must be explicit and justified in docs and code
+- adding more runners must not increase `save_reserved_worker_count` pressure or reduce save-lane guarantees
+
 ### 4. Deeper Async End State
 
 The eventual shape is:
@@ -225,6 +262,14 @@ Rules for this strategy:
 - keep non-DB blocking work outside write transactions
 - writes still serialize at SQLite level, so app-level queue priority must ensure saves reach the write lock ahead of low-value work
 
+Recommended implementation details:
+
+- open and initialize each worker-owned connection at worker startup, not lazily per request
+- use the same per-connection PRAGMA setup on every worker-owned handle
+- keep prepared-statement lifetime confined to the owning worker thread
+- if a request needs to hop executors later, it must not carry SQLite statements or connection-owned objects across threads
+- save-lane requests should acquire the write transaction as late as possible and release it as early as possible
+
 ## Single TODO List
 
 ### Phase 1: Frontend Burst Containment
@@ -266,6 +311,8 @@ Rules for this strategy:
 - [ ] Implement one SQLite connection per worker thread
 - [ ] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
 - [ ] Introduce explicit save, foreground, and background execution lanes
+- [ ] Define concrete queue names and admission rules in code comments/docs to match this plan
+- [ ] Choose initial worker counts for `save_reserved_worker_count` and `general_worker_count`
 - [ ] Route card writes through a dedicated highest-priority save queue
 - [ ] Reserve execution capacity specifically for card save operations
 - [ ] Ensure save work jumps queued foreground/background work at dispatch time
