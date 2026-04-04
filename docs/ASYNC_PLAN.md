@@ -128,6 +128,7 @@ The Linux frontend should:
 - keep dirty state independent from background feature success or failure
 - preserve failed-save state until save confirmation
 - write local recovery drafts when backend saves fail or the backend becomes unavailable
+- keep GTK views focused on widget construction, rendering, and event wiring; move testable feature logic into controllers and other non-view files where practical
 
 ### 2. AI Runtime Generalization
 
@@ -330,11 +331,11 @@ Recommended implementation details:
 
 ### Phase 1: Frontend Burst Containment
 
-- [ ] Refresh Connections data only when the Connections tool is visible
-- [ ] Debounce Connections graph refresh scheduling
-- [ ] Enforce single-flight graph refresh for the active selection
-- [ ] Drop stale graph refresh results when project/card/generation changes
-- [ ] Suppress duplicate refresh triggers for the same effective target
+- [✅] Refresh Connections data only when the Connections tool is visible
+- [✅] Debounce Connections graph refresh scheduling
+- [✅] Enforce single-flight graph refresh for the active selection
+- [✅] Drop stale graph refresh results when project/card/generation changes
+- [✅] Suppress duplicate refresh triggers for the same effective target
 - [ ] Add debug visibility for skipped, suppressed, stale, and coalesced refreshes
 - [ ] Keep dirty editor state independent from background request success/failure
 
