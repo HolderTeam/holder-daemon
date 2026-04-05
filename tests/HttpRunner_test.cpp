@@ -93,9 +93,9 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                        boost::beast::http::verb::post,
                                        "/ai/runner/retry",
                                        nlohmann::json{},
-                                       boost::beast::http::status::not_implemented);
+                                       boost::beast::http::status::not_found);
   REQUIRE(retry["ok"] == false);
-  REQUIRE(retry["error"]["code"] == "not_implemented");
+  REQUIRE(retry["error"]["code"] == "not_found");
 
   const auto pull = http_json_request(bound.bind,
                                       bound.port,
@@ -103,9 +103,9 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                       boost::beast::http::verb::post,
                                       "/ai/runner/pull",
                                       nlohmann::json{{"model", "qwen2.5:0.5b"}},
-                                      boost::beast::http::status::not_implemented);
+                                      boost::beast::http::status::not_found);
   REQUIRE(pull["ok"] == false);
-  REQUIRE(pull["error"]["code"] == "not_implemented");
+  REQUIRE(pull["error"]["code"] == "not_found");
 
   const auto pull_status = http_json_request(bound.bind,
                                              bound.port,
@@ -113,9 +113,9 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                              boost::beast::http::verb::get,
                                              "/ai/runner/pull/nonexistent",
                                              nlohmann::json{},
-                                             boost::beast::http::status::not_implemented);
+                                             boost::beast::http::status::not_found);
   REQUIRE(pull_status["ok"] == false);
-  REQUIRE(pull_status["error"]["code"] == "not_implemented");
+  REQUIRE(pull_status["error"]["code"] == "not_found");
 
   const auto complete = http_json_request(bound.bind,
                                           bound.port,

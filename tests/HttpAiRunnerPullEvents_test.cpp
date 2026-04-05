@@ -38,8 +38,9 @@ StreamResult invoke_pull_event_route_and_capture(const std::string& path,
   holder::api::routes::RunnerRouteDispatchResult route_result{};
 
   std::thread route_thread([&]() {
+    const auto param_get = [](const std::string&) -> std::string { return {}; };
     route_result = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-        path, req, res, server, runner_registry);
+        path, req, res, server, runner_registry, param_get);
     boost::system::error_code ec;
     server.shutdown(tcp::socket::shutdown_both, ec);
     server.close(ec);
@@ -72,7 +73,12 @@ TEST_CASE("Ai runner pull events route ignores non-GET request", "[http]") {
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull/job-1/events", req, res, socket, static_cast<holder::llm::RunnerRegistry*>(nullptr));
+      "/ai/runner/pull/job-1/events",
+      req,
+      res,
+      socket,
+      static_cast<holder::llm::RunnerRegistry*>(nullptr),
+      [](const std::string&) -> std::string { return {}; });
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -85,11 +91,16 @@ TEST_CASE("Ai runner pull events route returns not_implemented when runner missi
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull/job-1/events", req, res, socket, static_cast<holder::llm::RunnerRegistry*>(nullptr));
+      "/ai/runner/pull/job-1/events",
+      req,
+      res,
+      socket,
+      static_cast<holder::llm::RunnerRegistry*>(nullptr),
+      [](const std::string&) -> std::string { return {}; });
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
-  REQUIRE(res.result() == http::status::not_implemented);
-  REQUIRE(res.body().find("not_implemented") != std::string::npos);
+  REQUIRE(res.result() == http::status::not_found);
+  REQUIRE(res.body().find("not_found") != std::string::npos);
 }
 
 TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[http]") {
@@ -105,7 +116,12 @@ TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[ht
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull//events", req, res, socket, &runner_registry);
+      "/ai/runner/pull//events",
+      req,
+      res,
+      socket,
+      &runner_registry,
+      [](const std::string&) -> std::string { return {}; });
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }

@@ -123,6 +123,7 @@ void RunnerRegistry::load_manual_clients() {
     auto manual_runner = std::make_unique<LocalModelRunner>(
         parsed->host, parsed->port, std::string(), false);
     auto client = std::make_unique<LocalRunnerClient>(std::move(manual_runner));
+    client->start_background_probe();
     manual_clients_.emplace(runner.runner_id, std::move(client));
   }
 }

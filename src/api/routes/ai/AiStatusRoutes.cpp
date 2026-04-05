@@ -15,7 +15,7 @@ bool handle_ai_status_routes(const std::string& path,
   if (ai::status::handle_ai_capabilities_routes(path, req, res, db, runner_registry, param_get)) {
     return true;
   }
-  if (ai::status::handle_ai_runtime_status_routes(path, req, res, db, runner_registry)) {
+  if (ai::status::handle_ai_runtime_status_routes(path, req, res, db, runner_registry, param_get)) {
     return true;
   }
   if (ai::status::handle_ai_local_model_config_routes(path, req, res, db)) {

@@ -874,7 +874,8 @@ RouteDispatchResult execute_cloud_post_path(
   return out;
 }
 
-std::optional<std::string> parse_local_requested_model(const std::string& requested_model) {
+std::optional<std::string> parse_requested_model_for_runner(const std::string& requested_model,
+                                                            const std::string& runner_id) {
   if (requested_model.empty()) {
     return std::nullopt;
   }
@@ -882,31 +883,33 @@ std::optional<std::string> parse_local_requested_model(const std::string& reques
   if (!parsed.has_value()) {
     return requested_model;
   }
-  if (parsed->runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
+  if (parsed->runner_id != runner_id) {
     return std::nullopt;
   }
   return parsed->model_name;
 }
 
-std::optional<std::string> configured_local_model_name(
-    const std::optional<std::string>& configured_ref) {
-  return holder::llm::local_model_name_from_ref(
-      configured_ref, holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+std::optional<std::string> configured_local_model_name(const std::optional<std::string>& configured_ref,
+                                                       const std::string& runner_id) {
+  return holder::llm::local_model_name_from_ref(configured_ref, runner_id);
 }
 
-std::string local_model_ref(const std::string& model_name) {
-  return holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId, model_name);
+std::string local_model_ref(const std::string& runner_id, const std::string& model_name) {
+  return holder::llm::make_runner_model_ref(runner_id, model_name);
 }
 
-nlohmann::json with_local_runner_fields(nlohmann::json data, const std::string& model_name) {
-  data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+nlohmann::json with_local_runner_fields(nlohmann::json data,
+                                        const std::string& runner_id,
+                                        const std::string& model_name) {
+  data["runner_id"] = runner_id;
   data["model"] = model_name;
-  data["model_ref"] = local_model_ref(model_name);
+  data["model_ref"] = local_model_ref(runner_id, model_name);
   return data;
 }
 
 RouteDispatchResult execute_local_post_path(
     const nlohmann::json& body,
+    const std::string& runner_id,
     const std::string& prompt,
     std::string& mode,
     const std::optional<std::string>& project_id,
@@ -924,7 +927,8 @@ RouteDispatchResult execute_local_post_path(
 
   std::string forced_model;
   if (body.contains("model") && !body.at("model").is_null()) {
-    const auto parsed_model = parse_local_requested_model(body.at("model").get<std::string>());
+    const auto parsed_model =
+        parse_requested_model_for_runner(body.at("model").get<std::string>(), runner_id);
     if (!parsed_model.has_value()) {
       res = support::error_response(http::status::bad_request,
                                     "bad_request",
@@ -943,7 +947,9 @@ RouteDispatchResult execute_local_post_path(
   }
 
   const auto model_meta = support::load_local_model_meta();
-  const auto local_model_cfg = load_local_model_config(db);
+  const auto local_model_cfg = (runner_id == holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                                   ? load_local_model_config(db)
+                                   : std::nullopt;
   const bool forced_model_installed =
       forced_model.empty() || std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
   if (!forced_model_installed) {
@@ -965,7 +971,7 @@ RouteDispatchResult execute_local_post_path(
     }
 
     auto keep_configured = [&](const std::optional<std::string>& configured_model) {
-      const auto configured_name = configured_local_model_name(configured_model);
+      const auto configured_name = configured_local_model_name(configured_model, runner_id);
       if (!configured_name.has_value() || configured_name->empty()) {
         return;
       }
@@ -990,7 +996,8 @@ RouteDispatchResult execute_local_post_path(
   std::string router_model;
   std::string configured_strong_model;
   const auto configured_strong_model_ref =
-      configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->strong_model : std::nullopt);
+      configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->strong_model : std::nullopt,
+                                  runner_id);
   if (forced_model.empty() && configured_strong_model_ref.has_value() &&
       std::find(candidates.begin(), candidates.end(), configured_strong_model_ref.value()) !=
           candidates.end()) {
@@ -1003,7 +1010,8 @@ RouteDispatchResult execute_local_post_path(
 
   if (forced_model.empty() && candidates.size() > 1) {
     const auto configured_fast_model =
-        configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->fast_model : std::nullopt);
+        configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->fast_model : std::nullopt,
+                                    runner_id);
     if (configured_fast_model.has_value() &&
         std::find(candidates.begin(), candidates.end(), configured_fast_model.value()) != candidates.end()) {
       router_model = configured_fast_model.value();
@@ -1036,7 +1044,7 @@ RouteDispatchResult execute_local_post_path(
     run.context_json = context_json;
   }
   if (!router_model.empty()) {
-    run.router_model = local_model_ref(router_model);
+    run.router_model = local_model_ref(runner_id, router_model);
   }
   run.status = "started";
   run.created_at = support::now_epoch_seconds();
@@ -1155,11 +1163,11 @@ RouteDispatchResult execute_local_post_path(
     }
     nlohmann::json ranked_payload = nlohmann::json::array();
     for (const auto& ranked_model : ranked) {
-      ranked_payload.push_back(local_model_ref(ranked_model));
+      ranked_payload.push_back(local_model_ref(runner_id, ranked_model));
     }
     ranked_json = ranked_payload.dump();
     send_event("router_result",
-               {{"router_model", local_model_ref(router_model)},
+               {{"router_model", local_model_ref(runner_id, router_model)},
                 {"ranked", ranked_payload},
                 {"error", router_error.empty() ? nlohmann::json(nullptr)
                                                : nlohmann::json(router_error)}});
@@ -1169,7 +1177,7 @@ RouteDispatchResult execute_local_post_path(
   std::string model_error;
   bool any_output = false;
   for (const auto& model : candidates) {
-    send_event("progress", with_local_runner_fields({{"message", "Trying model"}}, model));
+    send_event("progress", with_local_runner_fields({{"message", "Trying model"}}, runner_id, model));
     std::string prompt_full = prompt;
     if (!context_json.empty()) {
       prompt_full += "\n\nContext:\n";
@@ -1185,16 +1193,17 @@ RouteDispatchResult execute_local_post_path(
           got_output = true;
           any_output = true;
           assistant_text += chunk;
-          send_event("chunk", with_local_runner_fields({{"delta", chunk}}, model));
+          send_event("chunk", with_local_runner_fields({{"delta", chunk}}, runner_id, model));
         },
         &model_error);
 
     if (ok && got_output) {
-      chosen_model = local_model_ref(model);
+      chosen_model = local_model_ref(runner_id, model);
       break;
     }
 
-    nlohmann::json fallback_event = with_local_runner_fields(nlohmann::json::object(), model);
+    nlohmann::json fallback_event =
+        with_local_runner_fields(nlohmann::json::object(), runner_id, model);
     if (!model_error.empty()) fallback_event["error"] = model_error;
     if (got_output && !ok) fallback_event["partial"] = true;
     send_event("fallback", fallback_event);
@@ -1203,7 +1212,7 @@ RouteDispatchResult execute_local_post_path(
   const long long updated_at = support::now_epoch_seconds();
   if (!chosen_model.empty()) {
     nlohmann::json done_event;
-    done_event["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+    done_event["runner_id"] = runner_id;
     done_event["model_ref"] = chosen_model;
     if (const auto parsed = holder::llm::parse_runner_model_ref(chosen_model); parsed.has_value()) {
       done_event["model"] = parsed->model_name;
@@ -1239,8 +1248,7 @@ RouteDispatchResult execute_local_post_path(
                            updated_at);
   } else {
     send_event("failed",
-               {{"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
-                {"error", "All models failed."}});
+               {{"runner_id", runner_id}, {"error", "All models failed."}});
     run_repo.update_status(run.run_id,
                            "failed",
                            std::optional<std::string>(any_output ? "partial failure" : "no output"),
@@ -1281,9 +1289,36 @@ RouteDispatchResult handle_ai_runs_post_route(
     auto& project_id = input.project_id;
     auto& thread_id = input.thread_id;
     const std::string& context_json = input.context_json;
+    std::string selected_runner_id = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+    if (body.contains("runner_id") && !body.at("runner_id").is_null()) {
+      selected_runner_id = body.at("runner_id").get<std::string>();
+    }
+    if (body.contains("model") && !body.at("model").is_null()) {
+      const auto parsed_model_ref =
+          holder::llm::parse_runner_model_ref(body.at("model").get<std::string>());
+      if (parsed_model_ref.has_value()) {
+        if (selected_runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId &&
+            selected_runner_id != parsed_model_ref->runner_id) {
+          res = support::error_response(http::status::bad_request,
+                                        "bad_request",
+                                        "runner_id does not match requested model runner.");
+          return out;
+        }
+        selected_runner_id = parsed_model_ref->runner_id;
+      }
+    }
+    runner = runner_registry ? runner_registry->get_client(selected_runner_id) : nullptr;
     const bool cloud_provider_requested =
         body.contains("provider") && !body.at("provider").is_null() &&
         !support::normalize_provider_name(body.at("provider").get<std::string>()).empty();
+
+    if (cloud_provider_requested &&
+        selected_runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
+      res = support::error_response(http::status::bad_request,
+                                    "bad_request",
+                                    "runner_id cannot be combined with cloud provider requests.");
+      return out;
+    }
 
     holder::llm::RunnerStatus runner_status;
     const bool has_runner = (runner != nullptr);
@@ -1311,6 +1346,7 @@ RouteDispatchResult handle_ai_runs_post_route(
           fts);
     }
     return execute_local_post_path(body,
+                                   selected_runner_id,
                                    prompt,
                                    mode,
                                    project_id,

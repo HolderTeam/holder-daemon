@@ -18,6 +18,11 @@ namespace {
 
 namespace http = boost::beast::http;
 
+std::string requested_runner_id(const std::function<std::string(const std::string&)>& param_get) {
+  const auto runner_id = param_get("runner_id");
+  return runner_id.empty() ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId) : runner_id;
+}
+
 } // namespace
 
 bool handle_ai_capabilities_routes(const std::string& path,
@@ -26,15 +31,13 @@ bool handle_ai_capabilities_routes(const std::string& path,
                                    holder::platform::Db& db,
                                    holder::llm::RunnerRegistry* runner_registry,
                                    const std::function<std::string(const std::string&)>& param_get) {
-  auto* runner = runner_registry
-                     ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
-                     : nullptr;
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {
     return false;
   }
+  const std::string runner_id = requested_runner_id(param_get);
+  auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
 
   nlohmann::json data;
-  (void)param_get;
   std::optional<holder::model::AiLocalModelConfig> local_model_cfg;
   try {
     holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
@@ -67,9 +70,9 @@ bool handle_ai_capabilities_routes(const std::string& path,
     data["caste"] = nullptr; // LCOV_EXCL_LINE
   }
   if (!runner) {
-    data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+    data["runner_id"] = runner_id;
     data["runner_available"] = false;
-    data["error"] = "Local model runner not configured.";
+    data["error"] = "Runner not configured.";
     data["last_checked"] = support::now_epoch_seconds();
     data["models"] = nlohmann::json::array();
     if (machine_caste.has_value()) {
@@ -86,7 +89,7 @@ bool handle_ai_capabilities_routes(const std::string& path,
     }
   } else {
     const auto status = runner->status();
-    data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+    data["runner_id"] = runner_id;
     data["runner_available"] = status.available;
     data["spawn_attempted"] = status.spawn_attempted;
     data["last_checked"] = status.last_checked;
@@ -95,11 +98,9 @@ bool handle_ai_capabilities_routes(const std::string& path,
     nlohmann::json models = nlohmann::json::array();
     for (const auto& model : status.models) {
       models.push_back({
-          {"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
+          {"runner_id", runner_id},
           {"name", model.name},
-          {"model_ref",
-           holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId,
-                                              model.name)},
+          {"model_ref", holder::llm::make_runner_model_ref(runner_id, model.name)},
           {"digest", model.digest},
           {"size", model.size},
           {"modified_at", model.modified_at},

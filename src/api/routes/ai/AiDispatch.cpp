@@ -83,7 +83,7 @@ DispatchResult dispatch_ai_routes(
     if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
       return {.handled = true, .streamed = false};
     }
-    if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, runner_registry);
+    if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, runner_registry, param);
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
     }

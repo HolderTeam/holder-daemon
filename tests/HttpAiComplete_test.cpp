@@ -7,6 +7,7 @@
 #include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRunnerRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "llm/LocalRunnerClient.h"
@@ -3046,6 +3047,93 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
 
   std::raise(SIGTERM);
   server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  holder::ai::AiRunnerRepo runner_repo(db);
+  runner_repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  ServerThreadGuard server_thread(server, signals);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "hello manual"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"runner_id", "manual-a"},
+                              {"model", "fake-echo"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::write(socket, req);
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  if (res.result() != http::status::ok) {
+    FAIL(res.body());
+  }
+
+  REQUIRE(res.body().find("\"runner_id\":\"manual-a\"") != std::string::npos);
+  REQUIRE(res.body().find("\"model_ref\":\"manual-a::fake-echo\"") != std::string::npos);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("manual-a::fake-echo"));
 }
 
 TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provider has creds", "[http]") {
