@@ -4,7 +4,7 @@
 #include "api/Router.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 #include "index/FtsIndexer.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
@@ -33,9 +33,30 @@ public:
              holder::platform::Db& db,
              std::string auth_token,
              holder::card::CardStore* card_store,
+             holder::index::FtsIndexer* fts);
+  HttpServer(std::string bind,
+             unsigned short port,
+             holder::platform::Db& db,
+             std::string auth_token,
+             holder::card::CardStore* card_store,
              holder::index::FtsIndexer* fts,
-             holder::git::GitOps* git_ops = nullptr,
-             holder::llm::LocalModelRunner* runner = nullptr);
+             holder::git::GitOps* git_ops);
+  HttpServer(std::string bind,
+             unsigned short port,
+             holder::platform::Db& db,
+             std::string auth_token,
+             holder::card::CardStore* card_store,
+             holder::index::FtsIndexer* fts,
+             holder::git::GitOps* git_ops,
+             holder::llm::LocalModelRunner* runner);
+  HttpServer(std::string bind,
+             unsigned short port,
+             holder::platform::Db& db,
+             std::string auth_token,
+             holder::card::CardStore* card_store,
+             holder::index::FtsIndexer* fts,
+             holder::git::GitOps* git_ops,
+             holder::llm::RunnerRegistry* runner_registry);
   ~HttpServer();
 
   BoundInfo start();
@@ -49,12 +70,13 @@ private:
   std::chrono::steady_clock::time_point started_at_;
   Router router_;
   std::unique_ptr<Listener> listener_;
+  std::unique_ptr<holder::llm::RunnerRegistry> owned_runner_registry_;
+  holder::llm::RunnerRegistry* runner_registry_ = nullptr;
   holder::ai::NudgeService nudge_service_;
   std::unique_ptr<holder::privacy::SecretStore> secret_store_;
   holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
-  holder::llm::LocalModelRunner* runner_ = nullptr;
 };
 
 } // namespace holder::api

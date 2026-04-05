@@ -57,7 +57,7 @@ Session::Session(tcp::socket socket,
                  holder::ai::NudgeService* nudge_service,
                  holder::privacy::SecretStore* secret_store,
                  holder::git::GitOps* git_ops,
-                 holder::llm::LocalModelRunner* runner)
+                 holder::llm::RunnerRegistry* runner_registry)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
@@ -68,7 +68,7 @@ Session::Session(tcp::socket socket,
       nudge_service_(nudge_service),
       secret_store_(secret_store),
       git_ops_(git_ops),
-      runner_(runner) {}
+      runner_registry_(runner_registry) {}
 
 void Session::run() {
   namespace beast = boost::beast;
@@ -123,7 +123,7 @@ void Session::run() {
                                               nudge_service_,
                                               secret_store_,
                                               git_ops_,
-                                              runner_,
+                                              runner_registry_,
                                               [&]() { return generate_uuid_v4(); });
     if (route_result.streamed) return;
   }

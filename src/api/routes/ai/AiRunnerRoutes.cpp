@@ -10,12 +10,13 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::llm::LocalModelRunner* runner) {
-  if (const auto out = ai::runner::handle_ai_runner_pull_event_routes(path, req, res, socket, runner);
+    holder::llm::RunnerRegistry* runner_registry) {
+  if (const auto out =
+          ai::runner::handle_ai_runner_pull_event_routes(path, req, res, socket, runner_registry);
       out.handled) {
     return out;
   }
-  return ai::runner::handle_ai_runner_pull_routes(path, req, res, runner);
+  return ai::runner::handle_ai_runner_pull_routes(path, req, res, runner_registry);
 }
 
 } // namespace holder::api::routes

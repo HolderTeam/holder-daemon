@@ -4,6 +4,7 @@
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
 #include "ai/AiProviderCredentialRepo.h"
+#include "llm/LocalModelRunner.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -42,7 +43,8 @@ bool handle_ai_runtime_status_routes(const std::string& path,
                                      const http::request<http::string_body>& req,
                                      http::response<http::string_body>& res,
                                      holder::platform::Db& db,
-                                     holder::llm::LocalModelRunner* runner) {
+                                     holder::llm::RunnerRegistry* runner_registry) {
+  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
   if (path == "/ai/status" && req.method() == http::verb::get) {
     nlohmann::json data;
     data["checked_at"] = support::now_epoch_seconds();

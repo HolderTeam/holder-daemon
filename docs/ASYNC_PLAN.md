@@ -127,7 +127,9 @@ The Linux frontend should:
 - suppress hidden and redundant Connections refreshes
 - keep dirty state independent from background feature success or failure
 - preserve failed-save state until save confirmation
+- treat save confirmation as a successful `PATCH /cards/{card_id}` response only after the daemon has finished the write path and replied `200 OK`
 - write local recovery drafts when backend saves fail or the backend becomes unavailable
+- only clear recovery drafts and advance committed editor state after that confirmed durable save boundary
 - keep GTK views focused on widget construction, rendering, and event wiring; move testable feature logic into controllers and other non-view files where practical
 
 ### 2. AI Runtime Generalization
@@ -145,6 +147,86 @@ Target shape:
 - runner-qualified model refs: `runner_id + model_name`
 
 The current local runner should become a normal registry entry with `source = auto_local`.
+
+Auto-local runner as a normal registry entry:
+
+- the existing built-in `LocalModelRunner` should be exposed through the registry as the canonical runner record with `runner_id = auto-local`
+- registry consumers should not need special-case code paths for “the old singleton runner” versus “configured runners”; they should ask the registry for runners and get `auto-local` back like any other entry
+- the `auto-local` entry may be synthetic at first, but it must present the same logical shape as persisted manual runners: `runner_id`, `name`, `kind`, `base_url`, `source`, `enabled`, and runtime status/probe data
+- recommended initial shape for `auto-local`:
+- `runner_id = auto-local`
+- `name = Local Ollama`
+- `kind = ollama`
+- `source = auto_local`
+- `enabled = true`
+- `base_url = http://127.0.0.1:11434` unless later made configurable
+- the registry should own aggregation for `auto-local` status, models, pull jobs, and retry behavior, even if the underlying implementation still delegates to the existing `LocalModelRunner`
+- runner-qualified refs for the current local models should therefore normalize to values like `auto-local::phi4-mini:latest`
+- future manual `ollama` runners should coexist beside `auto-local`; the existence of one must not suppress or overwrite the other
+
+Runner registry/manager abstraction:
+
+- introduce a `RunnerRegistry` or `RunnerManager` as the daemon-owned entry point for runner discovery, lookup, status aggregation, model inventory, pull ownership, and retry routing
+- route code should stop receiving a raw `LocalModelRunner*` and instead depend on the registry/manager abstraction
+- the registry should compose:
+- persisted config from `RunnerRepo`
+- the synthetic or persisted `auto-local` runner record
+- per-runner client instances such as an adapter around the current `LocalModelRunner`
+- aggregate runtime state needed for `/ai/status` and `/ai/capabilities`
+
+Minimum responsibilities:
+
+- list all known runners
+- get one runner by `runner_id`
+- resolve a runner-qualified model ref to a concrete runner client plus model name
+- aggregate per-runner status and model inventory for status/capability APIs
+- route retry and pull operations to the addressed runner
+- hide whether a runner is backed by the old singleton implementation, a manual config row, or a future different runtime kind
+
+Required properties:
+
+- one canonical lookup path by `runner_id`
+- no special-case API-layer logic for `auto-local` versus manual runners
+- bounded-executor-friendly ownership: registry operations should be safe to call from the planned request worker model without introducing detached-thread-only assumptions
+- clear separation between persisted config, live runtime state, and per-runner transport/client logic
+
+Recommended implementation split:
+
+- `RunnerRepo`: storage for persisted manual runner rows
+- `RunnerClient`: one runtime implementation instance per runner
+- `RunnerRegistry`: assembles configured runners plus `auto-local`, exposes lookup/list/aggregate operations, and owns runner-specific routing decisions
+
+Generalize current `LocalModelRunner` into per-runner client logic:
+
+- the current `LocalModelRunner` should stop being treated as “the runner system” and instead become one `RunnerClient` implementation, initially for `kind = ollama`
+- its current responsibilities split naturally into per-runner client behavior:
+- probe runner health and enumerate models
+- stream generation for one addressed runner
+- own pull-job lifecycle for one addressed runner
+- perform runner-specific retry/spawn behavior where applicable
+- the first implementation can wrap the existing `LocalModelRunner` behind an adapter rather than rewriting all behavior at once
+- route code and higher-level services should depend on a runner-client interface, not on concrete `LocalModelRunner`
+- title generation, nudges, and normal local AI runs should all resolve a runner-qualified model ref first and then call the resolved `RunnerClient`
+
+Executor compatibility requirements:
+
+- registry and client APIs must be callable from the planned bounded request-worker model without assuming they can always spawn detached background threads
+- long-running operations such as probes and pulls should be schedulable through explicit background execution lanes or injected executors
+- synchronous read-only queries like “list cached runner state” or “lookup runner by id” should be cheap and non-blocking at the API layer
+- if a client still uses legacy detached-thread internals during transition, that behavior should be contained behind the client boundary and treated as temporary compatibility debt
+- new APIs should prefer one of these shapes:
+- immediate snapshot calls for already-known state
+- explicit “start work” calls whose execution is owned by the registry/background lane
+- streaming or polling calls that read runner-owned state rather than starting ad hoc work
+
+Runner-specific probe and pull ownership:
+
+- probe state, model inventory, retry state, and pull jobs must be owned per runner rather than globally
+- pull job identifiers may remain globally unique, but each job must also carry `runner_id` and be routed back to the owning runner client
+- `/ai/status` and future `/ai/runners` APIs should report probe/pull state inside each runner record, not as one anonymous singleton runner blob
+- retry routes should address a specific runner, for example `POST /ai/runners/{runner_id}/retry`, and must not implicitly retry every runner at once
+- starting a pull for one runner must not collide with or overwrite pull state for another runner, even if the model names match
+- the registry should therefore aggregate status as `runners[]`, with each runner exposing its own availability, last error, model list, and pull jobs
 
 ### 3. Safe Concurrency Before Full Async
 
@@ -263,6 +345,19 @@ The eventual shape is:
 
 Runner configuration should become first-class persisted data.
 
+Canonical `runner_id` contract:
+
+- `runner_id` is the stable primary identifier for a runner record across storage, APIs, logs, and model selection
+- it must be assigned once and then treated as immutable
+- it must not be derived from mutable fields such as display name, base URL, model list, availability, or process state
+- it must not encode secrets, machine-local absolute paths, or user-facing labels
+- allowed format should be lowercase ASCII with digits and single hyphen separators, matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`
+- manual runners should normally receive an opaque generated id rather than a name-derived slug, so renaming a runner never changes references
+- reserve `auto-local` as the canonical id of the built-in auto-managed local runner that currently wraps `LocalModelRunner`
+- model refs, local model config, pull-job ownership, and future runner CRUD routes should all key off `runner_id`, not runner name
+- if a runner is deleted and later recreated, it should get a new `runner_id`; old persisted model refs should then be treated as stale rather than silently rebound
+- logs and debug output may include human-readable runner names, but `runner_id` remains the canonical join key
+
 Suggested runner fields:
 
 - `runner_id`
@@ -275,7 +370,73 @@ Suggested runner fields:
 - `created_at`
 - `updated_at`
 
+Persisted runner configuration schema:
+
+- primary table: `ai_runners`
+- one row per configured runner, keyed by `runner_id`
+- intended for durable configuration, not transient probe output or pull-job state
+
+Suggested columns for `ai_runners`:
+
+- `runner_id TEXT PRIMARY KEY`
+- `name TEXT NOT NULL`
+- `kind TEXT NOT NULL`
+- `base_url TEXT NULL`
+- `source TEXT NOT NULL`
+- `enabled INTEGER NOT NULL DEFAULT 1`
+- `created_at INTEGER NOT NULL`
+- `updated_at INTEGER NOT NULL`
+
+Column semantics:
+
+- `runner_id`: immutable canonical id described above
+- `name`: user-facing mutable display name
+- `kind`: runner implementation family such as `ollama`, later extensible to other local or remote runtimes
+- `base_url`: nullable because the built-in `auto-local` runner may use its conventional local endpoint without a persisted override
+- `source`: distinguishes `auto_local` from `manual`
+- `enabled`: persisted operator intent, separate from runtime health
+- `created_at` / `updated_at`: audit timestamps for config changes
+
+Schema rules:
+
+- do not persist transient runtime state such as availability, last error, model inventory, or pull progress in `ai_runners`
+- do not persist secrets in `ai_runners`; any future auth material should live in the existing secret-store path or a dedicated credential table
+- `source = auto_local` is represented by the reserved `runner_id = auto-local` row or an equivalent synthetic registry entry, but the rest of the system should treat it like any other runner record
+- uniqueness should be enforced on `runner_id`; do not enforce uniqueness on `name` or `base_url`
+- runtime aggregation layers may join persisted runner config with probe results to build `/ai/status` and `/ai/capabilities`, but storage and runtime views should remain conceptually separate
+
+Relationship to local model config:
+
+- `ai_local_model_config` can remain a separate table initially, but its `fast_model`, `strong_model`, and `deep_model` values should migrate from bare model names to runner-qualified refs
+- if later needed, that table can be renamed or reshaped, but the immediate schema step is to make runner records first-class without coupling them to transient runtime state
+
+Persisted manual runner records:
+
+- a manual runner record is any non-`auto_local` runner entry created, edited, enabled, disabled, or deleted through persisted config
+- manual runner records live in `ai_runners` with `source = manual`
+- the first supported manual kind should be `ollama`, using a user-supplied `base_url`
+- creating a manual runner generates a new opaque `runner_id`, stores the normalized config row, and leaves runtime probing to registry/background status work
+- editing a manual runner may change mutable fields such as `name`, `base_url`, and `enabled`, but must not change `runner_id`
+- deleting a manual runner removes its persisted config row only; it must not implicitly rewrite existing runner-qualified model refs to some other runner
+- if local model config or other persisted references still point at a deleted manual runner, those refs should remain stale/invalid until the user reselects a valid runner-qualified model
+- disabled manual runners remain persisted and visible in config/status responses, but they should not be chosen for new AI work unless explicitly re-enabled
+- manual runner records should be validated at write time for shape and required fields, but reachability/health should be runtime concerns rather than persistence preconditions
+- a failed probe or temporary outage must not delete or mutate the persisted manual runner row beyond runtime status reporting
+
 Model selection must become runner-qualified.
+
+Runner-qualified model reference format:
+
+- canonical structured form: `{ runner_id, model_name }`
+- canonical compact string form: `runner_id::model_name`
+- parsing rule: split on the first `::`; the left side is `runner_id`, the right side is `model_name`
+- because `runner_id` is restricted to lowercase ASCII letters, digits, and hyphens, `::` is reserved as a safe separator
+- `model_name` is case-sensitive and must be preserved exactly as reported by the runner
+- neither side may be empty; refs with empty `runner_id` or empty `model_name` are invalid
+- plain model names without a runner qualifier are legacy-only input and should be normalized at migration boundaries, not treated as the long-term format
+- persisted local model config should store runner-qualified refs, not bare model names
+- APIs may expose both the structured form and the compact string during transition, but all internal comparisons should normalize to `{ runner_id, model_name }`
+- UI display labels remain separate from refs; for example a dropdown label may show `Office Ollama: phi4-mini:latest` while the stored value is `office-ollama::phi4-mini:latest`
 
 Current shape:
 
@@ -348,28 +509,33 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Enforce single-flight graph refresh for the active selection
 - [✅] Drop stale graph refresh results when project/card/generation changes
 - [✅] Suppress duplicate refresh triggers for the same effective target
-- [ ] Add debug visibility for skipped, suppressed, stale, and coalesced refreshes
-- [ ] Keep dirty editor state independent from background request success/failure
+- [✅] Add debug visibility for skipped, suppressed, stale, and coalesced refreshes
+- [✅] Keep dirty editor state independent from background request success/failure
 
 ### Phase 2: Recovery And Save Semantics
 
-- [ ] Preserve unsaved state until save confirmation
-- [ ] Add retry/failure handling that does not incorrectly clear dirty state
-- [ ] Add frontend-owned local recovery drafts for failed/unavailable backend saves
-- [ ] Remove recovery drafts only after confirmed durable save
-- [ ] Define save confirmation behavior shared between backend and frontend cleanup
+- [✅] Preserve unsaved state until save confirmation
+- [✅] Add retry/failure handling that does not incorrectly clear dirty state
+- [✅] Add frontend-owned local recovery drafts for failed/unavailable backend saves
+- [✅] Remove recovery drafts only after confirmed durable save
+- [✅] Define save confirmation behaviour shared between backend and frontend cleanup
+- Recovery-draft state must layer on top of explicit frontend draft state; background request outcomes and transport errors must not clear, reset, or redefine editor dirtiness.
+- Save confirmation contract:
+- the daemon confirms a card save only by returning success from `PATCH /cards/{card_id}` after its synchronous write path has completed
+- frontend draft cleanup, committed-baseline advancement, and `Saved` UI state must happen only after that success response
+- transport errors, backend errors, retries, queued saves, and `Saving...` UI state do not count as save confirmation
 
 ### Phase 3: Runner Abstraction And Persistence
 
-- [ ] Define canonical `runner_id`
-- [ ] Define runner-qualified model reference format
-- [ ] Define persisted runner configuration schema
-- [ ] Introduce persisted manual runner records
-- [ ] Represent the auto-local runner as a normal registry entry
-- [ ] Introduce a runner registry/manager abstraction
-- [ ] Generalize current `LocalModelRunner` behavior into per-runner client logic
-- [ ] Keep registry/client APIs compatible with bounded executors rather than detached-thread-only behavior
-- [ ] Make status probing and pull-job ownership runner-specific
+ - [✅] Define canonical `runner_id`
+- [✅] Define runner-qualified model reference format
+- [✅] Define persisted runner configuration schema
+- [✅] Introduce persisted manual runner records
+- [✅] Represent the auto-local runner as a normal registry entry
+- [✅] Introduce a runner registry/manager abstraction
+- [✅] Generalize current `LocalModelRunner` behavior into per-runner client logic
+- [✅] Keep registry/client APIs compatible with bounded executors rather than detached-thread-only behavior
+- [✅] Make status probing and pull-job ownership runner-specific
 
 ### Phase 4: Safe Backend Concurrency
 
@@ -388,7 +554,7 @@ we have a range of useful folders where new files can be made and existing files
 - [ ] Ensure save work jumps queued foreground/background work at dispatch time
 - [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
 
-### Phase 5: API And Frontend Migration
+### Phase 5: API And Frontend AI Panel Config
 
 - [ ] Add `GET /ai/runners`
 - [ ] Add `POST /ai/runners`
@@ -398,7 +564,7 @@ we have a range of useful folders where new files can be made and existing files
 - [ ] Expand `/ai/status` to include `runners[]`
 - [ ] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
 - [ ] Update `/ai/local-models/config` to read and write runner-qualified selections
-- [ ] Preserve temporary compatibility fields for current clients where needed
+- [ ] Preserve temporary compatibility fields for current clients where needed  -- not needed?
 - [ ] Update the Linux frontend AI panel to show multiple runners
 - [ ] Add runner list/add flow in the Linux frontend
 - [ ] Update dropdowns and parsers to use runner-qualified model labels/refs

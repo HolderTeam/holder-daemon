@@ -15,6 +15,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "llm/LocalModelRunner.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -31,6 +32,10 @@ namespace holder::api::routes::ai::runs {
 namespace {
 
 namespace http = boost::beast::http;
+
+holder::llm::LocalModelRunner* resolve_auto_local_runner(holder::llm::RunnerRegistry* runner_registry) {
+  return runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+}
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
@@ -1200,11 +1205,12 @@ RouteDispatchResult handle_ai_runs_post_route(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::privacy::SecretStore* secret_store,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4) {
   RouteDispatchResult out{};
   out.handled = true;
   try {
+    auto* runner = resolve_auto_local_runner(runner_registry);
     const auto parsed = parse_ai_run_post_input(req, res);
     if (!parsed.has_value()) {
       return out;

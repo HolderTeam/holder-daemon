@@ -1,6 +1,7 @@
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
 
 #include "api/support/HttpResponses.h"
+#include "llm/LocalModelRunner.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -38,8 +39,9 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::llm::LocalModelRunner* runner) {
+    holder::llm::RunnerRegistry* runner_registry) {
   RunnerRouteDispatchResult out{};
+  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
 
   if (path.rfind("/ai/runner/pull/", 0) != 0 ||
       path.size() <= std::string("/ai/runner/pull/").size() + std::string("/events").size() ||

@@ -13,6 +13,7 @@
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 #include "platform/Migrations.h"
 #include "project/ProjectPaths.h"
@@ -254,7 +255,9 @@ int main(int argc, char* argv[]) {
   }
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server(bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner);
+  holder::llm::RunnerRegistry runner_registry(&runner);
+  holder::api::HttpServer server(
+      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry);
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());

@@ -1,6 +1,7 @@
 #include "ai/NudgeService.h"
 
 #include "ai/AiLocalModelConfigRepo.h"
+#include "llm/LocalModelRunner.h"
 #include "ai/AiNudgeRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
@@ -344,8 +345,14 @@ std::string build_nudge_context_summary(holder::platform::Db& db,
 } // namespace
 
 NudgeService::NudgeService(holder::platform::Db& db,
+                           holder::llm::RunnerRegistry* runner_registry)
+    : db_(db), runner_registry_(runner_registry) {}
+
+NudgeService::NudgeService(holder::platform::Db& db,
                            holder::llm::LocalModelRunner* runner)
-    : db_(db), runner_(runner) {}
+    : db_(db),
+      owned_runner_registry_(std::make_unique<holder::llm::RunnerRegistry>(runner)),
+      runner_registry_(owned_runner_registry_.get()) {}
 
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
@@ -447,8 +454,9 @@ std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
 }
 
 std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
-  if (runner_ == nullptr) return std::nullopt;
-  const auto status = runner_->status();
+  auto* runner = runner_registry_ ? runner_registry_->get_auto_local_runner() : nullptr;
+  if (runner == nullptr) return std::nullopt;
+  const auto status = runner->status();
   if (!status.available || status.models.empty()) return std::nullopt;
 
   try {
@@ -483,15 +491,16 @@ std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
 }
 
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
+  auto* runner = runner_registry_ ? runner_registry_->get_auto_local_runner() : nullptr;
   const auto deterministic = build_nudge_body(input);
   const auto model = pick_local_model_for_nudges();
-  if (!model.has_value()) return deterministic;
+  if (runner == nullptr || !model.has_value()) return deterministic;
 
   std::string generated;
   std::string error;
   const auto context_summary = build_nudge_context_summary(db_, input);
   const auto prompt = build_nudge_prompt(input, deterministic, context_summary);
-  const bool ok = runner_->stream_generate(
+  const bool ok = runner->stream_generate(
       model.value(),
       prompt,
       "{}",

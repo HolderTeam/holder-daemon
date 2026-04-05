@@ -1,12 +1,13 @@
 #pragma once
 
 #include "platform/Db.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,7 +47,9 @@ struct NudgeDecision {
 class NudgeService {
 public:
   explicit NudgeService(holder::platform::Db& db,
-                        holder::llm::LocalModelRunner* runner = nullptr);
+                        holder::llm::RunnerRegistry* runner_registry = nullptr);
+  explicit NudgeService(holder::platform::Db& db,
+                        holder::llm::LocalModelRunner* runner);
 
   NudgeDecision evaluate_and_record(const NudgeCandidateInput& input);
 
@@ -57,7 +60,8 @@ public:
 
 private:
   holder::platform::Db& db_;
-  holder::llm::LocalModelRunner* runner_ = nullptr;
+  std::unique_ptr<holder::llm::RunnerRegistry> owned_runner_registry_;
+  holder::llm::RunnerRegistry* runner_registry_ = nullptr;
 
   static bool is_placeholder_title(const std::string& title);
   static bool is_successful_push_status(const std::string& status);

@@ -1,6 +1,7 @@
 #include "api/routes/ai/runner/AiRunnerPullRoutes.h"
 
 #include "api/support/HttpResponses.h"
+#include "llm/LocalModelRunner.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -34,8 +35,9 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
     const std::string& path,
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
-    holder::llm::LocalModelRunner* runner) {
+    holder::llm::RunnerRegistry* runner_registry) {
   RunnerRouteDispatchResult out{};
+  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
 
   if (path == "/ai/runner/pull" && req.method() == http::verb::post) {
     out.handled = true;
