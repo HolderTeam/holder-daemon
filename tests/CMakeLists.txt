@@ -19,6 +19,7 @@ add_executable(lockfile_tests
   LockFile_test.cpp
   ServerInfo_test.cpp
   Signal_test.cpp
+  SerialExecutor_test.cpp
   HttpHealth_test.cpp
   HttpListener_test.cpp
   ListenerAcceptError_test.cpp

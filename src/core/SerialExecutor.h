@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstddef>
 #include <condition_variable>
 #include <deque>
 #include <functional>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -14,7 +16,7 @@ namespace holder::core {
 
 class SerialExecutor {
  public:
-  explicit SerialExecutor(std::string name);
+  explicit SerialExecutor(std::string name, std::size_t max_pending_tasks = 0);
   ~SerialExecutor();
 
   SerialExecutor(const SerialExecutor&) = delete;
@@ -41,8 +43,10 @@ class SerialExecutor {
   void run();
 
   std::string name_;
+  std::size_t max_pending_tasks_ = 0;
   mutable std::mutex mutex_;
   mutable std::condition_variable cv_;
+  mutable std::condition_variable space_cv_;
   mutable std::deque<std::function<void()>> tasks_;
   bool stop_requested_ = false;
   std::thread worker_;

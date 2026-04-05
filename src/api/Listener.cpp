@@ -166,13 +166,14 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       owned_git_ops_ = std::make_unique<holder::git::RealGitOps>();
       request_git_ops_ = owned_git_ops_.get();
     }
-    git_executor_ = std::make_unique<holder::core::SerialExecutor>("request-git");
+    git_executor_ = std::make_unique<holder::core::SerialExecutor>("request-git", 16);
     executor_git_ops_ =
         std::make_unique<holder::git::ExecutorGitOps>(*request_git_ops_, *git_executor_);
     request_git_ops_ = executor_git_ops_.get();
   }
   if (runner_registry_ != nullptr) {
-    ai_runtime_executor_ = std::make_unique<holder::core::SerialExecutor>("request-ai-runtime");
+    ai_runtime_executor_ =
+        std::make_unique<holder::core::SerialExecutor>("request-ai-runtime", 16);
   }
 
   ingress_workers_.clear();
