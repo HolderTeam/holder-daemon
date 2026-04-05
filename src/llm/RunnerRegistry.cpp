@@ -74,6 +74,10 @@ RunnerRegistry::RunnerRegistry(holder::platform::Db* db, RunnerClient* auto_loca
   load_manual_clients();
 }
 
+void RunnerRegistry::refresh() {
+  load_manual_clients();
+}
+
 std::vector<holder::model::AiRunner> RunnerRegistry::list_runners() const {
   std::vector<holder::model::AiRunner> out;
   out.push_back(auto_local_runner_record());

@@ -132,6 +132,97 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
   server_thread.join();
 }
 
+TEST_CASE("HTTP ai runners supports CRUD for manual runners", "[http]") {
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  const std::string token = "testtoken";
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto list = http_json_request(bound.bind,
+                                bound.port,
+                                token,
+                                boost::beast::http::verb::get,
+                                "/ai/runners",
+                                nlohmann::json{},
+                                boost::beast::http::status::ok);
+  REQUIRE(list["ok"] == true);
+  REQUIRE(list["data"]["runners"].is_array());
+  REQUIRE(list["data"]["runners"].size() == 1);
+  REQUIRE(list["data"]["runners"][0]["runner_id"] == "auto-local");
+
+  auto created = http_json_request(bound.bind,
+                                   bound.port,
+                                   token,
+                                   boost::beast::http::verb::post,
+                                   "/ai/runners",
+                                   nlohmann::json{
+                                       {"name", "Office Ollama"},
+                                       {"kind", "ollama"},
+                                       {"base_url", "http://office:11434"},
+                                   },
+                                   boost::beast::http::status::created);
+  REQUIRE(created["ok"] == true);
+  const std::string runner_id = created["data"]["runner_id"].get<std::string>();
+  REQUIRE(runner_id.rfind("manual-", 0) == 0);
+  REQUIRE(created["data"]["runtime"]["configured"] == true);
+
+  auto fetched = http_json_request(bound.bind,
+                                   bound.port,
+                                   token,
+                                   boost::beast::http::verb::get,
+                                   "/ai/runners/" + runner_id,
+                                   nlohmann::json{},
+                                   boost::beast::http::status::ok);
+  REQUIRE(fetched["data"]["runner_id"] == runner_id);
+  REQUIRE(fetched["data"]["name"] == "Office Ollama");
+
+  auto patched = http_json_request(bound.bind,
+                                   bound.port,
+                                   token,
+                                   boost::beast::http::verb::patch,
+                                   "/ai/runners/" + runner_id,
+                                   nlohmann::json{{"enabled", false}, {"name", "Desk Ollama"}},
+                                   boost::beast::http::status::ok);
+  REQUIRE(patched["data"]["enabled"] == false);
+  REQUIRE(patched["data"]["name"] == "Desk Ollama");
+  REQUIRE(patched["data"]["runtime"]["configured"] == false);
+
+  auto deleted = http_json_request(bound.bind,
+                                   bound.port,
+                                   token,
+                                   boost::beast::http::verb::delete_,
+                                   "/ai/runners/" + runner_id,
+                                   nlohmann::json{},
+                                   boost::beast::http::status::ok);
+  REQUIRE(deleted["data"]["runner_id"] == runner_id);
+
+  auto missing = http_json_request(bound.bind,
+                                   bound.port,
+                                   token,
+                                   boost::beast::http::verb::get,
+                                   "/ai/runners/" + runner_id,
+                                   nlohmann::json{},
+                                   boost::beast::http::status::not_found);
+  REQUIRE(missing["ok"] == false);
+  REQUIRE(missing["error"]["code"] == "not_found");
+
+  std::raise(SIGTERM);
+  server_thread.join();
+}
+
 TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[http]") {
   CloudRunOverrideGuard cloud_guard(
       [](const holder::api::support::CloudProviderConfig& provider,

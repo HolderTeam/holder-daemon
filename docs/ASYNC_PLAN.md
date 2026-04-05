@@ -527,7 +527,7 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Phase 3: Runner Abstraction And Persistence
 
- - [✅] Define canonical `runner_id`
+- [✅] Define canonical `runner_id`
 - [✅] Define runner-qualified model reference format
 - [✅] Define persisted runner configuration schema
 - [✅] Introduce persisted manual runner records

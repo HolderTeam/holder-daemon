@@ -22,6 +22,7 @@ class RunnerRegistry {
   explicit RunnerRegistry(holder::platform::Db* db = nullptr,
                           RunnerClient* auto_local_client = nullptr);
 
+  void refresh();
   std::vector<holder::model::AiRunner> list_runners() const;
   std::optional<holder::model::AiRunner> get_runner(const std::string& runner_id) const;
   RunnerClient* get_client(const std::string& runner_id) const;
