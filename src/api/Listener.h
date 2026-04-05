@@ -89,7 +89,9 @@ private:
   std::vector<std::thread> save_workers_;
   std::vector<std::thread> general_workers_;
   std::vector<std::thread> writer_workers_;
+  std::vector<std::thread> io_workers_;
 
+  void start_accept_loop();
   void run_ingress_worker();
   void run_save_worker();
   void run_general_worker();

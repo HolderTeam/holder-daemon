@@ -15,6 +15,7 @@ namespace {
 namespace http = boost::beast::http;
 
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
+constexpr std::size_t kIoWorkerCount = 1;
 constexpr std::size_t kIngressWorkerCount = 1;
 constexpr std::size_t kReservedSaveWorkerCount = 1;
 constexpr std::size_t kGeneralWorkerCount = 3;
@@ -192,6 +193,7 @@ Listener::BoundInfo Listener::start() {
 
 void Listener::run(const holder::core::SignalHandler& signals) {
   stop_requested_.store(false);
+  ioc_.restart();
   owned_git_ops_.reset();
   git_executor_.reset();
   executor_git_ops_.reset();
@@ -217,6 +219,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   save_workers_.clear();
   general_workers_.clear();
   writer_workers_.clear();
+  io_workers_.clear();
 
   ingress_workers_.reserve(kIngressWorkerCount);
   for (std::size_t i = 0; i < kIngressWorkerCount; ++i) {
@@ -238,41 +241,17 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     writer_workers_.emplace_back([this]() { run_writer_worker(); });
   }
 
-  while (!signals.is_requested()) {
-    boost::system::error_code ec;
-    tcp::socket socket(ioc_);
-    acceptor_.accept(socket, ec);
-    if (ec) {
-      if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
-        std::this_thread::sleep_for(kPollDelay);
-        continue;
-      }
-      if (stop_requested_.load() || ec == boost::asio::error::operation_aborted ||
-          ec == boost::asio::error::bad_descriptor) {
-        break;
-      }
-      spdlog::error("accept failed: {}", ec.message());
-      continue;
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
-      if (pending_sockets_.size() >= kMaxPendingAcceptedSockets) {
-        spdlog::warn("accepted socket queue full; dropping socket");
-        boost::system::error_code close_ec;
-        socket.shutdown(tcp::socket::shutdown_both, close_ec);
-        socket.close(close_ec);
-        continue;
-      }
-      pending_sockets_.emplace_back(std::move(socket));
-    }
-    ingress_queue_cv_.notify_one();
+  start_accept_loop();
+  io_workers_.reserve(kIoWorkerCount);
+  for (std::size_t i = 0; i < kIoWorkerCount; ++i) {
+    io_workers_.emplace_back([this]() { ioc_.run(); });
   }
 
-  stop_requested_.store(true);
-  ingress_queue_cv_.notify_all();
-  lane_queue_cv_.notify_all();
-  response_queue_cv_.notify_all();
+  while (!signals.is_requested()) {
+    std::this_thread::sleep_for(kPollDelay);
+  }
+
+  stop();
 
   for (auto& worker : ingress_workers_) {
     if (worker.joinable()) {
@@ -294,11 +273,17 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       worker.join();
     }
   }
+  for (auto& worker : io_workers_) {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
 
   ingress_workers_.clear();
   save_workers_.clear();
   general_workers_.clear();
   writer_workers_.clear();
+  io_workers_.clear();
   spdlog::info("listener shutdown requested");
 }
 
@@ -310,6 +295,43 @@ void Listener::stop() {
   boost::system::error_code ec;
   acceptor_.close(ec);
   ioc_.stop();
+}
+
+void Listener::start_accept_loop() {
+  if (stop_requested_.load()) {
+    return;
+  }
+
+  acceptor_.async_accept([this](boost::system::error_code ec, tcp::socket socket) mutable {
+    if (ec) {
+      if (stop_requested_.load() || ec == boost::asio::error::operation_aborted ||
+          ec == boost::asio::error::bad_descriptor) {
+        return;
+      }
+      spdlog::error("accept failed: {}", ec.message());
+      if (!stop_requested_.load()) {
+        start_accept_loop();
+      }
+      return;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+      if (pending_sockets_.size() >= kMaxPendingAcceptedSockets) {
+        spdlog::warn("accepted socket queue full; dropping socket");
+        boost::system::error_code close_ec;
+        socket.shutdown(tcp::socket::shutdown_both, close_ec);
+        socket.close(close_ec);
+      } else {
+        pending_sockets_.emplace_back(std::move(socket));
+        ingress_queue_cv_.notify_one();
+      }
+    }
+
+    if (!stop_requested_.load()) {
+      start_accept_loop();
+    }
+  });
 }
 
 void Listener::run_ingress_worker() {

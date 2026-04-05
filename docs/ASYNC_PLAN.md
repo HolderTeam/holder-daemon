@@ -547,7 +547,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Expand `/ai/status` to include `runners[]`
 - [✅] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
 - [✅] Update `/ai/local-models/config` to read and write runner-qualified selections
-- [ ] Remove remaining no-longer-needed compatibility fields instead of extending them
+- [✅] Remove remaining no-longer-needed compatibility fields instead of extending them
 - [✅] Update the Linux frontend AI panel to show multiple runners
 - [✅] Add runner list/add flow in the Linux frontend
 - [✅] Update dropdowns and parsers to use runner-qualified model labels/refs
@@ -583,14 +583,14 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Phase 7: Deeper Async Architecture
 
-- [ ] Move connection accept/read/write handling to an actually asynchronous model
+- [✅] Move connection accept/read/write handling to an actually asynchronous model
 - [✅] Separate request I/O from blocking subsystem work for non-streaming request paths
 - [✅] Introduce dedicated executors for request-path git and AI runtime subsystems
 - [✅] Add bounded backpressure on request-path git and AI runtime executors
 - [✅] Add conservative cancellation for queued stale background requests after client disconnect
-- [ ] Keep route semantics stable unless a deliberate API change is approved
-- [ ] Preserve the three-lane scheduler model in the deeper async architecture
-- [ ] Keep explicit foreground/save protection after the deeper refactor
+- [✅] Keep route semantics stable unless a deliberate API change is approved
+- [✅] Preserve the three-lane scheduler model in the deeper async architecture
+- [✅] Keep explicit foreground/save protection after the deeper refactor
 
 ### Phase 8: Cleanup
 

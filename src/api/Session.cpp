@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <future>
 #include <mutex>
 #include <random>
 #include <string>
@@ -43,6 +44,53 @@ std::string generate_uuid_v4() {
   }
   boost::uuids::random_generator gen;
   return boost::uuids::to_string(gen());
+}
+
+struct AsyncReadResult {
+  boost::system::error_code ec;
+  Session::tcp::socket socket;
+  Session::Request req;
+};
+
+struct AsyncWriteResult {
+  boost::system::error_code ec;
+  Session::tcp::socket socket;
+};
+
+AsyncReadResult async_read_request(Session::tcp::socket socket) {
+  namespace beast = boost::beast;
+  auto promise = std::make_shared<std::promise<AsyncReadResult>>();
+  auto future = promise->get_future();
+
+  struct State {
+    explicit State(Session::tcp::socket s) : socket(std::move(s)) {}
+    Session::tcp::socket socket;
+    beast::flat_buffer buffer;
+    Session::Request req;
+  };
+
+  auto state = std::make_shared<State>(std::move(socket));
+  http::async_read(state->socket,
+                   state->buffer,
+                   state->req,
+                   [state, promise](boost::system::error_code ec, std::size_t) mutable {
+                     promise->set_value(
+                         AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
+                   });
+  return future.get();
+}
+
+AsyncWriteResult async_write_response(Session::PreparedResponse prepared) {
+  auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
+  auto future = promise->get_future();
+  auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
+
+  http::async_write(state->socket,
+                    state->res,
+                    [state, promise](boost::system::error_code ec, std::size_t) mutable {
+                      promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
+                    });
+  return future.get();
 }
 
 } // namespace
@@ -99,25 +147,20 @@ Session::Session(PreparedRequest prepared,
       has_loaded_request_(true) {}
 
 std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket socket) {
-  namespace beast = boost::beast;
-
-  beast::flat_buffer buffer;
-  Request req;
-  boost::system::error_code ec;
   const auto request_started = std::chrono::steady_clock::now();
-
-  http::read(socket, buffer, req, ec);
+  auto read_result = async_read_request(std::move(socket));
+  auto& ec = read_result.ec;
   if (ec == http::error::end_of_stream) {
-    socket.shutdown(tcp::socket::shutdown_send, ec);
+    read_result.socket.shutdown(tcp::socket::shutdown_send, ec);
     return std::nullopt;
   }
   if (ec) {
     spdlog::warn("read failed: {}", ec.message());
-    socket.shutdown(tcp::socket::shutdown_send, ec);
+    read_result.socket.shutdown(tcp::socket::shutdown_send, ec);
     return std::nullopt;
   }
 
-  const auto target = req.target();
+  const auto target = read_result.req.target();
   const std::string target_str(target.data(), target.size());
   const auto query_pos = target_str.find('?');
   const std::string path = (query_pos == std::string::npos)
@@ -126,10 +169,10 @@ std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket soc
   const std::string query_string =
       (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
 
-  const auto lane = classify_request_lane(req, path);
+  const auto lane = classify_request_lane(read_result.req, path);
   PreparedRequest prepared{
-      std::move(socket),
-      std::move(req),
+      std::move(read_result.socket),
+      std::move(read_result.req),
       request_started,
       path,
       query_string,
@@ -208,8 +251,8 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
 }
 
 void Session::write_prepared_response(PreparedResponse prepared) {
-  boost::system::error_code ec;
-  http::write(prepared.socket, prepared.res, ec);
+  auto write_result = async_write_response(std::move(prepared));
+  auto& ec = write_result.ec;
   if (ec) {
     spdlog::warn("write failed: {}", ec.message());
   }
@@ -229,7 +272,7 @@ void Session::write_prepared_response(PreparedResponse prepared) {
                 prepared.res.result_int(),
                 duration_ms);
 
-  prepared.socket.shutdown(tcp::socket::shutdown_send, ec);
+  write_result.socket.shutdown(tcp::socket::shutdown_send, ec);
 }
 
 Session::RequestLane Session::classify_request_lane(const Request& req,
