@@ -9,6 +9,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunnerRepo.h"
 #include "ai/AiRunRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
@@ -2167,6 +2168,119 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::strong-model"));
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute title generation honors configured fast model runner", "[http]") {
+  const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+  holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
+  local_model_cfg_repo.set(
+      std::string("manual-a::fake-echo"), std::string("auto-local::strong-model"), std::nullopt, 1);
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "fast-model", .size = 1},
+      holder::llm::LocalModel{.name = "strong-model", .size = 500},
+      holder::llm::LocalModel{.name = "other-model", .size = 200},
+  };
+  runner.set_status_override_for_tests(status);
+
+  bool saw_main_generation = false;
+  bool saw_title_generation_on_auto_local = false;
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string& prompt,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string*) -> bool {
+        if (prompt.find("Write a short human-readable thread title") != std::string::npos) {
+          saw_title_generation_on_auto_local = true;
+          on_chunk("Auto Local Title");
+          return true;
+        }
+        if (model == "strong-model") {
+          saw_main_generation = true;
+          on_chunk("strong-output");
+          return true;
+        }
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "use strong model"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  auto* manual_client = runner_registry.get_client("manual-a");
+  REQUIRE(manual_client != nullptr);
+  (void)manual_client->retry();
+
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  REQUIRE(saw_main_generation);
+  REQUIRE_FALSE(saw_title_generation_on_auto_local);
+
+  holder::ai::AiThreadRepo thread_repo(db);
+  const auto thread = thread_repo.get("thread-1");
+  REQUIRE(thread.has_value());
+  REQUIRE(thread->title == "Thread");
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);

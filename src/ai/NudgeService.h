@@ -1,5 +1,6 @@
 #pragma once
 
+#include "llm/RunnerModelRef.h"
 #include "platform/Db.h"
 #include "llm/RunnerRegistry.h"
 
@@ -66,7 +67,7 @@ private:
   static std::string build_nudge_title(const NudgeCandidateInput& input);
   static std::string build_nudge_body(const NudgeCandidateInput& input);
   std::string build_nudge_body_with_runner(const NudgeCandidateInput& input) const;
-  std::optional<std::string> pick_local_model_for_nudges() const;
+  std::optional<holder::llm::ResolvedRunnerModel> pick_local_model_for_nudges() const;
   static std::string build_nudge_prompt(const NudgeCandidateInput& input,
                                         const std::string& deterministic_body,
                                         const std::string& context_summary);

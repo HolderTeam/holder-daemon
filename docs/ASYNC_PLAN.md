@@ -554,7 +554,7 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Phase 5: Priority-Aware AI Routing
 
-- [ ] Resolve selected local model config through `runner_id + model_name`
+- [✅] Resolve selected local model config through `runner_id + model_name`
 - [✅] Update normal local AI run paths to use the chosen runner
 - [ ] Update title generation paths
 - [ ] Update nudge paths that rely on local models

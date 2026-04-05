@@ -61,4 +61,26 @@ std::optional<std::string> runner_id_from_ref(const std::optional<std::string>& 
   return parsed->runner_id;
 }
 
+std::optional<ResolvedRunnerModel> resolve_configured_runner_model(
+    const std::optional<std::string>& ref,
+    RunnerRegistry* runner_registry) {
+  if (!ref.has_value() || ref->empty() || runner_registry == nullptr) {
+    return std::nullopt;
+  }
+  const auto normalized = normalize_local_runner_model_ref(ref.value());
+  const auto parsed = parse_runner_model_ref(normalized);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  auto* runner = runner_registry->get_client(parsed->runner_id);
+  if (runner == nullptr) {
+    return std::nullopt;
+  }
+  return ResolvedRunnerModel{
+      .runner_id = parsed->runner_id,
+      .model_name = parsed->model_name,
+      .runner = runner,
+  };
+}
+
 } // namespace holder::llm

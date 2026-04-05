@@ -114,19 +114,27 @@ std::optional<holder::model::AiLocalModelConfig> load_local_model_config(holder:
   }
 }
 
-std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
-                                                  holder::llm::RunnerClient* runner) {
-  if (runner == nullptr) return std::nullopt;
-  const auto status = runner->status();
-  if (!status.available || status.models.empty()) return std::nullopt;
-
-  const auto cfg = load_local_model_config(db);
-  const auto fast_model =
-      holder::llm::local_model_name_from_ref(cfg.has_value() ? cfg->fast_model : std::nullopt,
-                                             holder::llm::RunnerRegistry::kAutoLocalRunnerId);
-  if (fast_model.has_value() && is_installed_model(status, fast_model.value())) {
-    return fast_model.value();
+std::optional<holder::llm::ResolvedRunnerModel> pick_local_title_model(
+    holder::platform::Db& db,
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::llm::RunnerClient* fallback_runner,
+    const std::string& fallback_runner_id) {
+  if (runner_registry != nullptr) {
+    const auto cfg = load_local_model_config(db);
+    const auto configured =
+        holder::llm::resolve_configured_runner_model(cfg.has_value() ? cfg->fast_model : std::nullopt,
+                                                     runner_registry);
+    if (configured.has_value() && configured->runner != nullptr) {
+      const auto configured_status = configured->runner->status();
+      if (configured_status.available && is_installed_model(configured_status, configured->model_name)) {
+        return configured;
+      }
+    }
   }
+
+  if (fallback_runner == nullptr) return std::nullopt;
+  const auto status = fallback_runner->status();
+  if (!status.available || status.models.empty()) return std::nullopt;
 
   const holder::llm::LocalModel* best = nullptr;
   for (const auto& model : status.models) {
@@ -139,15 +147,21 @@ std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
     }
   }
   if (best == nullptr || best->name.empty()) return std::nullopt;
-  return best->name;
+  return holder::llm::ResolvedRunnerModel{
+      .runner_id = fallback_runner_id,
+      .model_name = best->name,
+      .runner = fallback_runner,
+  };
 }
 
-std::optional<std::string> generate_thread_title(holder::llm::RunnerClient* runner,
+std::optional<std::string> generate_thread_title(holder::llm::RunnerRegistry* runner_registry,
+                                                 holder::llm::RunnerClient* runner,
+                                                 const std::string& runner_id,
                                                  holder::platform::Db& db,
                                                  const std::string& prompt,
                                                  const std::string& assistant_text) {
-  const auto model = pick_local_title_model(db, runner);
-  if (!model.has_value()) return std::nullopt;
+  const auto target = pick_local_title_model(db, runner_registry, runner, runner_id);
+  if (!target.has_value() || target->runner == nullptr) return std::nullopt;
 
   std::ostringstream prompt_ss;
   prompt_ss << "Write a short human-readable thread title for this conversation.\n";
@@ -163,8 +177,8 @@ std::optional<std::string> generate_thread_title(holder::llm::RunnerClient* runn
 
   std::string generated;
   std::string error;
-  const bool ok = runner->stream_generate(
-      model.value(),
+  const bool ok = target->runner->stream_generate(
+      target->model_name,
       prompt_ss.str(),
       "{}",
       [&](const std::string& chunk) { generated += chunk; },
@@ -191,7 +205,9 @@ std::optional<std::string> generate_thread_title(holder::llm::RunnerClient* runn
 }
 
 void maybe_update_thread_title(holder::platform::Db& db,
+                               holder::llm::RunnerRegistry* runner_registry,
                                holder::llm::RunnerClient* runner,
+                               const std::string& runner_id,
                                const std::optional<std::string>& thread_id,
                                const std::string& prompt,
                                const std::string& assistant_text,
@@ -203,7 +219,8 @@ void maybe_update_thread_title(holder::platform::Db& db,
   if (!thread.has_value()) return;
   if (!should_refresh_thread_title(thread->title, prompt)) return;
 
-  const auto next_title = generate_thread_title(runner, db, prompt, assistant_text);
+  const auto next_title =
+      generate_thread_title(runner_registry, runner, runner_id, db, prompt, assistant_text);
   if (!next_title.has_value() || next_title.value() == thread->title) return;
   thread_repo.update_title(thread_id.value(), next_title.value(), updated_at);
 }
@@ -309,6 +326,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
     holder::privacy::SecretStore* secret_store,
+    holder::llm::RunnerRegistry* runner_registry,
     holder::llm::RunnerClient* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
@@ -857,7 +875,14 @@ RouteDispatchResult execute_cloud_post_path(
         }
 
         maybe_update_thread_title(
-            db, runner, thread_id, prompt, output.value(), updated_at);
+            db,
+            runner_registry,
+            runner,
+            holder::llm::RunnerRegistry::kAutoLocalRunnerId,
+            thread_id,
+            prompt,
+            output.value(),
+            updated_at);
 
         run_repo.update_status(
             run.run_id,
@@ -916,6 +941,7 @@ RouteDispatchResult execute_local_post_path(
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
     const holder::llm::RunnerStatus& runner_status,
+    holder::llm::RunnerRegistry* runner_registry,
     holder::llm::RunnerClient* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
@@ -1236,7 +1262,7 @@ RouteDispatchResult execute_local_post_path(
       message_id = assistant_msg.message_id;
     }
     maybe_update_thread_title(
-        db, runner, thread_id, prompt, assistant_text, updated_at);
+        db, runner_registry, runner, runner_id, thread_id, prompt, assistant_text, updated_at);
     run_repo.update_status(run.run_id,
                            "completed",
                            std::nullopt,
@@ -1338,6 +1364,7 @@ RouteDispatchResult handle_ai_runs_post_route(
           thread_id,
           context_json,
           secret_store,
+          runner_registry,
           runner,
           uuid_v4,
           socket,
@@ -1353,6 +1380,7 @@ RouteDispatchResult handle_ai_runs_post_route(
                                    thread_id,
                                    context_json,
                                    runner_status,
+                                   runner_registry,
                                    runner,
                                    uuid_v4,
                                    socket,
