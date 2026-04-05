@@ -9,6 +9,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiMessageRepo.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 #include "privacy/SecretStore.h"
 
@@ -510,7 +511,8 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -620,7 +622,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -686,7 +689,8 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -1788,7 +1792,8 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req, res, unopened_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
@@ -1857,7 +1862,8 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
@@ -1965,7 +1971,8 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
@@ -2049,7 +2056,8 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
@@ -2143,7 +2151,8 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
 
   http::response<http::string_body> res;
   int id_seq = 1;
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
@@ -2450,7 +2459,8 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
@@ -2571,7 +2581,8 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
@@ -2648,7 +2659,8 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2715,7 +2727,8 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2804,7 +2817,8 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2866,7 +2880,8 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2917,7 +2932,8 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   (void)runner.retry();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -3002,7 +3018,8 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {

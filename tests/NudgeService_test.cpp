@@ -7,6 +7,7 @@
 #include "ai/NudgeService.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <git2.h>
@@ -206,7 +207,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return true;
         });
 
-    holder::llm::RunnerRegistry runner_registry(&db, &runner);
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
     holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-1"));
     REQUIRE(decision.nudge.has_value());
@@ -229,7 +231,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return false;
         });
 
-    holder::llm::RunnerRegistry runner_registry(&db, &runner);
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
     holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-2"));
     REQUIRE(decision.nudge.has_value());

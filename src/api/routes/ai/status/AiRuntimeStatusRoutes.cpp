@@ -45,7 +45,9 @@ bool handle_ai_runtime_status_routes(const std::string& path,
                                      http::response<http::string_body>& res,
                                      holder::platform::Db& db,
                                      holder::llm::RunnerRegistry* runner_registry) {
-  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry
+                     ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
   if (path == "/ai/status" && req.method() == http::verb::get) {
     nlohmann::json data;
     data["checked_at"] = support::now_epoch_seconds();

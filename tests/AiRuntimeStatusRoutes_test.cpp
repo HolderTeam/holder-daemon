@@ -8,6 +8,7 @@
 #include "api/routes/ai/status/AiCapabilitiesRoutes.h"
 #include "ai/AiLocalModelConfigRepo.h"
 #include "http_test_helpers.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <boost/beast/http.hpp>
@@ -53,7 +54,8 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
   runner.set_fake_mode(true);
   (void)runner.retry();
   (void)runner.start_pull("fake-echo");
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   SECTION("GET /ai/status with runner includes pull details") {
     auto req = make_request(http::verb::get, "/ai/status");
@@ -208,7 +210,8 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
       holder::llm::LocalModel{.name = "m2", .digest = "d2", .size = 22, .modified_at = "t2"},
   };
   runner.set_status_override_for_tests(status);
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
@@ -276,7 +279,8 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
       holder::llm::LocalModel{.name = "model-installed", .digest = "d", .size = 11, .modified_at = "t"},
   };
   runner.set_status_override_for_tests(status);
-  holder::llm::RunnerRegistry runner_registry(&db, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;

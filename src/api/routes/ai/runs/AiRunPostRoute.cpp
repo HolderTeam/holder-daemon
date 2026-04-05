@@ -15,7 +15,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiThreadRepo.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerClient.h"
 #include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
@@ -34,8 +34,9 @@ namespace {
 
 namespace http = boost::beast::http;
 
-holder::llm::LocalModelRunner* resolve_auto_local_runner(holder::llm::RunnerRegistry* runner_registry) {
-  return runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+holder::llm::RunnerClient* resolve_auto_local_runner(holder::llm::RunnerRegistry* runner_registry) {
+  return runner_registry ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                         : nullptr;
 }
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
@@ -114,7 +115,7 @@ std::optional<holder::model::AiLocalModelConfig> load_local_model_config(holder:
 }
 
 std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
-                                                  holder::llm::LocalModelRunner* runner) {
+                                                  holder::llm::RunnerClient* runner) {
   if (runner == nullptr) return std::nullopt;
   const auto status = runner->status();
   if (!status.available || status.models.empty()) return std::nullopt;
@@ -141,7 +142,7 @@ std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
   return best->name;
 }
 
-std::optional<std::string> generate_thread_title(holder::llm::LocalModelRunner* runner,
+std::optional<std::string> generate_thread_title(holder::llm::RunnerClient* runner,
                                                  holder::platform::Db& db,
                                                  const std::string& prompt,
                                                  const std::string& assistant_text) {
@@ -190,7 +191,7 @@ std::optional<std::string> generate_thread_title(holder::llm::LocalModelRunner* 
 }
 
 void maybe_update_thread_title(holder::platform::Db& db,
-                               holder::llm::LocalModelRunner* runner,
+                               holder::llm::RunnerClient* runner,
                                const std::optional<std::string>& thread_id,
                                const std::string& prompt,
                                const std::string& assistant_text,
@@ -308,7 +309,7 @@ RouteDispatchResult execute_cloud_post_path(
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
     holder::privacy::SecretStore* secret_store,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerClient* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
@@ -912,7 +913,7 @@ RouteDispatchResult execute_local_post_path(
     const std::optional<std::string>& thread_id,
     const std::string& context_json,
     const holder::llm::RunnerStatus& runner_status,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerClient* runner,
     const std::function<std::string()>& uuid_v4,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,

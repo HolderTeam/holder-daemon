@@ -26,7 +26,9 @@ bool handle_ai_capabilities_routes(const std::string& path,
                                    holder::platform::Db& db,
                                    holder::llm::RunnerRegistry* runner_registry,
                                    const std::function<std::string(const std::string&)>& param_get) {
-  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry
+                     ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {
     return false;
   }

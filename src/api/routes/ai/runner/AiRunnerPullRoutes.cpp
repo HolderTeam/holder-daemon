@@ -41,7 +41,9 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
     http::response<http::string_body>& res,
     holder::llm::RunnerRegistry* runner_registry) {
   RunnerRouteDispatchResult out{};
-  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry
+                     ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
 
   if (path == "/ai/runner/pull" && req.method() == http::verb::post) {
     out.handled = true;

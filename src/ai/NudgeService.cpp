@@ -449,7 +449,9 @@ std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
 }
 
 std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
-  auto* runner = runner_registry_ ? runner_registry_->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry_
+                     ? runner_registry_->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
   if (runner == nullptr) return std::nullopt;
   const auto status = runner->status();
   if (!status.available || status.models.empty()) return std::nullopt;
@@ -487,7 +489,9 @@ std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
 }
 
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
-  auto* runner = runner_registry_ ? runner_registry_->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry_
+                     ? runner_registry_->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
   const auto deterministic = build_nudge_body(input);
   const auto model = pick_local_model_for_nudges();
   if (runner == nullptr || !model.has_value()) return deterministic;

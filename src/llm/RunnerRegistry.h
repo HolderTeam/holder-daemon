@@ -1,5 +1,6 @@
 #pragma once
 
+#include "llm/RunnerClient.h"
 #include "model/AiRunner.h"
 
 #include <optional>
@@ -11,22 +12,21 @@ class Db;
 }
 
 namespace holder::llm {
-class LocalModelRunner;
 
 class RunnerRegistry {
  public:
   static constexpr const char* kAutoLocalRunnerId = "auto-local";
 
   explicit RunnerRegistry(holder::platform::Db* db = nullptr,
-                          LocalModelRunner* auto_local_runner = nullptr);
+                          RunnerClient* auto_local_client = nullptr);
 
   std::vector<holder::model::AiRunner> list_runners() const;
   std::optional<holder::model::AiRunner> get_runner(const std::string& runner_id) const;
-  LocalModelRunner* get_auto_local_runner() const;
+  RunnerClient* get_client(const std::string& runner_id) const;
 
  private:
   holder::platform::Db* db_ = nullptr;
-  LocalModelRunner* auto_local_runner_ = nullptr;
+  RunnerClient* auto_local_client_ = nullptr;
 };
 
 } // namespace holder::llm

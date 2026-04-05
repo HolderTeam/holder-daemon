@@ -45,7 +45,9 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     boost::asio::ip::tcp::socket& socket,
     holder::llm::RunnerRegistry* runner_registry) {
   RunnerRouteDispatchResult out{};
-  auto* runner = runner_registry ? runner_registry->get_auto_local_runner() : nullptr;
+  auto* runner = runner_registry
+                     ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
 
   if (path.rfind("/ai/runner/pull/", 0) != 0 ||
       path.size() <= std::string("/ai/runner/pull/").size() + std::string("/events").size() ||

@@ -1,5 +1,6 @@
 #include "http_test_helpers.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <boost/asio.hpp>
@@ -94,7 +95,8 @@ TEST_CASE("Ai runner pull events route returns not_implemented when runner missi
 TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   boost::asio::io_context ioc;
   tcp::socket socket(ioc);
@@ -111,7 +113,8 @@ TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[ht
 TEST_CASE("Ai runner pull events route streams failed event for missing job", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   const auto stream =
       invoke_pull_event_route_and_capture("/ai/runner/pull/missing-job/events", &runner_registry);
@@ -128,7 +131,8 @@ TEST_CASE("Ai runner pull events route streams progress and completed for job", 
   runner.set_fake_mode(true);
   const auto job = runner.start_pull("fake-echo");
   REQUIRE(!job.job_id.empty());
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   const auto stream =
       invoke_pull_event_route_and_capture("/ai/runner/pull/" + job.job_id + "/events", &runner_registry);

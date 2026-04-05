@@ -1,5 +1,7 @@
 #pragma once
 
+#include "llm/RunnerTypes.h"
+
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -10,22 +12,6 @@
 #include <vector>
 
 namespace holder::llm {
-
-struct LocalModel {
-  std::string name;
-  std::string digest;
-  long long size = 0;
-  std::string modified_at;
-};
-
-struct RunnerStatus {
-  bool available = false;
-  bool spawn_attempted = false;
-  long long last_checked = 0;
-  std::string version;
-  std::string error;
-  std::vector<LocalModel> models;
-};
 
 class LocalModelRunner {
  public:
@@ -44,21 +30,8 @@ class LocalModelRunner {
   RunnerStatus retry();
   void stop();
 
-  struct PullProgress {
-    long long completed = 0;
-    long long total = 0;
-    double percent = 0.0;
-    std::string stage;
-  };
-
-  struct PullJob {
-    std::string job_id;
-    std::string model;
-    std::string status;
-    PullProgress progress;
-    long long updated_at = 0;
-    std::string error;
-  };
+  using PullProgress = RunnerPullProgress;
+  using PullJob = RunnerPullJob;
 
   PullJob start_pull(const std::string& model);
   std::optional<PullJob> get_pull(const std::string& job_id) const;

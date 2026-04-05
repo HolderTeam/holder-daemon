@@ -1,5 +1,6 @@
 #include "http_test_helpers.h"
 #include "api/routes/ai/runner/AiRunnerPullRoutes.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <boost/beast/http.hpp>
@@ -36,7 +37,8 @@ TEST_CASE("Ai runner pull routes ignore unmatched paths", "[http]") {
 
 TEST_CASE("Ai runner pull routes POST returns unavailable when runner not ready", "[http]") {
   holder::llm::LocalModelRunner runner;
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
   auto out =
@@ -51,7 +53,8 @@ TEST_CASE("Ai runner pull routes POST validates request body", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
   (void)runner.retry();
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   SECTION("missing model") {
     http::response<http::string_body> res;
@@ -74,7 +77,8 @@ TEST_CASE("Ai runner pull routes POST returns error when pull start fails", "[ht
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
   (void)runner.retry();
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
   auto out = call_pull_route("/ai/runner/pull", http::verb::post, R"({"model":""})", &runner_registry, res);
@@ -87,7 +91,8 @@ TEST_CASE("Ai runner pull routes POST returns job on success", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
   (void)runner.retry();
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
   auto out =
@@ -108,7 +113,8 @@ TEST_CASE("Ai runner pull routes POST returns job on success", "[http]") {
 TEST_CASE("Ai runner pull routes GET validates job lookup", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   SECTION("empty job id") {
     http::response<http::string_body> res;
@@ -132,7 +138,8 @@ TEST_CASE("Ai runner pull routes GET returns job payload", "[http]") {
   runner.set_fake_mode(true);
   const auto started = runner.start_pull("fake-echo");
   REQUIRE(!started.job_id.empty());
-  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
   http::response<http::string_body> res;
   auto out = call_pull_route(

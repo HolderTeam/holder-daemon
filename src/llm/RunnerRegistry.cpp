@@ -1,7 +1,6 @@
 #include "llm/RunnerRegistry.h"
 
 #include "ai/AiRunnerRepo.h"
-#include "llm/LocalModelRunner.h"
 
 namespace holder::llm {
 namespace {
@@ -21,8 +20,8 @@ holder::model::AiRunner auto_local_runner_record() {
 
 } // namespace
 
-RunnerRegistry::RunnerRegistry(holder::platform::Db* db, LocalModelRunner* auto_local_runner)
-    : db_(db), auto_local_runner_(auto_local_runner) {}
+RunnerRegistry::RunnerRegistry(holder::platform::Db* db, RunnerClient* auto_local_client)
+    : db_(db), auto_local_client_(auto_local_client) {}
 
 std::vector<holder::model::AiRunner> RunnerRegistry::list_runners() const {
   std::vector<holder::model::AiRunner> out;
@@ -46,8 +45,11 @@ std::optional<holder::model::AiRunner> RunnerRegistry::get_runner(const std::str
   return std::nullopt;
 }
 
-LocalModelRunner* RunnerRegistry::get_auto_local_runner() const {
-  return auto_local_runner_;
+RunnerClient* RunnerRegistry::get_client(const std::string& runner_id) const {
+  if (runner_id == kAutoLocalRunnerId) {
+    return auto_local_client_;
+  }
+  return nullptr;
 }
 
 } // namespace holder::llm
