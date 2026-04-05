@@ -2,6 +2,7 @@
 
 #include "ai/NudgeService.h"
 #include "api/Router.h"
+#include "api/Session.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
 #include "llm/RunnerRegistry.h"
@@ -65,13 +66,22 @@ private:
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
 
-  std::mutex session_queue_mutex_;
-  std::condition_variable session_queue_cv_;
-  std::deque<tcp::socket> pending_sessions_;
+  std::mutex ingress_queue_mutex_;
+  std::condition_variable ingress_queue_cv_;
+  std::deque<tcp::socket> pending_sockets_;
+  std::mutex lane_queue_mutex_;
+  std::condition_variable lane_queue_cv_;
+  std::deque<Session::PreparedRequest> save_queue_;
+  std::deque<Session::PreparedRequest> foreground_queue_;
+  std::deque<Session::PreparedRequest> background_queue_;
   std::atomic<bool> stop_requested_{false};
-  std::vector<std::thread> session_workers_;
+  std::vector<std::thread> ingress_workers_;
+  std::vector<std::thread> save_workers_;
+  std::vector<std::thread> general_workers_;
 
-  void run_session_worker();
+  void run_ingress_worker();
+  void run_save_worker();
+  void run_general_worker();
 };
 
 } // namespace holder::api

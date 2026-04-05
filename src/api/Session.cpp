@@ -70,29 +70,55 @@ Session::Session(tcp::socket socket,
       git_ops_(git_ops),
       runner_registry_(runner_registry) {}
 
-void Session::run() {
+Session::Session(PreparedRequest prepared,
+                 holder::platform::Db& db,
+                 const std::string& auth_token,
+                 const Router& router,
+                 std::chrono::steady_clock::time_point started_at,
+                 holder::card::CardStore* card_store,
+                 holder::index::FtsIndexer* fts,
+                 holder::ai::NudgeService* nudge_service,
+                 holder::privacy::SecretStore* secret_store,
+                 holder::git::GitOps* git_ops,
+                 holder::llm::RunnerRegistry* runner_registry)
+    : socket_(std::move(prepared.socket)),
+      db_(db),
+      auth_token_(auth_token),
+      router_(router),
+      started_at_(started_at),
+      card_store_(card_store),
+      fts_(fts),
+      nudge_service_(nudge_service),
+      secret_store_(secret_store),
+      git_ops_(git_ops),
+      runner_registry_(runner_registry),
+      req_(std::move(prepared.req)),
+      request_started_(prepared.request_started),
+      path_(std::move(prepared.path)),
+      query_string_(std::move(prepared.query_string)),
+      has_loaded_request_(true) {}
+
+std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket socket) {
   namespace beast = boost::beast;
-  namespace http = boost::beast::http;
 
   beast::flat_buffer buffer;
-  http::request<http::string_body> req;
+  Request req;
   boost::system::error_code ec;
   const auto request_started = std::chrono::steady_clock::now();
 
-  http::read(socket_, buffer, req, ec);
+  http::read(socket, buffer, req, ec);
   if (ec == http::error::end_of_stream) {
-    socket_.shutdown(tcp::socket::shutdown_send, ec);
-    return;
+    socket.shutdown(tcp::socket::shutdown_send, ec);
+    return std::nullopt;
   }
   if (ec) {
     spdlog::warn("read failed: {}", ec.message());
-    socket_.shutdown(tcp::socket::shutdown_send, ec);
-    return;
+    socket.shutdown(tcp::socket::shutdown_send, ec);
+    return std::nullopt;
   }
 
   const auto target = req.target();
   const std::string target_str(target.data(), target.size());
-
   const auto query_pos = target_str.find('?');
   const std::string path = (query_pos == std::string::npos)
                                ? target_str
@@ -100,21 +126,57 @@ void Session::run() {
   const std::string query_string =
       (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
 
-  http::response<http::string_body> res;
+  const auto lane = classify_request_lane(req, path);
+  PreparedRequest prepared{
+      std::move(socket),
+      std::move(req),
+      request_started,
+      path,
+      query_string,
+      lane,
+  };
+  return prepared;
+}
 
-  if (routes::handle_static_routes(path, req, res)) {
+void Session::run() {
+  if (!ensure_request_loaded()) {
+    return;
+  }
+  process_loaded_request();
+}
+
+bool Session::ensure_request_loaded() {
+  if (has_loaded_request_) {
+    return true;
+  }
+  auto prepared = prepare_request(std::move(socket_));
+  if (!prepared.has_value()) {
+    return false;
+  }
+  socket_ = std::move(prepared->socket);
+  req_ = std::move(prepared->req);
+  request_started_ = prepared->request_started;
+  path_ = std::move(prepared->path);
+  query_string_ = std::move(prepared->query_string);
+  has_loaded_request_ = true;
+  return true;
+}
+
+void Session::process_loaded_request() {
+  http::response<http::string_body> res;
+  if (routes::handle_static_routes(path_, req_, res)) {
     // handled
-  } else if (!support::is_authorized_bearer(req, auth_token_)) {
+  } else if (!support::is_authorized_bearer(req_, auth_token_)) {
     res = support::error_response(http::status::unauthorized,
                                   "unauthorized",
                                   "Missing or invalid token.");
-  } else if (router_.dispatch(req, res)) {
+  } else if (router_.dispatch(req_, res)) {
     // handled
   } else {
     const auto route_result =
-        routes::dispatch_authenticated_routes(path,
-                                              query_string,
-                                              req,
+        routes::dispatch_authenticated_routes(path_,
+                                              query_string_,
+                                              req_,
                                               res,
                                               socket_,
                                               db_,
@@ -128,21 +190,44 @@ void Session::run() {
     if (route_result.streamed) return;
   }
 
+  boost::system::error_code ec;
   http::write(socket_, res, ec);
   if (ec) {
     spdlog::warn("write failed: {}", ec.message());
   }
 
   const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - request_started)
+                               std::chrono::steady_clock::now() - request_started_)
                                .count();
   spdlog::info("HTTP {} {} -> {} ({}ms)",
-               req.method_string(),
-               req.target(), // LCOV_EXCL_LINE
+               req_.method_string(),
+               req_.target(), // LCOV_EXCL_LINE
                res.result_int(),
                duration_ms);
 
   socket_.shutdown(tcp::socket::shutdown_send, ec);
+}
+
+Session::RequestLane Session::classify_request_lane(const Request& req,
+                                                    const std::string& path) {
+  // Initial route-to-lane mapping:
+  // - save: card writes except link graph mutations
+  // - background: AI routes and links/backlinks refresh work
+  // - foreground: everything else
+  const auto method = req.method();
+  const bool is_get_like = method == http::verb::get || method == http::verb::head;
+  const bool is_card_route = path == "/cards" || path.rfind("/cards/", 0) == 0;
+  const bool is_ai_route = path == "/ai" || path.rfind("/ai/", 0) == 0;
+  const bool is_link_route =
+      path.find("/links") != std::string::npos || path.find("/backlinks") != std::string::npos;
+
+  if (is_card_route && !is_get_like && !is_link_route) {
+    return RequestLane::Save;
+  }
+  if (is_ai_route || is_link_route) {
+    return RequestLane::Background;
+  }
+  return RequestLane::Foreground;
 }
 
 } // namespace holder::api

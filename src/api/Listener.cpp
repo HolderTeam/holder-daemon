@@ -1,7 +1,8 @@
 #include "api/Listener.h"
 
-#include "api/Session.h"
+#include "api/support/HttpResponses.h"
 
+#include <boost/beast/http.hpp>
 #include <memory>
 #include <spdlog/spdlog.h>
 
@@ -11,9 +12,84 @@
 namespace holder::api {
 namespace {
 
+namespace http = boost::beast::http;
+
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
-constexpr std::size_t kInitialSessionWorkerCount = 1;
-constexpr std::size_t kMaxPendingSessions = 64;
+constexpr std::size_t kIngressWorkerCount = 1;
+constexpr std::size_t kReservedSaveWorkerCount = 1;
+constexpr std::size_t kGeneralWorkerCount = 1;
+constexpr std::size_t kMaxPendingAcceptedSockets = 64;
+constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
+
+// Queue contract:
+// - accepted sockets wait here for request read/parse/classification
+// - save_queue: highest priority card-write work only
+// - foreground_queue: user-visible non-save work
+// - background_queue: AI, nudges, links/backlinks, and other best-effort work
+//
+// Admission rules:
+// - accepted sockets are dropped when the ingress queue is full
+// - prepared requests receive 503 when their target lane queue is full
+// - reserved save workers consume save_queue only
+// - general workers prefer save_queue, then foreground_queue, then background_queue
+// - background work never runs on reserved save workers
+//
+// Initial worker counts stay conservative until more shared subsystems are audited.
+
+void reject_prepared_request(Session::PreparedRequest prepared,
+                             http::status status,
+                             const std::string& code,
+                             const std::string& message) {
+  boost::system::error_code ec;
+  auto res = support::error_response(status, code, message);
+  http::write(prepared.socket, res, ec);
+  prepared.socket.shutdown(Session::tcp::socket::shutdown_send, ec);
+}
+
+struct WorkerContext {
+  holder::platform::Db db;
+  std::unique_ptr<holder::index::FtsIndexer> fts;
+  std::unique_ptr<holder::card::CardStore> card_store;
+  std::unique_ptr<holder::llm::RunnerRegistry> runner_registry;
+  std::unique_ptr<holder::ai::NudgeService> nudge_service;
+};
+
+WorkerContext make_worker_context(holder::platform::Db& root_db,
+                                  holder::index::FtsIndexer* root_fts,
+                                  holder::card::CardStore* root_card_store,
+                                  holder::llm::RunnerRegistry* root_runner_registry,
+                                  holder::ai::NudgeService* root_nudge_service,
+                                  holder::git::GitOps* git_ops) {
+  WorkerContext context;
+  context.db.open(root_db.path());
+
+  if (root_fts != nullptr) {
+    context.fts = std::make_unique<holder::index::FtsIndexer>(context.db);
+  }
+  if (root_card_store != nullptr) {
+    context.card_store = std::make_unique<holder::card::CardStore>(
+        context.db,
+        context.fts.get(),
+        nullptr,
+        git_ops);
+  }
+
+  holder::llm::RunnerClient* auto_local_client = nullptr;
+  if (root_runner_registry != nullptr) {
+    auto_local_client =
+        root_runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+    context.runner_registry =
+        std::make_unique<holder::llm::RunnerRegistry>(&context.db, auto_local_client);
+  }
+
+  if (root_nudge_service != nullptr) {
+    context.nudge_service = std::make_unique<holder::ai::NudgeService>(
+        context.db,
+        context.runner_registry.get());
+  }
+
+  return context;
+}
 
 } // namespace
 
@@ -74,10 +150,24 @@ Listener::BoundInfo Listener::start() {
 
 void Listener::run(const holder::core::SignalHandler& signals) {
   stop_requested_.store(false);
-  session_workers_.clear();
-  session_workers_.reserve(kInitialSessionWorkerCount);
-  for (std::size_t i = 0; i < kInitialSessionWorkerCount; ++i) {
-    session_workers_.emplace_back([this]() { run_session_worker(); });
+
+  ingress_workers_.clear();
+  save_workers_.clear();
+  general_workers_.clear();
+
+  ingress_workers_.reserve(kIngressWorkerCount);
+  for (std::size_t i = 0; i < kIngressWorkerCount; ++i) {
+    ingress_workers_.emplace_back([this]() { run_ingress_worker(); });
+  }
+
+  save_workers_.reserve(kReservedSaveWorkerCount);
+  for (std::size_t i = 0; i < kReservedSaveWorkerCount; ++i) {
+    save_workers_.emplace_back([this]() { run_save_worker(); });
+  }
+
+  general_workers_.reserve(kGeneralWorkerCount);
+  for (std::size_t i = 0; i < kGeneralWorkerCount; ++i) {
+    general_workers_.emplace_back([this]() { run_general_worker(); });
   }
 
   while (!signals.is_requested()) {
@@ -98,102 +188,184 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     }
 
     {
-      std::lock_guard<std::mutex> lock(session_queue_mutex_);
-      if (pending_sessions_.size() >= kMaxPendingSessions) {
-        spdlog::warn("session queue full; dropping accepted socket");
+      std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+      if (pending_sockets_.size() >= kMaxPendingAcceptedSockets) {
+        spdlog::warn("accepted socket queue full; dropping socket");
         boost::system::error_code close_ec;
         socket.shutdown(tcp::socket::shutdown_both, close_ec);
         socket.close(close_ec);
         continue;
       }
-      pending_sessions_.emplace_back(std::move(socket));
+      pending_sockets_.emplace_back(std::move(socket));
     }
-    session_queue_cv_.notify_one();
+    ingress_queue_cv_.notify_one();
   }
 
   stop_requested_.store(true);
-  session_queue_cv_.notify_all();
-  for (auto& worker : session_workers_) {
+  ingress_queue_cv_.notify_all();
+  lane_queue_cv_.notify_all();
+
+  for (auto& worker : ingress_workers_) {
     if (worker.joinable()) {
       worker.join();
     }
   }
-  session_workers_.clear();
+  for (auto& worker : save_workers_) {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+  for (auto& worker : general_workers_) {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+
+  ingress_workers_.clear();
+  save_workers_.clear();
+  general_workers_.clear();
   spdlog::info("listener shutdown requested");
 }
 
 void Listener::stop() {
   stop_requested_.store(true);
-  session_queue_cv_.notify_all();
+  ingress_queue_cv_.notify_all();
+  lane_queue_cv_.notify_all();
   boost::system::error_code ec;
   acceptor_.close(ec);
   ioc_.stop();
 }
 
-void Listener::run_session_worker() {
-  holder::platform::Db worker_db;
-  worker_db.open(db_.path());
-
-  std::unique_ptr<holder::index::FtsIndexer> worker_fts;
-  if (fts_ != nullptr) {
-    worker_fts = std::make_unique<holder::index::FtsIndexer>(worker_db);
-  }
-
-  std::unique_ptr<holder::card::CardStore> worker_card_store;
-  if (card_store_ != nullptr) {
-    worker_card_store = std::make_unique<holder::card::CardStore>(
-        worker_db,
-        worker_fts.get(),
-        nullptr,
-        git_ops_);
-  }
-
-  holder::llm::RunnerClient* auto_local_client = nullptr;
-  if (runner_registry_ != nullptr) {
-    auto_local_client =
-        runner_registry_->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId);
-  }
-  std::unique_ptr<holder::llm::RunnerRegistry> worker_runner_registry;
-  if (runner_registry_ != nullptr) {
-    worker_runner_registry =
-        std::make_unique<holder::llm::RunnerRegistry>(&worker_db, auto_local_client);
-  }
-
-  std::unique_ptr<holder::ai::NudgeService> worker_nudge_service;
-  if (nudge_service_ != nullptr) {
-    worker_nudge_service = std::make_unique<holder::ai::NudgeService>(
-        worker_db,
-        worker_runner_registry.get());
-  }
-
+void Listener::run_ingress_worker() {
   while (true) {
     tcp::socket socket(ioc_);
     {
-      std::unique_lock<std::mutex> lock(session_queue_mutex_);
-      session_queue_cv_.wait(lock, [this]() {
-        return stop_requested_.load() || !pending_sessions_.empty();
+      std::unique_lock<std::mutex> lock(ingress_queue_mutex_);
+      ingress_queue_cv_.wait(lock, [this]() {
+        return stop_requested_.load() || !pending_sockets_.empty();
       });
-      if (pending_sessions_.empty()) {
+      if (pending_sockets_.empty()) {
         if (stop_requested_.load()) {
           return;
         }
         continue;
       }
-      socket = std::move(pending_sessions_.front());
-      pending_sessions_.pop_front();
+      socket = std::move(pending_sockets_.front());
+      pending_sockets_.pop_front();
     }
 
-    Session session(std::move(socket),
-                    worker_db,
+    auto prepared = Session::prepare_request(std::move(socket));
+    if (!prepared.has_value()) {
+      continue;
+    }
+
+    bool queued = false;
+    {
+      std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+      auto* target_queue = &foreground_queue_;
+      if (prepared->lane == Session::RequestLane::Save) {
+        target_queue = &save_queue_;
+      } else if (prepared->lane == Session::RequestLane::Background) {
+        target_queue = &background_queue_;
+      }
+
+      if (target_queue->size() < kMaxPreparedRequestsPerLane) {
+        target_queue->emplace_back(std::move(*prepared));
+        queued = true;
+      }
+    }
+
+    if (!queued) {
+      spdlog::warn("request lane queue full; rejecting prepared request");
+      reject_prepared_request(std::move(*prepared),
+                              http::status::service_unavailable,
+                              "server_busy",
+                              "Server busy. Please retry.");
+      continue;
+    }
+    lane_queue_cv_.notify_all();
+  }
+}
+
+void Listener::run_save_worker() {
+  auto context =
+      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, git_ops_);
+
+  while (true) {
+    Session::PreparedRequest prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Save};
+    {
+      std::unique_lock<std::mutex> lock(lane_queue_mutex_);
+      lane_queue_cv_.wait(lock, [this]() {
+        return stop_requested_.load() || !save_queue_.empty();
+      });
+      if (save_queue_.empty()) {
+        if (stop_requested_.load()) {
+          return;
+        }
+        continue;
+      }
+      prepared = std::move(save_queue_.front());
+      save_queue_.pop_front();
+    }
+
+    Session session(std::move(prepared),
+                    context.db,
                     auth_token_,
                     router_,
                     started_at_,
-                    worker_card_store.get(),
-                    worker_fts.get(),
-                    worker_nudge_service.get(),
+                    context.card_store.get(),
+                    context.fts.get(),
+                    context.nudge_service.get(),
                     secret_store_,
                     git_ops_,
-                    worker_runner_registry.get());
+                    context.runner_registry.get());
+    session.run();
+  }
+}
+
+void Listener::run_general_worker() {
+  auto context =
+      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, git_ops_);
+
+  while (true) {
+    Session::PreparedRequest prepared{
+        tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Foreground};
+    {
+      std::unique_lock<std::mutex> lock(lane_queue_mutex_);
+      lane_queue_cv_.wait(lock, [this]() {
+        return stop_requested_.load() || !save_queue_.empty() || !foreground_queue_.empty() ||
+               !background_queue_.empty();
+      });
+      if (save_queue_.empty() && foreground_queue_.empty() && background_queue_.empty()) {
+        if (stop_requested_.load()) {
+          return;
+        }
+        continue;
+      }
+
+      if (!save_queue_.empty()) {
+        prepared = std::move(save_queue_.front());
+        save_queue_.pop_front();
+      } else if (!foreground_queue_.empty()) {
+        prepared = std::move(foreground_queue_.front());
+        foreground_queue_.pop_front();
+      } else {
+        prepared = std::move(background_queue_.front());
+        background_queue_.pop_front();
+      }
+    }
+
+    Session session(std::move(prepared),
+                    context.db,
+                    auth_token_,
+                    router_,
+                    started_at_,
+                    context.card_store.get(),
+                    context.fts.get(),
+                    context.nudge_service.get(),
+                    secret_store_,
+                    git_ops_,
+                    context.runner_registry.get());
     session.run();
   }
 }

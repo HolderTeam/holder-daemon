@@ -559,26 +559,26 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Update title generation paths
 - [✅] Update nudge paths that rely on local models
 - [✅] Make pull jobs runner-aware in status APIs and UI
-- [ ] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
-- [ ] Ensure multiple configured runners do not consume reserved save capacity
+- [✅] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
+- [✅] Ensure multiple configured runners do not consume reserved save capacity
 
 
 ### Phase 6: Safe Backend Concurrency
 
-- [ ] Stop handling accepted sockets inline on the listener loop
-- [ ] Introduce a small bounded worker pool for request/session execution
+- [✅] Stop handling accepted sockets inline on the listener loop
+- [✅] Introduce a small bounded worker pool for request/session execution
 - [✅] Keep the listener thread lightweight: accept, dispatch, continue accepting
 - [✅] Make DB usage safe before enabling concurrent request workers
 - [✅] Implement one SQLite connection per worker thread
 - [✅] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
-- [ ] Introduce explicit save, foreground, and background execution lanes
-- [ ] Define concrete queue names and admission rules in code comments/docs to match this plan
+- [✅] Introduce explicit save, foreground, and background execution lanes
+- [✅] Define concrete queue names and admission rules in code comments/docs to match this plan
 - [ ] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
-- [ ] Add route-to-lane mapping in code comments/docs to match this plan
-- [ ] Route card writes through a dedicated highest-priority save queue
-- [ ] Reserve execution capacity specifically for card save operations
-- [ ] Ensure save work jumps queued foreground/background work at dispatch time
-- [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
+- [✅] Add route-to-lane mapping in code comments/docs to match this plan
+- [✅] Route card writes through a dedicated highest-priority save queue
+- [✅] Reserve execution capacity specifically for card save operations
+- [✅] Ensure save work jumps queued foreground/background work at dispatch time
+- [✅] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
 
 
 ### Phase 7: Deeper Async Architecture
