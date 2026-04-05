@@ -90,6 +90,7 @@ add_executable(holderd
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp
+  src/llm/RunnerModelRef.cpp
   src/llm/RunnerRegistry.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp

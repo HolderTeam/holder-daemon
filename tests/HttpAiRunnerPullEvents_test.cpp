@@ -119,6 +119,7 @@ TEST_CASE("Ai runner pull events route streams failed event for missing job", "[
   REQUIRE(stream.route_result.streamed);
   REQUIRE(stream.raw_response.find("text/event-stream") != std::string::npos);
   REQUIRE(stream.raw_response.find("event: failed") != std::string::npos);
+  REQUIRE(stream.raw_response.find("\"runner_id\":\"auto-local\"") != std::string::npos);
   REQUIRE(stream.raw_response.find("Pull job not found.") != std::string::npos);
 }
 
@@ -137,4 +138,6 @@ TEST_CASE("Ai runner pull events route streams progress and completed for job", 
   REQUIRE(stream.raw_response.find("event: progress") != std::string::npos);
   REQUIRE(stream.raw_response.find("event: completed") != std::string::npos);
   REQUIRE(stream.raw_response.find("\"job_id\":\"" + job.job_id + "\"") != std::string::npos);
+  REQUIRE(stream.raw_response.find("\"runner_id\":\"auto-local\"") != std::string::npos);
+  REQUIRE(stream.raw_response.find("\"model_ref\":\"auto-local::fake-echo\"") != std::string::npos);
 }

@@ -532,7 +532,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("model-b"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::model-b"));
   REQUIRE(runs[0].ranked_json.has_value());
   REQUIRE(runs[0].ranked_json.value().find("model-a") != std::string::npos);
 
@@ -540,7 +540,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   const auto msgs = msg_repo.list_by_thread("thread-1");
   bool saw_assistant = false;
   for (const auto& msg : msgs) {
-    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "model-b") {
+    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "auto-local::model-b") {
       saw_assistant = true;
     }
   }
@@ -638,8 +638,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("large-model"));
-  REQUIRE(runs[0].ranked_json == std::optional<std::string>("[\"large-model\"]"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::large-model"));
+  REQUIRE(runs[0].ranked_json == std::optional<std::string>("[\"auto-local::large-model\"]"));
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);
@@ -2156,7 +2156,7 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("strong-model"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::strong-model"));
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);
@@ -2979,7 +2979,7 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
     if (m.role == "user") {
       saw_user = true;
     }
-    if (m.model.has_value() && m.model.value() == "fake-echo") {
+    if (m.model.has_value() && m.model.value() == "auto-local::fake-echo") {
       saw_model = true;
     }
   }

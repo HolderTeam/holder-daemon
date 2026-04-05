@@ -48,9 +48,9 @@ TEST_CASE("HTTP ai local model config get/put", "[http]") {
                                                         {"deep_model", "qwen-deep"}},
                                          boost::beast::http::status::ok);
   REQUIRE(set_all["ok"] == true);
-  REQUIRE(set_all["data"]["fast_model"] == "qwen-fast");
-  REQUIRE(set_all["data"]["strong_model"] == "qwen-strong");
-  REQUIRE(set_all["data"]["deep_model"] == "qwen-deep");
+  REQUIRE(set_all["data"]["fast_model"] == "auto-local::qwen-fast");
+  REQUIRE(set_all["data"]["strong_model"] == "auto-local::qwen-strong");
+  REQUIRE(set_all["data"]["deep_model"] == "auto-local::qwen-deep");
 
   const auto clear_all = http_json_request(bound.bind,
                                            bound.port,

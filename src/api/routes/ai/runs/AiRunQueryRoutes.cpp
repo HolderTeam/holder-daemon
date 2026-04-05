@@ -4,6 +4,7 @@
 #include "api/support/RunEventStore.h"
 #include "api/support/Time.h"
 #include "ai/AiRunRepo.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -31,6 +32,8 @@ nlohmann::json parse_json_or_null(const std::optional<std::string>& raw) {
 
 nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
   nlohmann::json item;
+  const auto router_runner_id = holder::llm::runner_id_from_ref(run.router_model);
+  const auto chosen_runner_id = holder::llm::runner_id_from_ref(run.chosen_model);
   item["run_id"] = run.run_id;
   item["project_id"] =
       run.project_id.has_value() ? nlohmann::json(run.project_id.value()) : nlohmann::json(nullptr);
@@ -44,6 +47,8 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
       run.context_json.has_value() ? nlohmann::json(run.context_json.value()) : nlohmann::json(nullptr);
   item["router_model"] =
       run.router_model.has_value() ? nlohmann::json(run.router_model.value()) : nlohmann::json(nullptr);
+  item["router_runner_id"] =
+      router_runner_id.has_value() ? nlohmann::json(router_runner_id.value()) : nlohmann::json(nullptr);
   item["ranked_json"] =
       run.ranked_json.has_value() ? nlohmann::json(run.ranked_json.value()) : nlohmann::json(nullptr);
   item["policy_trace_json"] = run.policy_trace_json.has_value()
@@ -60,6 +65,8 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
   item["policy_trace"] = policy_trace;
   item["chosen_model"] =
       run.chosen_model.has_value() ? nlohmann::json(run.chosen_model.value()) : nlohmann::json(nullptr);
+  item["chosen_runner_id"] =
+      chosen_runner_id.has_value() ? nlohmann::json(chosen_runner_id.value()) : nlohmann::json(nullptr);
   item["status"] = run.status;
   item["error"] = run.error.has_value() ? nlohmann::json(run.error.value()) : nlohmann::json(nullptr);
   item["created_at"] = run.created_at;
@@ -171,8 +178,15 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
     } else if (run_record->status == "completed" || run_record->status == "failed") {
       nlohmann::json terminal;
       terminal["run_id"] = run_id;
+      if (const auto chosen_runner_id = holder::llm::runner_id_from_ref(run_record->chosen_model);
+          chosen_runner_id.has_value()) {
+        terminal["runner_id"] = chosen_runner_id.value();
+      }
       if (run_record->chosen_model.has_value()) {
-        terminal["model"] = run_record->chosen_model.value();
+        terminal["model_ref"] = run_record->chosen_model.value();
+        const auto parsed = holder::llm::parse_runner_model_ref(run_record->chosen_model.value());
+        terminal["model"] = parsed.has_value() ? nlohmann::json(parsed->model_name)
+                                               : nlohmann::json(run_record->chosen_model.value());
       }
       if (run_record->error.has_value()) {
         terminal["error"] = run_record->error.value();

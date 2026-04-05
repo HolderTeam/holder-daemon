@@ -16,6 +16,7 @@
 #include "ai/AiRunRepo.h"
 #include "ai/AiThreadRepo.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -119,9 +120,11 @@ std::optional<std::string> pick_local_title_model(holder::platform::Db& db,
   if (!status.available || status.models.empty()) return std::nullopt;
 
   const auto cfg = load_local_model_config(db);
-  if (cfg.has_value() && cfg->fast_model.has_value() &&
-      is_installed_model(status, cfg->fast_model.value())) {
-    return cfg->fast_model.value();
+  const auto fast_model =
+      holder::llm::local_model_name_from_ref(cfg.has_value() ? cfg->fast_model : std::nullopt,
+                                             holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+  if (fast_model.has_value() && is_installed_model(status, fast_model.value())) {
+    return fast_model.value();
   }
 
   const holder::llm::LocalModel* best = nullptr;
@@ -870,6 +873,37 @@ RouteDispatchResult execute_cloud_post_path(
   return out;
 }
 
+std::optional<std::string> parse_local_requested_model(const std::string& requested_model) {
+  if (requested_model.empty()) {
+    return std::nullopt;
+  }
+  const auto parsed = holder::llm::parse_runner_model_ref(requested_model);
+  if (!parsed.has_value()) {
+    return requested_model;
+  }
+  if (parsed->runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
+    return std::nullopt;
+  }
+  return parsed->model_name;
+}
+
+std::optional<std::string> configured_local_model_name(
+    const std::optional<std::string>& configured_ref) {
+  return holder::llm::local_model_name_from_ref(
+      configured_ref, holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+}
+
+std::string local_model_ref(const std::string& model_name) {
+  return holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId, model_name);
+}
+
+nlohmann::json with_local_runner_fields(nlohmann::json data, const std::string& model_name) {
+  data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+  data["model"] = model_name;
+  data["model_ref"] = local_model_ref(model_name);
+  return data;
+}
+
 RouteDispatchResult execute_local_post_path(
     const nlohmann::json& body,
     const std::string& prompt,
@@ -889,7 +923,14 @@ RouteDispatchResult execute_local_post_path(
 
   std::string forced_model;
   if (body.contains("model") && !body.at("model").is_null()) {
-    forced_model = body.at("model").get<std::string>();
+    const auto parsed_model = parse_local_requested_model(body.at("model").get<std::string>());
+    if (!parsed_model.has_value()) {
+      res = support::error_response(http::status::bad_request,
+                                    "bad_request",
+                                    "Requested model runner is not available.");
+      return out;
+    }
+    forced_model = parsed_model.value();
     mode = "model";
   }
 
@@ -923,14 +964,15 @@ RouteDispatchResult execute_local_post_path(
     }
 
     auto keep_configured = [&](const std::optional<std::string>& configured_model) {
-      if (!configured_model.has_value() || configured_model->empty()) {
+      const auto configured_name = configured_local_model_name(configured_model);
+      if (!configured_name.has_value() || configured_name->empty()) {
         return;
       }
-      if (!is_installed_model(runner_status, configured_model.value())) {
+      if (!is_installed_model(runner_status, configured_name.value())) {
         return;
       }
-      if (std::find(candidates.begin(), candidates.end(), configured_model.value()) == candidates.end()) {
-        candidates.push_back(configured_model.value());
+      if (std::find(candidates.begin(), candidates.end(), configured_name.value()) == candidates.end()) {
+        candidates.push_back(configured_name.value());
       }
     };
     if (local_model_cfg.has_value()) {
@@ -946,10 +988,12 @@ RouteDispatchResult execute_local_post_path(
 
   std::string router_model;
   std::string configured_strong_model;
-  if (forced_model.empty() && local_model_cfg.has_value() && local_model_cfg->strong_model.has_value() &&
-      std::find(candidates.begin(), candidates.end(), local_model_cfg->strong_model.value()) !=
+  const auto configured_strong_model_ref =
+      configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->strong_model : std::nullopt);
+  if (forced_model.empty() && configured_strong_model_ref.has_value() &&
+      std::find(candidates.begin(), candidates.end(), configured_strong_model_ref.value()) !=
           candidates.end()) {
-    configured_strong_model = local_model_cfg->strong_model.value();
+    configured_strong_model = configured_strong_model_ref.value();
   }
 
   if (!configured_strong_model.empty()) {
@@ -957,10 +1001,11 @@ RouteDispatchResult execute_local_post_path(
   }
 
   if (forced_model.empty() && candidates.size() > 1) {
-    if (local_model_cfg.has_value() && local_model_cfg->fast_model.has_value() &&
-        std::find(candidates.begin(), candidates.end(), local_model_cfg->fast_model.value()) !=
-            candidates.end()) {
-      router_model = local_model_cfg->fast_model.value();
+    const auto configured_fast_model =
+        configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->fast_model : std::nullopt);
+    if (configured_fast_model.has_value() &&
+        std::find(candidates.begin(), candidates.end(), configured_fast_model.value()) != candidates.end()) {
+      router_model = configured_fast_model.value();
     }
 
     std::vector<holder::llm::LocalModel> candidate_models;
@@ -990,7 +1035,7 @@ RouteDispatchResult execute_local_post_path(
     run.context_json = context_json;
   }
   if (!router_model.empty()) {
-    run.router_model = router_model;
+    run.router_model = local_model_ref(router_model);
   }
   run.status = "started";
   run.created_at = support::now_epoch_seconds();
@@ -1107,10 +1152,13 @@ RouteDispatchResult execute_local_post_path(
         ranked = {fallback};
       }
     }
-    nlohmann::json ranked_payload = ranked;
+    nlohmann::json ranked_payload = nlohmann::json::array();
+    for (const auto& ranked_model : ranked) {
+      ranked_payload.push_back(local_model_ref(ranked_model));
+    }
     ranked_json = ranked_payload.dump();
     send_event("router_result",
-               {{"router_model", router_model},
+               {{"router_model", local_model_ref(router_model)},
                 {"ranked", ranked_payload},
                 {"error", router_error.empty() ? nlohmann::json(nullptr)
                                                : nlohmann::json(router_error)}});
@@ -1120,7 +1168,7 @@ RouteDispatchResult execute_local_post_path(
   std::string model_error;
   bool any_output = false;
   for (const auto& model : candidates) {
-    send_event("progress", {{"message", "Trying model"}, {"model", model}});
+    send_event("progress", with_local_runner_fields({{"message", "Trying model"}}, model));
     std::string prompt_full = prompt;
     if (!context_json.empty()) {
       prompt_full += "\n\nContext:\n";
@@ -1136,16 +1184,16 @@ RouteDispatchResult execute_local_post_path(
           got_output = true;
           any_output = true;
           assistant_text += chunk;
-          send_event("chunk", {{"model", model}, {"delta", chunk}});
+          send_event("chunk", with_local_runner_fields({{"delta", chunk}}, model));
         },
         &model_error);
 
     if (ok && got_output) {
-      chosen_model = model;
+      chosen_model = local_model_ref(model);
       break;
     }
 
-    nlohmann::json fallback_event = {{"model", model}};
+    nlohmann::json fallback_event = with_local_runner_fields(nlohmann::json::object(), model);
     if (!model_error.empty()) fallback_event["error"] = model_error;
     if (got_output && !ok) fallback_event["partial"] = true;
     send_event("fallback", fallback_event);
@@ -1153,7 +1201,15 @@ RouteDispatchResult execute_local_post_path(
 
   const long long updated_at = support::now_epoch_seconds();
   if (!chosen_model.empty()) {
-    send_event("done", {{"model", chosen_model}});
+    nlohmann::json done_event;
+    done_event["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
+    done_event["model_ref"] = chosen_model;
+    if (const auto parsed = holder::llm::parse_runner_model_ref(chosen_model); parsed.has_value()) {
+      done_event["model"] = parsed->model_name;
+    } else {
+      done_event["model"] = chosen_model;
+    }
+    send_event("done", done_event);
     std::optional<std::string> message_id;
     if (thread_id.has_value()) {
       holder::ai::AiMessageRepo msg_repo(db, fts);
@@ -1181,7 +1237,9 @@ RouteDispatchResult execute_local_post_path(
                            std::nullopt,
                            updated_at);
   } else {
-    send_event("failed", {{"error", "All models failed."}});
+    send_event("failed",
+               {{"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
+                {"error", "All models failed."}});
     run_repo.update_status(run.run_id,
                            "failed",
                            std::optional<std::string>(any_output ? "partial failure" : "no output"),

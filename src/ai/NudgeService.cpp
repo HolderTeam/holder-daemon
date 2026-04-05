@@ -2,6 +2,7 @@
 
 #include "ai/AiLocalModelConfigRepo.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 #include "ai/AiNudgeRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
@@ -456,12 +457,13 @@ std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
   try {
     holder::ai::AiLocalModelConfigRepo repo(db_);
     const auto cfg = repo.get();
-    if (cfg.has_value() && cfg->fast_model.has_value() && !cfg->fast_model->empty()) {
+    const auto fast_model =
+        holder::llm::local_model_name_from_ref(cfg.has_value() ? cfg->fast_model : std::nullopt,
+                                               holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+    if (fast_model.has_value() && !fast_model->empty()) {
       const auto it = std::find_if(status.models.begin(),
                                    status.models.end(),
-                                   [&](const holder::llm::LocalModel& model) {
-                                     return model.name == cfg->fast_model.value();
-                                   });
+                                   [&](const holder::llm::LocalModel& model) { return model.name == fast_model.value(); });
       if (it != status.models.end()) {
         return it->name;
       }

@@ -2,6 +2,7 @@
 
 #include "api/support/HttpResponses.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -19,7 +20,10 @@ namespace http = boost::beast::http;
 nlohmann::json pull_job_to_json(const holder::llm::LocalModelRunner::PullJob& job) {
   nlohmann::json data;
   data["job_id"] = job.job_id;
+  data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
   data["model"] = job.model;
+  data["model_ref"] = holder::llm::make_runner_model_ref(
+      holder::llm::RunnerRegistry::kAutoLocalRunnerId, job.model);
   data["status"] = job.status;
   data["updated_at"] = job.updated_at;
   data["error"] = job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error);
@@ -93,7 +97,9 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
   for (;;) {
     const auto job = runner->get_pull(job_id);
     if (!job.has_value()) {
-      send_event("failed", nlohmann::json{{"error", "Pull job not found."}});
+      send_event("failed",
+                 nlohmann::json{{"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
+                                {"error", "Pull job not found."}});
       break;
     }
 

@@ -2,6 +2,7 @@
 
 #include "api/support/HttpResponses.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -16,7 +17,10 @@ namespace http = boost::beast::http;
 nlohmann::json pull_job_to_json(const holder::llm::LocalModelRunner::PullJob& job) {
   nlohmann::json data;
   data["job_id"] = job.job_id;
+  data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
   data["model"] = job.model;
+  data["model_ref"] = holder::llm::make_runner_model_ref(
+      holder::llm::RunnerRegistry::kAutoLocalRunnerId, job.model);
   data["status"] = job.status;
   data["updated_at"] = job.updated_at;
   data["error"] = job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error);
@@ -68,7 +72,11 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
             payload["ok"] = true;
             payload["data"] = {
                 {"job_id", job.job_id},
+                {"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
                 {"model", job.model},
+                {"model_ref",
+                 holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId,
+                                                    job.model)},
                 {"status", job.status},
             };
             res = support::json_response(http::status::ok, payload);

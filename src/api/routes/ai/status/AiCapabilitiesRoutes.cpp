@@ -5,6 +5,7 @@
 #include "api/support/Time.h"
 #include "ai/AiLocalModelConfigRepo.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -64,6 +65,7 @@ bool handle_ai_capabilities_routes(const std::string& path,
     data["caste"] = nullptr; // LCOV_EXCL_LINE
   }
   if (!runner) {
+    data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
     data["runner_available"] = false;
     data["error"] = "Local model runner not configured.";
     data["last_checked"] = support::now_epoch_seconds();
@@ -82,6 +84,7 @@ bool handle_ai_capabilities_routes(const std::string& path,
     }
   } else {
     const auto status = runner->status();
+    data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
     data["runner_available"] = status.available;
     data["spawn_attempted"] = status.spawn_attempted;
     data["last_checked"] = status.last_checked;
@@ -90,7 +93,11 @@ bool handle_ai_capabilities_routes(const std::string& path,
     nlohmann::json models = nlohmann::json::array();
     for (const auto& model : status.models) {
       models.push_back({
+          {"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
           {"name", model.name},
+          {"model_ref",
+           holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId,
+                                              model.name)},
           {"digest", model.digest},
           {"size", model.size},
           {"modified_at", model.modified_at},

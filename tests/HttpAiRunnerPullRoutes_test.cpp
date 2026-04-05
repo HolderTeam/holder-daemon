@@ -97,7 +97,9 @@ TEST_CASE("Ai runner pull routes POST returns job on success", "[http]") {
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["runner_id"] == "auto-local");
   REQUIRE(payload["data"]["model"] == "fake-echo");
+  REQUIRE(payload["data"]["model_ref"] == "auto-local::fake-echo");
   REQUIRE(payload["data"]["status"].is_string());
   REQUIRE(payload["data"]["job_id"].is_string());
   REQUIRE(payload["data"]["job_id"].get<std::string>().rfind("pull-", 0) == 0);
@@ -141,7 +143,9 @@ TEST_CASE("Ai runner pull routes GET returns job payload", "[http]") {
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["job_id"] == started.job_id);
+  REQUIRE(payload["data"]["runner_id"] == "auto-local");
   REQUIRE(payload["data"]["model"] == "fake-echo");
+  REQUIRE(payload["data"]["model_ref"] == "auto-local::fake-echo");
   REQUIRE(payload["data"]["status"].is_string());
   REQUIRE(payload["data"]["updated_at"].is_number_integer());
   REQUIRE(payload["data"]["progress"]["completed"].is_number_integer());

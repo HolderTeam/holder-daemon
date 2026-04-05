@@ -27,7 +27,7 @@ TEST_CASE("HTTP ai run events streams terminal status", "[http]") {
   run.mode = "auto";
   run.prompt = "hello";
   run.status = "completed";
-  run.chosen_model = "fake-echo";
+  run.chosen_model = "auto-local::fake-echo";
   run.created_at = 1;
   run.updated_at = 2;
   repo.create(run);
@@ -54,6 +54,9 @@ TEST_CASE("HTTP ai run events streams terminal status", "[http]") {
   REQUIRE(res.content_type.find("text/event-stream") != std::string::npos);
   REQUIRE(res.body.find("event: done") != std::string::npos);
   REQUIRE(res.body.find("\"run_id\":\"run-1\"") != std::string::npos);
+  REQUIRE(res.body.find("\"runner_id\":\"auto-local\"") != std::string::npos);
+  REQUIRE(res.body.find("\"model_ref\":\"auto-local::fake-echo\"") != std::string::npos);
+  REQUIRE(res.body.find("\"model\":\"fake-echo\"") != std::string::npos);
 
   std::raise(SIGTERM);
   server_thread.join();

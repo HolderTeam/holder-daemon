@@ -5,6 +5,7 @@
 #include "api/support/Time.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -58,6 +59,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
     data["active_runs"] = active_runs;
 
     if (!runner) {
+      data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
       data["runner_available"] = false;
       data["runner_error"] = "Local model runner not configured.";
       data["runner_last_checked"] = support::now_epoch_seconds();
@@ -65,6 +67,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
       data["pulls"] = nlohmann::json::array();
     } else {
       const auto status = runner->status();
+      data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
       data["runner_available"] = status.available;
       data["runner_error"] =
           status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
@@ -77,7 +80,10 @@ bool handle_ai_runtime_status_routes(const std::string& path,
       for (const auto& job : runner->list_pulls()) {
         nlohmann::json item;
         item["job_id"] = job.job_id;
+        item["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
         item["model"] = job.model;
+        item["model_ref"] = holder::llm::make_runner_model_ref(
+            holder::llm::RunnerRegistry::kAutoLocalRunnerId, job.model);
         item["status"] = job.status;
         item["updated_at"] = job.updated_at;
         item["error"] = job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error);
@@ -128,6 +134,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
 
     const auto status = runner->retry();
     nlohmann::json data;
+    data["runner_id"] = holder::llm::RunnerRegistry::kAutoLocalRunnerId;
     data["runner_available"] = status.available;
     data["spawn_attempted"] = status.spawn_attempted;
     data["last_checked"] = status.last_checked;
@@ -136,7 +143,11 @@ bool handle_ai_runtime_status_routes(const std::string& path,
     nlohmann::json models = nlohmann::json::array();
     for (const auto& model : status.models) {
       models.push_back({
+          {"runner_id", holder::llm::RunnerRegistry::kAutoLocalRunnerId},
           {"name", model.name},
+          {"model_ref",
+           holder::llm::make_runner_model_ref(holder::llm::RunnerRegistry::kAutoLocalRunnerId,
+                                              model.name)},
           {"digest", model.digest},
           {"size", model.size},
           {"modified_at", model.modified_at},
