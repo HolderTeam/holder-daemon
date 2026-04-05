@@ -51,8 +51,7 @@ DispatchResult dispatch_ai_routes(
     const std::function<std::string(const std::string&)>& param) {
   const std::string ai_resource = segment_at(path, 2);
 
-  if (ai_resource == "capabilities" || ai_resource == "status" || ai_resource == "retry" ||
-      ai_resource == "local-models") {
+  if (ai_resource == "capabilities" || ai_resource == "status" || ai_resource == "local-models") {
     if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
       return {.handled = true, .streamed = false};
     }

@@ -101,32 +101,6 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
     }
   }
 
-  SECTION("POST /ai/runner/retry with runner returns status payload") {
-    auto req = make_request(http::verb::post, "/ai/runner/retry");
-    http::response<http::string_body> res;
-
-    REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-        "/ai/runner/retry",
-        req,
-        res,
-        db,
-        &runner_registry,
-        [](const std::string&) -> std::string { return {}; }));
-    REQUIRE(res.result() == http::status::ok);
-
-    const auto payload = nlohmann::json::parse(res.body());
-    REQUIRE(payload["ok"] == true);
-    REQUIRE(payload["data"]["runner_id"] == "auto-local");
-    REQUIRE(payload["data"]["runner_available"] == true);
-    REQUIRE(payload["data"]["spawn_attempted"] == false);
-    REQUIRE(payload["data"]["version"] == "fake");
-    REQUIRE(payload["data"]["error"].is_null());
-    REQUIRE(payload["data"]["models"].is_array());
-    REQUIRE(payload["data"]["models"].size() == 1);
-    REQUIRE(payload["data"]["models"][0]["runner_id"] == "auto-local");
-    REQUIRE(payload["data"]["models"][0]["name"] == "fake-echo");
-    REQUIRE(payload["data"]["models"][0]["model_ref"] == "auto-local::fake-echo");
-  }
 }
 
 TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be prepared", "[http]") {
@@ -148,44 +122,6 @@ TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be pre
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["active_runs"] == 0);
-}
-
-TEST_CASE("AiRuntimeStatusRoutes retry can target a manual runner by runner_id", "[http]") {
-  const auto dir = holder::test::make_temp_dir();
-  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
-  auto db = holder::test::open_db_with_schema(dir / "holder.db");
-
-  holder::ai::AiRunnerRepo repo(db);
-  repo.upsert(holder::model::AiRunner{
-      .runner_id = "manual-a",
-      .name = "Office Ollama",
-      .kind = "ollama",
-      .base_url = std::optional<std::string>("http://office:11434"),
-      .source = "manual",
-      .enabled = true,
-      .created_at = 1,
-      .updated_at = 1,
-  });
-
-  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
-  auto req = make_request(http::verb::post, "/ai/runner/retry");
-  req.body() = R"({"runner_id":"manual-a"})";
-  http::response<http::string_body> res;
-
-  REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-      "/ai/runner/retry",
-      req,
-      res,
-      db,
-      &runner_registry,
-      [](const std::string&) -> std::string { return ""; }));
-  REQUIRE(res.result() == http::status::ok);
-
-  const auto payload = nlohmann::json::parse(res.body());
-  REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["runner_id"] == "manual-a");
-  REQUIRE(payload["data"]["runner_available"] == true);
-  REQUIRE(payload["data"]["version"] == "fake");
 }
 
 TEST_CASE("AiCapabilitiesRoutes returns local model config", "[http]") {

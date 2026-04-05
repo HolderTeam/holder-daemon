@@ -230,39 +230,6 @@ bool handle_ai_runtime_status_routes(const std::string& path,
     return true;
   }
 
-  if (path == "/ai/runner/retry" && req.method() == http::verb::post) {
-    if (!runner) {
-      res = support::error_response(http::status::not_found, "not_found", "Runner not configured.");
-      return true;
-    }
-
-    const auto status = runner->retry();
-    nlohmann::json data;
-    data["runner_id"] = runner_id;
-    data["runner_available"] = status.available;
-    data["spawn_attempted"] = status.spawn_attempted;
-    data["last_checked"] = status.last_checked;
-    data["version"] = status.version;
-    data["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
-    nlohmann::json models = nlohmann::json::array();
-    for (const auto& model : status.models) {
-      models.push_back({
-          {"runner_id", runner_id},
-          {"name", model.name},
-          {"model_ref", holder::llm::make_runner_model_ref(runner_id, model.name)},
-          {"digest", model.digest},
-          {"size", model.size},
-          {"modified_at", model.modified_at},
-      });
-    }
-    data["models"] = models;
-    nlohmann::json payload;
-    payload["ok"] = true;
-    payload["data"] = data;
-    res = support::json_response(http::status::ok, payload);
-    return true;
-  }
-
   return false;
 }
 

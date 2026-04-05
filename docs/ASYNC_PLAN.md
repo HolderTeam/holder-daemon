@@ -313,7 +313,7 @@ The first implementation should classify routes and work items like this.
 - `GET /cards/{card_id}/backlinks`
 - Connections graph refresh work
 - `/ai/status` polling beyond minimal app-usable status
-- `POST /ai/runner/retry`
+- `POST /ai/runners/{runner_id}/retry`
 - `POST /ai/runner/pull`
 - `GET /ai/runner/pull/{job_id}`
 - `GET /ai/runner/pull/{job_id}/events`
@@ -543,11 +543,11 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Add `POST /ai/runners`
 - [✅] Add `PATCH /ai/runners/{runner_id}`
 - [✅] Add `DELETE /ai/runners/{runner_id}`
-- [ ] Add `POST /ai/runners/{runner_id}/retry`
-- [ ] Expand `/ai/status` to include `runners[]`
-- [ ] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
+- [✅] Add `POST /ai/runners/{runner_id}/retry`
+- [✅] Expand `/ai/status` to include `runners[]`
+- [✅] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
 - [✅] Update `/ai/local-models/config` to read and write runner-qualified selections
-- [ ] Preserve temporary compatibility fields for current clients where needed  -- not needed?
+- [ ] Remove remaining no-longer-needed compatibility fields instead of extending them
 - [✅] Update the Linux frontend AI panel to show multiple runners
 - [✅] Add runner list/add flow in the Linux frontend
 - [✅] Update dropdowns and parsers to use runner-qualified model labels/refs
@@ -596,7 +596,7 @@ we have a range of useful folders where new files can be made and existing files
 
 - [ ] Remove obsolete singular-runner assumptions from daemon code
 - [ ] Remove obsolete singular-runner assumptions from Linux frontend parsers and UI
-- [ ] Remove temporary compatibility response fields after frontend migration is complete
+- [ ] Remove any remaining temporary compatibility response fields after frontend migration is complete
 - [ ] Tighten logs and debug output to include runner identity and priority lane where useful
 
 ## Test Plan
@@ -623,6 +623,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Verify multi-runner status aggregation and runner CRUD
 - [✅] Verify migration from plain model names to runner-qualified refs
 - [✅] Verify AI run routing goes to the selected runner
+- [✅] Verify canonical runner retry goes through `/ai/runners/{runner_id}/retry`
 - [ ] Verify multiple configured runners do not block card save paths under load
 
 ### Integration
@@ -631,7 +632,6 @@ we have a range of useful folders where new files can be made and existing files
 - [ ] Reproduce the prior timeout pattern and confirm unrelated requests no longer get trapped behind one slow request
 - [ ] Reproduce background AI/runtime load while typing and confirm handwritten work still saves reliably
 - [ ] Simulate backend death during editing and confirm the frontend preserves recoverable handwritten work
-- [ ] Verify current single-runner clients still work during the compatibility window
 
 ## Implementation Order
 

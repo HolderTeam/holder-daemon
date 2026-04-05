@@ -91,7 +91,7 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                        bound.port,
                                        token,
                                        boost::beast::http::verb::post,
-                                       "/ai/runner/retry",
+                                       "/ai/runners/auto-local/retry",
                                        nlohmann::json{},
                                        boost::beast::http::status::not_found);
   REQUIRE(retry["ok"] == false);
