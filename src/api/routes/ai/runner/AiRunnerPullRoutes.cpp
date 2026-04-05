@@ -84,7 +84,7 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
           res = support::error_response(http::status::bad_request, "bad_request", "Missing model.");
         } else {
         const std::string model = body.at("model").get<std::string>();
-          spdlog::info("AI runner pull requested runner_id={} model={}", runner_id, model);
+          spdlog::info("AI runner pull requested runner_id=" + runner_id + " model=" + model);
           auto job = runner->start_pull(model);
           if (job.status == "failed") {
             res = support::error_response(

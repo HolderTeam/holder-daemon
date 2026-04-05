@@ -233,7 +233,7 @@ bool handle_ai_runner_crud_routes(const std::string& path,
         res = support::error_response(http::status::not_found, "not_found", "Runner not configured.");
         return true;
       }
-      spdlog::info("AI runner retry requested runner_id={}", runner_id);
+      spdlog::info("AI runner retry requested runner_id=" + runner_id);
       (void)client->retry();
       runner_registry->refresh();
 

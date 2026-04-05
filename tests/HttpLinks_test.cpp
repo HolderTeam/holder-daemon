@@ -157,7 +157,7 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
                                          boost::beast::http::status::bad_request);
   REQUIRE(invalid["ok"] == false);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
 
@@ -429,6 +429,6 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
   REQUIRE(saw_included_deleted_msg_source);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
