@@ -12,8 +12,13 @@
 
 #include <boost/asio.hpp>
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <thread>
 
 namespace holder::api {
 
@@ -58,6 +63,14 @@ private:
   holder::privacy::SecretStore* secret_store_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
+
+  std::mutex session_queue_mutex_;
+  std::condition_variable session_queue_cv_;
+  std::deque<tcp::socket> pending_sessions_;
+  std::atomic<bool> stop_requested_{false};
+  std::thread session_worker_;
+
+  void run_session_worker();
 };
 
 } // namespace holder::api

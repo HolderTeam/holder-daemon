@@ -70,6 +70,9 @@ Listener::BoundInfo Listener::start() {
 }
 
 void Listener::run(const holder::core::SignalHandler& signals) {
+  stop_requested_.store(false);
+  session_worker_ = std::thread([this]() { run_session_worker(); });
+
   while (!signals.is_requested()) {
     boost::system::error_code ec;
     tcp::socket socket(ioc_);
@@ -79,8 +82,53 @@ void Listener::run(const holder::core::SignalHandler& signals) {
         std::this_thread::sleep_for(kPollDelay);
         continue;
       }
+      if (stop_requested_.load() || ec == boost::asio::error::operation_aborted ||
+          ec == boost::asio::error::bad_descriptor) {
+        break;
+      }
       spdlog::error("accept failed: {}", ec.message());
       continue;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(session_queue_mutex_);
+      pending_sessions_.emplace_back(std::move(socket));
+    }
+    session_queue_cv_.notify_one();
+  }
+
+  stop_requested_.store(true);
+  session_queue_cv_.notify_all();
+  if (session_worker_.joinable()) {
+    session_worker_.join();
+  }
+  spdlog::info("listener shutdown requested");
+}
+
+void Listener::stop() {
+  stop_requested_.store(true);
+  session_queue_cv_.notify_all();
+  boost::system::error_code ec;
+  acceptor_.close(ec);
+  ioc_.stop();
+}
+
+void Listener::run_session_worker() {
+  while (true) {
+    tcp::socket socket(ioc_);
+    {
+      std::unique_lock<std::mutex> lock(session_queue_mutex_);
+      session_queue_cv_.wait(lock, [this]() {
+        return stop_requested_.load() || !pending_sessions_.empty();
+      });
+      if (pending_sessions_.empty()) {
+        if (stop_requested_.load()) {
+          return;
+        }
+        continue;
+      }
+      socket = std::move(pending_sessions_.front());
+      pending_sessions_.pop_front();
     }
 
     Session session(std::move(socket),
@@ -96,13 +144,6 @@ void Listener::run(const holder::core::SignalHandler& signals) {
                     runner_registry_);
     session.run();
   }
-  spdlog::info("listener shutdown requested");
-}
-
-void Listener::stop() {
-  boost::system::error_code ec;
-  acceptor_.close(ec);
-  ioc_.stop();
 }
 
 } // namespace holder::api
