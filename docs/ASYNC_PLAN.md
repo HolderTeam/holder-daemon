@@ -567,10 +567,10 @@ we have a range of useful folders where new files can be made and existing files
 
 - [ ] Stop handling accepted sockets inline on the listener loop
 - [ ] Introduce a small bounded worker pool for request/session execution
-- [ ] Keep the listener thread lightweight: accept, dispatch, continue accepting
-- [ ] Make DB usage safe before enabling concurrent request workers
-- [ ] Implement one SQLite connection per worker thread
-- [ ] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
+- [✅] Keep the listener thread lightweight: accept, dispatch, continue accepting
+- [✅] Make DB usage safe before enabling concurrent request workers
+- [✅] Implement one SQLite connection per worker thread
+- [✅] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
 - [ ] Introduce explicit save, foreground, and background execution lanes
 - [ ] Define concrete queue names and admission rules in code comments/docs to match this plan
 - [ ] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`

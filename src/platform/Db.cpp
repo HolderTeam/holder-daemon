@@ -50,6 +50,9 @@ void Db::open(const std::filesystem::path& path) {
   exec("PRAGMA foreign_keys = ON;");
   exec("PRAGMA journal_mode = WAL;");
   exec("PRAGMA synchronous = NORMAL;");
+  if (sqlite3_busy_timeout(db_, 5000) != SQLITE_OK) {
+    throw_sqlite("sqlite busy_timeout failed", sqlite3_errcode(db_), db_);
+  }
 }
 
 void Db::close() {

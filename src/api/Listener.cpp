@@ -2,6 +2,7 @@
 
 #include "api/Session.h"
 
+#include <memory>
 #include <spdlog/spdlog.h>
 
 #include <chrono>
@@ -130,6 +131,41 @@ void Listener::stop() {
 }
 
 void Listener::run_session_worker() {
+  holder::platform::Db worker_db;
+  worker_db.open(db_.path());
+
+  std::unique_ptr<holder::index::FtsIndexer> worker_fts;
+  if (fts_ != nullptr) {
+    worker_fts = std::make_unique<holder::index::FtsIndexer>(worker_db);
+  }
+
+  std::unique_ptr<holder::card::CardStore> worker_card_store;
+  if (card_store_ != nullptr) {
+    worker_card_store = std::make_unique<holder::card::CardStore>(
+        worker_db,
+        worker_fts.get(),
+        nullptr,
+        git_ops_);
+  }
+
+  holder::llm::RunnerClient* auto_local_client = nullptr;
+  if (runner_registry_ != nullptr) {
+    auto_local_client =
+        runner_registry_->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+  }
+  std::unique_ptr<holder::llm::RunnerRegistry> worker_runner_registry;
+  if (runner_registry_ != nullptr) {
+    worker_runner_registry =
+        std::make_unique<holder::llm::RunnerRegistry>(&worker_db, auto_local_client);
+  }
+
+  std::unique_ptr<holder::ai::NudgeService> worker_nudge_service;
+  if (nudge_service_ != nullptr) {
+    worker_nudge_service = std::make_unique<holder::ai::NudgeService>(
+        worker_db,
+        worker_runner_registry.get());
+  }
+
   while (true) {
     tcp::socket socket(ioc_);
     {
@@ -148,16 +184,16 @@ void Listener::run_session_worker() {
     }
 
     Session session(std::move(socket),
-                    db_,
+                    worker_db,
                     auth_token_,
                     router_,
                     started_at_,
-                    card_store_,
-                    fts_,
-                    nudge_service_,
+                    worker_card_store.get(),
+                    worker_fts.get(),
+                    worker_nudge_service.get(),
                     secret_store_,
                     git_ops_,
-                    runner_registry_);
+                    worker_runner_registry.get());
     session.run();
   }
 }
