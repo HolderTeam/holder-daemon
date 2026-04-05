@@ -61,7 +61,8 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
                                   holder::card::CardStore* root_card_store,
                                   holder::llm::RunnerRegistry* root_runner_registry,
                                   holder::ai::NudgeService* root_nudge_service,
-                                  holder::git::GitOps* git_ops) {
+                                  holder::git::GitOps* git_ops,
+                                  const holder::core::SerialExecutor* ai_runtime_executor) {
   WorkerContext context;
   context.db.open(root_db.path());
 
@@ -80,8 +81,10 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
   if (root_runner_registry != nullptr) {
     auto_local_client =
         root_runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId);
-    context.runner_registry =
-        std::make_unique<holder::llm::RunnerRegistry>(&context.db, auto_local_client);
+    context.runner_registry = std::make_unique<holder::llm::RunnerRegistry>(
+        &context.db,
+        auto_local_client,
+        ai_runtime_executor);
   }
 
   if (root_nudge_service != nullptr) {
@@ -155,6 +158,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   owned_git_ops_.reset();
   git_executor_.reset();
   executor_git_ops_.reset();
+  ai_runtime_executor_.reset();
   request_git_ops_ = git_ops_;
 
   if (card_store_ != nullptr || request_git_ops_ != nullptr) {
@@ -166,6 +170,9 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     executor_git_ops_ =
         std::make_unique<holder::git::ExecutorGitOps>(*request_git_ops_, *git_executor_);
     request_git_ops_ = executor_git_ops_.get();
+  }
+  if (runner_registry_ != nullptr) {
+    ai_runtime_executor_ = std::make_unique<holder::core::SerialExecutor>("request-ai-runtime");
   }
 
   ingress_workers_.clear();
@@ -320,7 +327,13 @@ void Listener::run_ingress_worker() {
 
 void Listener::run_save_worker() {
   auto context =
-      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, request_git_ops_);
+      make_worker_context(db_,
+                          fts_,
+                          card_store_,
+                          runner_registry_,
+                          nudge_service_,
+                          request_git_ops_,
+                          ai_runtime_executor_.get());
 
   while (true) {
     Session::PreparedRequest prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Save};
@@ -363,7 +376,13 @@ void Listener::run_save_worker() {
 
 void Listener::run_general_worker() {
   auto context =
-      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, request_git_ops_);
+      make_worker_context(db_,
+                          fts_,
+                          card_store_,
+                          runner_registry_,
+                          nudge_service_,
+                          request_git_ops_,
+                          ai_runtime_executor_.get());
 
   while (true) {
     Session::PreparedRequest prepared{

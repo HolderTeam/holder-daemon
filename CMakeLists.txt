@@ -92,6 +92,7 @@ add_executable(holderd
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp
   src/llm/LocalRunnerClient.cpp
+  src/llm/ExecutorRunnerClient.cpp
   src/llm/RunnerModelRef.cpp
   src/llm/RunnerRegistry.cpp
   src/api/HttpServer.cpp

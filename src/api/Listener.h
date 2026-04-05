@@ -71,6 +71,7 @@ private:
   std::unique_ptr<holder::git::RealGitOps> owned_git_ops_;
   std::unique_ptr<holder::core::SerialExecutor> git_executor_;
   std::unique_ptr<holder::git::ExecutorGitOps> executor_git_ops_;
+  std::unique_ptr<holder::core::SerialExecutor> ai_runtime_executor_;
 
   std::mutex ingress_queue_mutex_;
   std::condition_variable ingress_queue_cv_;

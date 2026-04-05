@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/SerialExecutor.h"
 #include "llm/RunnerClient.h"
 #include "model/AiRunner.h"
 
@@ -20,7 +21,8 @@ class RunnerRegistry {
   static constexpr const char* kAutoLocalRunnerId = "auto-local";
 
   explicit RunnerRegistry(holder::platform::Db* db = nullptr,
-                          RunnerClient* auto_local_client = nullptr);
+                          RunnerClient* auto_local_client = nullptr,
+                          const holder::core::SerialExecutor* executor = nullptr);
 
   void refresh();
   std::vector<holder::model::AiRunner> list_runners() const;
@@ -32,6 +34,8 @@ class RunnerRegistry {
 
   holder::platform::Db* db_ = nullptr;
   RunnerClient* auto_local_client_ = nullptr;
+  const holder::core::SerialExecutor* executor_ = nullptr;
+  std::unique_ptr<RunnerClient> auto_local_wrapped_client_;
   std::unordered_map<std::string, std::unique_ptr<RunnerClient>> manual_clients_;
 };
 
