@@ -584,7 +584,7 @@ we have a range of useful folders where new files can be made and existing files
 ### Phase 7: Deeper Async Architecture
 
 - [ ] Move connection accept/read/write handling to an actually asynchronous model
-- [ ] Separate request I/O from blocking subsystem work
+- [✅] Separate request I/O from blocking subsystem work for non-streaming request paths
 - [ ] Introduce dedicated executors for major blocking subsystems
 - [ ] Add backpressure so expensive work cannot starve cheap routes
 - [ ] Add cancellation or supersession for stale UI-driven background work where appropriate

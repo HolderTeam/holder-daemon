@@ -139,10 +139,17 @@ std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket soc
 }
 
 void Session::run() {
-  if (!ensure_request_loaded()) {
-    return;
+  auto prepared = execute();
+  if (prepared.has_value()) {
+    write_prepared_response(std::move(*prepared));
   }
-  process_loaded_request();
+}
+
+std::optional<Session::PreparedResponse> Session::execute() {
+  if (!ensure_request_loaded()) {
+    return std::nullopt;
+  }
+  return process_loaded_request();
 }
 
 bool Session::ensure_request_loaded() {
@@ -162,8 +169,8 @@ bool Session::ensure_request_loaded() {
   return true;
 }
 
-void Session::process_loaded_request() {
-  http::response<http::string_body> res;
+std::optional<Session::PreparedResponse> Session::process_loaded_request() {
+  Response res;
   if (routes::handle_static_routes(path_, req_, res)) {
     // handled
   } else if (!support::is_authorized_bearer(req_, auth_token_)) {
@@ -187,25 +194,35 @@ void Session::process_loaded_request() {
                                               git_ops_,
                                               runner_registry_,
                                               [&]() { return generate_uuid_v4(); });
-    if (route_result.streamed) return;
+    if (route_result.streamed) return std::nullopt;
   }
 
+  PreparedResponse prepared{
+      std::move(socket_),
+      req_,
+      std::move(res),
+      request_started_,
+  };
+  return prepared;
+}
+
+void Session::write_prepared_response(PreparedResponse prepared) {
   boost::system::error_code ec;
-  http::write(socket_, res, ec);
+  http::write(prepared.socket, prepared.res, ec);
   if (ec) {
     spdlog::warn("write failed: {}", ec.message());
   }
 
   const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - request_started_)
+                               std::chrono::steady_clock::now() - prepared.request_started)
                                .count();
   spdlog::info("HTTP {} {} -> {} ({}ms)",
-               req_.method_string(),
-               req_.target(), // LCOV_EXCL_LINE
-               res.result_int(),
+               prepared.req.method_string(),
+               prepared.req.target(), // LCOV_EXCL_LINE
+               prepared.res.result_int(),
                duration_ms);
 
-  socket_.shutdown(tcp::socket::shutdown_send, ec);
+  prepared.socket.shutdown(tcp::socket::shutdown_send, ec);
 }
 
 Session::RequestLane Session::classify_request_lane(const Request& req,

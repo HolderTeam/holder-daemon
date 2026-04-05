@@ -18,6 +18,7 @@ constexpr auto kPollDelay = std::chrono::milliseconds(50);
 constexpr std::size_t kIngressWorkerCount = 1;
 constexpr std::size_t kReservedSaveWorkerCount = 1;
 constexpr std::size_t kGeneralWorkerCount = 3;
+constexpr std::size_t kWriterWorkerCount = 1;
 constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
@@ -26,6 +27,7 @@ constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 // - save_queue: highest priority card-write work only
 // - foreground_queue: user-visible non-save work
 // - background_queue: AI, nudges, links/backlinks, and other best-effort work
+// - response_queue: completed non-streaming responses waiting for socket write
 //
 // Admission rules:
 // - accepted sockets are dropped when the ingress queue is full
@@ -154,6 +156,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   ingress_workers_.clear();
   save_workers_.clear();
   general_workers_.clear();
+  writer_workers_.clear();
 
   ingress_workers_.reserve(kIngressWorkerCount);
   for (std::size_t i = 0; i < kIngressWorkerCount; ++i) {
@@ -168,6 +171,11 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   general_workers_.reserve(kGeneralWorkerCount);
   for (std::size_t i = 0; i < kGeneralWorkerCount; ++i) {
     general_workers_.emplace_back([this]() { run_general_worker(); });
+  }
+
+  writer_workers_.reserve(kWriterWorkerCount);
+  for (std::size_t i = 0; i < kWriterWorkerCount; ++i) {
+    writer_workers_.emplace_back([this]() { run_writer_worker(); });
   }
 
   while (!signals.is_requested()) {
@@ -204,6 +212,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   stop_requested_.store(true);
   ingress_queue_cv_.notify_all();
   lane_queue_cv_.notify_all();
+  response_queue_cv_.notify_all();
 
   for (auto& worker : ingress_workers_) {
     if (worker.joinable()) {
@@ -220,10 +229,16 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       worker.join();
     }
   }
+  for (auto& worker : writer_workers_) {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
 
   ingress_workers_.clear();
   save_workers_.clear();
   general_workers_.clear();
+  writer_workers_.clear();
   spdlog::info("listener shutdown requested");
 }
 
@@ -231,6 +246,7 @@ void Listener::stop() {
   stop_requested_.store(true);
   ingress_queue_cv_.notify_all();
   lane_queue_cv_.notify_all();
+  response_queue_cv_.notify_all();
   boost::system::error_code ec;
   acceptor_.close(ec);
   ioc_.stop();
@@ -319,7 +335,14 @@ void Listener::run_save_worker() {
                     secret_store_,
                     git_ops_,
                     context.runner_registry.get());
-    session.run();
+    auto response = session.execute();
+    if (response.has_value()) {
+      {
+        std::lock_guard<std::mutex> lock(response_queue_mutex_);
+        response_queue_.emplace_back(std::move(*response));
+      }
+      response_queue_cv_.notify_one();
+    }
   }
 }
 
@@ -362,7 +385,35 @@ void Listener::run_general_worker() {
                     secret_store_,
                     git_ops_,
                     context.runner_registry.get());
-    session.run();
+    auto response = session.execute();
+    if (response.has_value()) {
+      {
+        std::lock_guard<std::mutex> lock(response_queue_mutex_);
+        response_queue_.emplace_back(std::move(*response));
+      }
+      response_queue_cv_.notify_one();
+    }
+  }
+}
+
+void Listener::run_writer_worker() {
+  while (true) {
+    Session::PreparedResponse prepared{tcp::socket(ioc_), {}, {}, {}};
+    {
+      std::unique_lock<std::mutex> lock(response_queue_mutex_);
+      response_queue_cv_.wait(lock, [this]() {
+        return stop_requested_.load() || !response_queue_.empty();
+      });
+      if (response_queue_.empty()) {
+        if (stop_requested_.load()) {
+          return;
+        }
+        continue;
+      }
+      prepared = std::move(response_queue_.front());
+      response_queue_.pop_front();
+    }
+    Session::write_prepared_response(std::move(prepared));
   }
 }
 

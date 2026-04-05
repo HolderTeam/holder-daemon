@@ -22,6 +22,7 @@ class Session {
 public:
   using tcp = boost::asio::ip::tcp;
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
+  using Response = boost::beast::http::response<boost::beast::http::string_body>;
 
   enum class RequestLane {
     Save,
@@ -36,6 +37,13 @@ public:
     std::string path;
     std::string query_string;
     RequestLane lane = RequestLane::Foreground;
+  };
+
+  struct PreparedResponse {
+    tcp::socket socket;
+    Request req;
+    Response res;
+    std::chrono::steady_clock::time_point request_started;
   };
 
   Session(tcp::socket socket,
@@ -63,10 +71,12 @@ public:
 
   void run();
   static std::optional<PreparedRequest> prepare_request(tcp::socket socket);
+  std::optional<PreparedResponse> execute();
+  static void write_prepared_response(PreparedResponse prepared);
 
 private:
   bool ensure_request_loaded();
-  void process_loaded_request();
+  std::optional<PreparedResponse> process_loaded_request();
   static RequestLane classify_request_lane(const Request& req, const std::string& path);
 
   tcp::socket socket_;

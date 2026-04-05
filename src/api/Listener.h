@@ -74,14 +74,19 @@ private:
   std::deque<Session::PreparedRequest> save_queue_;
   std::deque<Session::PreparedRequest> foreground_queue_;
   std::deque<Session::PreparedRequest> background_queue_;
+  std::mutex response_queue_mutex_;
+  std::condition_variable response_queue_cv_;
+  std::deque<Session::PreparedResponse> response_queue_;
   std::atomic<bool> stop_requested_{false};
   std::vector<std::thread> ingress_workers_;
   std::vector<std::thread> save_workers_;
   std::vector<std::thread> general_workers_;
+  std::vector<std::thread> writer_workers_;
 
   void run_ingress_worker();
   void run_save_worker();
   void run_general_worker();
+  void run_writer_worker();
 };
 
 } // namespace holder::api
