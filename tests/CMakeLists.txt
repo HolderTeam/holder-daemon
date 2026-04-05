@@ -134,6 +134,7 @@ add_executable(lockfile_tests
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
   ../src/platform/Fs.cpp
+  ../src/core/SerialExecutor.cpp
   ../src/card/CardPaths.cpp
   ../src/ai/AiMessagePaths.cpp
   ../src/card/CardFrontMatter.cpp
@@ -193,6 +194,7 @@ add_executable(lockfile_tests
   ../src/api/Router.cpp
   ../src/git/GitRepo.cpp
   ../src/git/GitOps.cpp
+  ../src/git/ExecutorGitOps.cpp
   ../src/git/RepoSyncMetrics.cpp
   ../src/privacy/ProjectPrivacy.cpp
   ../src/privacy/SecretStore.cpp

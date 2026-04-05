@@ -152,6 +152,21 @@ Listener::BoundInfo Listener::start() {
 
 void Listener::run(const holder::core::SignalHandler& signals) {
   stop_requested_.store(false);
+  owned_git_ops_.reset();
+  git_executor_.reset();
+  executor_git_ops_.reset();
+  request_git_ops_ = git_ops_;
+
+  if (card_store_ != nullptr || request_git_ops_ != nullptr) {
+    if (request_git_ops_ == nullptr) {
+      owned_git_ops_ = std::make_unique<holder::git::RealGitOps>();
+      request_git_ops_ = owned_git_ops_.get();
+    }
+    git_executor_ = std::make_unique<holder::core::SerialExecutor>("request-git");
+    executor_git_ops_ =
+        std::make_unique<holder::git::ExecutorGitOps>(*request_git_ops_, *git_executor_);
+    request_git_ops_ = executor_git_ops_.get();
+  }
 
   ingress_workers_.clear();
   save_workers_.clear();
@@ -305,7 +320,7 @@ void Listener::run_ingress_worker() {
 
 void Listener::run_save_worker() {
   auto context =
-      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, git_ops_);
+      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, request_git_ops_);
 
   while (true) {
     Session::PreparedRequest prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Save};
@@ -348,7 +363,7 @@ void Listener::run_save_worker() {
 
 void Listener::run_general_worker() {
   auto context =
-      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, git_ops_);
+      make_worker_context(db_, fts_, card_store_, runner_registry_, nudge_service_, request_git_ops_);
 
   while (true) {
     Session::PreparedRequest prepared{

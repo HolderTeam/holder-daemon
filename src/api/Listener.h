@@ -3,7 +3,9 @@
 #include "ai/NudgeService.h"
 #include "api/Router.h"
 #include "api/Session.h"
+#include "core/SerialExecutor.h"
 #include "platform/Signal.h"
+#include "git/ExecutorGitOps.h"
 #include "git/GitOps.h"
 #include "llm/RunnerRegistry.h"
 #include "index/FtsIndexer.h"
@@ -65,6 +67,10 @@ private:
   holder::privacy::SecretStore* secret_store_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
+  holder::git::GitOps* request_git_ops_ = nullptr;
+  std::unique_ptr<holder::git::RealGitOps> owned_git_ops_;
+  std::unique_ptr<holder::core::SerialExecutor> git_executor_;
+  std::unique_ptr<holder::git::ExecutorGitOps> executor_git_ops_;
 
   std::mutex ingress_queue_mutex_;
   std::condition_variable ingress_queue_cv_;
