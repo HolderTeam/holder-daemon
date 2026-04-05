@@ -556,9 +556,9 @@ we have a range of useful folders where new files can be made and existing files
 
 - [✅] Resolve selected local model config through `runner_id + model_name`
 - [✅] Update normal local AI run paths to use the chosen runner
-- [ ] Update title generation paths
-- [ ] Update nudge paths that rely on local models
-- [ ] Make pull jobs runner-aware in status APIs and UI
+- [✅] Update title generation paths
+- [✅] Update nudge paths that rely on local models
+- [✅] Make pull jobs runner-aware in status APIs and UI
 - [ ] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
 - [ ] Ensure multiple configured runners do not consume reserved save capacity
 
@@ -594,9 +594,9 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Phase 8: Cleanup
 
-- [ ] Remove obsolete singular-runner assumptions from daemon code
-- [ ] Remove obsolete singular-runner assumptions from Linux frontend parsers and UI
-- [ ] Remove any remaining temporary compatibility response fields after frontend migration is complete
+- [✅] Remove obsolete singular-runner assumptions from daemon code
+- [✅] Remove obsolete singular-runner assumptions from Linux frontend parsers and UI
+- [✅] Remove any remaining temporary compatibility response fields after frontend migration is complete
 - [ ] Tighten logs and debug output to include runner identity and priority lane where useful
 
 ## Test Plan

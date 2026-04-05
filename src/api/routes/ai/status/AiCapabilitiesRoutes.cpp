@@ -18,11 +18,6 @@ namespace {
 
 namespace http = boost::beast::http;
 
-std::string requested_runner_id(const std::function<std::string(const std::string&)>& param_get) {
-  const auto runner_id = param_get("runner_id");
-  return runner_id.empty() ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId) : runner_id;
-}
-
 nlohmann::json runtime_model_to_json(const holder::llm::LocalModel& model, const std::string& runner_id) {
   return {
       {"runner_id", runner_id},
@@ -111,7 +106,9 @@ bool handle_ai_capabilities_routes(const std::string& path,
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {
     return false;
   }
-  const std::string runner_id = requested_runner_id(param_get);
+  const auto runner_id =
+      param_get("runner_id").empty() ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                                     : param_get("runner_id");
   auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
 
   nlohmann::json data;
@@ -154,11 +151,6 @@ bool handle_ai_capabilities_routes(const std::string& path,
   }
   data["runners"] = runners;
   if (!runner) {
-    data["runner_id"] = runner_id;
-    data["runner_available"] = false;
-    data["error"] = "Runner not configured.";
-    data["last_checked"] = support::now_epoch_seconds();
-    data["models"] = nlohmann::json::array();
     if (machine_caste.has_value()) {
       const auto recommendations = support::build_caste_recommendations({}, model_meta, machine_caste->name);
       nlohmann::json all = nlohmann::json::array();
@@ -173,25 +165,6 @@ bool handle_ai_capabilities_routes(const std::string& path,
     }
   } else {
     const auto status = runner->status();
-    data["runner_id"] = runner_id;
-    data["runner_available"] = status.available;
-    data["spawn_attempted"] = status.spawn_attempted;
-    data["last_checked"] = status.last_checked;
-    data["version"] = status.version;
-    data["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
-    nlohmann::json models = nlohmann::json::array();
-    for (const auto& model : status.models) {
-      models.push_back({
-          {"runner_id", runner_id},
-          {"name", model.name},
-          {"model_ref", holder::llm::make_runner_model_ref(runner_id, model.name)},
-          {"digest", model.digest},
-          {"size", model.size},
-          {"modified_at", model.modified_at},
-      });
-    }
-    data["models"] = models;
-
     if (machine_caste.has_value()) {
       const auto recommendations =
           support::build_caste_recommendations(status.models, model_meta, machine_caste->name);

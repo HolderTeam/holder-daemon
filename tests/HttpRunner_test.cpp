@@ -63,9 +63,8 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                       nlohmann::json{},
                                       boost::beast::http::status::ok);
   REQUIRE(caps["ok"] == true);
-  REQUIRE(caps["data"]["runner_available"] == false);
-  REQUIRE(caps["data"]["error"].is_string());
-  REQUIRE(caps["data"]["models"].is_array());
+  REQUIRE(caps["data"]["runners"].is_array());
+  REQUIRE(caps["data"]["runners"].empty());
   REQUIRE(caps["data"]["recommended_models"].is_array());
   REQUIRE(caps["data"]["recommended_install"].is_array());
   REQUIRE(caps["data"].contains("caste"));
@@ -82,10 +81,10 @@ TEST_CASE("HTTP ai capabilities returns not configured when runtime missing", "[
                                         nlohmann::json{},
                                         boost::beast::http::status::ok);
   REQUIRE(status["ok"] == true);
-  REQUIRE(status["data"]["runner_available"] == false);
+  REQUIRE(status["data"]["runners"].is_array());
+  REQUIRE(status["data"]["runners"].empty());
   REQUIRE(status["data"]["active_runs"].is_number_integer());
   REQUIRE(status["data"]["active_pull_jobs"].is_number_integer());
-  REQUIRE(status["data"]["pulls"].is_array());
 
   const auto retry = http_json_request(bound.bind,
                                        bound.port,

@@ -19,27 +19,6 @@ namespace {
 
 namespace http = boost::beast::http;
 
-std::string requested_runner_id(const http::request<http::string_body>& req,
-                                const std::function<std::string(const std::string&)>& param_get) {
-  const auto query_runner_id = param_get("runner_id");
-  if (!query_runner_id.empty()) {
-    return query_runner_id;
-  }
-  if (req.method() == http::verb::post && !req.body().empty()) {
-    try {
-      const auto body = nlohmann::json::parse(req.body());
-      if (body.contains("runner_id") && !body.at("runner_id").is_null()) {
-        const auto value = body.at("runner_id").get<std::string>();
-        if (!value.empty()) {
-          return value;
-        }
-      }
-    } catch (const std::exception&) {
-    }
-  }
-  return holder::llm::RunnerRegistry::kAutoLocalRunnerId;
-}
-
 long long count_started_runs(holder::platform::Db& db) {
   static constexpr const char* SQL = "SELECT COUNT(*) FROM ai_runs WHERE status = 'started';";
   sqlite3_stmt* stmt = nullptr;
@@ -159,8 +138,8 @@ bool handle_ai_runtime_status_routes(const std::string& path,
                                      holder::platform::Db& db,
                                      holder::llm::RunnerRegistry* runner_registry,
                                      const std::function<std::string(const std::string&)>& param_get) {
-  const std::string runner_id = requested_runner_id(req, param_get);
-  auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
+  (void)req;
+  (void)param_get;
   if (path == "/ai/status" && req.method() == http::verb::get) {
     nlohmann::json data;
     data["checked_at"] = support::now_epoch_seconds();
@@ -183,31 +162,7 @@ bool handle_ai_runtime_status_routes(const std::string& path,
       }
     }
     data["runners"] = runners;
-
-    if (!runner) {
-      data["runner_id"] = runner_id;
-      data["runner_available"] = false;
-      data["runner_error"] = "Runner not configured.";
-      data["runner_last_checked"] = support::now_epoch_seconds();
-      data["active_pull_jobs"] = active_pull_jobs;
-      data["pulls"] = nlohmann::json::array();
-    } else {
-      const auto status = runner->status();
-      data["runner_id"] = runner_id;
-      data["runner_available"] = status.available;
-      data["runner_error"] =
-          status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
-      data["runner_last_checked"] = status.last_checked;
-      data["runner_version"] =
-          status.version.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.version);
-
-      nlohmann::json pulls = nlohmann::json::array();
-      for (const auto& job : runner->list_pulls()) {
-        pulls.push_back(runtime_pull_to_json(job, runner_id));
-      }
-      data["active_pull_jobs"] = active_pull_jobs;
-      data["pulls"] = pulls;
-    }
+    data["active_pull_jobs"] = active_pull_jobs;
 
     holder::ai::AiProviderCredentialRepo credential_repo(db);
     nlohmann::json cloud = nlohmann::json::array();
