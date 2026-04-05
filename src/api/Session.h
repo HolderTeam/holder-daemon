@@ -44,6 +44,7 @@ public:
     Request req;
     Response res;
     std::chrono::steady_clock::time_point request_started;
+    RequestLane lane = RequestLane::Foreground;
   };
 
   Session(tcp::socket socket,
@@ -78,6 +79,7 @@ private:
   bool ensure_request_loaded();
   std::optional<PreparedResponse> process_loaded_request();
   static RequestLane classify_request_lane(const Request& req, const std::string& path);
+  static const char* lane_name(RequestLane lane);
 
   tcp::socket socket_;
   holder::platform::Db& db_;

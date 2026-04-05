@@ -21,6 +21,7 @@
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cctype>
@@ -1237,6 +1238,7 @@ RouteDispatchResult execute_local_post_path(
 
   const long long updated_at = support::now_epoch_seconds();
   if (!chosen_model.empty()) {
+    spdlog::info("AI run completed runner_id={} model_ref={}", runner_id, chosen_model);
     nlohmann::json done_event;
     done_event["runner_id"] = runner_id;
     done_event["model_ref"] = chosen_model;
@@ -1273,6 +1275,7 @@ RouteDispatchResult execute_local_post_path(
                            std::nullopt,
                            updated_at);
   } else {
+    spdlog::warn("AI run failed runner_id={} reason=all_models_failed", runner_id);
     send_event("failed",
                {{"runner_id", runner_id}, {"error", "All models failed."}});
     run_repo.update_status(run.run_id,
@@ -1334,6 +1337,10 @@ RouteDispatchResult handle_ai_runs_post_route(
       }
     }
     runner = runner_registry ? runner_registry->get_client(selected_runner_id) : nullptr;
+    spdlog::info("AI run requested runner_id={} mode={} thread_id={}",
+                 selected_runner_id,
+                 mode,
+                 thread_id.has_value() ? thread_id.value() : std::string("null"));
     const bool cloud_provider_requested =
         body.contains("provider") && !body.at("provider").is_null() &&
         !support::normalize_provider_name(body.at("provider").get<std::string>()).empty();

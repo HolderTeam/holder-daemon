@@ -346,13 +346,19 @@ void Listener::run_ingress_worker() {
       }
 
       if (target_queue->size() < kMaxPreparedRequestsPerLane) {
+        spdlog::debug("queued request lane={} target={} queue_size_before={}",
+                      Session::lane_name(prepared->lane),
+                      prepared->req.target(),
+                      target_queue->size());
         target_queue->emplace_back(std::move(*prepared));
         queued = true;
       }
     }
 
     if (!queued) {
-      spdlog::warn("request lane queue full; rejecting prepared request");
+      spdlog::warn("request lane queue full; rejecting lane={} target={}",
+                   Session::lane_name(prepared->lane),
+                   prepared->req.target());
       reject_prepared_request(std::move(*prepared),
                               http::status::service_unavailable,
                               "server_busy",
@@ -447,7 +453,8 @@ void Listener::run_general_worker() {
     }
 
     if (should_drop_stale_background_request(prepared)) {
-      spdlog::info("dropping stale background request before execution: {}",
+      spdlog::info("dropping stale background request before execution: lane={} target={}",
+                   Session::lane_name(prepared.lane),
                    prepared.req.target());
       boost::system::error_code close_ec;
       prepared.socket.shutdown(tcp::socket::shutdown_both, close_ec);

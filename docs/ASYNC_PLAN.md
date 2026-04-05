@@ -597,7 +597,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Remove obsolete singular-runner assumptions from daemon code
 - [✅] Remove obsolete singular-runner assumptions from Linux frontend parsers and UI
 - [✅] Remove any remaining temporary compatibility response fields after frontend migration is complete
-- [ ] Tighten logs and debug output to include runner identity and priority lane where useful
+- [✅] Tighten logs and debug output to include runner identity and priority lane where useful
 
 ## Test Plan
 

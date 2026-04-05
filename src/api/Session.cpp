@@ -202,6 +202,7 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
       req_,
       std::move(res),
       request_started_,
+      classify_request_lane(req_, path_),
   };
   return prepared;
 }
@@ -221,6 +222,12 @@ void Session::write_prepared_response(PreparedResponse prepared) {
                prepared.req.target(), // LCOV_EXCL_LINE
                prepared.res.result_int(),
                duration_ms);
+  spdlog::debug("HTTP lane={} method={} target={} status={} duration_ms={}",
+                lane_name(prepared.lane),
+                prepared.req.method_string(),
+                prepared.req.target(),
+                prepared.res.result_int(),
+                duration_ms);
 
   prepared.socket.shutdown(tcp::socket::shutdown_send, ec);
 }
@@ -245,6 +252,18 @@ Session::RequestLane Session::classify_request_lane(const Request& req,
     return RequestLane::Background;
   }
   return RequestLane::Foreground;
+}
+
+const char* Session::lane_name(RequestLane lane) {
+  switch (lane) {
+    case RequestLane::Save:
+      return "save";
+    case RequestLane::Foreground:
+      return "foreground";
+    case RequestLane::Background:
+      return "background";
+  }
+  return "unknown";
 }
 
 } // namespace holder::api
