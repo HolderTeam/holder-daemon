@@ -74,12 +74,12 @@ public:
   static std::optional<PreparedRequest> prepare_request(tcp::socket socket);
   std::optional<PreparedResponse> execute();
   static void write_prepared_response(PreparedResponse prepared);
+  static const char* lane_name(RequestLane lane);
 
 private:
   bool ensure_request_loaded();
   std::optional<PreparedResponse> process_loaded_request();
   static RequestLane classify_request_lane(const Request& req, const std::string& path);
-  static const char* lane_name(RequestLane lane);
 
   tcp::socket socket_;
   holder::platform::Db& db_;

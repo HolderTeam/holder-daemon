@@ -40,6 +40,7 @@ public:
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
+  void stop();
 
 private:
   std::string bind_;

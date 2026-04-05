@@ -38,7 +38,7 @@ TEST_CASE("HTTP git_providers.yaml is served without auth", "[http]") {
   REQUIRE(res.status == boost::beast::http::status::ok);
   REQUIRE(res.content_type.find("application/yaml") != std::string::npos);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
 
@@ -78,6 +78,6 @@ TEST_CASE("HTTP git_providers.json is served without auth", "[http]") {
   REQUIRE(parsed.contains("providers"));
   REQUIRE(parsed["providers"].is_array());
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }

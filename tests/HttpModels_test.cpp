@@ -38,7 +38,7 @@ TEST_CASE("HTTP ai_catalog.yaml is served without auth", "[http]") {
   REQUIRE(res.status == boost::beast::http::status::ok);
   REQUIRE(res.content_type.find("application/yaml") != std::string::npos);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
 
@@ -79,6 +79,6 @@ TEST_CASE("HTTP ai_catalog.json is served without auth", "[http]") {
   REQUIRE(parsed["models"].contains("Models"));
   REQUIRE(parsed["models"]["Models"].contains("Cloud"));
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }

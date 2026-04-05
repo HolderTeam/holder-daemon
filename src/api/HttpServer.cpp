@@ -80,4 +80,10 @@ void HttpServer::run(const holder::core::SignalHandler& signals) {
   listener_->run(signals);
 }
 
+void HttpServer::stop() {
+  if (listener_) {
+    listener_->stop();
+  }
+}
+
 } // namespace holder::api

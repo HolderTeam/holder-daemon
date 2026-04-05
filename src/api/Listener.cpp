@@ -247,7 +247,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     io_workers_.emplace_back([this]() { ioc_.run(); });
   }
 
-  while (!signals.is_requested()) {
+  while (!stop_requested_.load() && !signals.is_requested()) {
     std::this_thread::sleep_for(kPollDelay);
   }
 

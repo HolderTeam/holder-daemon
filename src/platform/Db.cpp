@@ -1,8 +1,41 @@
 #include "platform/Db.h"
 
+#include <chrono>
 #include <stdexcept>
+#include <thread>
 
 namespace holder::platform {
+namespace {
+
+void exec_open_pragma(sqlite3* db, const std::string& sql) {
+  constexpr int kMaxAttempts = 50;
+  constexpr auto kRetryDelay = std::chrono::milliseconds(10);
+
+  for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+    char* err = nullptr;
+    const int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err);
+    if (rc == SQLITE_OK) {
+      return;
+    }
+
+    std::string msg = err ? err : "unknown sqlite error";
+    sqlite3_free(err);
+
+    if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt + 1 < kMaxAttempts) {
+      std::this_thread::sleep_for(kRetryDelay);
+      continue;
+    }
+
+    std::string full = "sqlite exec failed: " + msg + " (rc=" + std::to_string(rc) + ")";
+    if (db) {
+      full += ": ";
+      full += sqlite3_errmsg(db);
+    }
+    throw std::runtime_error(full);
+  }
+}
+
+} // namespace
 
 Db::~Db() { close(); }
 
@@ -46,13 +79,14 @@ void Db::open(const std::filesystem::path& path) {
     throw_sqlite("sqlite open failed: " + path.string(), rc, db_);
   }
 
-  // Sensible defaults for a local app DB.
-  exec("PRAGMA foreign_keys = ON;");
-  exec("PRAGMA journal_mode = WAL;");
-  exec("PRAGMA synchronous = NORMAL;");
   if (sqlite3_busy_timeout(db_, 5000) != SQLITE_OK) {
     throw_sqlite("sqlite busy_timeout failed", sqlite3_errcode(db_), db_);
   }
+
+  // Sensible defaults for a local app DB.
+  exec_open_pragma(db_, "PRAGMA foreign_keys = ON;");
+  exec_open_pragma(db_, "PRAGMA journal_mode = WAL;");
+  exec_open_pragma(db_, "PRAGMA synchronous = NORMAL;");
 }
 
 void Db::close() {
