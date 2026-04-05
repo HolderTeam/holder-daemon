@@ -78,6 +78,7 @@ add_executable(holderd
   src/platform/ServerInfo.cpp
   src/platform/Signal.cpp
   src/platform/Fs.cpp
+  src/core/SerialExecutor.cpp
   src/card/CardPaths.cpp
   src/card/CardFrontMatter.cpp
   src/ai/AiMessagePaths.cpp
@@ -91,6 +92,7 @@ add_executable(holderd
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp
   src/llm/LocalRunnerClient.cpp
+  src/llm/ExecutorRunnerClient.cpp
   src/llm/RunnerModelRef.cpp
   src/llm/RunnerRegistry.cpp
   src/api/HttpServer.cpp
@@ -154,6 +156,7 @@ add_executable(holderd
   src/platform/Migrations.cpp
   src/git/GitRepo.cpp
   src/git/GitOps.cpp
+  src/git/ExecutorGitOps.cpp
   src/git/RepoSyncMetrics.cpp
   src/privacy/ProjectPrivacy.cpp
   src/privacy/SecretStore.cpp

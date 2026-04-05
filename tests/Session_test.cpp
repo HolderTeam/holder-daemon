@@ -141,3 +141,53 @@ TEST_CASE("Session handles normal request/response path", "[session]") {
   REQUIRE(ec == boost::asio::error::eof);
   REQUIRE(response.find("401 Unauthorized") != std::string::npos);
 }
+
+TEST_CASE("Session prepare_request classifies card patch as save lane", "[session]") {
+  SocketPair pair;
+
+  const std::string req =
+      "PATCH /cards/card-123 HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Content-Length: 2\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "{}";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
+  REQUIRE(prepared.has_value());
+  REQUIRE(prepared->path == "/cards/card-123");
+  REQUIRE(prepared->lane == holder::api::Session::RequestLane::Save);
+}
+
+TEST_CASE("Session prepare_request classifies links reads as background lane", "[session]") {
+  SocketPair pair;
+
+  const std::string req =
+      "GET /cards/card-123/links HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
+  REQUIRE(prepared.has_value());
+  REQUIRE(prepared->path == "/cards/card-123/links");
+  REQUIRE(prepared->lane == holder::api::Session::RequestLane::Background);
+}
+
+TEST_CASE("Session prepare_request classifies project reads as foreground lane", "[session]") {
+  SocketPair pair;
+
+  const std::string req =
+      "GET /projects HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
+  REQUIRE(prepared.has_value());
+  REQUIRE(prepared->path == "/projects");
+  REQUIRE(prepared->lane == holder::api::Session::RequestLane::Foreground);
+}

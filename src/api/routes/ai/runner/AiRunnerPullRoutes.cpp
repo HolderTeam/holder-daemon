@@ -6,6 +6,7 @@
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include <string>
 
@@ -82,7 +83,8 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
         if (!body.contains("model")) {
           res = support::error_response(http::status::bad_request, "bad_request", "Missing model.");
         } else {
-          const std::string model = body.at("model").get<std::string>();
+        const std::string model = body.at("model").get<std::string>();
+          spdlog::info("AI runner pull requested runner_id={} model={}", runner_id, model);
           auto job = runner->start_pull(model);
           if (job.status == "failed") {
             res = support::error_response(

@@ -48,6 +48,6 @@ TEST_CASE("HTTP docs and openapi are served without auth", "[http]") {
   REQUIRE(openapi.content_type.find("application/yaml") != std::string::npos);
   REQUIRE(openapi.body.find("openapi:") != std::string::npos);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }

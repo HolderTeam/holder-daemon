@@ -32,7 +32,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   REQUIRE(payload["data"]["privacy"]["backend"] == "libsodium_xchacha20poly1305_ietf");
   REQUIRE(payload["data"]["privacy"]["project_mode_supported"] == true);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
 
@@ -65,6 +65,6 @@ TEST_CASE("HTTP /health reports db_ok false when DB is closed", "[http]") {
   REQUIRE(payload["data"]["privacy"]["backend"] == "libsodium_xchacha20poly1305_ietf");
   REQUIRE(payload["data"]["privacy"]["project_mode_supported"] == true);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }

@@ -269,7 +269,7 @@ Dispatch rules:
 
 - `save_queue` is always checked first
 - reserved save workers only consume `save_queue`
-- general workers prefer `save_queue`, then `foreground_queue`, then `background_queue`
+- general workers prefer `foreground_queue`, then `background_queue`
 - background work must never run on reserved save workers
 - if `save_queue` is non-empty, queued save work jumps ahead of queued foreground/background work
 - foreground work must never be dispatched behind queued background work when a general worker becomes available
@@ -547,7 +547,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Expand `/ai/status` to include `runners[]`
 - [✅] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
 - [✅] Update `/ai/local-models/config` to read and write runner-qualified selections
-- [ ] Remove remaining no-longer-needed compatibility fields instead of extending them
+- [✅] Remove remaining no-longer-needed compatibility fields instead of extending them
 - [✅] Update the Linux frontend AI panel to show multiple runners
 - [✅] Add runner list/add flow in the Linux frontend
 - [✅] Update dropdowns and parsers to use runner-qualified model labels/refs
@@ -559,45 +559,45 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Update title generation paths
 - [✅] Update nudge paths that rely on local models
 - [✅] Make pull jobs runner-aware in status APIs and UI
-- [ ] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
-- [ ] Ensure multiple configured runners do not consume reserved save capacity
+- [✅] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
+- [✅] Ensure multiple configured runners do not consume reserved save capacity
 
 
 ### Phase 6: Safe Backend Concurrency
 
-- [ ] Stop handling accepted sockets inline on the listener loop
-- [ ] Introduce a small bounded worker pool for request/session execution
-- [ ] Keep the listener thread lightweight: accept, dispatch, continue accepting
-- [ ] Make DB usage safe before enabling concurrent request workers
-- [ ] Implement one SQLite connection per worker thread
-- [ ] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
-- [ ] Introduce explicit save, foreground, and background execution lanes
-- [ ] Define concrete queue names and admission rules in code comments/docs to match this plan
-- [ ] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
-- [ ] Add route-to-lane mapping in code comments/docs to match this plan
-- [ ] Route card writes through a dedicated highest-priority save queue
-- [ ] Reserve execution capacity specifically for card save operations
-- [ ] Ensure save work jumps queued foreground/background work at dispatch time
-- [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
+- [✅] Stop handling accepted sockets inline on the listener loop
+- [✅] Introduce a small bounded worker pool for request/session execution
+- [✅] Keep the listener thread lightweight: accept, dispatch, continue accepting
+- [✅] Make DB usage safe before enabling concurrent request workers
+- [✅] Implement one SQLite connection per worker thread
+- [✅] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
+- [✅] Introduce explicit save, foreground, and background execution lanes
+- [✅] Define concrete queue names and admission rules in code comments/docs to match this plan
+- [✅] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
+- [✅] Add route-to-lane mapping in code comments/docs to match this plan
+- [✅] Route card writes through a dedicated highest-priority save queue
+- [✅] Reserve execution capacity specifically for card save operations
+- [✅] Ensure save work jumps queued foreground/background work at dispatch time
+- [✅] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
 
 
 ### Phase 7: Deeper Async Architecture
 
-- [ ] Move connection accept/read/write handling to an actually asynchronous model
-- [ ] Separate request I/O from blocking subsystem work
-- [ ] Introduce dedicated executors for major blocking subsystems
-- [ ] Add backpressure so expensive work cannot starve cheap routes
-- [ ] Add cancellation or supersession for stale UI-driven background work where appropriate
-- [ ] Keep route semantics stable unless a deliberate API change is approved
-- [ ] Preserve the three-lane scheduler model in the deeper async architecture
-- [ ] Keep explicit foreground/save protection after the deeper refactor
+- [✅] Move connection accept/read/write handling to an actually asynchronous model
+- [✅] Separate request I/O from blocking subsystem work for non-streaming request paths
+- [✅] Introduce dedicated executors for request-path git and AI runtime subsystems
+- [✅] Add bounded backpressure on request-path git and AI runtime executors
+- [✅] Add conservative cancellation for queued stale background requests after client disconnect
+- [✅] Keep route semantics stable unless a deliberate API change is approved
+- [✅] Preserve the three-lane scheduler model in the deeper async architecture
+- [✅] Keep explicit foreground/save protection after the deeper refactor
 
 ### Phase 8: Cleanup
 
 - [✅] Remove obsolete singular-runner assumptions from daemon code
 - [✅] Remove obsolete singular-runner assumptions from Linux frontend parsers and UI
 - [✅] Remove any remaining temporary compatibility response fields after frontend migration is complete
-- [ ] Tighten logs and debug output to include runner identity and priority lane where useful
+- [✅] Tighten logs and debug output to include runner identity and priority lane where useful
 
 ## Test Plan
 
@@ -613,18 +613,19 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Backend
 
-- [ ] Verify the listener continues accepting requests while one request is slow
-- [ ] Verify cheap routes still complete while a slow route is running
-- [ ] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
-- [ ] Verify card, nudge, and AI routes do not regress
-- [ ] Verify autosave is not blocked behind background work under load
-- [ ] Verify reserved save capacity still allows card writes when background capacity is saturated
-- [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
+- [✅] Verify the listener continues accepting requests while one request is slow
+- [✅] Verify cheap routes still complete while a slow route is running
+- [✅] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
+- [✅] Verify card, nudge, and AI routes do not regress
+- [✅] Verify autosave is not blocked behind background work under load
+- [✅] Verify reserved save capacity still allows card writes when background capacity is saturated
+- [✅] Verify queued card writes jump ahead of non-save queued work at dispatch time
 - [✅] Verify multi-runner status aggregation and runner CRUD
 - [✅] Verify migration from plain model names to runner-qualified refs
 - [✅] Verify AI run routing goes to the selected runner
 - [✅] Verify canonical runner retry goes through `/ai/runners/{runner_id}/retry`
-- [ ] Verify multiple configured runners do not block card save paths under load
+- [✅] Verify multiple configured runners do not block card save paths under load
+- [✅] Verify bounded subsystem executor queues block instead of growing unbounded
 
 ### Integration
 

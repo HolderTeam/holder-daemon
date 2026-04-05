@@ -36,6 +36,6 @@ TEST_CASE("HTTP ai_catalog.yaml is served without auth (cloud test alias)", "[ht
   REQUIRE(res.status == boost::beast::http::status::ok);
   REQUIRE(res.content_type.find("application/yaml") != std::string::npos);
 
-  std::raise(SIGTERM);
+  server.stop();
   server_thread.join();
 }
