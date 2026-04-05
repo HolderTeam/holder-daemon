@@ -327,6 +327,18 @@ Recommended implementation details:
 - if a request needs to hop executors later, it must not carry SQLite statements or connection-owned objects across threads
 - save-lane requests should acquire the write transaction as late as possible and release it as early as possible
 
+## Frontend design
+
+BTW, on the frontend, please don't put code in views unless it is widget related,
+we have a range of useful folders where new files can be made and existing files can be added to:
+
+- controllers: feature and workflow logic that reacts to events, coordinates models/services/state, and decides what should happen next.
+- models: plain data structures and lightweight value objects shared across the app.
+- services: integrations and reusable operations such as API access, persistence, transport, parsing, and system-facing helpers.
+- state: long-lived application state containers and state-tracking structures.
+- utils: small generic helper functions that do not belong to a specific feature or integration layer.
+- views: GTK/libadwaita widget construction, rendering, and UI event wiring.
+
 ## Single TODO List
 
 ### Phase 1: Frontend Burst Containment
