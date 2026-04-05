@@ -17,7 +17,7 @@ namespace http = boost::beast::http;
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
 constexpr std::size_t kIngressWorkerCount = 1;
 constexpr std::size_t kReservedSaveWorkerCount = 1;
-constexpr std::size_t kGeneralWorkerCount = 1;
+constexpr std::size_t kGeneralWorkerCount = 3;
 constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 

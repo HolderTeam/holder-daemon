@@ -573,7 +573,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Add `busy_timeout` and any per-connection setup needed on worker-owned handles
 - [✅] Introduce explicit save, foreground, and background execution lanes
 - [✅] Define concrete queue names and admission rules in code comments/docs to match this plan
-- [ ] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
+- [✅] Start with `save_reserved_worker_count = 1` and `general_worker_count = 3`
 - [✅] Add route-to-lane mapping in code comments/docs to match this plan
 - [✅] Route card writes through a dedicated highest-priority save queue
 - [✅] Reserve execution capacity specifically for card save operations
@@ -613,11 +613,11 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Backend
 
-- [ ] Verify the listener continues accepting requests while one request is slow
-- [ ] Verify cheap routes still complete while a slow route is running
+- [✅] Verify the listener continues accepting requests while one request is slow
+- [✅] Verify cheap routes still complete while a slow route is running
 - [ ] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
 - [ ] Verify card, nudge, and AI routes do not regress
-- [ ] Verify autosave is not blocked behind background work under load
+- [✅] Verify autosave is not blocked behind background work under load
 - [ ] Verify reserved save capacity still allows card writes when background capacity is saturated
 - [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
 - [✅] Verify multi-runner status aggregation and runner CRUD
