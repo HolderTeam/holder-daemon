@@ -2,6 +2,8 @@
 
 #include "llm/RunnerClient.h"
 
+#include <memory>
+
 namespace holder::llm {
 
 class LocalModelRunner;
@@ -9,6 +11,8 @@ class LocalModelRunner;
 class LocalRunnerClient final : public RunnerClient {
  public:
   explicit LocalRunnerClient(LocalModelRunner* runner);
+  explicit LocalRunnerClient(std::unique_ptr<LocalModelRunner> runner);
+  ~LocalRunnerClient() override;
 
   void start_background_probe() override;
   RunnerStatus status() const override;
@@ -23,6 +27,7 @@ class LocalRunnerClient final : public RunnerClient {
                        std::string* error) override;
 
  private:
+  std::unique_ptr<LocalModelRunner> owned_runner_;
   LocalModelRunner* runner_ = nullptr;
 };
 

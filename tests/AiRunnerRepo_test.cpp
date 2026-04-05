@@ -1,4 +1,7 @@
 #include "ai/AiRunnerRepo.h"
+#include "http_test_helpers.h"
+#include "llm/LocalRunnerClient.h"
+#include "llm/LocalModelRunner.h"
 #include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 
@@ -91,4 +94,67 @@ TEST_CASE("RunnerRegistry merges auto-local and persisted manual runners", "[db]
   REQUIRE(manual.has_value());
   REQUIRE(manual->name == "Office Ollama");
   REQUIRE(manual->source == "manual");
+}
+
+TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama runners", "[db]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_runner_registry_clients";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+
+  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  holder::ai::AiRunnerRepo repo(db);
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 100,
+      .updated_at = 100,
+  });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-disabled",
+      .name = "Disabled Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://disabled:11434"),
+      .source = "manual",
+      .enabled = false,
+      .created_at = 101,
+      .updated_at = 101,
+  });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-bad",
+      .name = "Bad Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("https://bad.example"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 102,
+      .updated_at = 102,
+  });
+
+  holder::llm::LocalModelRunner auto_local_runner;
+  holder::llm::LocalRunnerClient auto_local_client(&auto_local_runner);
+  holder::llm::RunnerRegistry registry(&db, &auto_local_client);
+
+  auto* manual_client = registry.get_client("manual-a");
+  REQUIRE(manual_client != nullptr);
+  const auto status = manual_client->retry();
+  REQUIRE(status.available == true);
+  REQUIRE(status.version == "fake");
+  REQUIRE(status.models.size() == 1);
+  REQUIRE(status.models[0].name == "fake-echo");
+
+  REQUIRE(registry.get_client("manual-disabled") == nullptr);
+  REQUIRE(registry.get_client("manual-bad") == nullptr);
 }

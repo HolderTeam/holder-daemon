@@ -6,6 +6,11 @@ namespace holder::llm {
 
 LocalRunnerClient::LocalRunnerClient(LocalModelRunner* runner) : runner_(runner) {}
 
+LocalRunnerClient::LocalRunnerClient(std::unique_ptr<LocalModelRunner> runner)
+    : owned_runner_(std::move(runner)), runner_(owned_runner_.get()) {}
+
+LocalRunnerClient::~LocalRunnerClient() = default;
+
 void LocalRunnerClient::start_background_probe() {
   if (runner_ != nullptr) {
     runner_->start_background_probe();

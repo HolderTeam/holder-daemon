@@ -23,6 +23,10 @@ class LocalModelRunner {
                          std::string*)>;
 
   LocalModelRunner();
+  LocalModelRunner(std::string host,
+                   std::string port,
+                   std::string exec_path,
+                   bool allow_spawn);
   ~LocalModelRunner();
 
   void start_background_probe();
@@ -57,6 +61,7 @@ class LocalModelRunner {
   std::string host_;
   std::string port_;
   std::string exec_path_;
+  bool allow_spawn_ = true;
 
   std::atomic<bool> spawn_attempted_{false};
   std::atomic<bool> background_started_{false};
