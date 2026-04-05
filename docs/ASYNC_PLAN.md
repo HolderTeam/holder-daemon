@@ -619,7 +619,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Verify card, nudge, and AI routes do not regress
 - [✅] Verify autosave is not blocked behind background work under load
 - [✅] Verify reserved save capacity still allows card writes when background capacity is saturated
-- [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
+- [✅] Verify queued card writes jump ahead of non-save queued work at dispatch time
 - [✅] Verify multi-runner status aggregation and runner CRUD
 - [✅] Verify migration from plain model names to runner-qualified refs
 - [✅] Verify AI run routing goes to the selected runner

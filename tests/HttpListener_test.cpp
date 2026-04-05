@@ -533,3 +533,108 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
   listener.stop();
   listener_thread.join();
 }
+
+TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch time", "[listener]") {
+  namespace http = boost::beast::http;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  holder::api::Router router;
+  std::atomic<int> slow_foreground_started{0};
+  router.add(http::verb::get, "/foreground-slow",
+             [&slow_foreground_started](const holder::api::Router::Request&,
+                                        holder::api::Router::Response& res) {
+               slow_foreground_started.fetch_add(1);
+               std::this_thread::sleep_for(std::chrono::milliseconds(300));
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+  router.add(http::verb::get, "/foreground-fast",
+             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+  router.add(http::verb::patch, "/cards/save-priority",
+             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+
+  const std::string token = "testtoken";
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto slow1 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+  auto slow2 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+  auto slow3 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+
+  for (int i = 0; i < 50 && slow_foreground_started.load() < 3; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(slow_foreground_started.load() == 3);
+
+  auto queued_foreground = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-fast");
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+  const auto save_started = std::chrono::steady_clock::now();
+  const auto saved = holder::test::http_json_request(bound.bind,
+                                                     bound.port,
+                                                     token,
+                                                     http::verb::patch,
+                                                     "/cards/save-priority",
+                                                     nlohmann::json::object(),
+                                                     http::status::ok);
+  const auto save_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - save_started)
+                                   .count();
+
+  REQUIRE(saved["ok"] == true);
+  REQUIRE(save_elapsed_ms < 200);
+  REQUIRE(queued_foreground.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout);
+
+  REQUIRE(slow1.get().status == http::status::ok);
+  REQUIRE(slow2.get().status == http::status::ok);
+  REQUIRE(slow3.get().status == http::status::ok);
+  REQUIRE(queued_foreground.get().status == http::status::ok);
+
+  listener.stop();
+  listener_thread.join();
+}
