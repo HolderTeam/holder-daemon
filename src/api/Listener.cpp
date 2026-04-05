@@ -11,6 +11,8 @@ namespace holder::api {
 namespace {
 
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
+constexpr std::size_t kInitialSessionWorkerCount = 1;
+constexpr std::size_t kMaxPendingSessions = 64;
 
 } // namespace
 
@@ -71,7 +73,11 @@ Listener::BoundInfo Listener::start() {
 
 void Listener::run(const holder::core::SignalHandler& signals) {
   stop_requested_.store(false);
-  session_worker_ = std::thread([this]() { run_session_worker(); });
+  session_workers_.clear();
+  session_workers_.reserve(kInitialSessionWorkerCount);
+  for (std::size_t i = 0; i < kInitialSessionWorkerCount; ++i) {
+    session_workers_.emplace_back([this]() { run_session_worker(); });
+  }
 
   while (!signals.is_requested()) {
     boost::system::error_code ec;
@@ -92,6 +98,13 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
     {
       std::lock_guard<std::mutex> lock(session_queue_mutex_);
+      if (pending_sessions_.size() >= kMaxPendingSessions) {
+        spdlog::warn("session queue full; dropping accepted socket");
+        boost::system::error_code close_ec;
+        socket.shutdown(tcp::socket::shutdown_both, close_ec);
+        socket.close(close_ec);
+        continue;
+      }
       pending_sessions_.emplace_back(std::move(socket));
     }
     session_queue_cv_.notify_one();
@@ -99,9 +112,12 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
   stop_requested_.store(true);
   session_queue_cv_.notify_all();
-  if (session_worker_.joinable()) {
-    session_worker_.join();
+  for (auto& worker : session_workers_) {
+    if (worker.joinable()) {
+      worker.join();
+    }
   }
+  session_workers_.clear();
   spdlog::info("listener shutdown requested");
 }
 

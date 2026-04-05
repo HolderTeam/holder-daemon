@@ -19,6 +19,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace holder::api {
 
@@ -68,7 +69,7 @@ private:
   std::condition_variable session_queue_cv_;
   std::deque<tcp::socket> pending_sessions_;
   std::atomic<bool> stop_requested_{false};
-  std::thread session_worker_;
+  std::vector<std::thread> session_workers_;
 
   void run_session_worker();
 };
