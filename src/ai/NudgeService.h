@@ -7,7 +7,6 @@
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -48,8 +47,6 @@ class NudgeService {
 public:
   explicit NudgeService(holder::platform::Db& db,
                         holder::llm::RunnerRegistry* runner_registry = nullptr);
-  explicit NudgeService(holder::platform::Db& db,
-                        holder::llm::LocalModelRunner* runner);
 
   NudgeDecision evaluate_and_record(const NudgeCandidateInput& input);
 
@@ -60,7 +57,6 @@ public:
 
 private:
   holder::platform::Db& db_;
-  std::unique_ptr<holder::llm::RunnerRegistry> owned_runner_registry_;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
 
   static bool is_placeholder_title(const std::string& title);

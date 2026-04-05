@@ -104,6 +104,7 @@ add_executable(lockfile_tests
   AiMessageRepo_test.cpp
   AiRunRepo_test.cpp
   AiLocalModelConfigRepo_test.cpp
+  AiRunnerRepo_test.cpp
   AiProviderCredentialRepo_test.cpp
   SecretStore_test.cpp
   AiProviderSettingRepo_test.cpp
@@ -140,6 +141,7 @@ add_executable(lockfile_tests
   ../src/ai/AiNudgeRepo.cpp
   ../src/ai/NudgeService.cpp
   ../src/ai/AiProviderCredentialRecovery.cpp
+  ../src/ai/AiRunnerRepo.cpp
   ../src/project/ProjectPaths.cpp
   ../src/index/FtsIndexer.cpp
   ../src/index/Reindexer.cpp

@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
   }
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::llm::RunnerRegistry runner_registry(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &runner);
   holder::api::HttpServer server(
       bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry);
   const auto bound = server.start();

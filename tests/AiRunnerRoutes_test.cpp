@@ -28,7 +28,7 @@ TEST_CASE("AiRunnerRoutes returns pull-event dispatch result when handled", "[ai
   http::response<http::string_body> res;
 
   const auto out = holder::api::routes::handle_ai_runner_routes(
-      "/ai/runner/pull/job-1/events", req, res, socket, nullptr);
+      "/ai/runner/pull/job-1/events", req, res, socket, static_cast<holder::llm::RunnerRegistry*>(nullptr));
 
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);

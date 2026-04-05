@@ -85,6 +85,7 @@ add_executable(holderd
   src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
   src/ai/AiProviderCredentialRecovery.cpp
+  src/ai/AiRunnerRepo.cpp
   src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp

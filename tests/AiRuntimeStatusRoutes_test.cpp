@@ -53,13 +53,14 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
   runner.set_fake_mode(true);
   (void)runner.retry();
   (void)runner.start_pull("fake-echo");
+  holder::llm::RunnerRegistry runner_registry(&db, &runner);
 
   SECTION("GET /ai/status with runner includes pull details") {
     auto req = make_request(http::verb::get, "/ai/status");
     http::response<http::string_body> res;
 
     REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-        "/ai/status", req, res, db, &runner));
+        "/ai/status", req, res, db, &runner_registry));
     REQUIRE(res.result() == http::status::ok);
 
     const auto payload = nlohmann::json::parse(res.body());
@@ -90,7 +91,7 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
     http::response<http::string_body> res;
 
     REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-        "/ai/runner/retry", req, res, db, &runner));
+        "/ai/runner/retry", req, res, db, &runner_registry));
     REQUIRE(res.result() == http::status::ok);
 
     const auto payload = nlohmann::json::parse(res.body());
@@ -201,13 +202,14 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
       holder::llm::LocalModel{.name = "m2", .digest = "d2", .size = 22, .modified_at = "t2"},
   };
   runner.set_status_override_for_tests(status);
+  holder::llm::RunnerRegistry runner_registry(&db, &runner);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
   const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner, param_get));
+      "/ai/capabilities", req, res, db, &runner_registry, param_get));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -265,13 +267,14 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
       holder::llm::LocalModel{.name = "model-installed", .digest = "d", .size = 11, .modified_at = "t"},
   };
   runner.set_status_override_for_tests(status);
+  holder::llm::RunnerRegistry runner_registry(&db, &runner);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
   const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner, param_get));
+      "/ai/capabilities", req, res, db, &runner_registry, param_get));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());

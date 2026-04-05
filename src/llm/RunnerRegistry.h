@@ -1,34 +1,31 @@
 #pragma once
 
+#include "model/AiRunner.h"
+
 #include <optional>
 #include <string>
 #include <vector>
 
+namespace holder::platform {
+class Db;
+}
+
 namespace holder::llm {
-
 class LocalModelRunner;
-
-struct RunnerRecord {
-  std::string runner_id;
-  std::string name;
-  std::string kind;
-  std::optional<std::string> base_url;
-  std::string source;
-  bool enabled = true;
-};
 
 class RunnerRegistry {
  public:
   static constexpr const char* kAutoLocalRunnerId = "auto-local";
 
-  explicit RunnerRegistry(LocalModelRunner* auto_local_runner = nullptr);
+  explicit RunnerRegistry(holder::platform::Db* db = nullptr,
+                          LocalModelRunner* auto_local_runner = nullptr);
 
-  std::vector<RunnerRecord> list_runners() const;
-  std::optional<RunnerRecord> get_runner(const std::string& runner_id) const;
+  std::vector<holder::model::AiRunner> list_runners() const;
+  std::optional<holder::model::AiRunner> get_runner(const std::string& runner_id) const;
   LocalModelRunner* get_auto_local_runner() const;
-  LocalModelRunner* get_runner_for_compat(const std::string& runner_id) const;
 
  private:
+  holder::platform::Db* db_ = nullptr;
   LocalModelRunner* auto_local_runner_ = nullptr;
 };
 

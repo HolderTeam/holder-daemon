@@ -348,12 +348,6 @@ NudgeService::NudgeService(holder::platform::Db& db,
                            holder::llm::RunnerRegistry* runner_registry)
     : db_(db), runner_registry_(runner_registry) {}
 
-NudgeService::NudgeService(holder::platform::Db& db,
-                           holder::llm::LocalModelRunner* runner)
-    : db_(db),
-      owned_runner_registry_(std::make_unique<holder::llm::RunnerRegistry>(runner)),
-      runner_registry_(owned_runner_registry_.get()) {}
-
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
 }

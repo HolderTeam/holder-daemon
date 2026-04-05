@@ -206,7 +206,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return true;
         });
 
-    holder::ai::NudgeService service(db, &runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &runner);
+    holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-1"));
     REQUIRE(decision.nudge.has_value());
     REQUIRE(decision.nudge->body == "Try drafting the first two sentences next.");
@@ -228,7 +229,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return false;
         });
 
-    holder::ai::NudgeService service(db, &runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &runner);
+    holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-2"));
     REQUIRE(decision.nudge.has_value());
     REQUIRE(decision.nudge->body ==

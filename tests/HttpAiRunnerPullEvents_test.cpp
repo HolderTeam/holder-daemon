@@ -1,5 +1,6 @@
 #include "http_test_helpers.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
+#include "llm/LocalModelRunner.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
@@ -18,7 +19,8 @@ struct StreamResult {
   std::string raw_response;
 };
 
-StreamResult invoke_pull_event_route_and_capture(const std::string& path, holder::llm::LocalModelRunner* runner) {
+StreamResult invoke_pull_event_route_and_capture(const std::string& path,
+                                                 holder::llm::RunnerRegistry* runner_registry) {
   boost::asio::io_context ioc;
   tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
 
@@ -36,7 +38,7 @@ StreamResult invoke_pull_event_route_and_capture(const std::string& path, holder
 
   std::thread route_thread([&]() {
     route_result = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-        path, req, res, server, runner);
+        path, req, res, server, runner_registry);
     boost::system::error_code ec;
     server.shutdown(tcp::socket::shutdown_both, ec);
     server.close(ec);
@@ -69,7 +71,7 @@ TEST_CASE("Ai runner pull events route ignores non-GET request", "[http]") {
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull/job-1/events", req, res, socket, nullptr);
+      "/ai/runner/pull/job-1/events", req, res, socket, static_cast<holder::llm::RunnerRegistry*>(nullptr));
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -82,7 +84,7 @@ TEST_CASE("Ai runner pull events route returns not_implemented when runner missi
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull/job-1/events", req, res, socket, nullptr);
+      "/ai/runner/pull/job-1/events", req, res, socket, static_cast<holder::llm::RunnerRegistry*>(nullptr));
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
   REQUIRE(res.result() == http::status::not_implemented);
@@ -92,6 +94,7 @@ TEST_CASE("Ai runner pull events route returns not_implemented when runner missi
 TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
 
   boost::asio::io_context ioc;
   tcp::socket socket(ioc);
@@ -100,7 +103,7 @@ TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[ht
   http::response<http::string_body> res;
 
   auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-      "/ai/runner/pull//events", req, res, socket, &runner);
+      "/ai/runner/pull//events", req, res, socket, &runner_registry);
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -108,8 +111,10 @@ TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[ht
 TEST_CASE("Ai runner pull events route streams failed event for missing job", "[http]") {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
+  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
 
-  const auto stream = invoke_pull_event_route_and_capture("/ai/runner/pull/missing-job/events", &runner);
+  const auto stream =
+      invoke_pull_event_route_and_capture("/ai/runner/pull/missing-job/events", &runner_registry);
   REQUIRE(stream.route_result.handled);
   REQUIRE(stream.route_result.streamed);
   REQUIRE(stream.raw_response.find("text/event-stream") != std::string::npos);
@@ -122,9 +127,10 @@ TEST_CASE("Ai runner pull events route streams progress and completed for job", 
   runner.set_fake_mode(true);
   const auto job = runner.start_pull("fake-echo");
   REQUIRE(!job.job_id.empty());
+  holder::llm::RunnerRegistry runner_registry(nullptr, &runner);
 
   const auto stream =
-      invoke_pull_event_route_and_capture("/ai/runner/pull/" + job.job_id + "/events", &runner);
+      invoke_pull_event_route_and_capture("/ai/runner/pull/" + job.job_id + "/events", &runner_registry);
   REQUIRE(stream.route_result.handled);
   REQUIRE(stream.route_result.streamed);
   REQUIRE(stream.raw_response.find("text/event-stream") != std::string::npos);
