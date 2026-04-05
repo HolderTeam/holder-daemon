@@ -77,6 +77,10 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
     REQUIRE(payload["data"]["runner_available"] == true);
     REQUIRE(payload["data"]["runner_error"].is_null());
     REQUIRE(payload["data"]["runner_version"] == "fake");
+    REQUIRE(payload["data"]["runners"].is_array());
+    REQUIRE(payload["data"]["runners"].size() == 1);
+    REQUIRE(payload["data"]["runners"][0]["runner_id"] == "auto-local");
+    REQUIRE(payload["data"]["runners"][0]["runtime"]["models"].is_array());
     REQUIRE(payload["data"]["pulls"].is_array());
     REQUIRE(payload["data"]["active_pull_jobs"].is_number_integer());
 
@@ -285,6 +289,10 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
   REQUIRE(payload["data"]["error"] == "runner warning");
   REQUIRE(payload["data"]["models"].is_array());
   REQUIRE(payload["data"]["models"].size() == 2);
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 1);
+  REQUIRE(payload["data"]["runners"][0]["runner_id"] == "auto-local");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["model_ref"] == "auto-local::m1");
   REQUIRE(payload["data"]["models"][0]["runner_id"] == "auto-local");
   REQUIRE(payload["data"]["models"][0]["name"] == "m1");
   REQUIRE(payload["data"]["models"][0]["model_ref"] == "auto-local::m1");
@@ -350,6 +358,8 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
   REQUIRE(payload["data"]["recommended_models"].size() == 2);
   REQUIRE(payload["data"]["recommended_install"].is_array());
   REQUIRE(payload["data"]["recommended_install"].size() == 1);
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 1);
   REQUIRE(payload["data"]["recommended_install"][0]["tag"] == "model-to-install");
   REQUIRE(payload["data"]["recommended_install"][0]["installed"] == false);
 }

@@ -6,6 +6,7 @@
 #include "ai/AiRunnerRepo.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
 #include "api/routes/ai/runner/AiRunnerPullRoutes.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -48,10 +49,18 @@ std::optional<std::string> validated_runner_base_url(const nlohmann::json& body,
 nlohmann::json local_model_to_json(const holder::llm::LocalModel& model) {
   return {
       {"name", model.name},
+      {"model_ref", nullptr},
       {"digest", model.digest},
       {"size", model.size},
       {"modified_at", model.modified_at},
   };
+}
+
+nlohmann::json local_model_to_json(const holder::llm::LocalModel& model, const std::string& runner_id) {
+  auto item = local_model_to_json(model);
+  item["runner_id"] = runner_id;
+  item["model_ref"] = holder::llm::make_runner_model_ref(runner_id, model.name);
+  return item;
 }
 
 nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
@@ -93,7 +102,7 @@ nlohmann::json runner_runtime_to_json(const std::string& runner_id,
   runtime["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
   runtime["models"] = nlohmann::json::array();
   for (const auto& model : status.models) {
-    runtime["models"].push_back(local_model_to_json(model));
+    runtime["models"].push_back(local_model_to_json(model, runner_id));
   }
   runtime["pulls"] = nlohmann::json::array();
   for (const auto& pull : client->list_pulls()) {
@@ -201,10 +210,45 @@ bool handle_ai_runner_crud_routes(const std::string& path,
   }
 
   const std::string suffix = path.substr(std::string("/ai/runners/").size());
-  if (suffix.empty() || suffix.find('/') != std::string::npos) {
+  if (suffix.empty()) {
     return false;
   }
-  const std::string runner_id = suffix;
+  const auto slash = suffix.find('/');
+  const std::string runner_id = slash == std::string::npos ? suffix : suffix.substr(0, slash);
+  const std::string subresource = slash == std::string::npos ? std::string() : suffix.substr(slash + 1);
+  if (runner_id.empty()) {
+    return false;
+  }
+
+  if (subresource == "retry" && req.method() == http::verb::post) {
+    try {
+      if (runner_registry == nullptr) {
+        res = support::error_response(http::status::not_found, "not_found", "Runner not found.");
+        return true;
+      }
+      auto* client = runner_registry->get_client(runner_id);
+      const auto runner = runner_registry->get_runner(runner_id);
+      if (!runner.has_value() || client == nullptr) {
+        res = support::error_response(http::status::not_found, "not_found", "Runner not configured.");
+        return true;
+      }
+      (void)client->retry();
+      runner_registry->refresh();
+
+      const auto refreshed = runner_registry->get_runner(runner_id);
+      nlohmann::json payload;
+      payload["ok"] = true;
+      payload["data"] = runner_to_json(refreshed.value_or(runner.value()), runner_registry);
+      res = support::json_response(http::status::ok, payload);
+    } catch (const std::exception& ex) {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+    }
+    return true;
+  }
+
+  if (!subresource.empty()) {
+    return false;
+  }
 
   if (req.method() == http::verb::get) {
     try {

@@ -157,3 +157,44 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
     REQUIRE_FALSE(holder::ai::AiRunnerRepo(db).get("manual-runner-123").has_value());
   }
 }
+
+TEST_CASE("AiRunnerRoutes supports runner retry by runner id", "[ai][runner]") {
+  const auto dir = holder::test::make_temp_dir();
+  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  boost::asio::io_context ioc;
+  boost::asio::ip::tcp::socket socket(ioc);
+  auto req = make_request(http::verb::post, "/ai/runners/manual-a/retry");
+  http::response<http::string_body> res;
+
+  const auto out = holder::api::routes::handle_ai_runner_routes(
+      "/ai/runners/manual-a/retry",
+      req,
+      res,
+      socket,
+      db,
+      &runner_registry,
+      []() { return std::string("ignored"); },
+      [](const std::string&) -> std::string { return {}; });
+
+  REQUIRE(out.handled);
+  REQUIRE(res.result() == http::status::ok);
+  const auto body = nlohmann::json::parse(res.body());
+  REQUIRE(body["ok"] == true);
+  REQUIRE(body["data"]["runner_id"] == "manual-a");
+  REQUIRE(body["data"]["runtime"]["configured"] == true);
+  REQUIRE(body["data"]["runtime"]["available"] == true);
+  REQUIRE(body["data"]["runtime"]["version"] == "fake");
+}

@@ -537,7 +537,33 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Keep registry/client APIs compatible with bounded executors rather than detached-thread-only behavior
 - [✅] Make status probing and pull-job ownership runner-specific
 
-### Phase 4: Safe Backend Concurrency
+### Phase 4: API And Frontend AI Panel Config
+
+- [✅] Add `GET /ai/runners`
+- [✅] Add `POST /ai/runners`
+- [✅] Add `PATCH /ai/runners/{runner_id}`
+- [✅] Add `DELETE /ai/runners/{runner_id}`
+- [ ] Add `POST /ai/runners/{runner_id}/retry`
+- [ ] Expand `/ai/status` to include `runners[]`
+- [ ] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
+- [✅] Update `/ai/local-models/config` to read and write runner-qualified selections
+- [ ] Preserve temporary compatibility fields for current clients where needed  -- not needed?
+- [✅] Update the Linux frontend AI panel to show multiple runners
+- [✅] Add runner list/add flow in the Linux frontend
+- [✅] Update dropdowns and parsers to use runner-qualified model labels/refs
+
+### Phase 5: Priority-Aware AI Routing
+
+- [ ] Resolve selected local model config through `runner_id + model_name`
+- [✅] Update normal local AI run paths to use the chosen runner
+- [ ] Update title generation paths
+- [ ] Update nudge paths that rely on local models
+- [ ] Make pull jobs runner-aware in status APIs and UI
+- [ ] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
+- [ ] Ensure multiple configured runners do not consume reserved save capacity
+
+
+### Phase 6: Safe Backend Concurrency
 
 - [ ] Stop handling accepted sockets inline on the listener loop
 - [ ] Introduce a small bounded worker pool for request/session execution
@@ -554,30 +580,6 @@ we have a range of useful folders where new files can be made and existing files
 - [ ] Ensure save work jumps queued foreground/background work at dispatch time
 - [ ] Ensure foreground save/load paths are not queued behind nudge, Connections, probe, pull, or other background work
 
-### Phase 5: API And Frontend AI Panel Config
-
-- [ ] Add `GET /ai/runners`
-- [ ] Add `POST /ai/runners`
-- [ ] Add `PUT /ai/runners/{runner_id}`
-- [ ] Add `DELETE /ai/runners/{runner_id}`
-- [ ] Add `POST /ai/runners/{runner_id}/retry`
-- [ ] Expand `/ai/status` to include `runners[]`
-- [ ] Expand `/ai/capabilities` to include `runners[]` and runner-qualified model refs
-- [ ] Update `/ai/local-models/config` to read and write runner-qualified selections
-- [ ] Preserve temporary compatibility fields for current clients where needed  -- not needed?
-- [ ] Update the Linux frontend AI panel to show multiple runners
-- [ ] Add runner list/add flow in the Linux frontend
-- [ ] Update dropdowns and parsers to use runner-qualified model labels/refs
-
-### Phase 6: Priority-Aware AI Routing
-
-- [ ] Resolve selected local model config through `runner_id + model_name`
-- [ ] Update normal local AI run paths to use the chosen runner
-- [ ] Update title generation paths
-- [ ] Update nudge paths that rely on local models
-- [ ] Make pull jobs runner-aware in status APIs and UI
-- [ ] Keep probes, pulls, nudges, and AI assistant work on background capacity by default
-- [ ] Ensure multiple configured runners do not consume reserved save capacity
 
 ### Phase 7: Deeper Async Architecture
 
@@ -601,13 +603,13 @@ we have a range of useful folders where new files can be made and existing files
 
 ### Frontend
 
-- [ ] Verify Connections refresh does not fire while the Connections tool is hidden
-- [ ] Verify typing produces one debounced refresh rather than one per buffer event
-- [ ] Verify only one graph refresh is in flight at a time
-- [ ] Verify stale graph results are ignored
-- [ ] Verify failed saves keep the card marked unsaved
-- [ ] Verify recovery drafts are written, restored, and cleaned up safely
-- [ ] Verify multi-runner UI shows runner-qualified model options clearly
+- [✅] Verify Connections refresh does not fire while the Connections tool is hidden
+- [✅] Verify typing produces one debounced refresh rather than one per buffer event
+- [✅] Verify only one graph refresh is in flight at a time
+- [✅] Verify stale graph results are ignored
+- [✅] Verify failed saves keep the card marked unsaved
+- [✅] Verify recovery drafts are written, restored, and cleaned up safely
+- [✅] Verify multi-runner UI shows runner-qualified model options clearly
 
 ### Backend
 
@@ -618,9 +620,9 @@ we have a range of useful folders where new files can be made and existing files
 - [ ] Verify autosave is not blocked behind background work under load
 - [ ] Verify reserved save capacity still allows card writes when background capacity is saturated
 - [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
-- [ ] Verify multi-runner status aggregation and runner CRUD
-- [ ] Verify migration from plain model names to runner-qualified refs
-- [ ] Verify AI run routing goes to the selected runner
+- [✅] Verify multi-runner status aggregation and runner CRUD
+- [✅] Verify migration from plain model names to runner-qualified refs
+- [✅] Verify AI run routing goes to the selected runner
 - [ ] Verify multiple configured runners do not block card save paths under load
 
 ### Integration
