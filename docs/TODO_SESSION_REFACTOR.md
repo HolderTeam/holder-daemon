@@ -1,5 +1,10 @@
 # TODO: `src/api/Session.cpp` Refactor
 
+This document is now mostly historical context.
+
+Much of the original route/support extraction has already landed in `src/api/routes/*` and `src/api/support/*`.
+The main remaining transport-facing work is better tracked by `docs/ASYNC_PLAN.md`, especially for listener/session concurrency and execution-lane changes.
+
 Goal: split a large mixed-responsibility file into a clear domain + layer hierarchy that is easier for humans to navigate and change safely.
 
 ## Target Architecture
@@ -58,6 +63,12 @@ src/api/
 
 ## TODO Checklist
 
+Status note:
+
+- Items 2 through 18 are largely completed in the current tree.
+- The most relevant unfinished intent here is item 19 and the surrounding transport simplification work.
+- Prefer updating `ASYNC_PLAN.md` for new concurrency/transport work rather than expanding this document.
+
 1. Create `SessionContext` type for shared dependencies and request utilities.
 2. Extract static/docs path resolution and file serving helpers into `support/PathDiscovery.cpp`.
 3. Extract run event global state and helpers into `support/RunEventStore.cpp`.
@@ -102,4 +113,3 @@ Each PR should:
 - keep behavior stable
 - keep tests green
 - avoid schema/API contract changes unless explicitly planned
-

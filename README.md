@@ -1,6 +1,6 @@
-# Holder
+# Holder Local Daemon
 
-Local-first card server.
+Holderd is a local-first card server, primarily used as a backend for card applications.
 
 ## What You Need
 
@@ -62,7 +62,7 @@ sudo apt install -y \
 ./make.sh
 ```
 
-Server will start at `127.0.0.1:11499` by default and print docs URL + auth token.
+Server will start at `127.0.0.1:11499` by default and print docs URL + auth token in the terminal log.
 
 ## macOS / Windows
 
@@ -86,3 +86,15 @@ Will need portability plan and testing, mainly around secrets since we need libs
 ./scripts/cloud-smoke.sh --provider switchyard --token "$HOLDER_TOKEN" --api-key "$SWITCHYARD_API_KEY"
 ./scripts/factory-reset.sh --force  # This wipes all user data, useful for development and testing the onboarding path. Warning: don't use on the actual holder instance you use as a user.
 ```
+
+## Daemons.
+
+In computing, a daemon is a program that runs as a background process,
+rather than being under the direct control of an interactive user.
+Sometimes this is called a service, a server or a backend,
+but the original term from 1963 is a daemon,
+based on the Ancient Greek word δαίμων.
+This is a different word than demon, used in later Christian tradition for fallen angel.
+Socrates described a daemon as an "attendant, ministering, or indwelling spirit; genius",
+more like the Holy Spirit.
+Demons are baddies, daemons are goodies.

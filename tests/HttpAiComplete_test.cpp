@@ -7,8 +7,12 @@
 #include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRunnerRepo.h"
 #include "ai/AiRunRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "ai/AiMessageRepo.h"
+#include "llm/LocalRunnerClient.h"
+#include "llm/LocalModelRunner.h"
 #include "privacy/SecretStore.h"
 
 using holder::test::make_temp_dir;
@@ -509,6 +513,8 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -516,7 +522,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
       db,
       nullptr,
       nullptr,
-      &runner,
+      &runner_registry,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -530,7 +536,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("model-b"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::model-b"));
   REQUIRE(runs[0].ranked_json.has_value());
   REQUIRE(runs[0].ranked_json.value().find("model-a") != std::string::npos);
 
@@ -538,7 +544,7 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   const auto msgs = msg_repo.list_by_thread("thread-1");
   bool saw_assistant = false;
   for (const auto& msg : msgs) {
-    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "model-b") {
+    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "auto-local::model-b") {
       saw_assistant = true;
     }
   }
@@ -618,6 +624,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -625,7 +633,7 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
       db,
       nullptr,
       nullptr,
-      &runner,
+      &runner_registry,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -635,8 +643,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("large-model"));
-  REQUIRE(runs[0].ranked_json == std::optional<std::string>("[\"large-model\"]"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::large-model"));
+  REQUIRE(runs[0].ranked_json == std::optional<std::string>("[\"auto-local::large-model\"]"));
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);
@@ -683,6 +691,8 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
       req,
       res,
@@ -690,7 +700,7 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
       db,
       nullptr,
       nullptr,
-      &runner,
+      &runner_registry,
       [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
 
   REQUIRE(out.handled);
@@ -1784,8 +1794,10 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, unopened_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
+      req, res, unopened_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1852,8 +1864,10 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -1959,8 +1973,10 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -2042,8 +2058,10 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -2135,8 +2153,10 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
 
   http::response<http::string_body> res;
   int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner, [&id_seq]() {
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
       });
   REQUIRE(out.handled);
@@ -2147,7 +2167,120 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
-  REQUIRE(runs[0].chosen_model == std::optional<std::string>("strong-model"));
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("auto-local::strong-model"));
+
+  boost::system::error_code ec;
+  server_socket.shutdown(tcp::socket::shutdown_both, ec);
+  server_socket.close(ec);
+  client.shutdown(tcp::socket::shutdown_both, ec);
+  client.close(ec);
+}
+
+TEST_CASE("AiRunPostRoute title generation honors configured fast model runner", "[http]") {
+  const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+  holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+  holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
+  local_model_cfg_repo.set(
+      std::string("manual-a::fake-echo"), std::string("auto-local::strong-model"), std::nullopt, 1);
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models = {
+      holder::llm::LocalModel{.name = "fast-model", .size = 1},
+      holder::llm::LocalModel{.name = "strong-model", .size = 500},
+      holder::llm::LocalModel{.name = "other-model", .size = 200},
+  };
+  runner.set_status_override_for_tests(status);
+
+  bool saw_main_generation = false;
+  bool saw_title_generation_on_auto_local = false;
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string& model,
+          const std::string& prompt,
+          const std::string&,
+          const std::function<void(const std::string&)>& on_chunk,
+          std::string*) -> bool {
+        if (prompt.find("Write a short human-readable thread title") != std::string::npos) {
+          saw_title_generation_on_auto_local = true;
+          on_chunk("Auto Local Title");
+          return true;
+        }
+        if (model == "strong-model") {
+          saw_main_generation = true;
+          on_chunk("strong-output");
+          return true;
+        }
+        return false;
+      });
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+  boost::asio::io_context ioc;
+  tcp::socket client(ioc);
+  tcp::socket server_socket(ioc);
+  try {
+    tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+    const auto endpoint = acceptor.local_endpoint();
+    client.connect(endpoint);
+    acceptor.accept(server_socket);
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+  }
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "use strong model"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::response<http::string_body> res;
+  int id_seq = 1;
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  auto* manual_client = runner_registry.get_client("manual-a");
+  REQUIRE(manual_client != nullptr);
+  (void)manual_client->retry();
+
+  const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      });
+  REQUIRE(out.handled);
+  REQUIRE(out.streamed);
+  REQUIRE(saw_main_generation);
+  REQUIRE_FALSE(saw_title_generation_on_auto_local);
+
+  holder::ai::AiThreadRepo thread_repo(db);
+  const auto thread = thread_repo.get("thread-1");
+  REQUIRE(thread.has_value());
+  REQUIRE(thread->title == "Thread");
 
   boost::system::error_code ec;
   server_socket.shutdown(tcp::socket::shutdown_both, ec);
@@ -2441,7 +2574,9 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2561,7 +2696,9 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -2637,7 +2774,9 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2703,7 +2842,9 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2791,7 +2932,9 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2852,7 +2995,9 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2902,7 +3047,9 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   (void)runner.retry();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2963,7 +3110,7 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
     if (m.role == "user") {
       saw_user = true;
     }
-    if (m.model.has_value() && m.model.value() == "fake-echo") {
+    if (m.model.has_value() && m.model.value() == "auto-local::fake-echo") {
       saw_model = true;
     }
   }
@@ -2986,7 +3133,9 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::LocalModelRunner runner;
   runner.start_background_probe();
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3012,6 +3161,93 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
 
   std::raise(SIGTERM);
   server_thread.join();
+}
+
+TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+
+  const auto dir = make_temp_dir();
+  holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+  auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+  const auto db_path = dir / "holder.db";
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir);
+  holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                      "VALUES('proj-1', 'Project', '") +
+          repo_dir.string() + "', 1, 1);");
+  db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+          "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
+
+  holder::ai::AiRunnerRepo runner_repo(db);
+  runner_repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+
+  const std::string token = "testtoken";
+  holder::card::CardStore card_store(db, nullptr);
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  ServerThreadGuard server_thread(server, signals);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+  req.set(http::field::host, bound.bind);
+  req.set(http::field::user_agent, "holder-tests");
+  req.set(http::field::authorization, "Bearer " + token);
+  req.set(http::field::content_type, "application/json");
+  req.body() = nlohmann::json{{"prompt", "hello manual"},
+                              {"project_id", "proj-1"},
+                              {"thread_id", "thread-1"},
+                              {"runner_id", "manual-a"},
+                              {"model", "fake-echo"}}
+                   .dump();
+  req.prepare_payload();
+
+  http::write(socket, req);
+  boost::beast::flat_buffer buffer;
+  http::response<http::string_body> res;
+  http::read(socket, buffer, res);
+  socket.shutdown(tcp::socket::shutdown_both);
+
+  if (res.result() != http::status::ok) {
+    FAIL(res.body());
+  }
+
+  REQUIRE(res.body().find("\"runner_id\":\"manual-a\"") != std::string::npos);
+  REQUIRE(res.body().find("\"model_ref\":\"manual-a::fake-echo\"") != std::string::npos);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  holder::ai::AiRunRepo run_repo(db);
+  const auto runs = run_repo.list_by_thread("thread-1");
+  REQUIRE(runs.size() == 1);
+  REQUIRE(runs[0].status == "completed");
+  REQUIRE(runs[0].chosen_model == std::optional<std::string>("manual-a::fake-echo"));
 }
 
 TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provider has creds", "[http]") {

@@ -32,17 +32,17 @@ TEST_CASE("AiLocalModelConfigRepo stores and clears config", "[db]") {
   repo.set(std::string("fast"), std::string("strong"), std::string("deep"), 100);
   auto cfg = repo.get();
   REQUIRE(cfg.has_value());
-  REQUIRE(cfg->fast_model == std::optional<std::string>("fast"));
-  REQUIRE(cfg->strong_model == std::optional<std::string>("strong"));
-  REQUIRE(cfg->deep_model == std::optional<std::string>("deep"));
+  REQUIRE(cfg->fast_model == std::optional<std::string>("auto-local::fast"));
+  REQUIRE(cfg->strong_model == std::optional<std::string>("auto-local::strong"));
+  REQUIRE(cfg->deep_model == std::optional<std::string>("auto-local::deep"));
   REQUIRE(cfg->updated_at == 100);
 
   repo.set(std::string("fast-2"), std::nullopt, std::string("deep-2"), 200);
   cfg = repo.get();
   REQUIRE(cfg.has_value());
-  REQUIRE(cfg->fast_model == std::optional<std::string>("fast-2"));
+  REQUIRE(cfg->fast_model == std::optional<std::string>("auto-local::fast-2"));
   REQUIRE_FALSE(cfg->strong_model.has_value());
-  REQUIRE(cfg->deep_model == std::optional<std::string>("deep-2"));
+  REQUIRE(cfg->deep_model == std::optional<std::string>("auto-local::deep-2"));
   REQUIRE(cfg->updated_at == 200);
 
   repo.clear();
@@ -88,6 +88,31 @@ TEST_CASE("AiLocalModelConfigRepo throws when get prepare fails", "[db]") {
 
   holder::ai::AiLocalModelConfigRepo repo(db);
   REQUIRE_THROWS(repo.get());
+}
+
+TEST_CASE("AiLocalModelConfigRepo normalizes legacy bare model refs on read", "[db]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_local_model_config_legacy";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto db_path = dir / "holder.db";
+
+  holder::platform::Db db;
+  db.open(db_path);
+
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  db.exec("INSERT INTO ai_local_model_config(key, fast_model, strong_model, deep_model, updated_at) "
+          "VALUES('global', 'legacy-fast', 'legacy-strong', NULL, 7);");
+
+  holder::ai::AiLocalModelConfigRepo repo(db);
+  const auto cfg = repo.get();
+  REQUIRE(cfg.has_value());
+  REQUIRE(cfg->fast_model == std::optional<std::string>("auto-local::legacy-fast"));
+  REQUIRE(cfg->strong_model == std::optional<std::string>("auto-local::legacy-strong"));
+  REQUIRE_FALSE(cfg->deep_model.has_value());
 }
 
 TEST_CASE("AiLocalModelConfigRepo throws when get step is interrupted", "[db]") {

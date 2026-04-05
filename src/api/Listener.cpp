@@ -25,7 +25,7 @@ Listener::Listener(std::string bind,
                    holder::ai::NudgeService* nudge_service,
                    holder::privacy::SecretStore* secret_store,
                    holder::git::GitOps* git_ops,
-                   holder::llm::LocalModelRunner* runner)
+                   holder::llm::RunnerRegistry* runner_registry)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
@@ -38,7 +38,7 @@ Listener::Listener(std::string bind,
       nudge_service_(nudge_service),
       secret_store_(secret_store),
       git_ops_(git_ops),
-      runner_(runner) {}
+      runner_registry_(runner_registry) {}
 
 Listener::BoundInfo Listener::start() {
   boost::system::error_code ec;
@@ -93,7 +93,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
                     nudge_service_,
                     secret_store_,
                     git_ops_,
-                    runner_);
+                    runner_registry_);
     session.run();
   }
   spdlog::info("listener shutdown requested");

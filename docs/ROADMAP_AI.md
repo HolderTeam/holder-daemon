@@ -4,6 +4,11 @@ This roadmap is for the next focused implementation cycle.
 
 Guiding rule: do not duplicate existing APIs that already solve the problem.
 
+Planning note:
+
+- The merged execution plus runner plan is tracked in `docs/ASYNC_PLAN.md`.
+- This roadmap should be read as additive to that plan, not as a competing source of truth for runner execution architecture.
+
 ## Current Baseline
 
 Already in place:

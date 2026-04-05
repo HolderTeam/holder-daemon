@@ -2,6 +2,12 @@
 
 This document reflects the current `holder-daemon` backend behavior and route surface.
 
+Planning note:
+
+- This is a current-behavior document, not the forward plan.
+- Upcoming execution-priority, concurrency, recovery, and multi-runner changes are tracked in `docs/ASYNC_PLAN.md`.
+- Where this document describes singular local-runner fields, treat them as current compatibility behavior rather than a permanent API design guarantee.
+
 ## 1) Discover Running Daemon + Token
 
 Read server info file:

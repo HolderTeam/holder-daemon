@@ -2,7 +2,7 @@
 
 #include "api/routes/ai/AiRunRoutes.h"
 #include "index/FtsIndexer.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
 
@@ -21,7 +21,7 @@ RouteDispatchResult handle_ai_runs_post_route(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     holder::privacy::SecretStore* secret_store,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4);
 
 } // namespace holder::api::routes::ai::runs

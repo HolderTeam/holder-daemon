@@ -3,7 +3,7 @@
 #include "ai/NudgeService.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
 
@@ -29,7 +29,7 @@ DispatchResult dispatch_ai_routes(
     holder::index::FtsIndexer* fts,
     holder::ai::NudgeService* nudge_service,
     holder::privacy::SecretStore* secret_store,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param);
 

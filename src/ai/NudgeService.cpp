@@ -1,6 +1,8 @@
 #include "ai/NudgeService.h"
 
 #include "ai/AiLocalModelConfigRepo.h"
+#include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 #include "ai/AiNudgeRepo.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
@@ -344,8 +346,8 @@ std::string build_nudge_context_summary(holder::platform::Db& db,
 } // namespace
 
 NudgeService::NudgeService(holder::platform::Db& db,
-                           holder::llm::LocalModelRunner* runner)
-    : db_(db), runner_(runner) {}
+                           holder::llm::RunnerRegistry* runner_registry)
+    : db_(db), runner_registry_(runner_registry) {}
 
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
@@ -446,27 +448,35 @@ std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
   return prompt.str();
 }
 
-std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
-  if (runner_ == nullptr) return std::nullopt;
-  const auto status = runner_->status();
-  if (!status.available || status.models.empty()) return std::nullopt;
-
-  try {
-    holder::ai::AiLocalModelConfigRepo repo(db_);
-    const auto cfg = repo.get();
-    if (cfg.has_value() && cfg->fast_model.has_value() && !cfg->fast_model->empty()) {
-      const auto it = std::find_if(status.models.begin(),
-                                   status.models.end(),
-                                   [&](const holder::llm::LocalModel& model) {
-                                     return model.name == cfg->fast_model.value();
-                                   });
-      if (it != status.models.end()) {
-        return it->name;
+std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_for_nudges() const {
+  if (runner_registry_ != nullptr) {
+    try {
+      holder::ai::AiLocalModelConfigRepo repo(db_);
+      const auto cfg = repo.get();
+      const auto configured =
+          holder::llm::resolve_configured_runner_model(cfg.has_value() ? cfg->fast_model : std::nullopt,
+                                                       runner_registry_);
+      if (configured.has_value() && configured->runner != nullptr) {
+        const auto configured_status = configured->runner->status();
+        const auto it = std::find_if(
+            configured_status.models.begin(),
+            configured_status.models.end(),
+            [&](const holder::llm::LocalModel& model) { return model.name == configured->model_name; });
+        if (configured_status.available && it != configured_status.models.end()) {
+          return configured;
+        }
       }
+    } catch (const std::exception&) {
+      // Ignore config read failures and fall back to auto-pick.
     }
-  } catch (const std::exception&) {
-    // Ignore config read failures and fall back to auto-pick.
   }
+
+  auto* runner = runner_registry_
+                     ? runner_registry_->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                     : nullptr;
+  if (runner == nullptr) return std::nullopt;
+  const auto status = runner->status();
+  if (!status.available || status.models.empty()) return std::nullopt;
 
   const holder::llm::LocalModel* best = nullptr;
   for (const auto& model : status.models) {
@@ -479,20 +489,24 @@ std::optional<std::string> NudgeService::pick_local_model_for_nudges() const {
     }
   }
   if (best == nullptr || best->name.empty()) return std::nullopt;
-  return best->name;
+  return holder::llm::ResolvedRunnerModel{
+      .runner_id = holder::llm::RunnerRegistry::kAutoLocalRunnerId,
+      .model_name = best->name,
+      .runner = runner,
+  };
 }
 
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
   const auto deterministic = build_nudge_body(input);
-  const auto model = pick_local_model_for_nudges();
-  if (!model.has_value()) return deterministic;
+  const auto target = pick_local_model_for_nudges();
+  if (!target.has_value() || target->runner == nullptr) return deterministic;
 
   std::string generated;
   std::string error;
   const auto context_summary = build_nudge_context_summary(db_, input);
   const auto prompt = build_nudge_prompt(input, deterministic, context_summary);
-  const bool ok = runner_->stream_generate(
-      model.value(),
+  const bool ok = target->runner->stream_generate(
+      target->model_name,
       prompt,
       "{}",
       [&](const std::string& chunk) { generated += chunk; },

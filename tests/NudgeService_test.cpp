@@ -4,9 +4,12 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "ai/AiLocalModelConfigRepo.h"
+#include "ai/AiRunnerRepo.h"
 #include "ai/NudgeService.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <git2.h>
@@ -206,7 +209,9 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return true;
         });
 
-    holder::ai::NudgeService service(db, &runner);
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-1"));
     REQUIRE(decision.nudge.has_value());
     REQUIRE(decision.nudge->body == "Try drafting the first two sentences next.");
@@ -228,9 +233,59 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           return false;
         });
 
-    holder::ai::NudgeService service(db, &runner);
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-2"));
     REQUIRE(decision.nudge.has_value());
+    REQUIRE(decision.nudge->body ==
+            "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
+  }
+
+  SECTION("configured manual fast model does not fall back to auto-local runner") {
+    holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-a",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+    holder::ai::AiLocalModelConfigRepo(db).set(
+        std::string("manual-a::fake-echo"), std::nullopt, std::nullopt, 2);
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
+    runner.set_status_override_for_tests(status);
+
+    bool used_auto_local_for_nudge = false;
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string&,
+            const std::string& prompt,
+            const std::string&,
+            const std::function<void(const std::string&)>&,
+            std::string*) {
+          if (prompt.find("Rewrite this app nudge") != std::string::npos) {
+            used_auto_local_for_nudge = true;
+          }
+          return false;
+        });
+
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    auto* manual_client = runner_registry.get_client("manual-a");
+    REQUIRE(manual_client != nullptr);
+    (void)manual_client->retry();
+
+    holder::ai::NudgeService service(db, &runner_registry);
+    auto decision = service.evaluate_and_record(title_only_candidate("fp-3"));
+    REQUIRE(decision.nudge.has_value());
+    REQUIRE_FALSE(used_auto_local_for_nudge);
     REQUIRE(decision.nudge->body ==
             "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
   }

@@ -1,5 +1,7 @@
 #include "ai/AiLocalModelConfigRepo.h"
 
+#include "llm/RunnerModelRef.h"
+
 #include <sqlite3.h>
 
 #include <stdexcept>
@@ -33,9 +35,21 @@ std::optional<std::string> column_optional_text(sqlite3_stmt* stmt, int idx) {
 
 holder::model::AiLocalModelConfig read_config(sqlite3_stmt* stmt) {
   holder::model::AiLocalModelConfig out;
-  out.fast_model = column_optional_text(stmt, 0);
-  out.strong_model = column_optional_text(stmt, 1);
-  out.deep_model = column_optional_text(stmt, 2);
+  const auto fast_model = column_optional_text(stmt, 0);
+  const auto strong_model = column_optional_text(stmt, 1);
+  const auto deep_model = column_optional_text(stmt, 2);
+  out.fast_model = fast_model.has_value()
+                       ? std::optional<std::string>(
+                             holder::llm::normalize_local_runner_model_ref(fast_model.value()))
+                       : std::nullopt;
+  out.strong_model = strong_model.has_value()
+                         ? std::optional<std::string>(
+                               holder::llm::normalize_local_runner_model_ref(strong_model.value()))
+                         : std::nullopt;
+  out.deep_model = deep_model.has_value()
+                       ? std::optional<std::string>(
+                             holder::llm::normalize_local_runner_model_ref(deep_model.value()))
+                       : std::nullopt;
   out.updated_at = sqlite3_column_int64(stmt, 3);
   return out;
 }
@@ -84,6 +98,19 @@ void AiLocalModelConfigRepo::set(const std::optional<std::string>& fast_model,
     return;
   }
 
+  const auto normalized_fast_model =
+      fast_model.has_value() ? std::optional<std::string>(
+                                   holder::llm::normalize_local_runner_model_ref(fast_model.value()))
+                             : std::nullopt;
+  const auto normalized_strong_model =
+      strong_model.has_value() ? std::optional<std::string>(
+                                     holder::llm::normalize_local_runner_model_ref(strong_model.value()))
+                               : std::nullopt;
+  const auto normalized_deep_model =
+      deep_model.has_value() ? std::optional<std::string>(
+                                   holder::llm::normalize_local_runner_model_ref(deep_model.value()))
+                             : std::nullopt;
+
   static constexpr const char* SQL =
       "INSERT INTO ai_local_model_config(key, fast_model, strong_model, deep_model, updated_at) "
       "VALUES('global', ?, ?, ?, ?) "
@@ -98,9 +125,9 @@ void AiLocalModelConfigRepo::set(const std::optional<std::string>& fast_model,
     throw_sqlite(db_.handle(), "prepare upsert local model config failed");
   }
 
-  bind_optional_text(stmt, 1, fast_model);
-  bind_optional_text(stmt, 2, strong_model);
-  bind_optional_text(stmt, 3, deep_model);
+  bind_optional_text(stmt, 1, normalized_fast_model);
+  bind_optional_text(stmt, 2, normalized_strong_model);
+  bind_optional_text(stmt, 3, normalized_deep_model);
   sqlite3_bind_int64(stmt, 4, updated_at);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {

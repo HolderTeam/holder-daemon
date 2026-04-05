@@ -192,6 +192,20 @@ CREATE TABLE IF NOT EXISTS ai_local_model_config (
 );
 
 -- ----------------------------
+-- AI runner configuration
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS ai_runners (
+  runner_id   TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  base_url    TEXT NULL,
+  source      TEXT NOT NULL,
+  enabled     INTEGER NOT NULL,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
+-- ----------------------------
 -- Cloud provider credentials
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS ai_provider_credentials (

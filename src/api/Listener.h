@@ -4,7 +4,7 @@
 #include "api/Router.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
-#include "llm/LocalModelRunner.h"
+#include "llm/RunnerRegistry.h"
 #include "index/FtsIndexer.h"
 #include "card/CardStore.h"
 #include "platform/Db.h"
@@ -35,7 +35,7 @@ public:
            holder::ai::NudgeService* nudge_service,
            holder::privacy::SecretStore* secret_store = nullptr,
            holder::git::GitOps* git_ops = nullptr,
-           holder::llm::LocalModelRunner* runner = nullptr);
+           holder::llm::RunnerRegistry* runner_registry = nullptr);
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
@@ -57,7 +57,7 @@ private:
   holder::ai::NudgeService* nudge_service_ = nullptr;
   holder::privacy::SecretStore* secret_store_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
-  holder::llm::LocalModelRunner* runner_ = nullptr;
+  holder::llm::RunnerRegistry* runner_registry_ = nullptr;
 };
 
 } // namespace holder::api

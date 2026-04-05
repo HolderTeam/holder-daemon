@@ -85,10 +85,14 @@ add_executable(holderd
   src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
   src/ai/AiProviderCredentialRecovery.cpp
+  src/ai/AiRunnerRepo.cpp
   src/project/ProjectPaths.cpp
   src/index/FtsIndexer.cpp
   src/index/Reindexer.cpp
   src/llm/LocalModelRunner.cpp
+  src/llm/LocalRunnerClient.cpp
+  src/llm/RunnerModelRef.cpp
+  src/llm/RunnerRegistry.cpp
   src/api/HttpServer.cpp
   src/api/Listener.cpp
   src/api/routes/ai/AiProviderRoutes.cpp

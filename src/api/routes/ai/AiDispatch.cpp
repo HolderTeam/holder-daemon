@@ -46,14 +46,13 @@ DispatchResult dispatch_ai_routes(
     holder::index::FtsIndexer* fts,
     holder::ai::NudgeService* nudge_service,
     holder::privacy::SecretStore* secret_store,
-    holder::llm::LocalModelRunner* runner,
+    holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
     const std::function<std::string(const std::string&)>& param) {
   const std::string ai_resource = segment_at(path, 2);
 
-  if (ai_resource == "capabilities" || ai_resource == "status" || ai_resource == "retry" ||
-      ai_resource == "local-models") {
-    if (handle_ai_status_routes(path, req, res, db, runner, param)) {
+  if (ai_resource == "capabilities" || ai_resource == "status" || ai_resource == "local-models") {
+    if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
       return {.handled = true, .streamed = false};
     }
     return {.handled = false, .streamed = false};
@@ -72,17 +71,18 @@ DispatchResult dispatch_ai_routes(
   }
   if (ai_resource == "runs") {
     if (const auto route_result =
-            handle_ai_run_routes(path, req, res, socket, db, fts, secret_store, runner, uuid_v4, param);
+            handle_ai_run_routes(
+                path, req, res, socket, db, fts, secret_store, runner_registry, uuid_v4, param);
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
     }
     return {.handled = false, .streamed = false};
   }
-  if (ai_resource == "runner") {
-    if (handle_ai_status_routes(path, req, res, db, runner, param)) {
+  if (ai_resource == "runner" || ai_resource == "runners") {
+    if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
       return {.handled = true, .streamed = false};
     }
-    if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, runner);
+    if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, db, runner_registry, uuid_v4, param);
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
     }

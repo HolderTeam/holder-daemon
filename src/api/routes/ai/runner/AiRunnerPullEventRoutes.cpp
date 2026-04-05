@@ -1,6 +1,8 @@
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
 
 #include "api/support/HttpResponses.h"
+#include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
 #include <boost/beast/http.hpp>
@@ -15,10 +17,12 @@ namespace {
 
 namespace http = boost::beast::http;
 
-nlohmann::json pull_job_to_json(const holder::llm::LocalModelRunner::PullJob& job) {
+nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
   nlohmann::json data;
   data["job_id"] = job.job_id;
+  data["runner_id"] = runner_id;
   data["model"] = job.model;
+  data["model_ref"] = holder::llm::make_runner_model_ref(runner_id, job.model);
   data["status"] = job.status;
   data["updated_at"] = job.updated_at;
   data["error"] = job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error);
@@ -31,6 +35,12 @@ nlohmann::json pull_job_to_json(const holder::llm::LocalModelRunner::PullJob& jo
   return data;
 }
 
+std::string requested_runner_id(const std::function<std::string(const std::string&)>& param_get) {
+  const auto query_runner_id = param_get("runner_id");
+  return query_runner_id.empty() ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                                 : query_runner_id;
+}
+
 } // namespace
 
 RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
@@ -38,8 +48,11 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
-    holder::llm::LocalModelRunner* runner) {
+    holder::llm::RunnerRegistry* runner_registry,
+    const std::function<std::string(const std::string&)>& param_get) {
   RunnerRouteDispatchResult out{};
+  const std::string runner_id = requested_runner_id(param_get);
+  auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
 
   if (path.rfind("/ai/runner/pull/", 0) != 0 ||
       path.size() <= std::string("/ai/runner/pull/").size() + std::string("/events").size() ||
@@ -51,8 +64,7 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
 
   out.handled = true;
   if (!runner) {
-    res = support::error_response(
-        http::status::not_implemented, "not_implemented", "Local model runner not configured.");
+    res = support::error_response(http::status::not_found, "not_found", "Runner not configured.");
     return out;
   }
 
@@ -91,14 +103,16 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
   for (;;) {
     const auto job = runner->get_pull(job_id);
     if (!job.has_value()) {
-      send_event("failed", nlohmann::json{{"error", "Pull job not found."}});
+      send_event("failed",
+                 nlohmann::json{{"runner_id", runner_id},
+                                {"error", "Pull job not found."}});
       break;
     }
 
     const bool changed = job->status != last_status || job->progress.completed != last_completed ||
                          job->progress.total != last_total; // LCOV_EXCL_LINE
     if (changed) {
-      const auto data = pull_job_to_json(job.value());
+      const auto data = pull_job_to_json(job.value(), runner_id);
       if (!send_event("progress", data)) {
         break; // LCOV_EXCL_LINE
       }

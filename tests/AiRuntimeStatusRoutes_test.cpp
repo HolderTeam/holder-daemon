@@ -7,7 +7,9 @@
 #include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
 #include "api/routes/ai/status/AiCapabilitiesRoutes.h"
 #include "ai/AiLocalModelConfigRepo.h"
+#include "ai/AiRunnerRepo.h"
 #include "http_test_helpers.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
 
 #include <boost/beast/http.hpp>
@@ -53,27 +55,38 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
   runner.set_fake_mode(true);
   (void)runner.retry();
   (void)runner.start_pull("fake-echo");
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   SECTION("GET /ai/status with runner includes pull details") {
     auto req = make_request(http::verb::get, "/ai/status");
     http::response<http::string_body> res;
 
     REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-        "/ai/status", req, res, db, &runner));
+        "/ai/status",
+        req,
+        res,
+        db,
+        &runner_registry,
+        [](const std::string&) -> std::string { return {}; }));
     REQUIRE(res.result() == http::status::ok);
 
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["ok"] == true);
-    REQUIRE(payload["data"]["runner_available"] == true);
-    REQUIRE(payload["data"]["runner_error"].is_null());
-    REQUIRE(payload["data"]["runner_version"] == "fake");
-    REQUIRE(payload["data"]["pulls"].is_array());
+    REQUIRE(payload["data"]["runners"].is_array());
+    REQUIRE(payload["data"]["runners"].size() == 1);
+    REQUIRE(payload["data"]["runners"][0]["runner_id"] == "auto-local");
+    REQUIRE(payload["data"]["runners"][0]["runtime"]["models"].is_array());
     REQUIRE(payload["data"]["active_pull_jobs"].is_number_integer());
 
-    if (!payload["data"]["pulls"].empty()) {
-      const auto& pull = payload["data"]["pulls"][0];
+    const auto& runtime_pulls = payload["data"]["runners"][0]["runtime"]["pulls"];
+    REQUIRE(runtime_pulls.is_array());
+    if (!runtime_pulls.empty()) {
+      const auto& pull = runtime_pulls[0];
       REQUIRE(pull["job_id"].is_string());
+      REQUIRE(pull["runner_id"] == "auto-local");
       REQUIRE(pull["model"].is_string());
+      REQUIRE(pull["model_ref"] == std::string("auto-local::") + pull["model"].get<std::string>());
       REQUIRE(pull["status"].is_string());
       REQUIRE(pull["updated_at"].is_number_integer());
       REQUIRE(pull["error"].is_null());
@@ -85,24 +98,6 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
     }
   }
 
-  SECTION("POST /ai/runner/retry with runner returns status payload") {
-    auto req = make_request(http::verb::post, "/ai/runner/retry");
-    http::response<http::string_body> res;
-
-    REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-        "/ai/runner/retry", req, res, db, &runner));
-    REQUIRE(res.result() == http::status::ok);
-
-    const auto payload = nlohmann::json::parse(res.body());
-    REQUIRE(payload["ok"] == true);
-    REQUIRE(payload["data"]["runner_available"] == true);
-    REQUIRE(payload["data"]["spawn_attempted"] == false);
-    REQUIRE(payload["data"]["version"] == "fake");
-    REQUIRE(payload["data"]["error"].is_null());
-    REQUIRE(payload["data"]["models"].is_array());
-    REQUIRE(payload["data"]["models"].size() == 1);
-    REQUIRE(payload["data"]["models"][0]["name"] == "fake-echo");
-  }
 }
 
 TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be prepared", "[http]") {
@@ -113,7 +108,12 @@ TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be pre
   auto req = make_request(http::verb::get, "/ai/status");
   http::response<http::string_body> res;
   REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
-      "/ai/status", req, res, db, nullptr));
+      "/ai/status",
+      req,
+      res,
+      db,
+      nullptr,
+      [](const std::string&) -> std::string { return {}; }));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -137,9 +137,9 @@ TEST_CASE("AiCapabilitiesRoutes returns local model config", "[http]") {
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["local_model_config"]["fast_model"] == "fast-model");
-  REQUIRE(payload["data"]["local_model_config"]["strong_model"] == "strong-model");
-  REQUIRE(payload["data"]["local_model_config"]["deep_model"] == "deep-model");
+  REQUIRE(payload["data"]["local_model_config"]["fast_model"] == "auto-local::fast-model");
+  REQUIRE(payload["data"]["local_model_config"]["strong_model"] == "auto-local::strong-model");
+  REQUIRE(payload["data"]["local_model_config"]["deep_model"] == "auto-local::deep-model");
   REQUIRE(payload["data"]["local_model_config"]["updated_at"] == 20);
 }
 
@@ -201,28 +201,34 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
       holder::llm::LocalModel{.name = "m2", .digest = "d2", .size = 22, .modified_at = "t2"},
   };
   runner.set_status_override_for_tests(status);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
   const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner, param_get));
+      "/ai/capabilities", req, res, db, &runner_registry, param_get));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["runner_available"] == true);
-  REQUIRE(payload["data"]["spawn_attempted"] == true);
-  REQUIRE(payload["data"]["last_checked"] == 123);
-  REQUIRE(payload["data"]["version"] == "runner-v");
-  REQUIRE(payload["data"]["error"] == "runner warning");
-  REQUIRE(payload["data"]["models"].is_array());
-  REQUIRE(payload["data"]["models"].size() == 2);
-  REQUIRE(payload["data"]["models"][0]["name"] == "m1");
-  REQUIRE(payload["data"]["models"][0]["digest"] == "d1");
-  REQUIRE(payload["data"]["models"][0]["size"] == 11);
-  REQUIRE(payload["data"]["models"][0]["modified_at"] == "t1");
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 1);
+  REQUIRE(payload["data"]["runners"][0]["runner_id"] == "auto-local");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["available"] == true);
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["spawn_attempted"] == true);
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["last_checked"] == 123);
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["version"] == "runner-v");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["error"] == "runner warning");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["model_ref"] == "auto-local::m1");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["runner_id"] == "auto-local");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["name"] == "m1");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["model_ref"] == "auto-local::m1");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["digest"] == "d1");
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["size"] == 11);
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["modified_at"] == "t1");
 }
 
 TEST_CASE("AiCapabilitiesRoutes without runner includes recommendation entries", "[http]") {
@@ -241,7 +247,6 @@ TEST_CASE("AiCapabilitiesRoutes without runner includes recommendation entries",
 
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["runner_available"] == false);
   REQUIRE(payload["data"]["recommended_models"].is_array());
   REQUIRE(payload["data"]["recommended_models"].size() == 2);
   REQUIRE(payload["data"]["recommended_install"].is_array());
@@ -265,13 +270,15 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
       holder::llm::LocalModel{.name = "model-installed", .digest = "d", .size = 11, .modified_at = "t"},
   };
   runner.set_status_override_for_tests(status);
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
   const auto param_get = [](const std::string&) -> std::string { return {}; };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner, param_get));
+      "/ai/capabilities", req, res, db, &runner_registry, param_get));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -280,6 +287,8 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
   REQUIRE(payload["data"]["recommended_models"].size() == 2);
   REQUIRE(payload["data"]["recommended_install"].is_array());
   REQUIRE(payload["data"]["recommended_install"].size() == 1);
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 1);
   REQUIRE(payload["data"]["recommended_install"][0]["tag"] == "model-to-install");
   REQUIRE(payload["data"]["recommended_install"][0]["installed"] == false);
 }
