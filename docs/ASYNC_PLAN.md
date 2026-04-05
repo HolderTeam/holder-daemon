@@ -269,7 +269,7 @@ Dispatch rules:
 
 - `save_queue` is always checked first
 - reserved save workers only consume `save_queue`
-- general workers prefer `save_queue`, then `foreground_queue`, then `background_queue`
+- general workers prefer `foreground_queue`, then `background_queue`
 - background work must never run on reserved save workers
 - if `save_queue` is non-empty, queued save work jumps ahead of queued foreground/background work
 - foreground work must never be dispatched behind queued background work when a general worker becomes available
@@ -615,16 +615,16 @@ we have a range of useful folders where new files can be made and existing files
 
 - [✅] Verify the listener continues accepting requests while one request is slow
 - [✅] Verify cheap routes still complete while a slow route is running
-- [ ] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
-- [ ] Verify card, nudge, and AI routes do not regress
+- [✅] Verify one SQLite connection per worker thread behaves correctly under concurrent request load
+- [✅] Verify card, nudge, and AI routes do not regress
 - [✅] Verify autosave is not blocked behind background work under load
-- [ ] Verify reserved save capacity still allows card writes when background capacity is saturated
+- [✅] Verify reserved save capacity still allows card writes when background capacity is saturated
 - [ ] Verify queued card writes jump ahead of non-save queued work at dispatch time
 - [✅] Verify multi-runner status aggregation and runner CRUD
 - [✅] Verify migration from plain model names to runner-qualified refs
 - [✅] Verify AI run routing goes to the selected runner
 - [✅] Verify canonical runner retry goes through `/ai/runners/{runner_id}/retry`
-- [ ] Verify multiple configured runners do not block card save paths under load
+- [✅] Verify multiple configured runners do not block card save paths under load
 
 ### Integration
 

@@ -31,7 +31,7 @@ constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 // - accepted sockets are dropped when the ingress queue is full
 // - prepared requests receive 503 when their target lane queue is full
 // - reserved save workers consume save_queue only
-// - general workers prefer save_queue, then foreground_queue, then background_queue
+// - general workers consume foreground_queue, then background_queue
 // - background work never runs on reserved save workers
 //
 // Initial worker counts stay conservative until more shared subsystems are audited.
@@ -333,20 +333,16 @@ void Listener::run_general_worker() {
     {
       std::unique_lock<std::mutex> lock(lane_queue_mutex_);
       lane_queue_cv_.wait(lock, [this]() {
-        return stop_requested_.load() || !save_queue_.empty() || !foreground_queue_.empty() ||
-               !background_queue_.empty();
+        return stop_requested_.load() || !foreground_queue_.empty() || !background_queue_.empty();
       });
-      if (save_queue_.empty() && foreground_queue_.empty() && background_queue_.empty()) {
+      if (foreground_queue_.empty() && background_queue_.empty()) {
         if (stop_requested_.load()) {
           return;
         }
         continue;
       }
 
-      if (!save_queue_.empty()) {
-        prepared = std::move(save_queue_.front());
-        save_queue_.pop_front();
-      } else if (!foreground_queue_.empty()) {
+      if (!foreground_queue_.empty()) {
         prepared = std::move(foreground_queue_.front());
         foreground_queue_.pop_front();
       } else {
