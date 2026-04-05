@@ -585,9 +585,9 @@ we have a range of useful folders where new files can be made and existing files
 
 - [ ] Move connection accept/read/write handling to an actually asynchronous model
 - [✅] Separate request I/O from blocking subsystem work for non-streaming request paths
-- [ ] Introduce dedicated executors for major blocking subsystems
-- [ ] Add backpressure so expensive work cannot starve cheap routes
-- [ ] Add cancellation or supersession for stale UI-driven background work where appropriate
+- [✅] Introduce dedicated executors for request-path git and AI runtime subsystems
+- [✅] Add bounded backpressure on request-path git and AI runtime executors
+- [✅] Add conservative cancellation for queued stale background requests after client disconnect
 - [ ] Keep route semantics stable unless a deliberate API change is approved
 - [ ] Preserve the three-lane scheduler model in the deeper async architecture
 - [ ] Keep explicit foreground/save protection after the deeper refactor
@@ -625,6 +625,7 @@ we have a range of useful folders where new files can be made and existing files
 - [✅] Verify AI run routing goes to the selected runner
 - [✅] Verify canonical runner retry goes through `/ai/runners/{runner_id}/retry`
 - [✅] Verify multiple configured runners do not block card save paths under load
+- [✅] Verify bounded subsystem executor queues block instead of growing unbounded
 
 ### Integration
 

@@ -9,6 +9,7 @@
 #include "platform/Signal.h"
 
 #include <atomic>
+#include <boost/asio.hpp>
 #include <future>
 
 using holder::test::make_temp_dir;
@@ -634,6 +635,106 @@ TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch t
   REQUIRE(slow2.get().status == http::status::ok);
   REQUIRE(slow3.get().status == http::status::ok);
   REQUIRE(queued_foreground.get().status == http::status::ok);
+
+  listener.stop();
+  listener_thread.join();
+}
+
+TEST_CASE("Queued background request is dropped if client disconnects before execution",
+          "[listener]") {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  holder::api::Router router;
+  std::atomic<int> slow_foreground_started{0};
+  std::atomic<int> canceled_background_runs{0};
+  router.add(http::verb::get, "/foreground-slow",
+             [&slow_foreground_started](const holder::api::Router::Request&,
+                                        holder::api::Router::Response& res) {
+               slow_foreground_started.fetch_add(1);
+               std::this_thread::sleep_for(std::chrono::milliseconds(300));
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+  router.add(http::verb::get, "/ai/cancel-test",
+             [&canceled_background_runs](const holder::api::Router::Request&,
+                                         holder::api::Router::Response& res) {
+               canceled_background_runs.fetch_add(1);
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+
+  const std::string token = "testtoken";
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto slow1 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+  auto slow2 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+  auto slow3 = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+
+  for (int i = 0; i < 50 && slow_foreground_started.load() < 3; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(slow_foreground_started.load() == 3);
+
+  {
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+    tcp::socket socket(ioc);
+    boost::asio::connect(socket, endpoints);
+
+    const std::string request =
+        "GET /ai/cancel-test HTTP/1.1\r\n"
+        "Host: " + bound.bind + "\r\n"
+        "Authorization: Bearer " + token + "\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+    boost::asio::write(socket, boost::asio::buffer(request));
+    socket.shutdown(tcp::socket::shutdown_both);
+    socket.close();
+  }
+
+  REQUIRE(slow1.get().status == http::status::ok);
+  REQUIRE(slow2.get().status == http::status::ok);
+  REQUIRE(slow3.get().status == http::status::ok);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  REQUIRE(canceled_background_runs.load() == 0);
 
   listener.stop();
   listener_thread.join();

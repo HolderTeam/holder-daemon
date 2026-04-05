@@ -38,6 +38,43 @@ constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 //
 // Initial worker counts stay conservative until more shared subsystems are audited.
 
+bool client_disconnected(Session::tcp::socket& socket) {
+  if (!socket.is_open()) {
+    return true;
+  }
+
+  boost::system::error_code ec;
+  const bool was_non_blocking = socket.non_blocking();
+  socket.non_blocking(true, ec);
+  if (ec) {
+    return false;
+  }
+
+  std::array<char, 1> buf{};
+  const auto received = socket.receive(boost::asio::buffer(buf),
+                                       boost::asio::socket_base::message_peek,
+                                       ec);
+
+  boost::system::error_code restore_ec;
+  socket.non_blocking(was_non_blocking, restore_ec);
+
+  if (!ec) {
+    return received == 0;
+  }
+  if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
+    return false;
+  }
+  return ec == boost::asio::error::eof || ec == boost::asio::error::connection_reset ||
+         ec == boost::asio::error::bad_descriptor;
+}
+
+bool should_drop_stale_background_request(Session::PreparedRequest& prepared) {
+  if (prepared.lane != Session::RequestLane::Background) {
+    return false;
+  }
+  return client_disconnected(prepared.socket);
+}
+
 void reject_prepared_request(Session::PreparedRequest prepared,
                              http::status status,
                              const std::string& code,
@@ -407,6 +444,15 @@ void Listener::run_general_worker() {
         prepared = std::move(background_queue_.front());
         background_queue_.pop_front();
       }
+    }
+
+    if (should_drop_stale_background_request(prepared)) {
+      spdlog::info("dropping stale background request before execution: {}",
+                   prepared.req.target());
+      boost::system::error_code close_ec;
+      prepared.socket.shutdown(tcp::socket::shutdown_both, close_ec);
+      prepared.socket.close(close_ec);
+      continue;
     }
 
     Session session(std::move(prepared),
