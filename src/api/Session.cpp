@@ -57,26 +57,10 @@ struct AsyncWriteResult {
   Session::tcp::socket socket;
 };
 
-template <typename Result>
-Result wait_for_async_result(boost::asio::io_context& ioc,
-                             std::future<Result>& future) {
-  while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-    if (ioc.stopped()) {
-      ioc.restart();
-    }
-    const auto work_count = ioc.run_one();
-    if (work_count == 0) {
-      std::this_thread::yield();
-    }
-  }
-  return future.get();
-}
-
 AsyncReadResult async_read_request(Session::tcp::socket socket) {
   namespace beast = boost::beast;
   auto promise = std::make_shared<std::promise<AsyncReadResult>>();
   auto future = promise->get_future();
-  auto& ioc = static_cast<boost::asio::io_context&>(socket.get_executor().context());
 
   struct State {
     explicit State(Session::tcp::socket s) : socket(std::move(s)) {}
@@ -93,13 +77,12 @@ AsyncReadResult async_read_request(Session::tcp::socket socket) {
                      promise->set_value(
                          AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
                    });
-  return wait_for_async_result(ioc, future);
+  return future.get();
 }
 
 AsyncWriteResult async_write_response(Session::PreparedResponse prepared) {
   auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
   auto future = promise->get_future();
-  auto& ioc = static_cast<boost::asio::io_context&>(prepared.socket.get_executor().context());
   auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
 
   http::async_write(state->socket,
@@ -107,7 +90,7 @@ AsyncWriteResult async_write_response(Session::PreparedResponse prepared) {
                     [state, promise](boost::system::error_code ec, std::size_t) mutable {
                       promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
                     });
-  return wait_for_async_result(ioc, future);
+  return future.get();
 }
 
 } // namespace
