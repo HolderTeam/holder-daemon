@@ -24,6 +24,7 @@
 #include "privacy/SecretStore.h"
 #include "git/GitOps.h"
 #include "sync/ProjectSyncWorker.h"
+#include "caste.hpp"
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -97,6 +98,21 @@ static std::string derive_title_from_markdown_first_line(const std::string& body
     }
   }
   return fallback;
+}
+
+static holder::api::ConcurrencyProfile concurrency_profile_for_caste(Caste caste) {
+  holder::api::ConcurrencyProfile profile;
+  if (caste == Caste::Mini) {
+    profile.io_threads = 1;
+    profile.general_workers = 2;
+  } else if (caste == Caste::User) {
+    profile.io_threads = 1;
+    profile.general_workers = 3;
+  } else if (dev_or_above.contains(caste)) {
+    profile.io_threads = 2;
+    profile.general_workers = 4;
+  }
+  return profile;
 }
 
 static std::optional<holder::model::Project> ensure_default_home_project(holder::platform::Db& db) {
@@ -259,8 +275,17 @@ int main(int argc, char* argv[]) {
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   local_runner_client.start_background_probe();
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  const CasteResult machine_caste = detect_caste();
+  const auto concurrency = concurrency_profile_for_caste(machine_caste.caste);
+  spdlog::info("machine caste: {} ({})", caste_name(machine_caste.caste), machine_caste.reason);
+  spdlog::info("listener concurrency: io={}, ingress={}, save={}, general={}, writer={}",
+               concurrency.io_threads,
+               concurrency.ingress_workers,
+               concurrency.save_workers,
+               concurrency.general_workers,
+               concurrency.writer_workers);
   holder::api::HttpServer server(
-      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry);
+      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry, concurrency);
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());

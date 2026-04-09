@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ai/NudgeService.h"
+#include "api/ConcurrencyProfile.h"
 #include "api/Router.h"
 #include "platform/Signal.h"
 #include "git/GitOps.h"
@@ -35,7 +36,8 @@ public:
              holder::card::CardStore* card_store,
              holder::index::FtsIndexer* fts,
              holder::git::GitOps* git_ops = nullptr,
-             holder::llm::RunnerRegistry* runner_registry = nullptr);
+             holder::llm::RunnerRegistry* runner_registry = nullptr,
+             holder::api::ConcurrencyProfile concurrency = {});
   ~HttpServer();
 
   BoundInfo start();
@@ -56,6 +58,7 @@ private:
   holder::card::CardStore* card_store_ = nullptr;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
+  holder::api::ConcurrencyProfile concurrency_;
 };
 
 } // namespace holder::api

@@ -26,7 +26,8 @@ HttpServer::HttpServer(std::string bind,
                        holder::card::CardStore* card_store,
                        holder::index::FtsIndexer* fts,
                        holder::git::GitOps* git_ops,
-                       holder::llm::RunnerRegistry* runner_registry)
+                       holder::llm::RunnerRegistry* runner_registry,
+                       holder::api::ConcurrencyProfile concurrency)
     : bind_(std::move(bind)),
       port_(port),
       db_(db),
@@ -37,7 +38,8 @@ HttpServer::HttpServer(std::string bind,
       secret_store_(holder::privacy::make_default_secret_store(holder::core::Paths::resolve("holder").server_dir())),
       card_store_(card_store),
       fts_(fts),
-      git_ops_(git_ops) {
+      git_ops_(git_ops),
+      concurrency_(concurrency) {
   router_.add(http::verb::get, "/health",
               [this](const Router::Request&, Router::Response& res) {
                 nlohmann::json payload;
@@ -68,7 +70,8 @@ HttpServer::BoundInfo HttpServer::start() {
                                          &nudge_service_,
                                          secret_store_.get(),
                                          git_ops_,
-                                         runner_registry_);
+                                         runner_registry_,
+                                         concurrency_);
   const auto bound = listener_->start();
   return BoundInfo{bound.bind, bound.port};
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ai/NudgeService.h"
+#include "api/ConcurrencyProfile.h"
 #include "api/Router.h"
 #include "api/Session.h"
 #include "core/SerialExecutor.h"
@@ -44,7 +45,8 @@ public:
            holder::ai::NudgeService* nudge_service,
            holder::privacy::SecretStore* secret_store = nullptr,
            holder::git::GitOps* git_ops = nullptr,
-           holder::llm::RunnerRegistry* runner_registry = nullptr);
+           holder::llm::RunnerRegistry* runner_registry = nullptr,
+           holder::api::ConcurrencyProfile concurrency = {});
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
@@ -67,6 +69,7 @@ private:
   holder::privacy::SecretStore* secret_store_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
+  holder::api::ConcurrencyProfile concurrency_;
   holder::git::GitOps* request_git_ops_ = nullptr;
   std::unique_ptr<holder::git::RealGitOps> owned_git_ops_;
   std::unique_ptr<holder::core::SerialExecutor> git_executor_;

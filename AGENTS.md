@@ -210,6 +210,16 @@ The API must remain:
 
 ---
 
+## Concurrency Rule
+
+Shared `boost::asio::io_context` instances are owned by dedicated I/O threads only.
+
+Request workers must not call `run()`, `run_one()`, `poll()`, or similar on a shared I/O context while waiting for request socket work to complete.
+
+Workers may wait on completion objects such as futures, promises, or condition variables, but they must not drive unrelated I/O handlers while waiting.
+
+---
+
 ## Current Development Phase
 
 Holder is currently **private pre-production**.

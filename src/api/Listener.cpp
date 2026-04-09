@@ -15,11 +15,6 @@ namespace {
 namespace http = boost::beast::http;
 
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
-constexpr std::size_t kIoWorkerCount = 1;
-constexpr std::size_t kIngressWorkerCount = 1;
-constexpr std::size_t kReservedSaveWorkerCount = 1;
-constexpr std::size_t kGeneralWorkerCount = 3;
-constexpr std::size_t kWriterWorkerCount = 1;
 constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
@@ -147,7 +142,8 @@ Listener::Listener(std::string bind,
                    holder::ai::NudgeService* nudge_service,
                    holder::privacy::SecretStore* secret_store,
                    holder::git::GitOps* git_ops,
-                   holder::llm::RunnerRegistry* runner_registry)
+                   holder::llm::RunnerRegistry* runner_registry,
+                   holder::api::ConcurrencyProfile concurrency)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
@@ -160,7 +156,8 @@ Listener::Listener(std::string bind,
       nudge_service_(nudge_service),
       secret_store_(secret_store),
       git_ops_(git_ops),
-      runner_registry_(runner_registry) {}
+      runner_registry_(runner_registry),
+      concurrency_(concurrency) {}
 
 Listener::BoundInfo Listener::start() {
   boost::system::error_code ec;
@@ -221,29 +218,29 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   writer_workers_.clear();
   io_workers_.clear();
 
-  ingress_workers_.reserve(kIngressWorkerCount);
-  for (std::size_t i = 0; i < kIngressWorkerCount; ++i) {
+  ingress_workers_.reserve(concurrency_.ingress_workers);
+  for (std::size_t i = 0; i < concurrency_.ingress_workers; ++i) {
     ingress_workers_.emplace_back([this]() { run_ingress_worker(); });
   }
 
-  save_workers_.reserve(kReservedSaveWorkerCount);
-  for (std::size_t i = 0; i < kReservedSaveWorkerCount; ++i) {
+  save_workers_.reserve(concurrency_.save_workers);
+  for (std::size_t i = 0; i < concurrency_.save_workers; ++i) {
     save_workers_.emplace_back([this]() { run_save_worker(); });
   }
 
-  general_workers_.reserve(kGeneralWorkerCount);
-  for (std::size_t i = 0; i < kGeneralWorkerCount; ++i) {
+  general_workers_.reserve(concurrency_.general_workers);
+  for (std::size_t i = 0; i < concurrency_.general_workers; ++i) {
     general_workers_.emplace_back([this]() { run_general_worker(); });
   }
 
-  writer_workers_.reserve(kWriterWorkerCount);
-  for (std::size_t i = 0; i < kWriterWorkerCount; ++i) {
+  writer_workers_.reserve(concurrency_.writer_workers);
+  for (std::size_t i = 0; i < concurrency_.writer_workers; ++i) {
     writer_workers_.emplace_back([this]() { run_writer_worker(); });
   }
 
   start_accept_loop();
-  io_workers_.reserve(kIoWorkerCount);
-  for (std::size_t i = 0; i < kIoWorkerCount; ++i) {
+  io_workers_.reserve(concurrency_.io_threads);
+  for (std::size_t i = 0; i < concurrency_.io_threads; ++i) {
     io_workers_.emplace_back([this]() { ioc_.run(); });
   }
 
