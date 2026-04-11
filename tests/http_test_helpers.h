@@ -98,6 +98,31 @@ inline nlohmann::json get_health(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
+inline bool wait_for_http_listener(const std::string& bind,
+                                   unsigned short port,
+                                   std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+  using tcp = boost::asio::ip::tcp;
+
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    try {
+      boost::asio::io_context ioc;
+      tcp::resolver resolver(ioc);
+      auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+      tcp::socket socket(ioc);
+      boost::asio::connect(socket, endpoints);
+      boost::system::error_code ec;
+      socket.shutdown(tcp::socket::shutdown_both, ec);
+      return true;
+    } catch (const std::exception&) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
+  return false;
+}
+
 inline holder::platform::Db open_db_with_schema(const std::filesystem::path& db_path) {
   holder::platform::Db db;
   db.open(db_path);

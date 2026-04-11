@@ -2,6 +2,7 @@
 
 using holder::test::get_health;
 using holder::test::make_temp_dir;
+using holder::test::wait_for_http_listener;
 
 TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   const auto dir = make_temp_dir();
@@ -22,7 +23,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   holder::core::SignalHandler signals;
   std::thread server_thread([&server, &signals]() { server.run(signals); });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   const auto payload = get_health(bound.bind, bound.port, token);
   REQUIRE(payload["ok"] == true);
@@ -56,7 +57,7 @@ TEST_CASE("HTTP /health reports db_ok false when DB is closed", "[http]") {
   holder::core::SignalHandler signals;
   std::thread server_thread([&server, &signals]() { server.run(signals); });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   const auto payload = get_health(bound.bind, bound.port, token);
   REQUIRE(payload["ok"] == true);
