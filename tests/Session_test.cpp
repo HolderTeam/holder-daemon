@@ -19,13 +19,24 @@ using tcp = boost::asio::ip::tcp;
 
 struct SocketPair {
   boost::asio::io_context ioc;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
   tcp::socket client;
   tcp::socket server;
+  std::thread io_thread;
 
-  SocketPair() : client(ioc), server(ioc) {
+  SocketPair() : work_guard(boost::asio::make_work_guard(ioc)), client(ioc), server(ioc) {
     tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), 0));
+    io_thread = std::thread([this]() { ioc.run(); });
     client.connect(acceptor.local_endpoint());
     server = acceptor.accept();
+  }
+
+  ~SocketPair() {
+    work_guard.reset();
+    ioc.stop();
+    if (io_thread.joinable()) {
+      io_thread.join();
+    }
   }
 };
 
