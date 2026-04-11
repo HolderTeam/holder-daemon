@@ -107,7 +107,7 @@ coverage_all() {
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
-    ctest --test-dir build --output-on-failure -j 8
+    ctest --test-dir build --output-on-failure -j 8 --timeout 30
     ./build/holderd
     ;;
   perf-privacy)

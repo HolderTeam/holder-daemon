@@ -527,7 +527,7 @@ TEST_CASE("LocalModelRunner start_pull non-fake handles streamed error payload",
 }
 
 TEST_CASE("LocalModelRunner stop terminates spawned runner handle", "[llm]") {
-  const std::string script = make_runner_script("sleep 30\n");
+  const std::string script = make_runner_script("exec sleep 30\n");
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
   EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
