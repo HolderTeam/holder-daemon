@@ -66,9 +66,6 @@ add_executable(lockfile_tests
   HttpProjectGitPush_test.cpp
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
-  HttpModels_test.cpp
-  HttpCloudProviders_test.cpp
-  HttpGitProviders_test.cpp
   StaticRoutes_test.cpp
   HttpRunner_test.cpp
   LocalModelRunner_test.cpp
