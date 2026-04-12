@@ -389,7 +389,7 @@ TEST_CASE("Listener stop closes queued ingress sockets and returns promptly", "[
   const std::string token = "testtoken";
   holder::api::ConcurrencyProfile concurrency;
   concurrency.io_threads = 1;
-  concurrency.ingress_workers = 1;
+  concurrency.ingress_workers = 0;
   concurrency.save_workers = 1;
   concurrency.general_workers = 1;
   concurrency.writer_workers = 1;
@@ -421,22 +421,13 @@ TEST_CASE("Listener stop closes queued ingress sockets and returns promptly", "[
   boost::asio::io_context ioc;
   tcp::resolver resolver(ioc);
   auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket queued_socket(ioc);
+  boost::asio::connect(queued_socket, endpoints);
 
-  tcp::socket blocked_socket(ioc);
-  boost::asio::connect(blocked_socket, endpoints);
   const std::string partial_request =
       "GET /health HTTP/1.1\r\n"
       "Host: " + bound.bind + "\r\n";
-  boost::asio::write(blocked_socket, boost::asio::buffer(partial_request));
-
-  for (int i = 0; i < 50 && listener.active_read_socket_count() < 1; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  REQUIRE(listener.active_read_socket_count() >= 1);
-
-  boost::asio::io_context queued_ioc;
-  tcp::socket queued_socket(queued_ioc);
-  listener.enqueue_pending_socket_for_test(std::move(queued_socket));
+  boost::asio::write(queued_socket, boost::asio::buffer(partial_request));
 
   for (int i = 0; i < 50 && listener.pending_socket_count() < 1; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));

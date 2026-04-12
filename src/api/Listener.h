@@ -55,7 +55,7 @@ public:
   std::size_t active_read_socket_count() const;
   std::size_t pending_socket_count() const;
   std::size_t background_queue_count() const;
-  void enqueue_pending_socket_for_test(boost::asio::ip::tcp::socket socket);
+  void enqueue_pending_socket_for_test();
 
 private:
   using tcp = boost::asio::ip::tcp;

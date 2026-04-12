@@ -330,9 +330,9 @@ std::size_t Listener::background_queue_count() const {
   return background_queue_.size();
 }
 
-void Listener::enqueue_pending_socket_for_test(tcp::socket socket) {
+void Listener::enqueue_pending_socket_for_test() {
   std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
-  pending_sockets_.emplace_back(std::move(socket));
+  pending_sockets_.emplace_back(ioc_);
   ingress_queue_cv_.notify_one();
 }
 
