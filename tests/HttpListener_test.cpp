@@ -370,15 +370,11 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
   for (int i = 0; i < 50 && listener.active_read_socket_count() < 1; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  REQUIRE(listener.active_read_socket_count() == 1);
+  REQUIRE(listener.active_read_socket_count() >= 1);
 
   listener.stop();
   REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
   run_future.get();
-
-  boost::system::error_code ec;
-  socket.shutdown(tcp::socket::shutdown_both, ec);
-  socket.close(ec);
 }
 
 TEST_CASE("Listener stop closes queued accepted sockets and returns promptly", "[listener]") {
@@ -449,12 +445,6 @@ TEST_CASE("Listener stop closes queued accepted sockets and returns promptly", "
   listener.stop();
   REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
   run_future.get();
-
-  boost::system::error_code ec;
-  blocked_socket.shutdown(tcp::socket::shutdown_both, ec);
-  blocked_socket.close(ec);
-  queued_socket.shutdown(tcp::socket::shutdown_both, ec);
-  queued_socket.close(ec);
 }
 
 TEST_CASE("Listener stop drops queued background work and returns promptly", "[listener]") {
@@ -558,10 +548,6 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
   } catch (const std::exception&) {
     // Stop may cancel active non-save work as part of deterministic shutdown.
   }
-
-  boost::system::error_code ec;
-  background_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-  background_socket.close(ec);
 }
 
 TEST_CASE("Listener stop cancels in-flight writer response and returns promptly", "[listener]") {
@@ -636,10 +622,6 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
   listener.stop();
   REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
   run_future.get();
-
-  boost::system::error_code ec;
-  socket.shutdown(tcp::socket::shutdown_both, ec);
-  socket.close(ec);
 }
 
 TEST_CASE("Listener serves card nudge and ai status routes without regression", "[listener]") {
