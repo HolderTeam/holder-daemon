@@ -93,6 +93,58 @@ AsyncWriteResult async_write_response(Session::PreparedResponse prepared) {
   return future.get();
 }
 
+AsyncReadResult async_read_request(Session::tcp::socket socket,
+                                   const Session::SocketHook& on_io_start,
+                                   const Session::SocketHook& on_io_done) {
+  namespace beast = boost::beast;
+  auto promise = std::make_shared<std::promise<AsyncReadResult>>();
+  auto future = promise->get_future();
+
+  struct State {
+    explicit State(Session::tcp::socket s) : socket(std::move(s)) {}
+    Session::tcp::socket socket;
+    beast::flat_buffer buffer;
+    Session::Request req;
+  };
+
+  auto state = std::make_shared<State>(std::move(socket));
+  if (on_io_start) {
+    on_io_start(&state->socket);
+  }
+  http::async_read(state->socket,
+                   state->buffer,
+                   state->req,
+                   [state, promise, on_io_done](boost::system::error_code ec, std::size_t) mutable {
+                     if (on_io_done) {
+                       on_io_done(&state->socket);
+                     }
+                     promise->set_value(
+                         AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
+                   });
+  return future.get();
+}
+
+AsyncWriteResult async_write_response(Session::PreparedResponse prepared,
+                                      const Session::SocketHook& on_io_start,
+                                      const Session::SocketHook& on_io_done) {
+  auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
+  auto future = promise->get_future();
+  auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
+
+  if (on_io_start) {
+    on_io_start(&state->socket);
+  }
+  http::async_write(state->socket,
+                    state->res,
+                    [state, promise, on_io_done](boost::system::error_code ec, std::size_t) mutable {
+                      if (on_io_done) {
+                        on_io_done(&state->socket);
+                      }
+                      promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
+                    });
+  return future.get();
+}
+
 } // namespace
 
 Session::Session(tcp::socket socket,
@@ -146,9 +198,11 @@ Session::Session(PreparedRequest prepared,
       query_string_(std::move(prepared.query_string)),
       has_loaded_request_(true) {}
 
-std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket socket) {
+std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket socket,
+                                                                 SocketHook on_io_start,
+                                                                 SocketHook on_io_done) {
   const auto request_started = std::chrono::steady_clock::now();
-  auto read_result = async_read_request(std::move(socket));
+  auto read_result = async_read_request(std::move(socket), on_io_start, on_io_done);
   auto& ec = read_result.ec;
   if (ec == http::error::end_of_stream) {
     read_result.socket.shutdown(tcp::socket::shutdown_send, ec);
@@ -250,8 +304,11 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   return prepared;
 }
 
-void Session::write_prepared_response(PreparedResponse prepared) {
-  auto write_result = async_write_response(std::move(prepared));
+void Session::write_prepared_response(PreparedResponse prepared,
+                                      SocketHook on_io_start,
+                                      SocketHook on_io_done) {
+  auto write_result =
+      async_write_response(std::move(prepared), on_io_start, on_io_done);
   auto& ec = write_result.ec;
   if (ec) {
     spdlog::warn("write failed: {}", ec.message());

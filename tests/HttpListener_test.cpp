@@ -325,6 +325,56 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   listener_thread.join();
 }
 
+TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "[listener]") {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  holder::api::Router router;
+  const std::string token = "testtoken";
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+
+  const std::string partial_request =
+      "GET /health HTTP/1.1\r\n"
+      "Host: " + bound.bind + "\r\n";
+  boost::asio::write(socket, boost::asio::buffer(partial_request));
+
+  listener.stop();
+  REQUIRE(run_future.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+  run_future.get();
+
+  boost::system::error_code ec;
+  socket.shutdown(tcp::socket::shutdown_both, ec);
+  socket.close(ec);
+}
+
 TEST_CASE("Listener serves card nudge and ai status routes without regression", "[listener]") {
   namespace http = boost::beast::http;
 

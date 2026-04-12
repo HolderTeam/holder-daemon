@@ -129,6 +129,20 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
   return context;
 }
 
+void track_socket(std::mutex& mutex,
+                  std::unordered_set<boost::asio::ip::tcp::socket*>& sockets,
+                  boost::asio::ip::tcp::socket* socket) {
+  std::lock_guard<std::mutex> lock(mutex);
+  sockets.insert(socket);
+}
+
+void untrack_socket(std::mutex& mutex,
+                    std::unordered_set<boost::asio::ip::tcp::socket*>& sockets,
+                    boost::asio::ip::tcp::socket* socket) {
+  std::lock_guard<std::mutex> lock(mutex);
+  sockets.erase(socket);
+}
+
 } // namespace
 
 Listener::Listener(std::string bind,
@@ -270,6 +284,8 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       worker.join();
     }
   }
+
+  ioc_.stop();
   for (auto& worker : io_workers_) {
     if (worker.joinable()) {
       worker.join();
@@ -286,12 +302,13 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
 void Listener::stop() {
   stop_requested_.store(true);
+  shutdown_queued_work();
+  shutdown_active_sockets();
   ingress_queue_cv_.notify_all();
   lane_queue_cv_.notify_all();
   response_queue_cv_.notify_all();
   boost::system::error_code ec;
   acceptor_.close(ec);
-  ioc_.stop();
 }
 
 void Listener::start_accept_loop() {
@@ -349,8 +366,15 @@ void Listener::run_ingress_worker() {
       pending_sockets_.pop_front();
     }
 
-    auto prepared = Session::prepare_request(std::move(socket));
+    auto prepared = Session::prepare_request(
+        std::move(socket),
+        [this](tcp::socket* active) { track_socket(active_socket_mutex_, active_read_sockets_, active); },
+        [this](tcp::socket* active) { untrack_socket(active_socket_mutex_, active_read_sockets_, active); });
     if (!prepared.has_value()) {
+      continue;
+    }
+    if (stop_requested_.load()) {
+      close_socket(prepared->socket);
       continue;
     }
 
@@ -428,6 +452,10 @@ void Listener::run_save_worker() {
                     context.runner_registry.get());
     auto response = session.execute();
     if (response.has_value()) {
+      if (stop_requested_.load()) {
+        close_socket(response->socket);
+        continue;
+      }
       {
         std::lock_guard<std::mutex> lock(response_queue_mutex_);
         response_queue_.emplace_back(std::move(*response));
@@ -494,6 +522,10 @@ void Listener::run_general_worker() {
                     context.runner_registry.get());
     auto response = session.execute();
     if (response.has_value()) {
+      if (stop_requested_.load()) {
+        close_socket(response->socket);
+        continue;
+      }
       {
         std::lock_guard<std::mutex> lock(response_queue_mutex_);
         response_queue_.emplace_back(std::move(*response));
@@ -520,7 +552,67 @@ void Listener::run_writer_worker() {
       prepared = std::move(response_queue_.front());
       response_queue_.pop_front();
     }
-    Session::write_prepared_response(std::move(prepared));
+    Session::write_prepared_response(
+        std::move(prepared),
+        [this](tcp::socket* active) { track_socket(active_socket_mutex_, active_write_sockets_, active); },
+        [this](tcp::socket* active) {
+          untrack_socket(active_socket_mutex_, active_write_sockets_, active);
+        });
+  }
+}
+
+void Listener::close_socket(tcp::socket& socket) {
+  boost::system::error_code ec;
+  socket.cancel(ec);
+  socket.shutdown(tcp::socket::shutdown_both, ec);
+  socket.close(ec);
+}
+
+void Listener::shutdown_queued_work() {
+  {
+    std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+    for (auto& socket : pending_sockets_) {
+      close_socket(socket);
+    }
+    pending_sockets_.clear();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+    for (auto& prepared : save_queue_) {
+      close_socket(prepared.socket);
+    }
+    for (auto& prepared : foreground_queue_) {
+      close_socket(prepared.socket);
+    }
+    for (auto& prepared : background_queue_) {
+      close_socket(prepared.socket);
+    }
+    save_queue_.clear();
+    foreground_queue_.clear();
+    background_queue_.clear();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(response_queue_mutex_);
+    for (auto& prepared : response_queue_) {
+      close_socket(prepared.socket);
+    }
+    response_queue_.clear();
+  }
+}
+
+void Listener::shutdown_active_sockets() {
+  std::lock_guard<std::mutex> lock(active_socket_mutex_);
+  for (auto* socket : active_read_sockets_) {
+    if (socket != nullptr) {
+      close_socket(*socket);
+    }
+  }
+  for (auto* socket : active_write_sockets_) {
+    if (socket != nullptr) {
+      close_socket(*socket);
+    }
   }
 }
 

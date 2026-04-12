@@ -13,6 +13,7 @@
 #include <boost/beast/http.hpp>
 
 #include <chrono>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -23,6 +24,7 @@ public:
   using tcp = boost::asio::ip::tcp;
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
   using Response = boost::beast::http::response<boost::beast::http::string_body>;
+  using SocketHook = std::function<void(tcp::socket*)>;
 
   enum class RequestLane {
     Save,
@@ -71,9 +73,13 @@ public:
           holder::llm::RunnerRegistry* runner_registry = nullptr);
 
   void run();
-  static std::optional<PreparedRequest> prepare_request(tcp::socket socket);
+  static std::optional<PreparedRequest> prepare_request(tcp::socket socket,
+                                                        SocketHook on_io_start = {},
+                                                        SocketHook on_io_done = {});
   std::optional<PreparedResponse> execute();
-  static void write_prepared_response(PreparedResponse prepared);
+  static void write_prepared_response(PreparedResponse prepared,
+                                     SocketHook on_io_start = {},
+                                     SocketHook on_io_done = {});
   static const char* lane_name(RequestLane lane);
 
 private:

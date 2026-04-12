@@ -23,6 +23,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 namespace holder::api {
@@ -87,6 +88,9 @@ private:
   std::mutex response_queue_mutex_;
   std::condition_variable response_queue_cv_;
   std::deque<Session::PreparedResponse> response_queue_;
+  std::mutex active_socket_mutex_;
+  std::unordered_set<tcp::socket*> active_read_sockets_;
+  std::unordered_set<tcp::socket*> active_write_sockets_;
   std::atomic<bool> stop_requested_{false};
   std::vector<std::thread> ingress_workers_;
   std::vector<std::thread> save_workers_;
@@ -99,6 +103,9 @@ private:
   void run_save_worker();
   void run_general_worker();
   void run_writer_worker();
+  void close_socket(tcp::socket& socket);
+  void shutdown_queued_work();
+  void shutdown_active_sockets();
 };
 
 } // namespace holder::api
