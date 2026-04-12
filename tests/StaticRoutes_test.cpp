@@ -67,6 +67,44 @@ TEST_CASE("StaticRoutes openapi not-found variants", "[static-routes]") {
   REQUIRE(res2.result() == http::status::not_found);
 }
 
+TEST_CASE("StaticRoutes serves docs and openapi success cases", "[static-routes]") {
+  const auto dir = holder::test::make_temp_dir();
+  CwdGuard cwd(dir);
+
+  const auto docs_root = dir / "assets" / "swagger-ui";
+  std::filesystem::create_directories(docs_root);
+  {
+    std::ofstream out(docs_root / "index.html");
+    REQUIRE(out.is_open());
+    out << "<!doctype html><title>Docs</title>";
+  }
+
+  const auto openapi_path = dir / "openapi.yaml";
+  {
+    std::ofstream out(openapi_path);
+    REQUIRE(out.is_open());
+    out << "openapi: 3.0.0\ninfo:\n  title: Test\n  version: 0.1\n";
+  }
+
+  holder::test::EnvGuard docs_env("HOLDER_DOCS_ROOT", docs_root.string());
+  holder::test::EnvGuard openapi_env("HOLDER_OPENAPI_PATH", openapi_path.string());
+
+  auto docs_req = make_request(http::verb::get, "/docs");
+  http::response<http::string_body> docs_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/docs", docs_req, docs_res));
+  REQUIRE(docs_res.result() == http::status::ok);
+  REQUIRE(std::string(docs_res[http::field::content_type]).find("text/html") != std::string::npos);
+  REQUIRE(docs_res.body().find("Docs") != std::string::npos);
+
+  auto openapi_req = make_request(http::verb::get, "/openapi.yaml");
+  http::response<http::string_body> openapi_res;
+  REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", openapi_req, openapi_res));
+  REQUIRE(openapi_res.result() == http::status::ok);
+  REQUIRE(std::string(openapi_res[http::field::content_type]).find("application/yaml") !=
+          std::string::npos);
+  REQUIRE(openapi_res.body().find("openapi:") != std::string::npos);
+}
+
 TEST_CASE("StaticRoutes ai_catalog json handles not-found and parse errors", "[static-routes]") {
   const auto dir = holder::test::make_temp_dir();
   CwdGuard cwd(dir);
