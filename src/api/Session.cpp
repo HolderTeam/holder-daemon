@@ -72,15 +72,24 @@ AsyncReadResult async_read_request(Session::tcp::socket socket,
   };
 
   auto state = std::make_shared<State>(std::move(socket));
+  auto io_handle = std::make_shared<Session::IoHandle>();
+  io_handle->cancel = [weak_state = std::weak_ptr<State>(state)]() {
+    if (auto locked = weak_state.lock()) {
+      boost::system::error_code ec;
+      locked->socket.cancel(ec);
+      locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec);
+      locked->socket.close(ec);
+    }
+  };
   if (on_io_start) {
-    on_io_start(&state->socket);
+    on_io_start(io_handle);
   }
   http::async_read(state->socket,
                    state->buffer,
                    state->req,
-                   [state, promise, on_io_done](boost::system::error_code ec, std::size_t) mutable {
+                   [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
                      if (on_io_done) {
-                       on_io_done(&state->socket);
+                       on_io_done(io_handle);
                      }
                      promise->set_value(
                          AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
@@ -94,15 +103,24 @@ AsyncWriteResult async_write_response(Session::PreparedResponse prepared,
   auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
   auto future = promise->get_future();
   auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
+  auto io_handle = std::make_shared<Session::IoHandle>();
+  io_handle->cancel = [weak_state = std::weak_ptr<Session::PreparedResponse>(state)]() {
+    if (auto locked = weak_state.lock()) {
+      boost::system::error_code ec;
+      locked->socket.cancel(ec);
+      locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec);
+      locked->socket.close(ec);
+    }
+  };
 
   if (on_io_start) {
-    on_io_start(&state->socket);
+    on_io_start(io_handle);
   }
   http::async_write(state->socket,
                     state->res,
-                    [state, promise, on_io_done](boost::system::error_code ec, std::size_t) mutable {
+                    [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
                       if (on_io_done) {
-                        on_io_done(&state->socket);
+                        on_io_done(io_handle);
                       }
                       promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
                     });

@@ -130,17 +130,21 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
 }
 
 void track_socket(std::mutex& mutex,
-                  std::unordered_set<boost::asio::ip::tcp::socket*>& sockets,
-                  boost::asio::ip::tcp::socket* socket) {
+                  std::unordered_set<Session::IoHandlePtr>& sockets,
+                  const Session::IoHandlePtr& socket) {
   std::lock_guard<std::mutex> lock(mutex);
-  sockets.insert(socket);
+  if (socket != nullptr) {
+    sockets.insert(socket);
+  }
 }
 
 void untrack_socket(std::mutex& mutex,
-                    std::unordered_set<boost::asio::ip::tcp::socket*>& sockets,
-                    boost::asio::ip::tcp::socket* socket) {
+                    std::unordered_set<Session::IoHandlePtr>& sockets,
+                    const Session::IoHandlePtr& socket) {
   std::lock_guard<std::mutex> lock(mutex);
-  sockets.erase(socket);
+  if (socket != nullptr) {
+    sockets.erase(socket);
+  }
 }
 
 } // namespace
@@ -326,6 +330,12 @@ std::size_t Listener::background_queue_count() const {
   return background_queue_.size();
 }
 
+void Listener::enqueue_pending_socket_for_test(tcp::socket socket) {
+  std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+  pending_sockets_.emplace_back(std::move(socket));
+  ingress_queue_cv_.notify_one();
+}
+
 void Listener::start_accept_loop() {
   if (stop_requested_.load()) {
     return;
@@ -341,6 +351,13 @@ void Listener::start_accept_loop() {
       if (!stop_requested_.load()) {
         start_accept_loop();
       }
+      return;
+    }
+
+    if (stop_requested_.load()) {
+      boost::system::error_code close_ec;
+      socket.shutdown(tcp::socket::shutdown_both, close_ec);
+      socket.close(close_ec);
       return;
     }
 
@@ -381,10 +398,19 @@ void Listener::run_ingress_worker() {
       pending_sockets_.pop_front();
     }
 
+    if (stop_requested_.load()) {
+      close_socket(socket);
+      continue;
+    }
+
     auto prepared = Session::prepare_request(
         std::move(socket),
-        [this](tcp::socket* active) { track_socket(active_socket_mutex_, active_read_sockets_, active); },
-        [this](tcp::socket* active) { untrack_socket(active_socket_mutex_, active_read_sockets_, active); });
+        [this](const Session::IoHandlePtr& active) {
+          track_socket(active_socket_mutex_, active_read_sockets_, active);
+        },
+        [this](const Session::IoHandlePtr& active) {
+          untrack_socket(active_socket_mutex_, active_read_sockets_, active);
+        });
     if (!prepared.has_value()) {
       continue;
     }
@@ -569,8 +595,10 @@ void Listener::run_writer_worker() {
     }
     Session::write_prepared_response(
         std::move(prepared),
-        [this](tcp::socket* active) { track_socket(active_socket_mutex_, active_write_sockets_, active); },
-        [this](tcp::socket* active) {
+        [this](const Session::IoHandlePtr& active) {
+          track_socket(active_socket_mutex_, active_write_sockets_, active);
+        },
+        [this](const Session::IoHandlePtr& active) {
           untrack_socket(active_socket_mutex_, active_write_sockets_, active);
         });
   }
@@ -618,24 +646,20 @@ void Listener::shutdown_queued_work() {
 }
 
 void Listener::shutdown_active_sockets() {
-  std::vector<tcp::socket*> sockets_to_close;
+  std::vector<Session::IoHandlePtr> sockets_to_cancel;
   {
     std::lock_guard<std::mutex> lock(active_socket_mutex_);
-    sockets_to_close.reserve(active_read_sockets_.size() + active_write_sockets_.size());
-    for (auto* socket : active_read_sockets_) {
-      if (socket != nullptr) {
-        sockets_to_close.push_back(socket);
-      }
-    }
-    for (auto* socket : active_write_sockets_) {
-      if (socket != nullptr) {
-        sockets_to_close.push_back(socket);
-      }
-    }
+    sockets_to_cancel.reserve(active_read_sockets_.size() + active_write_sockets_.size());
+    sockets_to_cancel.insert(
+        sockets_to_cancel.end(), active_read_sockets_.begin(), active_read_sockets_.end());
+    sockets_to_cancel.insert(
+        sockets_to_cancel.end(), active_write_sockets_.begin(), active_write_sockets_.end());
   }
 
-  for (auto* socket : sockets_to_close) {
-    close_socket(*socket);
+  for (const auto& io_handle : sockets_to_cancel) {
+    if (io_handle != nullptr && io_handle->cancel) {
+      io_handle->cancel();
+    }
   }
 }
 

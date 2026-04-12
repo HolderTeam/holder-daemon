@@ -15,6 +15,7 @@
 #include <chrono>
 #include <functional>
 #include <optional>
+#include <memory>
 #include <string>
 
 namespace holder::api {
@@ -24,7 +25,11 @@ public:
   using tcp = boost::asio::ip::tcp;
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
   using Response = boost::beast::http::response<boost::beast::http::string_body>;
-  using SocketHook = std::function<void(tcp::socket*)>;
+  struct IoHandle {
+    std::function<void()> cancel;
+  };
+  using IoHandlePtr = std::shared_ptr<IoHandle>;
+  using SocketHook = std::function<void(const IoHandlePtr&)>;
 
   enum class RequestLane {
     Save,

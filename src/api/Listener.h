@@ -55,6 +55,7 @@ public:
   std::size_t active_read_socket_count() const;
   std::size_t pending_socket_count() const;
   std::size_t background_queue_count() const;
+  void enqueue_pending_socket_for_test(boost::asio::ip::tcp::socket socket);
 
 private:
   using tcp = boost::asio::ip::tcp;
@@ -92,8 +93,8 @@ private:
   std::condition_variable response_queue_cv_;
   std::deque<Session::PreparedResponse> response_queue_;
   mutable std::mutex active_socket_mutex_;
-  std::unordered_set<tcp::socket*> active_read_sockets_;
-  std::unordered_set<tcp::socket*> active_write_sockets_;
+  std::unordered_set<Session::IoHandlePtr> active_read_sockets_;
+  std::unordered_set<Session::IoHandlePtr> active_write_sockets_;
   std::atomic<bool> stop_requested_{false};
   std::vector<std::thread> ingress_workers_;
   std::vector<std::thread> save_workers_;
