@@ -3,6 +3,7 @@
 using holder::test::EnvGuard;
 using holder::test::http_request_raw;
 using holder::test::make_temp_dir;
+using holder::test::wait_for_http_health_ready;
 
 TEST_CASE("HTTP docs and openapi are served without auth", "[http]") {
   const auto dir = make_temp_dir();
@@ -33,7 +34,7 @@ TEST_CASE("HTTP docs and openapi are served without auth", "[http]") {
   holder::core::SignalHandler signals;
   std::thread server_thread([&server, &signals]() { server.run(signals); });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 
   const auto docs = http_request_raw(bound.bind, bound.port, "",
                                      boost::beast::http::verb::get,

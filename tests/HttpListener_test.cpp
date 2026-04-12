@@ -15,6 +15,7 @@
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
 using holder::test::create_project;
+using holder::test::wait_for_http_listener;
 
 TEST_CASE("Listener start fails when port already in use", "[listener]") {
   const auto dir = make_temp_dir();
@@ -90,7 +91,7 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
 
   holder::core::SignalHandler signals;
   std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
@@ -163,7 +164,7 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
 
   holder::core::SignalHandler signals;
   std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
