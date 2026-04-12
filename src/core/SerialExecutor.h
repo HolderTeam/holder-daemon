@@ -23,6 +23,7 @@ class SerialExecutor {
   SerialExecutor& operator=(const SerialExecutor&) = delete;
 
   void submit(std::function<void()> task) const;
+  void stop();
 
   template <typename Fn>
   auto call(Fn&& fn) const -> decltype(fn()) {

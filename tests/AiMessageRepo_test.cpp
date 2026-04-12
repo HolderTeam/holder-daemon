@@ -755,7 +755,8 @@ TEST_CASE("AiMessageRepo list_by_thread and list_deleted throw when interrupted 
   const auto project_root = dir / "project_repo";
   create_project(db, "proj-1", project_root.string());
   create_thread(db, "thread-1", "proj-1");
-  holder::ai::AiMessageRepo repo(db, nullptr);
+  TrackingGitOps git;
+  holder::ai::AiMessageRepo repo(db, nullptr, nullptr, &git);
 
   for (int i = 0; i < 600; ++i) {
     holder::model::AiMessage msg;
