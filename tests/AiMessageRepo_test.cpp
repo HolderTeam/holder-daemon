@@ -23,6 +23,10 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace {
 
 std::filesystem::path find_schema_sql() {
@@ -40,11 +44,31 @@ std::filesystem::path find_schema_sql() {
 
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
-  const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
-  auto dir = base / ("holder_ai_message_test_" + suffix);
-  std::filesystem::create_directories(dir);
-  return dir;
+  auto pattern = (base / "holder_ai_message_test_XXXXXX").string();
+  std::vector<char> writable(pattern.begin(), pattern.end());
+  writable.push_back('\0');
+
+#ifndef _WIN32
+  char* created = ::mkdtemp(writable.data());
+  if (created == nullptr) {
+    throw std::runtime_error("mkdtemp failed creating holder_ai_message_test temp dir");
+  }
+  return std::filesystem::path(created);
+#else
+  for (int attempt = 0; attempt < 64; ++attempt) {
+    const auto suffix = std::to_string(
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto dir = base / ("holder_ai_message_test_" + suffix);
+    std::error_code ec;
+    if (std::filesystem::create_directory(dir, ec)) {
+      return dir;
+    }
+    if (ec && ec != std::errc::file_exists) {
+      throw std::filesystem::filesystem_error("create_directory", dir, ec);
+    }
+  }
+  throw std::runtime_error("failed to create unique holder_ai_message_test temp dir");
+#endif
 }
 
 void apply_schema(holder::platform::Db& db) {

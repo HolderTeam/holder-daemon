@@ -311,6 +311,21 @@ void Listener::stop() {
   acceptor_.close(ec);
 }
 
+std::size_t Listener::active_read_socket_count() const {
+  std::lock_guard<std::mutex> lock(active_socket_mutex_);
+  return active_read_sockets_.size();
+}
+
+std::size_t Listener::pending_socket_count() const {
+  std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+  return pending_sockets_.size();
+}
+
+std::size_t Listener::background_queue_count() const {
+  std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+  return background_queue_.size();
+}
+
 void Listener::start_accept_loop() {
   if (stop_requested_.load()) {
     return;
@@ -603,16 +618,24 @@ void Listener::shutdown_queued_work() {
 }
 
 void Listener::shutdown_active_sockets() {
-  std::lock_guard<std::mutex> lock(active_socket_mutex_);
-  for (auto* socket : active_read_sockets_) {
-    if (socket != nullptr) {
-      close_socket(*socket);
+  std::vector<tcp::socket*> sockets_to_close;
+  {
+    std::lock_guard<std::mutex> lock(active_socket_mutex_);
+    sockets_to_close.reserve(active_read_sockets_.size() + active_write_sockets_.size());
+    for (auto* socket : active_read_sockets_) {
+      if (socket != nullptr) {
+        sockets_to_close.push_back(socket);
+      }
+    }
+    for (auto* socket : active_write_sockets_) {
+      if (socket != nullptr) {
+        sockets_to_close.push_back(socket);
+      }
     }
   }
-  for (auto* socket : active_write_sockets_) {
-    if (socket != nullptr) {
-      close_socket(*socket);
-    }
+
+  for (auto* socket : sockets_to_close) {
+    close_socket(*socket);
   }
 }
 

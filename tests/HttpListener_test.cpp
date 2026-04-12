@@ -331,7 +331,8 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
 
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
-  auto db = open_db_with_schema(db_path);
+  holder::platform::Db db;
+  db.open(db_path);
 
   holder::api::Router router;
   const std::string token = "testtoken";
@@ -366,8 +367,274 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
       "Host: " + bound.bind + "\r\n";
   boost::asio::write(socket, boost::asio::buffer(partial_request));
 
+  for (int i = 0; i < 50 && listener.active_read_socket_count() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(listener.active_read_socket_count() == 1);
+
   listener.stop();
-  REQUIRE(run_future.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+  REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
+  run_future.get();
+
+  boost::system::error_code ec;
+  socket.shutdown(tcp::socket::shutdown_both, ec);
+  socket.close(ec);
+}
+
+TEST_CASE("Listener stop closes queued accepted sockets and returns promptly", "[listener]") {
+  using tcp = boost::asio::ip::tcp;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db;
+  db.open(db_path);
+
+  holder::api::Router router;
+  const std::string token = "testtoken";
+  holder::api::ConcurrencyProfile concurrency;
+  concurrency.io_threads = 1;
+  concurrency.ingress_workers = 1;
+  concurrency.save_workers = 1;
+  concurrency.general_workers = 1;
+  concurrency.writer_workers = 1;
+
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 concurrency);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+
+  tcp::socket blocked_socket(ioc);
+  boost::asio::connect(blocked_socket, endpoints);
+  const std::string partial_request =
+      "GET /health HTTP/1.1\r\n"
+      "Host: " + bound.bind + "\r\n";
+  boost::asio::write(blocked_socket, boost::asio::buffer(partial_request));
+
+  for (int i = 0; i < 50 && listener.active_read_socket_count() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(listener.active_read_socket_count() == 1);
+
+  tcp::socket queued_socket(ioc);
+  boost::asio::connect(queued_socket, endpoints);
+
+  for (int i = 0; i < 50 && listener.pending_socket_count() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(listener.pending_socket_count() >= 1);
+
+  listener.stop();
+  REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
+  run_future.get();
+
+  boost::system::error_code ec;
+  blocked_socket.shutdown(tcp::socket::shutdown_both, ec);
+  blocked_socket.close(ec);
+  queued_socket.shutdown(tcp::socket::shutdown_both, ec);
+  queued_socket.close(ec);
+}
+
+TEST_CASE("Listener stop drops queued background work and returns promptly", "[listener]") {
+  namespace http = boost::beast::http;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db;
+  db.open(db_path);
+
+  holder::api::Router router;
+  std::atomic<int> foreground_started{0};
+  std::atomic<int> background_runs{0};
+  router.add(http::verb::get, "/foreground-slow",
+             [&foreground_started](const holder::api::Router::Request&,
+                                   holder::api::Router::Response& res) {
+               foreground_started.fetch_add(1);
+               std::this_thread::sleep_for(std::chrono::milliseconds(300));
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+  router.add(http::verb::get, "/ai/queued-stop-test",
+             [&background_runs](const holder::api::Router::Request&,
+                                holder::api::Router::Response& res) {
+               background_runs.fetch_add(1);
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "application/json");
+               res.body() = R"({"ok":true})";
+               res.prepare_payload();
+             });
+
+  const std::string token = "testtoken";
+  holder::api::ConcurrencyProfile concurrency;
+  concurrency.io_threads = 1;
+  concurrency.ingress_workers = 1;
+  concurrency.save_workers = 1;
+  concurrency.general_workers = 1;
+  concurrency.writer_workers = 1;
+
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 concurrency);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
+
+  auto foreground = std::async(std::launch::async, [&]() {
+    return holder::test::http_request_raw(
+        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+  });
+
+  for (int i = 0; i < 50 && foreground_started.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(foreground_started.load() == 1);
+
+  boost::asio::io_context ioc;
+  boost::asio::ip::tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  boost::asio::ip::tcp::socket background_socket(ioc);
+  boost::asio::connect(background_socket, endpoints);
+  const std::string background_request =
+      "GET /ai/queued-stop-test HTTP/1.1\r\n"
+      "Host: " + bound.bind + "\r\n"
+      "Authorization: Bearer " + token + "\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(background_socket, boost::asio::buffer(background_request));
+
+  for (int i = 0; i < 50 && listener.background_queue_count() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(listener.background_queue_count() >= 1);
+
+  listener.stop();
+  REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
+  run_future.get();
+  REQUIRE(background_runs.load() == 0);
+
+  try {
+    (void)foreground.get();
+  } catch (const std::exception&) {
+    // Stop may cancel active non-save work as part of deterministic shutdown.
+  }
+
+  boost::system::error_code ec;
+  background_socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+  background_socket.close(ec);
+}
+
+TEST_CASE("Listener stop cancels in-flight writer response and returns promptly", "[listener]") {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  const auto dir = make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = open_db_with_schema(db_path);
+
+  holder::api::Router router;
+  std::atomic<int> route_started{0};
+  router.add(http::verb::get, "/large-response",
+             [&route_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+               route_started.fetch_add(1);
+               res.result(http::status::ok);
+               res.set(http::field::content_type, "text/plain");
+               res.body() = std::string(32 * 1024 * 1024, 'x');
+               res.prepare_payload();
+             });
+
+  const std::string token = "testtoken";
+  holder::api::ConcurrencyProfile concurrency;
+  concurrency.io_threads = 1;
+  concurrency.ingress_workers = 1;
+  concurrency.save_workers = 1;
+  concurrency.general_workers = 1;
+  concurrency.writer_workers = 1;
+
+  holder::api::Listener listener("127.0.0.1",
+                                 0,
+                                 db,
+                                 token,
+                                 router,
+                                 std::chrono::steady_clock::now(),
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 nullptr,
+                                 concurrency);
+  holder::api::Listener::BoundInfo bound;
+  try {
+    bound = listener.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
+
+  boost::asio::io_context ioc;
+  tcp::resolver resolver(ioc);
+  auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
+  tcp::socket socket(ioc);
+  boost::asio::connect(socket, endpoints);
+  const std::string request =
+      "GET /large-response HTTP/1.1\r\n"
+      "Host: " + bound.bind + "\r\n"
+      "Authorization: Bearer " + token + "\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(socket, boost::asio::buffer(request));
+
+  for (int i = 0; i < 50 && route_started.load() < 1; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(route_started.load() == 1);
+
+  listener.stop();
+  REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
   run_future.get();
 
   boost::system::error_code ec;

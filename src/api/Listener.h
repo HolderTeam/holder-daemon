@@ -52,6 +52,9 @@ public:
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
   void stop();
+  std::size_t active_read_socket_count() const;
+  std::size_t pending_socket_count() const;
+  std::size_t background_queue_count() const;
 
 private:
   using tcp = boost::asio::ip::tcp;
@@ -77,10 +80,10 @@ private:
   std::unique_ptr<holder::git::ExecutorGitOps> executor_git_ops_;
   std::unique_ptr<holder::core::SerialExecutor> ai_runtime_executor_;
 
-  std::mutex ingress_queue_mutex_;
+  mutable std::mutex ingress_queue_mutex_;
   std::condition_variable ingress_queue_cv_;
   std::deque<tcp::socket> pending_sockets_;
-  std::mutex lane_queue_mutex_;
+  mutable std::mutex lane_queue_mutex_;
   std::condition_variable lane_queue_cv_;
   std::deque<Session::PreparedRequest> save_queue_;
   std::deque<Session::PreparedRequest> foreground_queue_;
@@ -88,7 +91,7 @@ private:
   std::mutex response_queue_mutex_;
   std::condition_variable response_queue_cv_;
   std::deque<Session::PreparedResponse> response_queue_;
-  std::mutex active_socket_mutex_;
+  mutable std::mutex active_socket_mutex_;
   std::unordered_set<tcp::socket*> active_read_sockets_;
   std::unordered_set<tcp::socket*> active_write_sockets_;
   std::atomic<bool> stop_requested_{false};
