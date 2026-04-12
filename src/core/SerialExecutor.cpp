@@ -61,13 +61,10 @@ void SerialExecutor::run() {
 
     try {
       task();
-      // GCOVR_EXCL_START: exercising this requires a death-style test because
-      // rethrowing from the worker thread terminates the process.
-    } catch (const std::exception& ex) {
-      spdlog::error("serial executor {} task failed: {}", name_, ex.what());
-      throw;
-      // GCOVR_EXCL_STOP
-    }
+    } catch (const std::exception& ex) { // LCOV_EXCL_LINE
+      spdlog::error("serial executor {} task failed: {}", name_, ex.what()); // LCOV_EXCL_LINE
+      throw; // LCOV_EXCL_LINE
+    } // LCOV_EXCL_LINE
   }
 }
 
