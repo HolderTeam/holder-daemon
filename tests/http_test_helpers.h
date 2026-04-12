@@ -78,21 +78,23 @@ inline nlohmann::json get_health(const std::string& bind,
   tcp::resolver resolver(ioc);
   auto endpoints = resolver.resolve(bind, std::to_string(port));
 
-  tcp::socket socket(ioc);
-  boost::asio::connect(socket, endpoints);
+  boost::beast::tcp_stream stream(ioc);
+  stream.expires_after(std::chrono::seconds(2));
+  stream.connect(endpoints);
 
   http::request<http::string_body> req{http::verb::get, "/health", 11};
   req.set(http::field::host, bind);
   req.set(http::field::user_agent, "holder-tests");
   req.set(http::field::authorization, "Bearer " + token);
 
-  http::write(socket, req);
+  http::write(stream, req);
 
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
-  http::read(socket, buffer, res);
+  http::read(stream, buffer, res);
 
-  socket.shutdown(tcp::socket::shutdown_both);
+  boost::system::error_code ec;
+  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
   REQUIRE(res.result() == http::status::ok);
   return nlohmann::json::parse(res.body());
@@ -110,14 +112,58 @@ inline bool wait_for_http_listener(const std::string& bind,
       tcp::resolver resolver(ioc);
       auto endpoints = resolver.resolve(bind, std::to_string(port));
 
-      tcp::socket socket(ioc);
-      boost::asio::connect(socket, endpoints);
+      boost::beast::tcp_stream stream(ioc);
+      stream.expires_after(std::chrono::milliseconds(200));
+      stream.connect(endpoints);
       boost::system::error_code ec;
-      socket.shutdown(tcp::socket::shutdown_both, ec);
+      stream.socket().shutdown(tcp::socket::shutdown_both, ec);
       return true;
     } catch (const std::exception&) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+  }
+
+  return false;
+}
+
+inline bool wait_for_http_health_ready(const std::string& bind,
+                                       unsigned short port,
+                                       const std::string& token,
+                                       std::chrono::milliseconds timeout =
+                                           std::chrono::seconds(2)) {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    try {
+      boost::asio::io_context ioc;
+      tcp::resolver resolver(ioc);
+      auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+      boost::beast::tcp_stream stream(ioc);
+      stream.expires_after(std::chrono::milliseconds(200));
+      stream.connect(endpoints);
+
+      http::request<http::string_body> req{http::verb::get, "/health", 11};
+      req.set(http::field::host, bind);
+      req.set(http::field::user_agent, "holder-tests");
+      req.set(http::field::authorization, "Bearer " + token);
+      http::write(stream, req);
+
+      boost::beast::flat_buffer buffer;
+      http::response<http::string_body> res;
+      http::read(stream, buffer, res);
+
+      boost::system::error_code ec;
+      stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+      if (res.result() == http::status::ok) {
+        return true;
+      }
+    } catch (const std::exception&) {
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
   return false;
@@ -165,8 +211,9 @@ inline nlohmann::json http_json_request(const std::string& bind,
   tcp::resolver resolver(ioc);
   auto endpoints = resolver.resolve(bind, std::to_string(port));
 
-  tcp::socket socket(ioc);
-  boost::asio::connect(socket, endpoints);
+  boost::beast::tcp_stream stream(ioc);
+  stream.expires_after(std::chrono::seconds(2));
+  stream.connect(endpoints);
 
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, bind);
@@ -180,13 +227,14 @@ inline nlohmann::json http_json_request(const std::string& bind,
     req.prepare_payload();
   }
 
-  http::write(socket, req);
+  http::write(stream, req);
 
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
-  http::read(socket, buffer, res);
+  http::read(stream, buffer, res);
 
-  socket.shutdown(tcp::socket::shutdown_both);
+  boost::system::error_code ec;
+  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
   REQUIRE(res.result() == expected);
   return nlohmann::json::parse(res.body());
@@ -253,8 +301,9 @@ inline HttpResult http_request_raw(const std::string& bind,
   tcp::resolver resolver(ioc);
   auto endpoints = resolver.resolve(bind, std::to_string(port));
 
-  tcp::socket socket(ioc);
-  boost::asio::connect(socket, endpoints);
+  boost::beast::tcp_stream stream(ioc);
+  stream.expires_after(std::chrono::seconds(2));
+  stream.connect(endpoints);
 
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, bind);
@@ -263,13 +312,14 @@ inline HttpResult http_request_raw(const std::string& bind,
     req.set(http::field::authorization, "Bearer " + token);
   }
 
-  http::write(socket, req);
+  http::write(stream, req);
 
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
-  http::read(socket, buffer, res);
+  http::read(stream, buffer, res);
 
-  socket.shutdown(tcp::socket::shutdown_both);
+  boost::system::error_code ec;
+  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
 
   HttpResult result;
   result.status = res.result();
