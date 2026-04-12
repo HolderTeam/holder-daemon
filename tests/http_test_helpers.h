@@ -86,6 +86,7 @@ inline nlohmann::json get_health(const std::string& bind,
   req.set(http::field::host, bind);
   req.set(http::field::user_agent, "holder-tests");
   req.set(http::field::authorization, "Bearer " + token);
+  req.keep_alive(false);
 
   http::write(stream, req);
 
@@ -149,6 +150,7 @@ inline bool wait_for_http_health_ready(const std::string& bind,
       req.set(http::field::host, bind);
       req.set(http::field::user_agent, "holder-tests");
       req.set(http::field::authorization, "Bearer " + token);
+      req.keep_alive(false);
       http::write(stream, req);
 
       boost::beast::flat_buffer buffer;
@@ -218,6 +220,7 @@ inline nlohmann::json http_json_request(const std::string& bind,
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, bind);
   req.set(http::field::user_agent, "holder-tests");
+  req.keep_alive(false);
   if (!token.empty()) {
     req.set(http::field::authorization, "Bearer " + token);
   }
@@ -308,6 +311,7 @@ inline HttpResult http_request_raw(const std::string& bind,
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, bind);
   req.set(http::field::user_agent, "holder-tests");
+  req.keep_alive(false);
   if (!token.empty()) {
     req.set(http::field::authorization, "Bearer " + token);
   }
