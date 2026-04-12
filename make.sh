@@ -107,7 +107,9 @@ coverage_all() {
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
-    ctest --test-dir build --output-on-failure -j 8 --timeout 30
+    SERIAL_TEST_REGEX="HTTP /health returns ok with valid token|HTTP ai_catalog.yaml is served without auth|HTTP ai_catalog.json is served without auth|HTTP ai_catalog.yaml is served without auth \\(cloud test alias\\)|HTTP git_providers.yaml is served without auth|HTTP git_providers.json is served without auth"
+    ctest --test-dir build --output-on-failure -j 8 --timeout 30 -E "${SERIAL_TEST_REGEX}"
+    ctest --test-dir build --output-on-failure --timeout 30 -R "${SERIAL_TEST_REGEX}"
     ./build/holderd
     ;;
   perf-privacy)
