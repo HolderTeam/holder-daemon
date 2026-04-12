@@ -57,42 +57,6 @@ struct AsyncWriteResult {
   Session::tcp::socket socket;
 };
 
-AsyncReadResult async_read_request(Session::tcp::socket socket) {
-  namespace beast = boost::beast;
-  auto promise = std::make_shared<std::promise<AsyncReadResult>>();
-  auto future = promise->get_future();
-
-  struct State {
-    explicit State(Session::tcp::socket s) : socket(std::move(s)) {}
-    Session::tcp::socket socket;
-    beast::flat_buffer buffer;
-    Session::Request req;
-  };
-
-  auto state = std::make_shared<State>(std::move(socket));
-  http::async_read(state->socket,
-                   state->buffer,
-                   state->req,
-                   [state, promise](boost::system::error_code ec, std::size_t) mutable {
-                     promise->set_value(
-                         AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
-                   });
-  return future.get();
-}
-
-AsyncWriteResult async_write_response(Session::PreparedResponse prepared) {
-  auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
-  auto future = promise->get_future();
-  auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
-
-  http::async_write(state->socket,
-                    state->res,
-                    [state, promise](boost::system::error_code ec, std::size_t) mutable {
-                      promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
-                    });
-  return future.get();
-}
-
 AsyncReadResult async_read_request(Session::tcp::socket socket,
                                    const Session::SocketHook& on_io_start,
                                    const Session::SocketHook& on_io_done) {
