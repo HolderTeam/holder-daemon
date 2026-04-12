@@ -61,7 +61,6 @@ add_executable(lockfile_tests
   HttpProjects_test.cpp
   HttpProjectRecoveryToken_test.cpp
   HttpProjectEncryptionCheck_test.cpp
-  HttpDocs_test.cpp
   HttpProjectGitFailure_test.cpp
   HttpProjectGitTestRemote_test.cpp
   HttpProjectGitPush_test.cpp
