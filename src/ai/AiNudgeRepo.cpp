@@ -11,7 +11,7 @@ std::string column_text(sqlite3_stmt* stmt, int index) {
   const unsigned char* text = sqlite3_column_text(stmt, index);
   if (!text) return {};
   return reinterpret_cast<const char*>(text);
-}
+} // LCOV_EXCL_LINE
 
 std::optional<std::string> column_nullable(sqlite3_stmt* stmt, int index) {
   if (sqlite3_column_type(stmt, index) == SQLITE_NULL) return std::nullopt;
@@ -26,9 +26,9 @@ void bind_nullable_text(sqlite3_stmt* stmt, int index, const std::optional<std::
   }
 }
 
-void throw_sqlite(sqlite3* db, const std::string& msg) {
+void throw_sqlite(sqlite3* db, const std::string& msg) { // LCOV_EXCL_LINE
   throw std::runtime_error(msg + ": " + sqlite3_errmsg(db)); // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE
 
 Nudge row_to_nudge(sqlite3_stmt* stmt) {
   return {

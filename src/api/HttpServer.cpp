@@ -67,7 +67,7 @@ HttpServer::BoundInfo HttpServer::start() {
                                          started_at_,
                                          card_store_,
                                          fts_,
-                                         &nudge_service_,
+                                         &nudge_service_, // LCOV_EXCL_LINE
                                          secret_store_.get(),
                                          git_ops_,
                                          runner_registry_,

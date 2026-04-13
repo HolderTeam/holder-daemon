@@ -603,6 +603,51 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
             .has_value());
   }
 
+  SECTION("prompt building handles a missing card id without extra context") {
+    const auto dir = holder::test::make_temp_dir();
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir / "cards");
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::test::create_project(db, "proj-1", repo_dir.string());
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
+    runner.set_status_override_for_tests(status);
+
+    std::string captured_prompt;
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string&,
+            const std::string& prompt,
+            const std::string&,
+            const std::function<void(const std::string&)>&,
+            std::string* error) {
+          captured_prompt = prompt;
+          if (error) *error = "force deterministic fallback";
+          return false;
+        });
+
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    holder::ai::NudgeService service(db, &runner_registry);
+    const auto decision = service.evaluate_and_record({
+        .kind = "card.title_only",
+        .project_id = "proj-1",
+        .card_id = std::nullopt,
+        .created_at = 11,
+        .basis_fingerprint = std::optional<std::string>("fp-no-card"),
+        .basis_commit = std::nullopt,
+        .facts = {{"title", "Ghost"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+    });
+
+    REQUIRE(decision.nudge.has_value());
+    CAPTURE(captured_prompt);
+    REQUIRE(captured_prompt.find("Current card title:") == std::string::npos);
+    REQUIRE(captured_prompt.find("Sibling cards:") == std::string::npos);
+    REQUIRE(captured_prompt.find("Sibling card excerpts:") == std::string::npos);
+  }
+
   SECTION("current project head commit handles invalid repo and unborn HEAD") {
     const auto dir = holder::test::make_temp_dir();
     auto db = holder::test::open_db_with_schema(dir / "holder.db");
@@ -672,6 +717,50 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
             .has_value());
   }
 
+  SECTION("current card fingerprint handles encrypted successful decrypt") {
+    const auto dir = holder::test::make_temp_dir();
+    const auto repo_dir = dir / "repo";
+    const auto keystore_dir = dir / "keystore";
+    std::filesystem::create_directories(repo_dir / "cards");
+    std::filesystem::create_directories(keystore_dir);
+    holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::project::ProjectRepo project_repo(db);
+    holder::model::Project project;
+    project.project_id = "proj-enc";
+    project.name = "Encrypted";
+    project.root_path = repo_dir.string();
+    project.privacy_mode = "encrypted_git";
+    project.created_at = 1;
+    project.updated_at = 1;
+    project_repo.create(project);
+
+    holder::git::RealGitOps git;
+    holder::privacy::ensure_encrypted_project_ready(
+        git,
+        project_repo,
+        project.project_id,
+        project.root_path,
+        project.project_key_id,
+        project.updated_at,
+        []() { return std::string("enc-key"); });
+
+    insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
+    const auto stored_project = project_repo.get("proj-enc");
+    REQUIRE(stored_project.has_value());
+    REQUIRE(stored_project->project_key_id.has_value());
+
+    const auto envelope = holder::privacy::encrypt_project_blob(
+        "proj-enc", stored_project->project_key_id.value(), "# Secret\n\nEncrypted text.\n");
+    write_text(repo_dir / "cards" / "card-1.md", envelope);
+
+    const auto fingerprint =
+        holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1");
+    REQUIRE(fingerprint.has_value());
+    REQUIRE(fingerprint.value() == short_content_fingerprint("Encrypted text."));
+  }
+
   SECTION("prompt context covers missing card fallback sibling limits and empty AI thread") {
     const auto dir = holder::test::make_temp_dir();
     const auto repo_dir = dir / "repo";
@@ -683,6 +772,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     insert_card_fixture(db, "proj-1", "card-1", "Focus", "cards/card-1.md", 50);
     insert_card_fixture(db, "proj-1", "other-card", "Other", "cards/other-card.md", 40);
     write_card_markdown(repo_dir, "cards/other-card.md", "Other", "Other thread body.");
+    insert_card_fixture(db, "proj-1", "blank-card", "", "cards/blank-card.md", 39);
+    write_text(repo_dir / "cards" / "blank-card.md", "   \n   \n");
 
     for (int i = 0; i < 10; ++i) {
       const auto id = "sib-" + std::to_string(i);
@@ -733,6 +824,7 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE(prompt.find("- Sibling 2: # Sibling 2") != std::string::npos);
     REQUIRE(prompt.find("- Sibling 3: # Sibling 3") == std::string::npos);
     REQUIRE(prompt.find("Recent project card excerpts:") != std::string::npos);
+    REQUIRE(prompt.find("blank-card") == std::string::npos);
     REQUIRE(prompt.find("Recent AI thread:") == std::string::npos);
 
   }
@@ -789,5 +881,21 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE(second.nudge.has_value());
     REQUIRE(chosen_model == "small");
     REQUIRE(second.nudge->body.find("You named this card") != std::string::npos);
+
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string&,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) {
+          chosen_model = model;
+          on_chunk("Current card: do this next.");
+          return true;
+        });
+
+    const auto third = service.evaluate_and_record(title_only_candidate("fp-banned"));
+    REQUIRE(third.nudge.has_value());
+    REQUIRE(chosen_model == "small");
+    REQUIRE(third.nudge->body.find("You named this card") != std::string::npos);
   }
 }
