@@ -119,7 +119,7 @@ public:
           socket.shutdown(tcp::socket::shutdown_both, ec);
         }
       } catch (...) {
-        // Tests assert behavior through client results; server thread should not crash test process.
+        // Tests assert behaviour through client results; server thread should not crash test process.
         {
           std::lock_guard<std::mutex> lock(mu_);
           ready_ = true;

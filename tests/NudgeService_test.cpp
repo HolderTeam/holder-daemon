@@ -24,6 +24,36 @@
 #include <iomanip>
 #include <sstream>
 
+namespace holder::ai {
+
+struct NudgeServiceTestAccess {
+  static holder::ai::NudgeDecision evaluate_candidate(
+      const holder::ai::NudgeCandidateInput& input) {
+    return holder::ai::NudgeService::evaluate_candidate(input);
+  }
+
+  static std::string build_nudge_title(const holder::ai::NudgeCandidateInput& input) {
+    return holder::ai::NudgeService::build_nudge_title(input);
+  }
+
+  static std::string build_nudge_body(const holder::ai::NudgeCandidateInput& input) {
+    return holder::ai::NudgeService::build_nudge_body(input);
+  }
+
+  static std::optional<std::string> current_card_fingerprint(holder::platform::Db& db,
+                                                             const std::string& project_id,
+                                                             const std::string& card_id) {
+    return holder::ai::NudgeService::current_card_fingerprint(db, project_id, card_id);
+  }
+
+  static std::optional<std::string> current_project_head_commit(holder::platform::Db& db,
+                                                                const std::string& project_id) {
+    return holder::ai::NudgeService::current_project_head_commit(db, project_id);
+  }
+};
+
+} // namespace holder::ai
+
 namespace {
 
 void create_card_fixture(holder::platform::Db& db,
@@ -536,5 +566,237 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
     const auto prompt = capture_nudge_prompt(db, input);
     CAPTURE(prompt);
     REQUIRE(prompt.find("Current card body:") == std::string::npos);
+  }
+}
+
+TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour", "[ai][nudges]") {
+  SECTION("unknown candidate kind uses default decision and wording") {
+    const holder::ai::NudgeCandidateInput input{
+        .kind = "unknown.kind",
+        .project_id = "proj-1",
+        .card_id = std::nullopt,
+        .created_at = 1,
+        .basis_fingerprint = std::nullopt,
+        .basis_commit = std::nullopt,
+        .facts = nlohmann::json::object(),
+    };
+
+    const auto decision = holder::ai::NudgeServiceTestAccess::evaluate_candidate(input);
+    REQUIRE_FALSE(decision.accepted);
+    REQUIRE_FALSE(decision.should_nudge);
+    REQUIRE(decision.reason == "unknown_candidate_kind");
+    REQUIRE(holder::ai::NudgeServiceTestAccess::build_nudge_title(input) == "Suggestion");
+    REQUIRE(holder::ai::NudgeServiceTestAccess::build_nudge_body(input) ==
+            "No suggestion available.");
+  }
+
+  SECTION("current card fingerprint and project head commit handle missing inputs") {
+    const auto dir = holder::test::make_temp_dir();
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_card_fingerprint(
+            db, "missing-project", "missing-card")
+            .has_value());
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "missing-project")
+            .has_value());
+  }
+
+  SECTION("current project head commit handles invalid repo and unborn HEAD") {
+    const auto dir = holder::test::make_temp_dir();
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+
+    const auto invalid_repo = dir / "not-a-git-repo";
+    std::filesystem::create_directories(invalid_repo);
+    holder::test::create_project(db, "proj-invalid", invalid_repo.string());
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "proj-invalid")
+            .has_value());
+
+    const auto unborn_repo = dir / "unborn-repo";
+    holder::git::GitRepo repo;
+    repo.open_or_init(unborn_repo);
+    holder::test::create_project(db, "proj-unborn", unborn_repo.string());
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "proj-unborn")
+            .has_value());
+  }
+
+  SECTION("current card fingerprint handles encrypted missing key and decrypt failure") {
+    const auto dir = holder::test::make_temp_dir();
+    const auto repo_dir = dir / "repo";
+    const auto keystore_dir = dir / "keystore";
+    std::filesystem::create_directories(repo_dir / "cards");
+    std::filesystem::create_directories(keystore_dir);
+    holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::project::ProjectRepo project_repo(db);
+    holder::model::Project project;
+    project.project_id = "proj-enc";
+    project.name = "Encrypted";
+    project.root_path = repo_dir.string();
+    project.privacy_mode = "encrypted_git";
+    project.created_at = 1;
+    project.updated_at = 1;
+    project_repo.create(project);
+
+    holder::git::RealGitOps git;
+    holder::privacy::ensure_encrypted_project_ready(
+        git,
+        project_repo,
+        project.project_id,
+        project.root_path,
+        project.project_key_id,
+        project.updated_at,
+        []() { return std::string("enc-key"); });
+
+    insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
+    const auto stored_project = project_repo.get("proj-enc");
+    REQUIRE(stored_project.has_value());
+    REQUIRE(stored_project->project_key_id.has_value());
+
+    const auto envelope = holder::privacy::encrypt_project_blob(
+        "proj-enc", stored_project->project_key_id.value(), "# Secret\n\nEncrypted text.\n");
+    write_text(repo_dir / "cards" / "card-1.md", envelope);
+
+    project_repo.update_project_key_id("proj-enc", std::nullopt, 2);
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1")
+            .has_value());
+
+    project_repo.update_project_key_id("proj-enc", std::optional<std::string>("wrong-key"), 3);
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1")
+            .has_value());
+  }
+
+  SECTION("prompt context covers missing card fallback sibling limits and empty AI thread") {
+    const auto dir = holder::test::make_temp_dir();
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir / "cards");
+
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::test::create_project(db, "proj-1", repo_dir.string());
+
+    insert_card_fixture(db, "proj-1", "card-1", "Focus", "cards/card-1.md", 50);
+    write_card_markdown(repo_dir, "cards/card-1.md", "Focus", "   \n");
+
+    for (int i = 0; i < 10; ++i) {
+      const auto id = "sib-" + std::to_string(i);
+      const auto rel = "cards/" + id + ".md";
+      insert_card_fixture(db, "proj-1", id, "Sibling " + std::to_string(i), rel, 100 - i);
+      write_card_markdown(repo_dir,
+                          rel,
+                          "Sibling " + std::to_string(i),
+                          "Sibling excerpt " + std::to_string(i) + ".");
+    }
+
+    insert_card_fixture(db, "proj-1", "recent-empty", "Recent Empty", "cards/recent-empty.md", 200);
+    write_card_markdown(repo_dir, "cards/recent-empty.md", "Recent Empty", "   \n");
+
+    holder::ai::AiThreadRepo thread_repo(db);
+    thread_repo.create({
+        .thread_id = "thread-other",
+        .project_id = "proj-1",
+        .card_id = std::optional<std::string>("other-card"),
+        .title = "Other thread",
+        .created_at = 1,
+        .updated_at = 2,
+    });
+
+    const auto prompt = capture_nudge_prompt(
+        db,
+        {
+            .kind = "card.title_only",
+            .project_id = "proj-1",
+            .card_id = std::optional<std::string>("card-1"),
+            .created_at = 123,
+            .basis_fingerprint = std::optional<std::string>("fp-limits"),
+            .basis_commit = std::nullopt,
+            .facts = {{"title", "Focus"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+        });
+
+    CAPTURE(prompt);
+    REQUIRE(prompt.find("Sibling cards: Sibling 0; Sibling 1; Sibling 2; Sibling 3; Sibling 4; "
+                        "Sibling 5; Sibling 6; Sibling 7") != std::string::npos);
+    REQUIRE(prompt.find("Sibling 8") == std::string::npos);
+    REQUIRE(prompt.find("Sibling card excerpts:\n- Sibling 0: # Sibling 0") != std::string::npos);
+    REQUIRE(prompt.find("Sibling 4") == std::string::npos);
+    REQUIRE(prompt.find("Recent project card excerpts:") != std::string::npos);
+    REQUIRE(prompt.find("Recent Empty") == std::string::npos);
+    REQUIRE(prompt.find("Recent AI thread:") == std::string::npos);
+
+    const auto missing_card_prompt = capture_nudge_prompt(
+        db,
+        {
+            .kind = "card.title_only",
+            .project_id = "proj-1",
+            .card_id = std::optional<std::string>("missing-card"),
+            .created_at = 124,
+            .basis_fingerprint = std::optional<std::string>("fp-missing"),
+            .basis_commit = std::nullopt,
+            .facts = {{"title", "Ghost"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+        });
+
+    CAPTURE(missing_card_prompt);
+    REQUIRE(missing_card_prompt.find("Current card title: Ghost") != std::string::npos);
+    REQUIRE(missing_card_prompt.find("Current card body:") == std::string::npos);
+    REQUIRE(missing_card_prompt.find("Sibling cards:") == std::string::npos);
+  }
+
+  SECTION("runner auto-pick prefers smaller positive model and rejects bad rewrites") {
+    const auto dir = holder::test::make_temp_dir();
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::test::create_project(db, "proj-1");
+    create_card_fixture(db, "proj-1", "card-1");
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models.push_back({.name = "unknown-size", .digest = "", .size = 0, .modified_at = ""});
+    status.models.push_back({.name = "small", .digest = "", .size = 2, .modified_at = ""});
+    status.models.push_back({.name = "bigger", .digest = "", .size = 5, .modified_at = ""});
+    runner.set_status_override_for_tests(status);
+
+    std::string chosen_model;
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string&,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) {
+          chosen_model = model;
+          if (model == "small") {
+            on_chunk(std::string(300, 'x'));
+            return true;
+          }
+          return false;
+        });
+
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    holder::ai::NudgeService service(db, &runner_registry);
+    const auto decision = service.evaluate_and_record(title_only_candidate("fp-long"));
+    REQUIRE(decision.nudge.has_value());
+    REQUIRE(chosen_model == "small");
+    REQUIRE(decision.nudge->body.find("You named this card") != std::string::npos);
+
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string&,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) {
+          chosen_model = model;
+          on_chunk("\"");
+          return true;
+        });
+
+    const auto second = service.evaluate_and_record(title_only_candidate("fp-quote"));
+    REQUIRE(second.nudge.has_value());
+    REQUIRE(chosen_model == "small");
+    REQUIRE(second.nudge->body.find("You named this card") != std::string::npos);
   }
 }

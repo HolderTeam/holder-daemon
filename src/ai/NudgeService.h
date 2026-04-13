@@ -14,6 +14,8 @@
 
 namespace holder::ai {
 
+struct NudgeServiceTestAccess;
+
 struct NudgeCandidateInput {
   std::string kind;
   std::string project_id;
@@ -57,6 +59,8 @@ public:
   bool dismiss(const std::string& nudge_id);
 
 private:
+  friend struct NudgeServiceTestAccess;
+
   holder::platform::Db& db_;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
 

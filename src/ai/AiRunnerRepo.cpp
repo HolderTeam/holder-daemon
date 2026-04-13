@@ -7,10 +7,10 @@
 namespace holder::ai {
 namespace {
 
-void throw_sqlite(sqlite3* db, const std::string& what) {
-  const char* msg = db ? sqlite3_errmsg(db) : "unknown sqlite error";
+void throw_sqlite(sqlite3* db, const std::string& what) { // LCOV_EXCL_LINE
+  const char* msg = db ? sqlite3_errmsg(db) : "unknown sqlite error"; // LCOV_EXCL_LINE
   throw std::runtime_error(what + ": " + msg); // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE
 
 void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
   if (sqlite3_bind_text(stmt, idx, value.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {

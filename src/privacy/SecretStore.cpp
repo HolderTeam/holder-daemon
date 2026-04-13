@@ -275,7 +275,7 @@ public:
                                                "account",
                                                account.c_str(),
                                                nullptr);
-    // LCOV_EXCL_START: libsecret store failures are external keyring behavior, not Holder logic.
+    // LCOV_EXCL_START: libsecret store failures are external keyring behaviour, not Holder logic.
     if (!ok) {
       std::string message = "failed to store secret in libsecret";
       if (error && error->message) {
@@ -300,7 +300,7 @@ public:
                                                "account",
                                                account.c_str(),
                                                nullptr);
-    // LCOV_EXCL_START: libsecret clear failures are external keyring behavior, not Holder logic.
+    // LCOV_EXCL_START: libsecret clear failures are external keyring behaviour, not Holder logic.
     if (!ok && error) {
       std::string message = "failed to remove secret from libsecret";
       if (error->message) {
