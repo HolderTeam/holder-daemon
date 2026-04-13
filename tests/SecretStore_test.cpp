@@ -187,6 +187,15 @@ TEST_CASE("SecretStore encrypted fallback backend persists through encrypted fil
 
   store_again->remove("holder.ai_provider_credentials", "fallback-provider");
   REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-provider").has_value());
+
+  store_again->set("holder.ai_provider_credentials",
+                   "fallback-metadata-only",
+                   "fallback-secret-456",
+                   "fb_****_456",
+                   400,
+                   460);
+  std::filesystem::remove(dir / "server" / "secret_store_fallback.enc");
+  REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-metadata-only").has_value());
 }
 
 #if HOLDER_HAVE_LIBSECRET

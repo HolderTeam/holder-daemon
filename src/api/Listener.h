@@ -54,6 +54,8 @@ public:
   void stop();
   std::size_t active_read_socket_count() const;
   std::size_t pending_socket_count() const;
+  std::size_t save_queue_count() const;
+  std::size_t response_queue_count() const;
   std::size_t background_queue_count() const;
   void enqueue_pending_socket_for_test();
 
@@ -89,7 +91,7 @@ private:
   std::deque<Session::PreparedRequest> save_queue_;
   std::deque<Session::PreparedRequest> foreground_queue_;
   std::deque<Session::PreparedRequest> background_queue_;
-  std::mutex response_queue_mutex_;
+  mutable std::mutex response_queue_mutex_;
   std::condition_variable response_queue_cv_;
   std::deque<Session::PreparedResponse> response_queue_;
   mutable std::mutex active_socket_mutex_;

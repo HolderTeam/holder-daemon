@@ -325,6 +325,16 @@ std::size_t Listener::pending_socket_count() const {
   return pending_sockets_.size();
 }
 
+std::size_t Listener::save_queue_count() const {
+  std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+  return save_queue_.size();
+}
+
+std::size_t Listener::response_queue_count() const {
+  std::lock_guard<std::mutex> lock(response_queue_mutex_);
+  return response_queue_.size();
+}
+
 std::size_t Listener::background_queue_count() const {
   std::lock_guard<std::mutex> lock(lane_queue_mutex_);
   return background_queue_.size();

@@ -15,6 +15,39 @@
 namespace {
 namespace http = boost::beast::http;
 
+class FakeRunnerClient final : public holder::llm::RunnerClient {
+public:
+  void start_background_probe() override {}
+
+  holder::llm::RunnerStatus status() const override { return status_result; }
+
+  holder::llm::RunnerStatus retry() override { return retry_result; }
+
+  holder::llm::RunnerPullJob start_pull(const std::string&) override { return pull_result; }
+
+  std::optional<holder::llm::RunnerPullJob> get_pull(const std::string& job_id) const override {
+    if (pull_result.job_id == job_id) {
+      return pull_result;
+    }
+    return std::nullopt;
+  }
+
+  std::vector<holder::llm::RunnerPullJob> list_pulls() const override { return pulls_result; }
+
+  bool stream_generate(const std::string&,
+                       const std::string&,
+                       const std::string&,
+                       const std::function<void(const std::string&)>&,
+                       std::string*) override {
+    return true;
+  }
+
+  holder::llm::RunnerStatus status_result{};
+  holder::llm::RunnerStatus retry_result{};
+  holder::llm::RunnerPullJob pull_result{};
+  std::vector<holder::llm::RunnerPullJob> pulls_result;
+};
+
 http::request<http::string_body> make_request(http::verb method, const std::string& target) {
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
@@ -158,6 +191,374 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
   }
 }
 
+TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][runner]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  boost::asio::io_context ioc;
+  boost::asio::ip::tcp::socket socket(ioc);
+  http::response<http::string_body> res;
+
+  SECTION("POST rejects missing name or kind") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"base_url":"http://office:11434"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Missing name or kind.");
+  }
+
+  SECTION("POST rejects empty name") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"   ","kind":"ollama","base_url":"http://office:11434"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "name cannot be empty.");
+  }
+
+  SECTION("POST rejects unsupported kind") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Office","kind":"other","base_url":"http://office:11434"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Unsupported runner kind.");
+  }
+
+  SECTION("POST rejects missing base_url") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Office","kind":"ollama"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Missing base_url.");
+  }
+
+  SECTION("POST rejects empty base_url") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Office","kind":"ollama","base_url":"   "})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url cannot be empty.");
+  }
+
+  SECTION("POST rejects non-http base_url") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Office","kind":"ollama","base_url":"https://office:11434"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+  }
+
+  SECTION("POST rejects malformed host_port base_url") {
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Office","kind":"ollama","base_url":"http://office"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+  }
+
+  SECTION("GET runner returns not found when registry missing") {
+    auto req = make_request(http::verb::get, "/ai/runners/manual-a");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a",
+        req,
+        res,
+        socket,
+        db,
+        nullptr,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not found.");
+  }
+
+  SECTION("GET runner returns not found when manual runner missing") {
+    auto req = make_request(http::verb::get, "/ai/runners/manual-a");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not found.");
+  }
+
+  SECTION("PATCH rejects auto-local runner") {
+    auto req = make_request(http::verb::patch, "/ai/runners/auto-local");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Nope"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/auto-local",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "auto-local runner is not editable.");
+  }
+
+  SECTION("PATCH returns not found when runner missing") {
+    auto req = make_request(http::verb::patch, "/ai/runners/manual-missing");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Updated"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-missing",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not found.");
+  }
+
+  SECTION("PATCH rejects empty name and invalid base_url and allows null base_url") {
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-patch",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+
+    auto bad_name = make_request(http::verb::patch, "/ai/runners/manual-patch");
+    bad_name.set(http::field::content_type, "application/json");
+    bad_name.body() = R"({"name":"   "})";
+    bad_name.prepare_payload();
+
+    auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-patch",
+        bad_name,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "name cannot be empty.");
+
+    auto bad_url = make_request(http::verb::patch, "/ai/runners/manual-patch");
+    bad_url.set(http::field::content_type, "application/json");
+    bad_url.body() = R"({"base_url":"https://office:11434"})";
+    bad_url.prepare_payload();
+    res = {};
+
+    out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-patch",
+        bad_url,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+
+    auto clear_url = make_request(http::verb::patch, "/ai/runners/manual-patch");
+    clear_url.set(http::field::content_type, "application/json");
+    clear_url.body() = R"({"base_url":null})";
+    clear_url.prepare_payload();
+    res = {};
+
+    out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-patch",
+        clear_url,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::ok);
+    REQUIRE(nlohmann::json::parse(res.body())["data"]["base_url"].is_null());
+  }
+
+  SECTION("DELETE rejects auto-local and missing runner") {
+    auto auto_req = make_request(http::verb::delete_, "/ai/runners/auto-local");
+
+    auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/auto-local",
+        auto_req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "auto-local runner is not deletable.");
+
+    auto missing_req = make_request(http::verb::delete_, "/ai/runners/manual-missing");
+    res = {};
+
+    out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-missing",
+        missing_req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not found.");
+  }
+
+  SECTION("route shape fallthroughs return false") {
+    auto req = make_request(http::verb::get, "/ai/runners/");
+
+    auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+    REQUIRE_FALSE(out.handled);
+
+    req = make_request(http::verb::get, "/ai/runners/manual-a/unknown");
+    out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a/unknown",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+    REQUIRE_FALSE(out.handled);
+  }
+}
+
 TEST_CASE("AiRunnerRoutes supports runner retry by runner id", "[ai][runner]") {
   const auto dir = holder::test::make_temp_dir();
   holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
@@ -197,4 +598,88 @@ TEST_CASE("AiRunnerRoutes supports runner retry by runner id", "[ai][runner]") {
   REQUIRE(body["data"]["runtime"]["configured"] == true);
   REQUIRE(body["data"]["runtime"]["available"] == true);
   REQUIRE(body["data"]["runtime"]["version"] == "fake");
+}
+
+TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "[ai][runner]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  boost::asio::io_context ioc;
+  boost::asio::ip::tcp::socket socket(ioc);
+  http::response<http::string_body> res;
+
+  SECTION("retry returns not found when registry missing") {
+    auto req = make_request(http::verb::post, "/ai/runners/manual-a/retry");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a/retry",
+        req,
+        res,
+        socket,
+        db,
+        nullptr,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not found.");
+  }
+
+  SECTION("retry returns not configured when runner or client missing") {
+    holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+    auto req = make_request(http::verb::post, "/ai/runners/manual-a/retry");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a/retry",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::not_found);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "Runner not configured.");
+  }
+
+  SECTION("GET /ai/runners serializes runtime pulls") {
+    FakeRunnerClient auto_local;
+    auto_local.status_result.available = true;
+    auto_local.status_result.spawn_attempted = true;
+    auto_local.status_result.last_checked = 123;
+    auto_local.status_result.version = "fake";
+    auto_local.status_result.models.push_back(
+        holder::llm::LocalModel{.name = "qwen3:4b", .digest = "sha256:abc", .size = 42, .modified_at = "now"});
+    auto_local.pulls_result.push_back(holder::llm::RunnerPullJob{
+        .job_id = "job-1",
+        .model = "qwen3:8b",
+        .status = "pulling",
+        .progress = {.completed = 5, .total = 10, .percent = 50.0, .stage = "downloading"},
+        .updated_at = 456,
+        .error = "",
+    });
+
+    holder::llm::RunnerRegistry runner_registry(&db, &auto_local);
+    auto req = make_request(http::verb::get, "/ai/runners");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::ok);
+    const auto body = nlohmann::json::parse(res.body());
+    REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"].size() == 1);
+    REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["job_id"] == "job-1");
+    REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["runner_id"] == "auto-local");
+    REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["progress"]["stage"] == "downloading");
+  }
 }

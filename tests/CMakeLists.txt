@@ -20,6 +20,7 @@ add_executable(lockfile_tests
   ServerInfo_test.cpp
   Signal_test.cpp
   SerialExecutor_test.cpp
+  ConcurrencyProfilePolicy_test.cpp
   ExecutorGitOps_test.cpp
   ExecutorRunnerClient_test.cpp
   HttpHealth_test.cpp
@@ -134,6 +135,7 @@ add_executable(lockfile_tests
   ../src/platform/Signal.cpp
   ../src/platform/Fs.cpp
   ../src/core/SerialExecutor.cpp
+  ../src/core/ConcurrencyProfilePolicy.cpp
   ../src/card/CardPaths.cpp
   ../src/ai/AiMessagePaths.cpp
   ../src/card/CardFrontMatter.cpp

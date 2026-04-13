@@ -122,7 +122,7 @@ void AiLocalModelConfigRepo::set(const std::optional<std::string>& fast_model,
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare upsert local model config failed");
+    throw_sqlite(db_.handle(), "prepare upsert local model config failed"); // LCOV_EXCL_LINE
   }
 
   bind_optional_text(stmt, 1, normalized_fast_model);
@@ -141,7 +141,7 @@ void AiLocalModelConfigRepo::clear() {
   static constexpr const char* SQL = "DELETE FROM ai_local_model_config WHERE key = 'global';";
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare clear local model config failed");
+    throw_sqlite(db_.handle(), "prepare clear local model config failed"); // LCOV_EXCL_LINE
   }
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     sqlite3_finalize(stmt);

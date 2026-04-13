@@ -5,12 +5,16 @@
 #endif
 
 #include "ai/AiLocalModelConfigRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "ai/AiRunnerRepo.h"
 #include "ai/NudgeService.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
 #include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
+#include "privacy/ProjectPrivacy.h"
+#include "project/ProjectRepo.h"
 
 #include <git2.h>
 #include <openssl/sha.h>
@@ -28,6 +32,21 @@ void create_card_fixture(holder::platform::Db& db,
   db.exec(
       "INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
       "VALUES('" + card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);");
+}
+
+void insert_card_fixture(holder::platform::Db& db,
+                         const std::string& project_id,
+                         const std::string& card_id,
+                         const std::string& title,
+                         const std::string& rel_path,
+                         long long updated_at,
+                         const std::optional<std::string>& parent_card_id = std::nullopt) {
+  const std::string parent_sql =
+      parent_card_id.has_value() ? ("'" + parent_card_id.value() + "'") : "NULL";
+  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, parent_card_id, created_at, "
+          "updated_at) VALUES('" +
+          card_id + "', '" + project_id + "', '" + title + "', '" + rel_path + "', " + parent_sql +
+          ", 1, " + std::to_string(updated_at) + ");");
 }
 
 holder::ai::NudgeCandidateInput title_only_candidate(const std::string& fingerprint) {
@@ -62,6 +81,13 @@ void write_text(const std::filesystem::path& path, const std::string& content) {
   out << content;
 }
 
+void write_card_markdown(const std::filesystem::path& project_root,
+                         const std::string& rel_path,
+                         const std::string& title,
+                         const std::string& body) {
+  write_text(project_root / rel_path, "# " + title + "\n\n" + body);
+}
+
 std::string current_head_commit(const std::filesystem::path& repo_path) {
   git_repository* repo = nullptr;
   REQUIRE(git_repository_open(&repo, repo_path.c_str()) == 0);
@@ -75,6 +101,49 @@ std::string current_head_commit(const std::filesystem::path& repo_path) {
   git_reference_free(head);
   git_repository_free(repo);
   return out;
+}
+
+void insert_ai_message(holder::platform::Db& db,
+                       const std::string& message_id,
+                       const std::string& thread_id,
+                       const std::string& role,
+                       const std::string& content,
+                       long long created_at) {
+  db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
+          "created_at, deleted_at, prompt_hash, meta_json) VALUES('" +
+          message_id + "', '" + thread_id + "', '" + role +
+          "', 'test', NULL, NULL, '" + content + "', " + std::to_string(created_at) +
+          ", NULL, NULL, NULL);");
+}
+
+std::string capture_nudge_prompt(holder::platform::Db& db,
+                                 const holder::ai::NudgeCandidateInput& input) {
+  holder::llm::LocalModelRunner runner;
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
+  runner.set_status_override_for_tests(status);
+
+  std::string captured_prompt;
+  runner.set_stream_generate_override_for_tests(
+      [&](const std::string&,
+          const std::string& prompt,
+          const std::string&,
+          const std::function<void(const std::string&)>&,
+          std::string* error) {
+        captured_prompt = prompt;
+        if (error) *error = "force deterministic fallback";
+        return false;
+      });
+
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::ai::NudgeService service(db, &runner_registry);
+  const auto decision = service.evaluate_and_record(input);
+  REQUIRE(decision.accepted);
+  REQUIRE(decision.should_nudge);
+  REQUIRE(decision.nudge.has_value());
+  return captured_prompt;
 }
 
 } // namespace
@@ -288,5 +357,184 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
     REQUIRE_FALSE(used_auto_local_for_nudge);
     REQUIRE(decision.nudge->body ==
             "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
+  }
+}
+
+TEST_CASE("NudgeService includes rich card and AI context in runner prompt", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+
+  insert_card_fixture(db, "proj-1", "parent-1", "Parent Topic", "cards/parent.md", 50);
+  insert_card_fixture(
+      db, "proj-1", "card-1", "Frog", "cards/card-1.md", 80, std::optional<std::string>("parent-1"));
+  insert_card_fixture(db,
+                      "proj-1",
+                      "sib-1",
+                      "Sibling One",
+                      "cards/sibling-one.md",
+                      70,
+                      std::optional<std::string>("parent-1"));
+  insert_card_fixture(db,
+                      "proj-1",
+                      "sib-2",
+                      "",
+                      "cards/sibling-empty.md",
+                      65,
+                      std::optional<std::string>("parent-1"));
+  insert_card_fixture(db,
+                      "proj-1",
+                      "sib-3",
+                      "Missing Body",
+                      "cards/missing-body.md",
+                      60,
+                      std::optional<std::string>("parent-1"));
+  insert_card_fixture(db, "proj-1", "recent-1", "Recent Note", "cards/recent.md", 120);
+  insert_card_fixture(db, "proj-1", "recent-2", "Older Note", "cards/older.md", 110);
+
+  write_card_markdown(repo_dir,
+                      "cards/parent.md",
+                      "Parent Topic",
+                      "  Parent background context that should appear in the excerpt.  \n");
+  write_card_markdown(repo_dir,
+                      "cards/sibling-one.md",
+                      "Sibling One",
+                      "   Sibling body with enough detail to appear as an excerpt and exercise "
+                      "trimming at both ends.   \n");
+  write_card_markdown(repo_dir, "cards/sibling-empty.md", "", "   \n");
+  write_card_markdown(repo_dir,
+                      "cards/recent.md",
+                      "Recent Note",
+                      "   Recent project note with useful context and a long enough body to be "
+                      "picked up in the prompt.   \n");
+  write_card_markdown(repo_dir, "cards/older.md", "Older Note", "   Older note body.   \n");
+
+  holder::ai::AiThreadRepo thread_repo(db);
+  thread_repo.create({
+      .thread_id = "thread-card",
+      .project_id = "proj-1",
+      .card_id = std::optional<std::string>("card-1"),
+      .title = "Thread for Frog",
+      .created_at = 10,
+      .updated_at = 200,
+  });
+  insert_ai_message(db, "msg-1", "thread-card", "user", "  First draft question.  ", 10);
+  insert_ai_message(db, "msg-2", "thread-card", "assistant", "  First answer.  ", 11);
+  insert_ai_message(db, "msg-3", "thread-card", "user", "  Follow-up question.  ", 12);
+  insert_ai_message(db,
+                    "msg-4",
+                    "thread-card",
+                    "assistant",
+                    "  " + std::string(260, 'A') + "  ",
+                    13);
+  insert_ai_message(db, "msg-5", "thread-card", "user", "  Final user question.  ", 14);
+
+  const auto prompt = capture_nudge_prompt(
+      db,
+      {
+          .kind = "card.title_only",
+          .project_id = "proj-1",
+          .card_id = std::optional<std::string>("card-1"),
+          .created_at = 123,
+          .basis_fingerprint = std::optional<std::string>("fp-rich"),
+          .basis_commit = std::nullopt,
+          .facts = {{"title", "Frog"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+      });
+
+  CAPTURE(prompt);
+  REQUIRE(prompt.find("Current card title: Frog") != std::string::npos);
+  REQUIRE(prompt.find("Sibling cards: Sibling One; Missing Body") != std::string::npos);
+  REQUIRE(prompt.find("Parent card title: Parent Topic") != std::string::npos);
+  REQUIRE(prompt.find("Parent card excerpt: # Parent Topic") != std::string::npos);
+  REQUIRE(prompt.find("Parent background context that should appear in the excerpt.") !=
+          std::string::npos);
+  REQUIRE(prompt.find("Sibling card excerpts:\n- Sibling One: # Sibling One") !=
+          std::string::npos);
+  REQUIRE(prompt.find("Recent project card excerpts:\n- Recent Note: # Recent Note") !=
+          std::string::npos);
+  REQUIRE(prompt.find("Recent AI thread:\nAssistant: ") != std::string::npos);
+  REQUIRE(prompt.find("User: Final user question.") != std::string::npos);
+  REQUIRE(prompt.find("Current card body:") == std::string::npos);
+  REQUIRE(prompt.find("First draft question.") == std::string::npos);
+}
+
+TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][nudges][privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  const auto keystore_dir = dir / "keystore";
+  std::filesystem::create_directories(repo_dir / "cards");
+  std::filesystem::create_directories(keystore_dir);
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::project::ProjectRepo project_repo(db);
+  holder::model::Project project;
+  project.project_id = "proj-enc";
+  project.name = "Encrypted";
+  project.root_path = repo_dir.string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  project_repo.create(project);
+
+  holder::git::RealGitOps git;
+  holder::privacy::ensure_encrypted_project_ready(
+      git,
+      project_repo,
+      project.project_id,
+      project.root_path,
+      project.project_key_id,
+      project.updated_at,
+      []() { return std::string("enc-key"); });
+
+  insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
+  const auto stored_project = project_repo.get("proj-enc");
+  REQUIRE(stored_project.has_value());
+  REQUIRE(stored_project->project_key_id.has_value());
+
+  auto write_encrypted_card = [&](const std::string& key_id, const std::string& plaintext) {
+    const auto envelope =
+        holder::privacy::encrypt_project_blob("proj-enc", key_id, plaintext);
+    write_text(repo_dir / "cards" / "card-1.md", envelope);
+  };
+
+  const holder::ai::NudgeCandidateInput input{
+      .kind = "card.title_only",
+      .project_id = "proj-enc",
+      .card_id = std::optional<std::string>("card-1"),
+      .created_at = 123,
+      .basis_fingerprint = std::optional<std::string>("fp-enc"),
+      .basis_commit = std::nullopt,
+      .facts = {{"title", "Secret"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+  };
+
+  SECTION("valid encrypted card body is included") {
+    write_encrypted_card(stored_project->project_key_id.value(),
+                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    const auto prompt = capture_nudge_prompt(db, input);
+    CAPTURE(prompt);
+    REQUIRE(prompt.find("Current card body:\n# Secret") != std::string::npos);
+    REQUIRE(prompt.find("Confidential details that should be decrypted.") != std::string::npos);
+  }
+
+  SECTION("missing project key id suppresses encrypted body context") {
+    write_encrypted_card(stored_project->project_key_id.value(),
+                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    project_repo.update_project_key_id("proj-enc", std::nullopt, 2);
+    const auto prompt = capture_nudge_prompt(db, input);
+    CAPTURE(prompt);
+    REQUIRE(prompt.find("Current card body:") == std::string::npos);
+  }
+
+  SECTION("decrypt failure suppresses encrypted body context") {
+    project_repo.update_project_key_id("proj-enc", std::optional<std::string>("wrong-key"), 2);
+    write_encrypted_card(stored_project->project_key_id.value(),
+                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    const auto prompt = capture_nudge_prompt(db, input);
+    CAPTURE(prompt);
+    REQUIRE(prompt.find("Current card body:") == std::string::npos);
   }
 }
