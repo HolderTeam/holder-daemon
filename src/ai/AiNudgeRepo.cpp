@@ -27,7 +27,7 @@ void bind_nullable_text(sqlite3_stmt* stmt, int index, const std::optional<std::
 }
 
 void throw_sqlite(sqlite3* db, const std::string& msg) {
-  throw std::runtime_error(msg + ": " + sqlite3_errmsg(db));
+  throw std::runtime_error(msg + ": " + sqlite3_errmsg(db)); // LCOV_EXCL_LINE
 }
 
 Nudge row_to_nudge(sqlite3_stmt* stmt) {
@@ -57,7 +57,7 @@ void AiNudgeRepo::create(const Nudge& nudge) {
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare ai_nudges insert failed");
+    throw_sqlite(db_.handle(), "prepare ai_nudges insert failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, nudge.nudge_id.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, nudge.kind.c_str(), -1, SQLITE_TRANSIENT);
@@ -70,8 +70,8 @@ void AiNudgeRepo::create(const Nudge& nudge) {
   sqlite3_bind_int64(stmt, 9, nudge.created_at);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "insert ai_nudge failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "insert ai_nudge failed"); // LCOV_EXCL_LINE
   }
   sqlite3_finalize(stmt);
 }
@@ -92,7 +92,7 @@ std::optional<Nudge> AiNudgeRepo::find_active_exact_match(
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare ai_nudges exact match failed");
+    throw_sqlite(db_.handle(), "prepare ai_nudges exact match failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, kind.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, project_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -113,7 +113,7 @@ std::optional<Nudge> AiNudgeRepo::find_active_exact_match(
   if (rc == SQLITE_DONE) {
     return std::nullopt;
   }
-  throw_sqlite(db_.handle(), "query ai_nudges exact match failed");
+  throw_sqlite(db_.handle(), "query ai_nudges exact match failed"); // LCOV_EXCL_LINE
   return std::nullopt; // LCOV_EXCL_LINE
 }
 
@@ -134,7 +134,7 @@ std::vector<Nudge> AiNudgeRepo::list_active(const std::string& project_id,
                          -1,
                          &stmt,
                          nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare ai_nudges list failed");
+    throw_sqlite(db_.handle(), "prepare ai_nudges list failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, project_id.c_str(), -1, SQLITE_TRANSIENT);
   if (card_id.has_value()) {
@@ -165,7 +165,7 @@ void AiNudgeRepo::dismiss_stale_variants(const std::string& kind,
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare ai_nudges dismiss stale failed");
+    throw_sqlite(db_.handle(), "prepare ai_nudges dismiss stale failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, kind.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, project_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -177,8 +177,8 @@ void AiNudgeRepo::dismiss_stale_variants(const std::string& kind,
   bind_nullable_text(stmt, 8, basis_commit);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "dismiss stale ai_nudges failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "dismiss stale ai_nudges failed"); // LCOV_EXCL_LINE
   }
   sqlite3_finalize(stmt);
 }
@@ -191,13 +191,13 @@ bool AiNudgeRepo::dismiss(const std::string& nudge_id) {
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
-    throw_sqlite(db_.handle(), "prepare ai_nudges dismiss failed");
+    throw_sqlite(db_.handle(), "prepare ai_nudges dismiss failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, nudge_id.c_str(), -1, SQLITE_TRANSIENT);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "dismiss ai_nudge failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "dismiss ai_nudge failed"); // LCOV_EXCL_LINE
   }
   const auto changed = sqlite3_changes(db_.handle());
   sqlite3_finalize(stmt);

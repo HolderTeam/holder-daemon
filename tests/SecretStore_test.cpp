@@ -103,6 +103,41 @@ TEST_CASE("AI provider credential metadata rebuilds from SecretStore after sqlit
   REQUIRE(row->updated_at == 240);
 }
 
+TEST_CASE("AI provider credential recovery does nothing when repo metadata already exists",
+          "[startup][recovery]") {
+  const auto dir = holder::test::make_temp_dir();
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+
+  auto store = holder::privacy::make_default_secret_store(dir / "server");
+  store->set("holder.ai_provider_credentials",
+             "switchyard",
+             "sw_secret_123",
+             "sw_****123",
+             200,
+             240);
+
+  const auto db_path = dir / "holder.db";
+  holder::platform::Db db;
+  db.open(db_path);
+  std::ifstream in(SCHEMA_SQL_PATH);
+  REQUIRE(in.is_open());
+  std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  db.exec(sql);
+
+  holder::ai::AiProviderCredentialRepo repo(db);
+  repo.upsert("already-present", "ap_****000", 10, 20);
+
+  holder::ai::recover_ai_provider_credentials_from_secret_store(db, *store);
+
+  const auto existing = repo.get("already-present");
+  REQUIRE(existing.has_value());
+  REQUIRE(existing->api_key_preview == "ap_****000");
+  REQUIRE(existing->created_at == 10);
+  REQUIRE(existing->updated_at == 20);
+
+  REQUIRE_FALSE(repo.get("switchyard").has_value());
+}
+
 TEST_CASE("SecretStore handles sanitized filenames and tolerant metadata edge cases", "[privacy]") {
   const auto dir = holder::test::make_temp_dir();
   const auto keystore_dir = dir / "keystore";
