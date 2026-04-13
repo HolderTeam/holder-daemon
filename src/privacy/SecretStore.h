@@ -52,6 +52,16 @@ using LibsecretLookupHook = LibsecretLookupResult (*)(const std::string& service
                                                       const std::string& account);
 
 void secret_store_set_libsecret_lookup_hook_for_tests(LibsecretLookupHook hook);
+
+struct LibsecretApiLookupResult {
+  std::optional<std::string> secret;
+  std::optional<std::string> error_message;
+};
+
+using LibsecretApiLookupHook = LibsecretApiLookupResult (*)(const std::string& service,
+                                                            const std::string& account);
+
+void secret_store_set_libsecret_api_lookup_hook_for_tests(LibsecretApiLookupHook hook);
 #endif
 
 } // namespace holder::privacy

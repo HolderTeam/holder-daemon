@@ -202,7 +202,16 @@ const SecretSchema* holder_secret_schema() {
   return &schema;
 }
 
+LibsecretApiLookupHook& libsecret_api_lookup_hook_storage() {
+  static LibsecretApiLookupHook hook = nullptr;
+  return hook;
+}
+
 LibsecretLookupResult default_libsecret_lookup(const std::string& service, const std::string& account) {
+  if (const auto hook = libsecret_api_lookup_hook_storage(); hook != nullptr) {
+    const auto result = hook(service, account);
+    return {.secret = result.secret, .error_message = result.error_message};
+  }
   GError* error = nullptr;
   gchar* secret = secret_password_lookup_sync(holder_secret_schema(),
                                               nullptr,
@@ -466,6 +475,10 @@ std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(const st
 #if HOLDER_HAVE_LIBSECRET
 void secret_store_set_libsecret_lookup_hook_for_tests(LibsecretLookupHook hook) {
   libsecret_lookup_hook_storage() = hook;
+}
+
+void secret_store_set_libsecret_api_lookup_hook_for_tests(LibsecretApiLookupHook hook) {
+  libsecret_api_lookup_hook_storage() = hook;
 }
 #endif
 

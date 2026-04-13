@@ -201,6 +201,17 @@ public:
   ~LibsecretLookupHookGuard() { holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(nullptr); }
 };
 
+class LibsecretApiLookupHookGuard {
+public:
+  explicit LibsecretApiLookupHookGuard(holder::privacy::LibsecretApiLookupHook hook) {
+    holder::privacy::secret_store_set_libsecret_api_lookup_hook_for_tests(hook);
+  }
+
+  ~LibsecretApiLookupHookGuard() {
+    holder::privacy::secret_store_set_libsecret_api_lookup_hook_for_tests(nullptr);
+  }
+};
+
 holder::privacy::LibsecretLookupResult lookup_error(const std::string&, const std::string&) {
   return {.secret = std::nullopt, .error_message = std::string("lookup failed for test")};
 }
@@ -211,6 +222,18 @@ holder::privacy::LibsecretLookupResult lookup_missing(const std::string&, const 
 
 holder::privacy::LibsecretLookupResult lookup_success(const std::string&, const std::string&) {
   return {.secret = std::string("libsecret-test-secret"), .error_message = std::nullopt};
+}
+
+holder::privacy::LibsecretApiLookupResult api_lookup_error(const std::string&, const std::string&) {
+  return {.secret = std::nullopt, .error_message = std::string("default lookup failed for test")};
+}
+
+holder::privacy::LibsecretApiLookupResult api_lookup_missing(const std::string&, const std::string&) {
+  return {.secret = std::nullopt, .error_message = std::nullopt};
+}
+
+holder::privacy::LibsecretApiLookupResult api_lookup_success(const std::string&, const std::string&) {
+  return {.secret = std::string("default-libsecret-secret"), .error_message = std::nullopt};
 }
 
 void seed_secret_store_index(const std::filesystem::path& server_dir,
@@ -272,5 +295,45 @@ TEST_CASE("SecretStore get returns secret when libsecret lookup succeeds", "[pri
   REQUIRE(item.has_value());
   REQUIRE(item->secret == "libsecret-test-secret");
   REQUIRE(item->metadata.account == "libsecret-success");
+}
+
+TEST_CASE("SecretStore get covers default libsecret lookup via low-level API seam", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  const auto server_dir = dir / "server";
+
+  SECTION("error maps to KeyMaterialMissing") {
+    LibsecretLookupHookGuard lookup_guard(nullptr);
+    LibsecretApiLookupHookGuard api_guard(&api_lookup_error);
+    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-error");
+
+    auto store = holder::privacy::make_default_secret_store(server_dir);
+    try {
+      (void)store->get("holder.ai_provider_credentials", "default-libsecret-error");
+      FAIL("Expected libsecret lookup failure");
+    } catch (const holder::privacy::PrivacyError& ex) {
+      REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+    }
+  }
+
+  SECTION("missing secret returns nullopt") {
+    LibsecretLookupHookGuard lookup_guard(nullptr);
+    LibsecretApiLookupHookGuard api_guard(&api_lookup_missing);
+    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-missing");
+
+    auto store = holder::privacy::make_default_secret_store(server_dir);
+    REQUIRE_FALSE(store->get("holder.ai_provider_credentials", "default-libsecret-missing").has_value());
+  }
+
+  SECTION("successful lookup returns stored secret") {
+    LibsecretLookupHookGuard lookup_guard(nullptr);
+    LibsecretApiLookupHookGuard api_guard(&api_lookup_success);
+    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-success");
+
+    auto store = holder::privacy::make_default_secret_store(server_dir);
+    const auto item = store->get("holder.ai_provider_credentials", "default-libsecret-success");
+    REQUIRE(item.has_value());
+    REQUIRE(item->secret == "default-libsecret-secret");
+  }
 }
 #endif
