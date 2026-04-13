@@ -9,6 +9,7 @@
 #include "ai/AiThreadRepo.h"
 #include "ai/AiRunnerRepo.h"
 #include "ai/NudgeService.h"
+#include "card/CardRepo.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
 #include "llm/LocalRunnerClient.h"
@@ -38,6 +39,39 @@ struct NudgeServiceTestAccess {
 
   static std::string build_nudge_body(const holder::ai::NudgeCandidateInput& input) {
     return holder::ai::NudgeService::build_nudge_body(input);
+  }
+
+  static std::optional<std::string> load_card_body(holder::platform::Db& db,
+                                                   const std::string& project_id,
+                                                   const std::string& card_id) {
+    return holder::ai::NudgeService::access_load_card_body(db, project_id, card_id);
+  }
+
+  static std::vector<std::string> sibling_card_titles(holder::platform::Db& db,
+                                                      const std::string& project_id,
+                                                      const std::string& card_id) {
+    return holder::ai::NudgeService::access_sibling_card_titles(db, project_id, card_id);
+  }
+
+  static std::vector<holder::model::Card> sibling_cards(holder::platform::Db& db,
+                                                        const std::string& project_id,
+                                                        const std::string& card_id) {
+    return holder::ai::NudgeService::access_sibling_cards(db, project_id, card_id);
+  }
+
+  static std::string card_excerpt_line(holder::platform::Db& db,
+                                       const std::string& project_id,
+                                       const holder::model::Card& card) {
+    return holder::ai::NudgeService::access_card_excerpt_line(db, project_id, card);
+  }
+
+  static std::vector<std::string> recent_project_card_excerpts(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::optional<std::string>& exclude_card_id,
+      std::size_t limit) {
+    return holder::ai::NudgeService::access_recent_project_card_excerpts(
+        db, project_id, exclude_card_id, limit);
   }
 
   static std::optional<std::string> current_card_fingerprint(holder::platform::Db& db,
@@ -603,6 +637,36 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
             .has_value());
   }
 
+  SECTION("direct helper access covers missing-card and empty-excerpt branches") {
+    const auto dir = holder::test::make_temp_dir();
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir / "cards");
+    auto db = holder::test::open_db_with_schema(dir / "holder.db");
+    holder::test::create_project(db, "proj-1", repo_dir.string());
+
+    REQUIRE_FALSE(
+        holder::ai::NudgeServiceTestAccess::load_card_body(db, "missing-project", "missing-card")
+            .has_value());
+    REQUIRE(
+        holder::ai::NudgeServiceTestAccess::sibling_card_titles(db, "proj-1", "missing-card")
+            .empty());
+    REQUIRE(
+        holder::ai::NudgeServiceTestAccess::sibling_cards(db, "proj-1", "missing-card").empty());
+
+    insert_card_fixture(db, "proj-1", "card-1", "Focus", "cards/card-1.md", 50);
+    insert_card_fixture(db, "proj-1", "blank-card", "", "cards/blank-card.md", 40);
+    write_text(repo_dir / "cards" / "blank-card.md", "   \n   \n");
+
+    const auto blank = holder::card::CardRepo(db).get("blank-card");
+    REQUIRE(blank.has_value());
+    REQUIRE(holder::ai::NudgeServiceTestAccess::card_excerpt_line(db, "proj-1", blank.value())
+                .empty());
+
+    const auto recent = holder::ai::NudgeServiceTestAccess::recent_project_card_excerpts(
+        db, "proj-1", std::nullopt, 8);
+    REQUIRE(recent.empty());
+  }
+
   SECTION("prompt building handles a missing card id without extra context") {
     const auto dir = holder::test::make_temp_dir();
     const auto repo_dir = dir / "repo";
@@ -751,14 +815,15 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE(stored_project.has_value());
     REQUIRE(stored_project->project_key_id.has_value());
 
+    const std::string plain = "# Secret\n\nEncrypted text.\n";
     const auto envelope = holder::privacy::encrypt_project_blob(
-        "proj-enc", stored_project->project_key_id.value(), "# Secret\n\nEncrypted text.\n");
+        "proj-enc", stored_project->project_key_id.value(), plain);
     write_text(repo_dir / "cards" / "card-1.md", envelope);
 
     const auto fingerprint =
         holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1");
     REQUIRE(fingerprint.has_value());
-    REQUIRE(fingerprint.value() == short_content_fingerprint("Encrypted text."));
+    REQUIRE(fingerprint.value() == short_content_fingerprint(plain));
   }
 
   SECTION("prompt context covers missing card fallback sibling limits and empty AI thread") {

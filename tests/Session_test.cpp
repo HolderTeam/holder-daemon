@@ -10,6 +10,9 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
+#include <future>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -151,6 +154,74 @@ TEST_CASE("Session handles normal request/response path", "[session]") {
   }
   REQUIRE(ec == boost::asio::error::eof);
   REQUIRE(response.find("401 Unauthorized") != std::string::npos);
+}
+
+TEST_CASE("Session write_prepared_response cancel hook terminates in-flight write", "[session]") {
+  namespace http = boost::beast::http;
+
+  SocketPair pair;
+  pair.client.set_option(boost::asio::socket_base::receive_buffer_size(1024));
+
+  holder::api::Session::Request req;
+  req.method(http::verb::get);
+  req.target("/health");
+  req.version(11);
+
+  holder::api::Session::Response res;
+  res.result(http::status::ok);
+  res.version(11);
+  res.set(http::field::content_type, "text/plain");
+  res.keep_alive(false);
+  res.body() = std::string(8 * 1024 * 1024, 'x');
+  res.prepare_payload();
+
+  holder::api::Session::PreparedResponse prepared{
+      std::move(pair.server),
+      std::move(req),
+      std::move(res),
+      std::chrono::steady_clock::now(),
+      holder::api::Session::RequestLane::Foreground,
+  };
+
+  std::mutex mutex;
+  std::condition_variable cv;
+  holder::api::Session::IoHandlePtr active;
+  bool done = false;
+
+  auto future = std::async(std::launch::async, [&]() {
+    holder::api::Session::write_prepared_response(
+        std::move(prepared),
+        [&](const holder::api::Session::IoHandlePtr& io_handle) {
+          {
+            std::lock_guard<std::mutex> lock(mutex);
+            active = io_handle;
+          }
+          cv.notify_one();
+        },
+        [&](const holder::api::Session::IoHandlePtr&) {
+          {
+            std::lock_guard<std::mutex> lock(mutex);
+            done = true;
+          }
+          cv.notify_one();
+        });
+  });
+
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    REQUIRE(cv.wait_for(lock,
+                        std::chrono::seconds(1),
+                        [&]() { return static_cast<bool>(active); }));
+  }
+
+  active->cancel();
+
+  REQUIRE(future.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    REQUIRE(cv.wait_for(lock, std::chrono::seconds(1), [&]() { return done; }));
+  }
 }
 
 TEST_CASE("Session prepare_request classifies card patch as save lane", "[session]") {

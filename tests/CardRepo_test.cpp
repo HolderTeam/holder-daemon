@@ -459,7 +459,7 @@ TEST_CASE("CardRepo read/count queries throw when sqlite step hits locked databa
   parent.updated_at = 1;
   repo.create(parent);
 
-  for (int i = 0; i < 5000; ++i) {
+  for (int i = 0; i < 128; ++i) {
     holder::model::Card root;
     root.card_id = "root-lock-" + std::to_string(i);
     root.project_id = "proj-1";

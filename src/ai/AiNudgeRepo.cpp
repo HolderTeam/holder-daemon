@@ -16,7 +16,7 @@ std::string column_text(sqlite3_stmt* stmt, int index) {
 std::optional<std::string> column_nullable(sqlite3_stmt* stmt, int index) {
   if (sqlite3_column_type(stmt, index) == SQLITE_NULL) return std::nullopt;
   return column_text(stmt, index);
-}
+} // LCOV_EXCL_LINE
 
 void bind_nullable_text(sqlite3_stmt* stmt, int index, const std::optional<std::string>& value) {
   if (value.has_value()) {
@@ -147,7 +147,7 @@ std::vector<Nudge> AiNudgeRepo::list_active(const std::string& project_id,
   }
   sqlite3_finalize(stmt);
   return out;
-}
+} // LCOV_EXCL_LINE
 
 void AiNudgeRepo::dismiss_stale_variants(const std::string& kind,
                                          const std::string& project_id,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "llm/RunnerModelRef.h"
+#include "model/Card.h"
 #include "platform/Db.h"
 #include "llm/RunnerRegistry.h"
 
@@ -77,6 +78,23 @@ private:
                                         const std::string& context_summary);
   static std::string build_nudge_id(const NudgeCandidateInput& input);
   static std::string short_content_fingerprint(const std::string& content);
+  static std::optional<std::string> access_load_card_body(holder::platform::Db& db,
+                                                          const std::string& project_id,
+                                                          const std::string& card_id);
+  static std::vector<std::string> access_sibling_card_titles(holder::platform::Db& db,
+                                                             const std::string& project_id,
+                                                             const std::string& card_id);
+  static std::vector<holder::model::Card> access_sibling_cards(holder::platform::Db& db,
+                                                               const std::string& project_id,
+                                                               const std::string& card_id);
+  static std::string access_card_excerpt_line(holder::platform::Db& db,
+                                              const std::string& project_id,
+                                              const holder::model::Card& card);
+  static std::vector<std::string> access_recent_project_card_excerpts(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::optional<std::string>& exclude_card_id,
+      std::size_t limit);
   static std::optional<std::string> current_card_fingerprint(
       holder::platform::Db& db,
       const std::string& project_id,
