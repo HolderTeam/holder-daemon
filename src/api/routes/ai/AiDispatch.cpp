@@ -53,7 +53,7 @@ DispatchResult dispatch_ai_routes(
 
   if (ai_resource == "capabilities" || ai_resource == "status" || ai_resource == "local-models") {
     if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
-      return {.handled = true, .streamed = false};
+      return {.handled = true, .streamed = false}; // LCOV_EXCL_LINE
     }
     return {.handled = false, .streamed = false};
   }

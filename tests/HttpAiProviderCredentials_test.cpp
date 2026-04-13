@@ -13,6 +13,36 @@ using holder::test::open_db_with_schema;
 namespace {
 namespace http = boost::beast::http;
 
+class ThrowingSecretStore final : public holder::privacy::SecretStore {
+public:
+  explicit ThrowingSecretStore(holder::privacy::PrivacyErrorCode code) : code_(code) {}
+
+  std::optional<holder::privacy::StoredSecret> get(const std::string&,
+                                                   const std::string&) const override {
+    return std::nullopt;
+  }
+
+  std::vector<holder::privacy::SecretMetadata> list(const std::string&) const override {
+    return {};
+  }
+
+  void set(const std::string&,
+           const std::string&,
+           const std::string&,
+           const std::string&,
+           long long,
+           long long) override {
+    throw holder::privacy::PrivacyError(code_, "simulated secret store set failure");
+  }
+
+  void remove(const std::string&, const std::string&) override {
+    throw holder::privacy::PrivacyError(code_, "simulated secret store remove failure");
+  }
+
+private:
+  holder::privacy::PrivacyErrorCode code_;
+};
+
 http::request<http::string_body> make_req(http::verb method,
                                           const std::string& target,
                                           const std::string& body = "") {
@@ -264,4 +294,33 @@ TEST_CASE("AiProviderCredentialRoutes direct DB exception branches", "[http]") {
                      "/ai/providers/credentials",
                      nlohmann::json{{"provider", "switchyard"}, {"api_key", "key"}}.dump());
   expect_bad_request(http::verb::delete_, "/ai/providers/credentials/switchyard");
+}
+
+TEST_CASE("AiProviderCredentialRoutes map PrivacyError to service unavailable", "[http]") {
+  const auto dir = make_temp_dir();
+  auto db = open_db_with_schema(dir / "holder.db");
+  http::response<http::string_body> res;
+  ThrowingSecretStore secret_store(holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+
+  SECTION("credentials put returns 503 when secret store set fails") {
+    auto req = make_req(http::verb::put,
+                        "/ai/providers/credentials",
+                        nlohmann::json{{"provider", "switchyard"}, {"api_key", "key"}}.dump());
+    REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
+        "/ai/providers/credentials", req, res, db, secret_store));
+    REQUIRE(res.result() == http::status::service_unavailable);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "privacy_key_material_missing");
+    REQUIRE(payload["error"]["message"] == "simulated secret store set failure");
+  }
+
+  SECTION("credentials delete returns 503 when secret store remove fails") {
+    auto req = make_req(http::verb::delete_, "/ai/providers/credentials/switchyard");
+    REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_credential_routes(
+        "/ai/providers/credentials/switchyard", req, res, db, secret_store));
+    REQUIRE(res.result() == http::status::service_unavailable);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "privacy_key_material_missing");
+    REQUIRE(payload["error"]["message"] == "simulated secret store remove failure");
+  }
 }

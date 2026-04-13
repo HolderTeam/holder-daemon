@@ -378,3 +378,92 @@ TEST_CASE("AiNudgeRoutes lists and dismisses created nudges", "[ai][nudges]") {
     REQUIRE(payload["data"]["nudges"].empty());
   }
 }
+
+TEST_CASE("AiNudgeRoutes handle service and query error branches", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+  holder::ai::NudgeService service(db);
+
+  SECTION("list returns service unavailable when service is null") {
+    auto req = make_request(http::verb::get, "/ai/nudges?project_id=proj-1", "");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges", req, res, nullptr));
+    REQUIRE(res.result() == http::status::internal_server_error);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "service_unavailable");
+  }
+
+  SECTION("list requires project_id query parameter") {
+    auto req = make_request(http::verb::get, "/ai/nudges?card_id=card-1", "");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges", req, res, &service));
+    REQUIRE(res.result() == http::status::bad_request);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "invalid_query");
+    REQUIRE(payload["error"]["message"] == "project_id is required.");
+  }
+
+  SECTION("dismiss returns service unavailable when service is null") {
+    auto req = make_request(http::verb::post, "/ai/nudges/n-1/dismiss", "");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges/n-1/dismiss", req, res, nullptr));
+    REQUIRE(res.result() == http::status::internal_server_error);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "service_unavailable");
+  }
+
+  SECTION("dismiss returns not found for empty nudge id") {
+    auto req = make_request(http::verb::post, "/ai/nudges//dismiss", "");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges//dismiss", req, res, &service));
+    REQUIRE(res.result() == http::status::not_found);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "not_found");
+    REQUIRE(payload["error"]["message"] == "Nudge not found.");
+  }
+
+  SECTION("dismiss returns not found for unknown nudge id") {
+    auto req = make_request(http::verb::post, "/ai/nudges/missing/dismiss", "");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges/missing/dismiss", req, res, &service));
+    REQUIRE(res.result() == http::status::not_found);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "not_found");
+  }
+
+  SECTION("evaluate returns service unavailable when service is null") {
+    auto req = make_request(http::verb::post,
+                            "/ai/nudges/evaluate",
+                            R"({
+                              "kind":"card.title_only",
+                              "project_id":"proj-1",
+                              "card_id":"card-1",
+                              "created_at":0,
+                              "facts":{
+                                "title":"Frog",
+                                "body_empty":true,
+                                "doc_chars":12,
+                                "body_chars":0
+                              }
+                            })");
+    http::response<http::string_body> res;
+
+    REQUIRE(holder::api::routes::handle_ai_nudge_routes("/ai/nudges/evaluate", req, res, nullptr));
+    REQUIRE(res.result() == http::status::internal_server_error);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "service_unavailable");
+  }
+}

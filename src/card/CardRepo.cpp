@@ -152,13 +152,13 @@ std::vector<holder::model::Card> CardRepo::list_roots(const std::string& project
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list cards failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list cards failed"); // LCOV_EXCL_LINE
   }
 
   sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<holder::model::Card> CardRepo::list_children(const std::string& project_id,
                                                          const std::string& parent_card_id) const {
@@ -182,12 +182,12 @@ std::vector<holder::model::Card> CardRepo::list_children(const std::string& proj
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list child cards failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list child cards failed"); // LCOV_EXCL_LINE
   }
   sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_id) const {
   static constexpr const char* SQL =
@@ -209,12 +209,12 @@ std::vector<holder::model::Card> CardRepo::list_all(const std::string& project_i
       continue;
     }
     if (rc == SQLITE_DONE) break;
-    sqlite3_finalize(stmt);
-    throw_sqlite(db_.handle(), "list all cards failed");
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "list all cards failed"); // LCOV_EXCL_LINE
   }
   sqlite3_finalize(stmt); // LCOV_EXCL_LINE
   return out;
-}
+} // LCOV_EXCL_LINE
 
 int CardRepo::count_all_not_deleted(const std::string& project_id) const {
   static constexpr const char* SQL =

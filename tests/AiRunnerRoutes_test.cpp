@@ -19,9 +19,19 @@ class FakeRunnerClient final : public holder::llm::RunnerClient {
 public:
   void start_background_probe() override {}
 
-  holder::llm::RunnerStatus status() const override { return status_result; }
+  holder::llm::RunnerStatus status() const override {
+    if (throw_on_status) {
+      throw std::runtime_error("status boom");
+    }
+    return status_result;
+  }
 
-  holder::llm::RunnerStatus retry() override { return retry_result; }
+  holder::llm::RunnerStatus retry() override {
+    if (throw_on_retry) {
+      throw std::runtime_error("retry boom");
+    }
+    return retry_result;
+  }
 
   holder::llm::RunnerPullJob start_pull(const std::string&) override { return pull_result; }
 
@@ -46,6 +56,8 @@ public:
   holder::llm::RunnerStatus retry_result{};
   holder::llm::RunnerPullJob pull_result{};
   std::vector<holder::llm::RunnerPullJob> pulls_result;
+  bool throw_on_status = false;
+  bool throw_on_retry = false;
 };
 
 http::request<http::string_body> make_request(http::verb method, const std::string& target) {
@@ -681,5 +693,193 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["job_id"] == "job-1");
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["runner_id"] == "auto-local");
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["progress"]["stage"] == "downloading");
+  }
+}
+
+TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", "[ai][runner]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  boost::asio::io_context ioc;
+  boost::asio::ip::tcp::socket socket(ioc);
+  http::response<http::string_body> res;
+
+  SECTION("GET /ai/runners catches runner status exceptions") {
+    FakeRunnerClient auto_local;
+    auto_local.throw_on_status = true;
+    holder::llm::RunnerRegistry runner_registry(&db, &auto_local);
+    auto req = make_request(http::verb::get, "/ai/runners");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "status boom");
+  }
+
+  SECTION("POST /ai/runners catches invalid json parse errors") {
+    holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+    auto req = make_request(http::verb::post, "/ai/runners");
+    req.set(http::field::content_type, "application/json");
+    req.body() = "{";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["code"] == "bad_request");
+  }
+
+  SECTION("retry catches runner client exceptions") {
+    FakeRunnerClient auto_local;
+    auto_local.throw_on_retry = true;
+    holder::llm::RunnerRegistry runner_registry(&db, &auto_local);
+    auto req = make_request(http::verb::post, "/ai/runners/auto-local/retry");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/auto-local/retry",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "retry boom");
+  }
+
+  SECTION("GET runner catches runtime serialization exceptions") {
+    FakeRunnerClient auto_local;
+    auto_local.throw_on_status = true;
+    holder::llm::RunnerRegistry runner_registry(&db, &auto_local);
+    auto req = make_request(http::verb::get, "/ai/runners/auto-local");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/auto-local",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "status boom");
+  }
+
+  SECTION("PATCH catches repository exceptions") {
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-patch",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+    db.close();
+    holder::llm::RunnerRegistry runner_registry(nullptr, nullptr);
+    auto req = make_request(http::verb::patch, "/ai/runners/manual-patch");
+    req.set(http::field::content_type, "application/json");
+    req.body() = R"({"name":"Updated"})";
+    req.prepare_payload();
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-patch",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["code"] == "bad_request");
+  }
+
+  SECTION("DELETE catches repository exceptions") {
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-delete",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+    db.close();
+    holder::llm::RunnerRegistry runner_registry(nullptr, nullptr);
+    auto req = make_request(http::verb::delete_, "/ai/runners/manual-delete");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-delete",
+        req,
+        res,
+        socket,
+        db,
+        &runner_registry,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE(out.handled);
+    REQUIRE(res.result() == http::status::bad_request);
+    REQUIRE(nlohmann::json::parse(res.body())["error"]["code"] == "bad_request");
+  }
+
+  SECTION("empty runner id path falls through") {
+    auto req = make_request(http::verb::post, "/ai/runners//retry");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners//retry",
+        req,
+        res,
+        socket,
+        db,
+        nullptr,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE_FALSE(out.handled);
+  }
+
+  SECTION("unsupported method on runner path falls through") {
+    auto req = make_request(http::verb::post, "/ai/runners/manual-a");
+
+    const auto out = holder::api::routes::handle_ai_runner_routes(
+        "/ai/runners/manual-a",
+        req,
+        res,
+        socket,
+        db,
+        nullptr,
+        []() { return std::string("ignored"); },
+        [](const std::string&) -> std::string { return {}; });
+
+    REQUIRE_FALSE(out.handled);
   }
 }

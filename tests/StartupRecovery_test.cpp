@@ -377,3 +377,107 @@ TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message f
   REQUIRE(content.has_value());
   REQUIRE(content.value() == "# Encrypted card\n\nRecovered body.\n");
 }
+
+TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails", "[startup][recovery]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto projects_root = dir / "projects";
+  const auto original_db_path = dir / "original.db";
+  const auto recovered_db_path = dir / "recovered.db";
+  const auto keystore_dir = dir / "keystore";
+  std::filesystem::create_directories(projects_root);
+  std::filesystem::create_directories(keystore_dir);
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+  auto original_db = holder::test::open_db_with_schema(original_db_path);
+  holder::project::ProjectRepo original_project_repo(original_db);
+  holder::model::Project project;
+  project.project_id = "proj-fallback-fail";
+  project.name = "Fallback Fail";
+  project.root_path = (projects_root / "fallback-fail").string();
+  project.privacy_mode = "encrypted_git";
+  project.created_at = 1;
+  project.updated_at = 1;
+  original_project_repo.create(project);
+
+  holder::git::RealGitOps git;
+  holder::privacy::ensure_encrypted_project_ready(
+      git,
+      original_project_repo,
+      project.project_id,
+      project.root_path,
+      project.project_key_id,
+      project.updated_at,
+      []() { return std::string("generated-key"); });
+
+  holder::index::FtsIndexer original_fts(original_db);
+  holder::card::CardStore original_store(original_db, &original_fts);
+  holder::model::Card card;
+  card.card_id = "card-1";
+  card.project_id = project.project_id;
+  card.title = "Encrypted card";
+  card.created_at = 1;
+  card.updated_at = 1;
+  original_store.create(card, "# Encrypted card\n\nRecovered body.\n");
+
+  const auto card_path = projects_root / "fallback-fail" / "cards" / "ca" / "rd" / "card-1.md";
+  std::ifstream in(card_path, std::ios::binary);
+  REQUIRE(in.is_open());
+  const std::string envelope((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  auto lines = split_lines3_sr(envelope);
+  auto meta = nlohmann::json::parse(lines[1]);
+  meta["key_id"] = "wrong-key-id";
+  lines[1] = meta.dump();
+  {
+    std::ofstream out(card_path, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+    out << join_lines3_sr(lines);
+  }
+
+  std::filesystem::create_directories(projects_root / "fallback-fail" / "cards" / "zz" / "zz");
+  {
+    std::ofstream bad_card(projects_root / "fallback-fail" / "cards" / "zz" / "zz" / "bad00001.md",
+                           std::ios::binary | std::ios::trunc);
+    REQUIRE(bad_card.is_open());
+    bad_card << "# not decryptable as plain\n";
+  }
+
+  auto recovered_db = holder::test::open_db_with_schema(recovered_db_path);
+  holder::index::FtsIndexer recovered_fts(recovered_db);
+  const auto recovered = holder::project::recover_projects_from_disk(
+      recovered_db,
+      &recovered_fts,
+      projects_root,
+      []() { return std::string("recovered-proj"); });
+
+  REQUIRE(recovered.empty());
+
+  holder::project::ProjectRepo recovered_project_repo(recovered_db);
+  REQUIRE(recovered_project_repo.list().empty());
+}
+
+TEST_CASE("Startup recovery skips malformed plain projects", "[startup][recovery]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto projects_root = dir / "projects";
+  const auto recovered_db_path = dir / "recovered.db";
+  const auto project_root = projects_root / "bad-plain";
+  std::filesystem::create_directories(project_root / "cards" / "xx" / "yy");
+
+  {
+    std::ofstream card(project_root / "cards" / "xx" / "yy" / "abcd1234.md", std::ios::binary | std::ios::trunc);
+    REQUIRE(card.is_open());
+    card << "# wrong path for card id\n";
+  }
+
+  auto recovered_db = holder::test::open_db_with_schema(recovered_db_path);
+  holder::index::FtsIndexer recovered_fts(recovered_db);
+  const auto recovered = holder::project::recover_projects_from_disk(
+      recovered_db,
+      &recovered_fts,
+      projects_root,
+      []() { return std::string("generated"); });
+
+  REQUIRE(recovered.empty());
+
+  holder::project::ProjectRepo recovered_project_repo(recovered_db);
+  REQUIRE(recovered_project_repo.list().empty());
+}

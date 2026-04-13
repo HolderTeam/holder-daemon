@@ -231,6 +231,77 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
   REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["modified_at"] == "t1");
 }
 
+TEST_CASE("AiCapabilitiesRoutes serializes runtime pulls and unconfigured listed runners", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+
+  holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = false,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+
+  holder::llm::LocalModelRunner runner;
+  runner.set_fake_mode(false);
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.spawn_attempted = true;
+  status.last_checked = 456;
+  status.version = "runner-v";
+  status.models = {
+      holder::llm::LocalModel{.name = "m1", .digest = "d1", .size = 11, .modified_at = "t1"},
+  };
+  runner.set_status_override_for_tests(status);
+  (void)runner.start_pull("model-pull");
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+
+  auto req = make_request(http::verb::get, "/ai/capabilities");
+  http::response<http::string_body> res;
+  const auto param_get = [](const std::string&) -> std::string { return {}; };
+
+  REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
+      "/ai/capabilities", req, res, db, &runner_registry, param_get));
+  REQUIRE(res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 2);
+
+  const auto& auto_local = payload["data"]["runners"][0];
+  REQUIRE(auto_local["runner_id"] == "auto-local");
+  REQUIRE(auto_local["runtime"]["pulls"].is_array());
+  REQUIRE(auto_local["runtime"]["pulls"].size() == 1);
+  REQUIRE(auto_local["runtime"]["pulls"][0]["runner_id"] == "auto-local");
+  REQUIRE(auto_local["runtime"]["pulls"][0]["model"] == "model-pull");
+  REQUIRE(auto_local["runtime"]["pulls"][0]["model_ref"] == "auto-local::model-pull");
+  REQUIRE(auto_local["runtime"]["pulls"][0]["status"].is_string());
+  REQUIRE(auto_local["runtime"]["pulls"][0]["updated_at"].is_number_integer());
+  REQUIRE(auto_local["runtime"]["pulls"][0]["progress"]["completed"].is_number_integer());
+  REQUIRE(auto_local["runtime"]["pulls"][0]["progress"]["total"].is_number_integer());
+  REQUIRE(auto_local["runtime"]["pulls"][0]["progress"]["percent"].is_number());
+  REQUIRE(auto_local["runtime"]["pulls"][0]["progress"]["stage"].is_string());
+
+  const auto& manual = payload["data"]["runners"][1];
+  REQUIRE(manual["runner_id"] == "manual-a");
+  REQUIRE(manual["runtime"]["configured"] == false);
+  REQUIRE(manual["runtime"]["available"] == false);
+  REQUIRE(manual["runtime"]["spawn_attempted"] == false);
+  REQUIRE(manual["runtime"]["last_checked"] == 0);
+  REQUIRE(manual["runtime"]["version"].is_null());
+  REQUIRE(manual["runtime"]["error"] == "runner_not_configured");
+  REQUIRE(manual["runtime"]["models"].is_array());
+  REQUIRE(manual["runtime"]["models"].empty());
+  REQUIRE(manual["runtime"]["pulls"].is_array());
+  REQUIRE(manual["runtime"]["pulls"].empty());
+}
+
 TEST_CASE("AiCapabilitiesRoutes without runner includes recommendation entries", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");

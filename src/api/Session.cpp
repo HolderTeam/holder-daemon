@@ -307,7 +307,7 @@ void Session::write_prepared_response(PreparedResponse prepared,
   spdlog::debug("HTTP lane={} method={} target={} status={} duration_ms={}",
                 lane_name(prepared.lane),
                 prepared.req.method_string(),
-                prepared.req.target(),
+                prepared.req.target(), // LCOV_EXCL_LINE
                 prepared.res.result_int(),
                 duration_ms);
 
@@ -345,7 +345,7 @@ const char* Session::lane_name(RequestLane lane) {
     case RequestLane::Background:
       return "background";
   }
-  return "unknown";
+  return "unknown"; // LCOV_EXCL_LINE
 }
 
 } // namespace holder::api

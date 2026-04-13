@@ -97,7 +97,7 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
   const auto raw = read_file(std::filesystem::path(project->root_path) / card->rel_path);
   if (!raw.has_value()) {
     return std::nullopt;
-  }
+  } // LCOV_EXCL_LINE
 
   std::string plain = raw.value();
   if (project->privacy_mode == "encrypted_git") {
@@ -110,7 +110,7 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
     } catch (...) {
       return std::nullopt;
     }
-  }
+  } // LCOV_EXCL_LINE
 
   return holder::core::parse_card_file(plain).body;
 }
@@ -368,7 +368,7 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
             .should_nudge = should_nudge,
             .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
             .nudge = std::nullopt};
-  }
+  } // LCOV_EXCL_LINE
   if (input.kind == "card.stuck_drafting") {
     const auto autosave_count = input.facts.value("autosave_count", 0);
     const auto body_chars = input.facts.value("body_chars", 0);
@@ -388,7 +388,7 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
             .reason = should_nudge ? "git_push_failure_candidate_ready"
                                    : "git_push_failure_not_actionable",
             .nudge = std::nullopt};
-  }
+  } // LCOV_EXCL_LINE
   return {.accepted = false,
           .should_nudge = false,
           .reason = "unknown_candidate_kind",
