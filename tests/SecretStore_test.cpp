@@ -6,8 +6,38 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+
+namespace {
+
+class EnvUnsetGuard {
+public:
+  explicit EnvUnsetGuard(const char* key) : key_(key) {
+    const char* current = std::getenv(key_);
+    if (current != nullptr) {
+      had_old_ = true;
+      old_ = current;
+    }
+    unsetenv(key_);
+  }
+
+  ~EnvUnsetGuard() {
+    if (had_old_) {
+      setenv(key_, old_.c_str(), 1);
+    } else {
+      unsetenv(key_);
+    }
+  }
+
+private:
+  const char* key_;
+  bool had_old_ = false;
+  std::string old_;
+};
+
+} // namespace
 
 TEST_CASE("SecretStore set/get/list/remove persists through index-backed test store", "[privacy]") {
   const auto dir = holder::test::make_temp_dir();
@@ -72,3 +102,175 @@ TEST_CASE("AI provider credential metadata rebuilds from SecretStore after sqlit
   REQUIRE(row->created_at == 200);
   REQUIRE(row->updated_at == 240);
 }
+
+TEST_CASE("SecretStore handles sanitized filenames and tolerant metadata edge cases", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto keystore_dir = dir / "keystore";
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", keystore_dir.string());
+
+  auto store = holder::privacy::make_default_secret_store(dir / "server");
+
+  const std::string service = "holder.ai/provider creds";
+  const std::string account = "acct:with spaces/and?chars";
+  store->set(service, account, "secret-1", "se_****_1", 10, 20);
+
+  const auto item = store->get(service, account);
+  REQUIRE(item.has_value());
+  REQUIRE(item->secret == "secret-1");
+  REQUIRE(item->metadata.preview == "se_****_1");
+
+  const auto sanitized_secret_path =
+      keystore_dir / "holder.ai_provider_creds__acct_with_spaces_and_chars.secret";
+  REQUIRE(std::filesystem::exists(sanitized_secret_path));
+
+  std::filesystem::remove(sanitized_secret_path);
+  REQUIRE_FALSE(store->get(service, account).has_value());
+
+  const auto metadata_path = keystore_dir / "secret_store_index.json";
+  {
+    std::ofstream out(metadata_path, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+  }
+  REQUIRE(store->list(service).empty());
+
+  {
+    std::ofstream out(metadata_path, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.is_open());
+    out << nlohmann::json{
+        {"bogus", "not-an-object"},
+        {"holder.ai/provider creds\nacct:with spaces/and?chars",
+         {{"service", service},
+          {"account", account},
+          {"preview", "se_****_1"},
+          {"created_at", 10},
+          {"updated_at", 20}}},
+    }
+               .dump(2);
+  }
+
+  const auto listed = store->list(service);
+  REQUIRE(listed.size() == 1);
+  REQUIRE(listed[0].service == service);
+  REQUIRE(listed[0].account == account);
+}
+
+TEST_CASE("SecretStore encrypted fallback backend persists through encrypted file store", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+
+  auto store = holder::privacy::make_encrypted_file_secret_store_for_tests(dir / "server");
+  store->set("holder.ai_provider_credentials",
+             "fallback-provider",
+             "fallback-secret-123",
+             "fb_****_123",
+             300,
+             360);
+
+  const auto item = store->get("holder.ai_provider_credentials", "fallback-provider");
+  REQUIRE(item.has_value());
+  REQUIRE(item->secret == "fallback-secret-123");
+  REQUIRE(item->metadata.preview == "fb_****_123");
+
+  const auto store_path = dir / "server" / "secret_store_fallback.enc";
+  const auto key_path = dir / "server" / "secret_store_master.key";
+  REQUIRE(std::filesystem::exists(store_path));
+  REQUIRE(std::filesystem::exists(key_path));
+
+  auto store_again = holder::privacy::make_encrypted_file_secret_store_for_tests(dir / "server");
+  const auto item_again = store_again->get("holder.ai_provider_credentials", "fallback-provider");
+  REQUIRE(item_again.has_value());
+  REQUIRE(item_again->secret == "fallback-secret-123");
+
+  const auto listed = store_again->list("holder.ai_provider_credentials");
+  REQUIRE(listed.size() == 1);
+  REQUIRE(listed[0].account == "fallback-provider");
+
+  store_again->remove("holder.ai_provider_credentials", "fallback-provider");
+  REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-provider").has_value());
+}
+
+#if HOLDER_HAVE_LIBSECRET
+namespace {
+
+class LibsecretLookupHookGuard {
+public:
+  explicit LibsecretLookupHookGuard(holder::privacy::LibsecretLookupHook hook) {
+    holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(hook);
+  }
+
+  ~LibsecretLookupHookGuard() { holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(nullptr); }
+};
+
+holder::privacy::LibsecretLookupResult lookup_error(const std::string&, const std::string&) {
+  return {.secret = std::nullopt, .error_message = std::string("lookup failed for test")};
+}
+
+holder::privacy::LibsecretLookupResult lookup_missing(const std::string&, const std::string&) {
+  return {.secret = std::nullopt, .error_message = std::nullopt};
+}
+
+holder::privacy::LibsecretLookupResult lookup_success(const std::string&, const std::string&) {
+  return {.secret = std::string("libsecret-test-secret"), .error_message = std::nullopt};
+}
+
+void seed_secret_store_index(const std::filesystem::path& server_dir,
+                             const std::string& service,
+                             const std::string& account) {
+  std::filesystem::create_directories(server_dir);
+  std::ofstream out(server_dir / "secret_store_index.json", std::ios::binary | std::ios::trunc);
+  REQUIRE(out.is_open());
+  out << nlohmann::json{
+      {service + "\n" + account,
+       {{"service", service},
+        {"account", account},
+        {"preview", "ls_****ing"},
+        {"created_at", 1},
+        {"updated_at", 1}}},
+  }
+             .dump(2);
+}
+
+} // namespace
+
+TEST_CASE("SecretStore get maps libsecret lookup failure to KeyMaterialMissing", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  const auto server_dir = dir / "server";
+  LibsecretLookupHookGuard hook_guard(&lookup_error);
+  seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "libsecret-direct-missing");
+  auto store = holder::privacy::make_default_secret_store(server_dir);
+
+  try {
+    (void)store->get("holder.ai_provider_credentials", "libsecret-direct-missing");
+    FAIL("Expected libsecret lookup failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+  }
+}
+
+TEST_CASE("SecretStore get returns nullopt when libsecret lookup misses existing metadata", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  const auto server_dir = dir / "server";
+  LibsecretLookupHookGuard hook_guard(&lookup_missing);
+  seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "libsecret-missing");
+
+  auto store = holder::privacy::make_default_secret_store(server_dir);
+  const auto item = store->get("holder.ai_provider_credentials", "libsecret-missing");
+  REQUIRE_FALSE(item.has_value());
+}
+
+TEST_CASE("SecretStore get returns secret when libsecret lookup succeeds", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  const auto server_dir = dir / "server";
+  LibsecretLookupHookGuard hook_guard(&lookup_success);
+  seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "libsecret-success");
+
+  auto store = holder::privacy::make_default_secret_store(server_dir);
+  const auto item = store->get("holder.ai_provider_credentials", "libsecret-success");
+  REQUIRE(item.has_value());
+  REQUIRE(item->secret == "libsecret-test-secret");
+  REQUIRE(item->metadata.account == "libsecret-success");
+}
+#endif

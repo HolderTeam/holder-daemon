@@ -202,33 +202,53 @@ const SecretSchema* holder_secret_schema() {
   return &schema;
 }
 
+LibsecretLookupResult default_libsecret_lookup(const std::string& service, const std::string& account) {
+  GError* error = nullptr;
+  gchar* secret = secret_password_lookup_sync(holder_secret_schema(),
+                                              nullptr,
+                                              &error,
+                                              "service",
+                                              service.c_str(),
+                                              "account",
+                                              account.c_str(),
+                                              nullptr);
+  if (!secret) {
+    std::optional<std::string> message;
+    if (error) {
+      message = "secret lookup failed in libsecret";
+      if (error->message) {
+        *message += ": ";
+        *message += error->message;
+      }
+      g_error_free(error);
+    }
+    return {.secret = std::nullopt, .error_message = std::move(message)};
+  }
+  std::string out(secret);
+  secret_password_free(secret);
+  return {.secret = std::move(out), .error_message = std::nullopt};
+}
+
+LibsecretLookupHook& libsecret_lookup_hook_storage() {
+  static LibsecretLookupHook hook = nullptr;
+  return hook;
+}
+
+LibsecretLookupResult run_libsecret_lookup(const std::string& service, const std::string& account) {
+  if (const auto hook = libsecret_lookup_hook_storage()) {
+    return hook(service, account);
+  }
+  return default_libsecret_lookup(service, account);
+}
+
 class LibsecretSecretBackend final : public RawSecretBackend {
 public:
   std::optional<std::string> get(const std::string& service, const std::string& account) const override {
-    GError* error = nullptr;
-    gchar* secret = secret_password_lookup_sync(holder_secret_schema(),
-                                                nullptr,
-                                                &error,
-                                                "service",
-                                                service.c_str(),
-                                                "account",
-                                                account.c_str(),
-                                                nullptr);
-    if (!secret) {
-      if (error) {
-        std::string message = "secret lookup failed in libsecret";
-        if (error->message) {
-          message += ": ";
-          message += error->message;
-        }
-        g_error_free(error);
-        throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, message);
-      }
-      return std::nullopt;
+    const auto result = run_libsecret_lookup(service, account);
+    if (result.error_message.has_value()) {
+      throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, *result.error_message);
     }
-    std::string out(secret);
-    secret_password_free(secret);
-    return out;
+    return result.secret;
   }
 
   void set(const std::string& service, const std::string& account, const std::string& secret) override {
@@ -376,6 +396,9 @@ private:
 
 class DefaultSecretStore final : public SecretStore {
 public:
+  DefaultSecretStore(const std::filesystem::path& server_dir, std::unique_ptr<RawSecretBackend> backend)
+      : index_(test_store_root(server_dir) / kMetadataFilename), backend_(std::move(backend)) {}
+
   explicit DefaultSecretStore(const std::filesystem::path& server_dir)
       : index_(test_store_root(server_dir) / kMetadataFilename) {
     if (const char* test_dir = std::getenv("HOLDER_TEST_KEYSTORE_DIR")) {
@@ -432,5 +455,18 @@ private:
 std::unique_ptr<SecretStore> make_default_secret_store(const std::filesystem::path& server_dir) {
   return std::make_unique<DefaultSecretStore>(server_dir);
 }
+
+std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(const std::filesystem::path& server_dir) {
+  return std::make_unique<DefaultSecretStore>(
+      server_dir,
+      std::make_unique<EncryptedFileSecretBackend>(server_dir / kFallbackSecretsFilename,
+                                                   server_dir / kFallbackMasterKeyFilename));
+}
+
+#if HOLDER_HAVE_LIBSECRET
+void secret_store_set_libsecret_lookup_hook_for_tests(LibsecretLookupHook hook) {
+  libsecret_lookup_hook_storage() = hook;
+}
+#endif
 
 } // namespace holder::privacy
