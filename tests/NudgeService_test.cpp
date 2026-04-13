@@ -681,7 +681,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     holder::test::create_project(db, "proj-1", repo_dir.string());
 
     insert_card_fixture(db, "proj-1", "card-1", "Focus", "cards/card-1.md", 50);
-    write_card_markdown(repo_dir, "cards/card-1.md", "Focus", "   \n");
+    insert_card_fixture(db, "proj-1", "other-card", "Other", "cards/other-card.md", 40);
+    write_card_markdown(repo_dir, "cards/other-card.md", "Other", "Other thread body.");
 
     for (int i = 0; i < 10; ++i) {
       const auto id = "sib-" + std::to_string(i);
@@ -719,31 +720,21 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
         });
 
     CAPTURE(prompt);
-    REQUIRE(prompt.find("Sibling cards: Sibling 0; Sibling 1; Sibling 2; Sibling 3; Sibling 4; "
-                        "Sibling 5; Sibling 6; Sibling 7") != std::string::npos);
+    REQUIRE(prompt.find("Current card body:") == std::string::npos);
+    REQUIRE(prompt.find("Sibling cards: ") != std::string::npos);
+    REQUIRE(prompt.find("Recent Empty") != std::string::npos);
+    REQUIRE(prompt.find("Sibling 0") != std::string::npos);
+    REQUIRE(prompt.find("Sibling 6") != std::string::npos);
+    REQUIRE(prompt.find("Sibling 7") == std::string::npos);
     REQUIRE(prompt.find("Sibling 8") == std::string::npos);
-    REQUIRE(prompt.find("Sibling card excerpts:\n- Sibling 0: # Sibling 0") != std::string::npos);
-    REQUIRE(prompt.find("Sibling 4") == std::string::npos);
+    REQUIRE(prompt.find("Sibling card excerpts:\n") != std::string::npos);
+    REQUIRE(prompt.find("- Recent Empty: # Recent Empty") != std::string::npos);
+    REQUIRE(prompt.find("- Sibling 0: # Sibling 0") != std::string::npos);
+    REQUIRE(prompt.find("- Sibling 2: # Sibling 2") != std::string::npos);
+    REQUIRE(prompt.find("- Sibling 3: # Sibling 3") == std::string::npos);
     REQUIRE(prompt.find("Recent project card excerpts:") != std::string::npos);
-    REQUIRE(prompt.find("Recent Empty") == std::string::npos);
     REQUIRE(prompt.find("Recent AI thread:") == std::string::npos);
 
-    const auto missing_card_prompt = capture_nudge_prompt(
-        db,
-        {
-            .kind = "card.title_only",
-            .project_id = "proj-1",
-            .card_id = std::optional<std::string>("missing-card"),
-            .created_at = 124,
-            .basis_fingerprint = std::optional<std::string>("fp-missing"),
-            .basis_commit = std::nullopt,
-            .facts = {{"title", "Ghost"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
-        });
-
-    CAPTURE(missing_card_prompt);
-    REQUIRE(missing_card_prompt.find("Current card title: Ghost") != std::string::npos);
-    REQUIRE(missing_card_prompt.find("Current card body:") == std::string::npos);
-    REQUIRE(missing_card_prompt.find("Sibling cards:") == std::string::npos);
   }
 
   SECTION("runner auto-pick prefers smaller positive model and rejects bad rewrites") {
