@@ -182,6 +182,16 @@ TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama 
       .updated_at = 105,
   });
   repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-prefix-only",
+      .name = "Prefix Only",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 107,
+      .updated_at = 107,
+  });
+  repo.upsert(holder::model::AiRunner{
       .runner_id = "manual-slash-only",
       .name = "Slash Ollama",
       .kind = "ollama",
@@ -208,6 +218,7 @@ TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama 
   REQUIRE(registry.get_client("manual-bad") == nullptr);
   REQUIRE(registry.get_client("manual-empty-host") == nullptr);
   REQUIRE(registry.get_client("manual-empty-port") == nullptr);
+  REQUIRE(registry.get_client("manual-prefix-only") == nullptr);
   REQUIRE(registry.get_client("manual-slash-only") == nullptr);
 
   auto* path_client = registry.get_client("manual-path");

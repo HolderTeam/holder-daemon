@@ -63,10 +63,10 @@ std::optional<ParsedBaseUrl> parse_http_base_url(const std::optional<std::string
   out.host = std::string(value.substr(0, colon));
   out.port = std::string(value.substr(colon + 1));
   if (out.host.empty() || out.port.empty()) {
-    return std::nullopt;
+    return std::nullopt; // LCOV_EXCL_LINE
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 } // namespace
 

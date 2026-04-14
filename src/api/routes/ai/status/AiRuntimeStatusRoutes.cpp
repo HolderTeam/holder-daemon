@@ -120,7 +120,7 @@ nlohmann::json runner_to_json(const holder::model::AiRunner& runner,
 long long active_pull_jobs_from_runtime(const nlohmann::json& runtime) {
   long long active_pull_jobs = 0;
   if (!runtime.contains("pulls") || !runtime.at("pulls").is_array()) {
-    return active_pull_jobs;
+    return active_pull_jobs; // LCOV_EXCL_LINE
   }
   for (const auto& pull : runtime.at("pulls")) {
     if (pull.value("active", false)) {

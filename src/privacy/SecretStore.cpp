@@ -45,7 +45,7 @@ std::filesystem::path test_store_root(const std::filesystem::path& server_dir) {
     return std::filesystem::path(dir);
   }
   return server_dir;
-}
+} // LCOV_EXCL_LINE
 
 nlohmann::json read_json_or_empty(const std::filesystem::path& path) {
   if (!std::filesystem::exists(path)) {

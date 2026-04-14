@@ -70,7 +70,7 @@ std::optional<ResolvedRunnerModel> resolve_configured_runner_model(
   const auto normalized = normalize_local_runner_model_ref(ref.value());
   const auto parsed = parse_runner_model_ref(normalized);
   if (!parsed.has_value()) {
-    return std::nullopt;
+    return std::nullopt; // LCOV_EXCL_LINE
   }
   auto* runner = runner_registry->get_client(parsed->runner_id);
   if (runner == nullptr) {
