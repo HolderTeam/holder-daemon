@@ -23,8 +23,7 @@ TEST_CASE("RunnerModelRef helpers normalize and resolve refs", "[llm]") {
   }
 
   SECTION("resolve_configured_runner_model returns nullopt for invalid normalized refs and missing clients") {
-    holder::platform::Db unopened_db;
-    holder::llm::RunnerRegistry empty_registry(&unopened_db, nullptr);
+    holder::llm::RunnerRegistry empty_registry(nullptr, nullptr);
 
     REQUIRE_FALSE(
         holder::llm::resolve_configured_runner_model(std::optional<std::string>("manual-a::"), &empty_registry)
@@ -35,10 +34,9 @@ TEST_CASE("RunnerModelRef helpers normalize and resolve refs", "[llm]") {
   }
 
   SECTION("resolve_configured_runner_model resolves auto-local plain refs") {
-    holder::platform::Db unopened_db;
     holder::llm::LocalModelRunner auto_local_runner;
     holder::llm::LocalRunnerClient auto_local_client(&auto_local_runner);
-    holder::llm::RunnerRegistry registry(&unopened_db, &auto_local_client);
+    holder::llm::RunnerRegistry registry(nullptr, &auto_local_client);
 
     const auto resolved =
         holder::llm::resolve_configured_runner_model(std::optional<std::string>("m1"), &registry);
