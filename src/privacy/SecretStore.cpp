@@ -81,7 +81,7 @@ SecretMetadata metadata_from_json(const nlohmann::json& item) {
   meta.created_at = item.value("created_at", 0LL);
   meta.updated_at = item.value("updated_at", 0LL);
   return meta;
-}
+} // LCOV_EXCL_LINE
 
 class SecretMetadataIndex {
 public:

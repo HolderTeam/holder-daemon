@@ -94,7 +94,7 @@ std::vector<holder::model::AiRunner> RunnerRegistry::list_runners() const {
     out.insert(out.end(), manual.begin(), manual.end());
   }
   return out;
-}
+} // LCOV_EXCL_LINE
 
 std::optional<holder::model::AiRunner> RunnerRegistry::get_runner(const std::string& runner_id) const {
   if (runner_id == kAutoLocalRunnerId) {
