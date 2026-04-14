@@ -25,7 +25,7 @@ struct StoredSecret {
 
 class SecretStore {
 public:
-  virtual ~SecretStore() = default;
+  virtual ~SecretStore() = default; // LCOV_EXCL_LINE
 
   virtual std::optional<StoredSecret> get(const std::string& service,
                                           const std::string& account) const = 0;

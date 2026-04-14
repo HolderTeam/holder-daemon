@@ -94,6 +94,15 @@ TEST_CASE("RunnerRegistry merges auto-local and persisted manual runners", "[db]
   REQUIRE(manual.has_value());
   REQUIRE(manual->name == "Office Ollama");
   REQUIRE(manual->source == "manual");
+
+  const auto auto_local = registry.get_runner("auto-local");
+  REQUIRE(auto_local.has_value());
+  REQUIRE(auto_local->source == "auto_local");
+}
+
+TEST_CASE("RunnerRegistry get_runner returns nullopt without backing db", "[db]") {
+  holder::llm::RunnerRegistry registry(nullptr, nullptr);
+  REQUIRE_FALSE(registry.get_runner("manual-a").has_value());
 }
 
 TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama runners", "[db]") {
@@ -142,6 +151,46 @@ TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama 
       .created_at = 102,
       .updated_at = 102,
   });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-empty-host",
+      .name = "Empty Host",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 103,
+      .updated_at = 103,
+  });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-empty-port",
+      .name = "Empty Port",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://host:"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 104,
+      .updated_at = 104,
+  });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-path",
+      .name = "Path Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://path-host:11434/api"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 105,
+      .updated_at = 105,
+  });
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-slash-only",
+      .name = "Slash Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http:///"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 106,
+      .updated_at = 106,
+  });
 
   holder::llm::LocalModelRunner auto_local_runner;
   holder::llm::LocalRunnerClient auto_local_client(&auto_local_runner);
@@ -157,4 +206,15 @@ TEST_CASE("RunnerRegistry instantiates manual runner clients for enabled ollama 
 
   REQUIRE(registry.get_client("manual-disabled") == nullptr);
   REQUIRE(registry.get_client("manual-bad") == nullptr);
+  REQUIRE(registry.get_client("manual-empty-host") == nullptr);
+  REQUIRE(registry.get_client("manual-empty-port") == nullptr);
+  REQUIRE(registry.get_client("manual-slash-only") == nullptr);
+
+  auto* path_client = registry.get_client("manual-path");
+  REQUIRE(path_client != nullptr);
+  const auto path_status = path_client->retry();
+  REQUIRE(path_status.available == true);
+  REQUIRE(path_status.version == "fake");
+  REQUIRE(path_status.models.size() == 1);
+  REQUIRE(path_status.models[0].name == "fake-echo");
 }

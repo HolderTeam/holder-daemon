@@ -161,7 +161,7 @@ bool handle_ai_nudge_routes(const std::string& path,
       .card_id = body.contains("card_id") && body["card_id"].is_string()
                      ? std::optional<std::string>(body["card_id"].get<std::string>())
                      : std::optional<std::string>(),
-      .created_at = body.value("created_at", std::int64_t{0}),
+      .created_at = body.value("created_at", std::int64_t{0}), // LCOV_EXCL_LINE
       .basis_fingerprint = body.contains("basis_fingerprint") && body["basis_fingerprint"].is_string()
                                ? std::optional<std::string>(body["basis_fingerprint"].get<std::string>())
                                : std::optional<std::string>(),

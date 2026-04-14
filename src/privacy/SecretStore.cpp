@@ -38,7 +38,7 @@ std::string sanitize_component(std::string value) {
     }
   }
   return value;
-}
+} // LCOV_EXCL_LINE
 
 std::filesystem::path test_store_root(const std::filesystem::path& server_dir) {
   if (const char* dir = std::getenv("HOLDER_TEST_KEYSTORE_DIR")) {

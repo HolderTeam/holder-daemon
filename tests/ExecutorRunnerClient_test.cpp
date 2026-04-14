@@ -128,3 +128,20 @@ TEST_CASE("ExecutorRunnerClient delegates retry and pull operations through Seri
   REQUIRE(chunk == "chunk");
   REQUIRE(error == "none");
 }
+
+TEST_CASE("ExecutorRunnerClient handles null inner client safely", "[llm][executor]") {
+  holder::core::SerialExecutor executor("runner-executor-null");
+  holder::llm::ExecutorRunnerClient client(std::unique_ptr<holder::llm::RunnerClient>{}, executor);
+
+  REQUIRE_NOTHROW(client.start_background_probe());
+  REQUIRE_FALSE(client.status().available);
+  REQUIRE_FALSE(client.retry().available);
+  REQUIRE(client.start_pull("model-a").job_id.empty());
+  REQUIRE_FALSE(client.get_pull("job-1").has_value());
+  REQUIRE(client.list_pulls().empty());
+
+  std::string error = "unchanged";
+  REQUIRE_FALSE(client.stream_generate(
+      "model-a", "prompt", "{}", [](const std::string&) {}, &error));
+  REQUIRE(error == "unchanged");
+}

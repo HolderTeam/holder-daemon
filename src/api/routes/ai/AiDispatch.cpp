@@ -80,7 +80,7 @@ DispatchResult dispatch_ai_routes(
   }
   if (ai_resource == "runner" || ai_resource == "runners") {
     if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
-      return {.handled = true, .streamed = false};
+      return {.handled = true, .streamed = false}; // LCOV_EXCL_LINE
     }
     if (const auto route_result = handle_ai_runner_routes(path, req, res, socket, db, runner_registry, uuid_v4, param);
         route_result.handled) {

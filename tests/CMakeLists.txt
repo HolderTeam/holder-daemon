@@ -23,6 +23,7 @@ add_executable(lockfile_tests
   ConcurrencyProfilePolicy_test.cpp
   ExecutorGitOps_test.cpp
   ExecutorRunnerClient_test.cpp
+  RunnerModelRef_test.cpp
   HttpHealth_test.cpp
   HttpListener_test.cpp
   ListenerAcceptError_test.cpp

@@ -66,6 +66,19 @@ TEST_CASE("HTTP ai local model config get/put", "[http]") {
   REQUIRE(clear_all["data"]["strong_model"].is_null());
   REQUIRE(clear_all["data"]["deep_model"].is_null());
 
+  const auto empty_string_clears = http_json_request(bound.bind,
+                                                     bound.port,
+                                                     token,
+                                                     boost::beast::http::verb::put,
+                                                     "/ai/local-models/config",
+                                                     nlohmann::json{{"fast_model", ""},
+                                                                    {"strong_model", "qwen-strong"}},
+                                                     boost::beast::http::status::ok);
+  REQUIRE(empty_string_clears["ok"] == true);
+  REQUIRE(empty_string_clears["data"]["fast_model"].is_null());
+  REQUIRE(empty_string_clears["data"]["strong_model"] == "auto-local::qwen-strong");
+  REQUIRE(empty_string_clears["data"]["deep_model"].is_null());
+
   std::raise(SIGTERM);
   server_thread.join();
 }

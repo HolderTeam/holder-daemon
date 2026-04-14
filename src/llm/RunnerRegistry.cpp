@@ -21,7 +21,7 @@ holder::model::AiRunner auto_local_runner_record() {
       .created_at = 0,
       .updated_at = 0,
   };
-}
+} // LCOV_EXCL_LINE
 
 struct ParsedBaseUrl {
   std::string host;

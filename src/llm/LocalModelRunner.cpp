@@ -557,19 +557,6 @@ void LocalModelRunner::stop() {
 }
 
 void LocalModelRunner::run_pull(const std::string& job_id, const std::string& model) {
-  if (fake_mode_) {
-    std::lock_guard<std::mutex> lock(pulls_mu_);
-    auto it = pulls_.find(job_id);
-    if (it != pulls_.end()) {
-      it->second.status = "completed";
-      it->second.progress.stage = "success";
-      it->second.progress.total = 1;
-      it->second.progress.completed = 1;
-      it->second.progress.percent = 100.0;
-      it->second.updated_at = now_epoch_seconds();
-    }
-    return;
-  }
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
   bool completed = false;

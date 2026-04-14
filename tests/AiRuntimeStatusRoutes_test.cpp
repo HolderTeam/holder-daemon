@@ -21,6 +21,28 @@ namespace {
 
 namespace http = boost::beast::http;
 
+class FakeRunnerClient final : public holder::llm::RunnerClient {
+public:
+  void start_background_probe() override {}
+  holder::llm::RunnerStatus status() const override { return status_result; }
+  holder::llm::RunnerStatus retry() override { return status_result; }
+  holder::llm::RunnerPullJob start_pull(const std::string&) override { return {}; }
+  std::optional<holder::llm::RunnerPullJob> get_pull(const std::string&) const override {
+    return std::nullopt;
+  }
+  std::vector<holder::llm::RunnerPullJob> list_pulls() const override { return pulls_result; }
+  bool stream_generate(const std::string&,
+                       const std::string&,
+                       const std::string&,
+                       const std::function<void(const std::string&)>&,
+                       std::string*) override {
+    return true;
+  }
+
+  holder::llm::RunnerStatus status_result{};
+  std::vector<holder::llm::RunnerPullJob> pulls_result;
+};
+
 http::request<http::string_body> make_request(http::verb method, const std::string& target) {
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
@@ -98,6 +120,56 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
     }
   }
 
+}
+
+TEST_CASE("AiRuntimeStatusRoutes counts only active pull jobs", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+
+  FakeRunnerClient runner_client;
+  runner_client.status_result.available = true;
+  runner_client.status_result.spawn_attempted = true;
+  runner_client.status_result.last_checked = 123;
+  runner_client.status_result.version = "runner-v";
+  runner_client.pulls_result = {
+      holder::llm::RunnerPullJob{
+          .job_id = "job-queued",
+          .model = "model-a",
+          .status = "queued",
+          .progress = {.completed = 0, .total = 10, .percent = 0.0, .stage = "queued"},
+          .updated_at = 1,
+          .error = "",
+      },
+      holder::llm::RunnerPullJob{
+          .job_id = "job-done",
+          .model = "model-b",
+          .status = "done",
+          .progress = {.completed = 10, .total = 10, .percent = 100.0, .stage = "done"},
+          .updated_at = 2,
+          .error = "",
+      },
+  };
+
+  holder::llm::RunnerRegistry runner_registry(&db, &runner_client);
+
+  auto req = make_request(http::verb::get, "/ai/status");
+  http::response<http::string_body> res;
+
+  REQUIRE(holder::api::routes::ai::status::handle_ai_runtime_status_routes(
+      "/ai/status",
+      req,
+      res,
+      db,
+      &runner_registry,
+      [](const std::string&) -> std::string { return {}; }));
+  REQUIRE(res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["runners"].is_array());
+  REQUIRE(payload["data"]["runners"].size() == 1);
+  REQUIRE(payload["data"]["runners"][0]["runtime"]["pulls"].size() == 2);
+  REQUIRE(payload["data"]["active_pull_jobs"] == 1);
 }
 
 TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be prepared", "[http]") {
