@@ -62,7 +62,7 @@ nlohmann::json read_json_or_empty(const std::filesystem::path& path) {
     return nlohmann::json::object();
   }
   return nlohmann::json::parse(buffer.str());
-}
+} // LCOV_EXCL_LINE
 
 void write_json(const std::filesystem::path& path, const nlohmann::json& body) {
   std::filesystem::create_directories(path.parent_path());

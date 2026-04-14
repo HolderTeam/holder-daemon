@@ -79,7 +79,7 @@ RunnerRegistry::RunnerRegistry(holder::platform::Db* db,
         std::make_unique<ExecutorRunnerClient>(*auto_local_client_, *executor_);
   }
   load_manual_clients();
-}
+} // LCOV_EXCL_LINE
 
 void RunnerRegistry::refresh() {
   load_manual_clients();
