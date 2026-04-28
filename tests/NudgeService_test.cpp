@@ -327,6 +327,111 @@ TEST_CASE("NudgeService parses fenced JSON title suggestions from runner", "[ai]
   REQUIRE(suggestions[2] == "Async Worker Roles");
 }
 
+TEST_CASE("NudgeService uses bare JSON title suggestions from runner", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_card_markdown(repo_dir,
+                      "cards/card-1.md",
+                      "Untitled",
+                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+
+  holder::llm::LocalModelRunner runner;
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models.push_back({.name = "fake-title", .digest = "", .size = 1, .modified_at = ""});
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::string&,
+         const std::function<void(const std::string&)>& on_chunk,
+         std::string*) {
+        on_chunk("[\"\\\"Thread Roles in Holder\\\"\", \"Request Pipeline Stages\", "
+                 "\"Socket Mechanics vs App Work\"]");
+        return true;
+      });
+
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::ai::NudgeService service(db, &runner_registry);
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-bare-json"));
+
+  REQUIRE(decision.nudge.has_value());
+  const auto suggestions = decision.nudge->meta_json["suggestions"];
+  REQUIRE(suggestions.size() == 3);
+  REQUIRE(suggestions[0] == "Thread Roles in Holder");
+  REQUIRE(suggestions[1] == "Request Pipeline Stages");
+  REQUIRE(suggestions[2] == "Socket Mechanics vs App Work");
+}
+
+TEST_CASE("NudgeService cleans plain-line title suggestions from runner", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_card_markdown(repo_dir,
+                      "cards/card-1.md",
+                      "Untitled",
+                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+
+  holder::llm::LocalModelRunner runner;
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models.push_back({.name = "fake-title", .digest = "", .size = 1, .modified_at = ""});
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::string&,
+         const std::function<void(const std::string&)>& on_chunk,
+         std::string*) {
+        on_chunk("* \"Thread Roles in Holder\"\n"
+                 "2) Request Pipeline Management.\n"
+                 "This title is deliberately longer than sixty characters so it truncates cleanly\n");
+        return true;
+      });
+
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::ai::NudgeService service(db, &runner_registry);
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-lines"));
+
+  REQUIRE(decision.nudge.has_value());
+  const auto suggestions = decision.nudge->meta_json["suggestions"];
+  REQUIRE(suggestions.size() == 3);
+  REQUIRE(suggestions[0] == "Thread Roles in Holder");
+  REQUIRE(suggestions[1] == "Request Pipeline Management");
+  REQUIRE(suggestions[2].get<std::string>().size() == 60);
+  REQUIRE(suggestions[2].get<std::string>().rfind("This title is deliberately longer", 0) == 0);
+}
+
+TEST_CASE("NudgeService falls back to generic titles for blank loaded body", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_text(repo_dir / "cards" / "card-1.md",
+             "---\ntitle: Untitled\n---\n     \n       \n");
+
+  holder::ai::NudgeService service(db);
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-blank-body"));
+
+  REQUIRE(decision.nudge.has_value());
+  const auto suggestions = decision.nudge->meta_json["suggestions"];
+  REQUIRE(suggestions.size() == 3);
+  REQUIRE(suggestions[0] == "Card Summary");
+  REQUIRE(suggestions[1] == "Key Ideas");
+  REQUIRE(suggestions[2] == "Title Option 3");
+}
+
 TEST_CASE("NudgeService prunes stale nudges on list", "[ai][nudges]") {
   const auto dir = holder::test::make_temp_dir();
 

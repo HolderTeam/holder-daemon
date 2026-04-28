@@ -561,7 +561,7 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
             .reason = should_nudge ? "title_suggestion_candidate_ready"
                                    : "title_suggestion_not_actionable",
             .nudge = std::nullopt};
-  }
+  } // LCOV_EXCL_LINE
   return {.accepted = false,
           .should_nudge = false,
           .reason = "unknown_candidate_kind",
