@@ -125,6 +125,18 @@ holder::ai::NudgeCandidateInput title_only_candidate(const std::string& fingerpr
   };
 }
 
+holder::ai::NudgeCandidateInput title_suggestion_candidate(const std::string& fingerprint) {
+  return {
+      .kind = "card.title_suggestion",
+      .project_id = "proj-1",
+      .card_id = std::optional<std::string>("card-1"),
+      .created_at = 123,
+      .basis_fingerprint = std::optional<std::string>(fingerprint),
+      .basis_commit = std::nullopt,
+      .facts = {{"title", "Untitled"}, {"body_empty", false}, {"doc_chars", 180}, {"body_chars", 160}},
+  };
+}
+
 std::string short_content_fingerprint(const std::string& content) {
   unsigned char digest[SHA256_DIGEST_LENGTH];
   SHA256(reinterpret_cast<const unsigned char*>(content.data()),
@@ -247,6 +259,72 @@ TEST_CASE("NudgeService persists dedupe and dismiss across service instances", "
 
   holder::ai::NudgeService service4(db);
   REQUIRE(service4.list("proj-1", std::optional<std::string>("card-1")).empty());
+}
+
+TEST_CASE("NudgeService creates title suggestion nudges with three options", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_card_markdown(repo_dir, "cards/card-1.md", "Untitled", "Frogs use wetlands as practical nurseries. Their eggs and tadpoles depend on shallow water, shelter, and seasonal changes.");
+
+  holder::ai::NudgeService service(db);
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-1"));
+  REQUIRE(decision.accepted);
+  REQUIRE(decision.should_nudge);
+  REQUIRE(decision.reason == "title_suggestion_candidate_ready");
+  REQUIRE(decision.nudge.has_value());
+  REQUIRE(decision.nudge->kind == "card.title_suggestion");
+  REQUIRE(decision.nudge->title == "Suggest a title");
+  REQUIRE(decision.nudge->meta_json.is_object());
+  REQUIRE(decision.nudge->meta_json["suggestions"].is_array());
+  REQUIRE(decision.nudge->meta_json["suggestions"].size() == 3);
+
+  const auto duplicate = service.evaluate_and_record(title_suggestion_candidate("fp-title-1"));
+  REQUIRE(duplicate.nudge.has_value());
+  REQUIRE(duplicate.nudge->nudge_id == decision.nudge->nudge_id);
+}
+
+TEST_CASE("NudgeService parses fenced JSON title suggestions from runner", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_card_markdown(repo_dir,
+                      "cards/card-1.md",
+                      "Untitled",
+                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+
+  holder::llm::LocalModelRunner runner;
+  holder::llm::RunnerStatus status;
+  status.available = true;
+  status.models.push_back({.name = "fake-title", .digest = "", .size = 1, .modified_at = ""});
+  runner.set_status_override_for_tests(status);
+  runner.set_stream_generate_override_for_tests(
+      [](const std::string&,
+         const std::string&,
+         const std::string&,
+         const std::function<void(const std::string&)>& on_chunk,
+         std::string*) {
+        on_chunk("```json\n[\n  \"Understanding Threads in Holder\",\n  \"Request Pipeline Stages\",\n  \"Async Worker Roles\"\n]\n```");
+        return true;
+      });
+
+  holder::llm::LocalRunnerClient local_runner_client(&runner);
+  holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  holder::ai::NudgeService service(db, &runner_registry);
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-json"));
+
+  REQUIRE(decision.nudge.has_value());
+  const auto suggestions = decision.nudge->meta_json["suggestions"];
+  REQUIRE(suggestions.size() == 3);
+  REQUIRE(suggestions[0] == "Understanding Threads in Holder");
+  REQUIRE(suggestions[1] == "Request Pipeline Stages");
+  REQUIRE(suggestions[2] == "Async Worker Roles");
 }
 
 TEST_CASE("NudgeService prunes stale nudges on list", "[ai][nudges]") {

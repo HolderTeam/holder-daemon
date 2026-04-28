@@ -282,6 +282,7 @@ CREATE TABLE IF NOT EXISTS ai_nudges (
   card_id            TEXT NULL,
   title              TEXT NOT NULL,
   body               TEXT NOT NULL,
+  meta_json          TEXT NOT NULL DEFAULT '{}',
   basis_fingerprint  TEXT NULL,
   basis_commit       TEXT NULL,
   created_at         INTEGER NOT NULL,

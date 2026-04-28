@@ -34,6 +34,7 @@ struct Nudge {
   std::optional<std::string> card_id;
   std::string title;
   std::string body;
+  nlohmann::json meta_json = nlohmann::json::object();
   std::optional<std::string> basis_fingerprint;
   std::optional<std::string> basis_commit;
   std::int64_t created_at = 0;
@@ -71,6 +72,7 @@ private:
   static NudgeDecision evaluate_candidate(const NudgeCandidateInput& input);
   static std::string build_nudge_title(const NudgeCandidateInput& input);
   static std::string build_nudge_body(const NudgeCandidateInput& input);
+  nlohmann::json build_nudge_meta_json(const NudgeCandidateInput& input) const;
   std::string build_nudge_body_with_runner(const NudgeCandidateInput& input) const;
   std::optional<holder::llm::ResolvedRunnerModel> pick_local_model_for_nudges() const;
   static std::string build_nudge_prompt(const NudgeCandidateInput& input,

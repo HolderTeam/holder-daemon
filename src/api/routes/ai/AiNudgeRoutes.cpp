@@ -15,7 +15,7 @@ namespace {
 namespace http = boost::beast::http;
 
 nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
-  return {
+  auto item = nlohmann::json{
       {"nudge_id", nudge.nudge_id},
       {"kind", nudge.kind},
       {"project_id", nudge.project_id},
@@ -23,6 +23,7 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
                                              : nlohmann::json(nullptr)},
       {"title", nudge.title},
       {"body", nudge.body},
+      {"meta_json", nudge.meta_json},
       {"basis_fingerprint",
        nudge.basis_fingerprint.has_value() ? nlohmann::json(nudge.basis_fingerprint.value())
                                            : nlohmann::json(nullptr)},
@@ -30,6 +31,10 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
                                                       : nlohmann::json(nullptr)},
       {"created_at", nudge.created_at},
   };
+  if (nudge.meta_json.is_object() && nudge.meta_json.contains("suggestions")) {
+    item["suggestions"] = nudge.meta_json["suggestions"];
+  }
+  return item;
 }
 
 bool handle_nudge_list_route(const std::string& path,
