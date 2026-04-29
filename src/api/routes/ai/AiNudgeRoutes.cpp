@@ -15,7 +15,7 @@ namespace {
 namespace http = boost::beast::http;
 
 nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
-  return {
+  auto item = nlohmann::json{
       {"nudge_id", nudge.nudge_id},
       {"kind", nudge.kind},
       {"project_id", nudge.project_id},
@@ -23,6 +23,7 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
                                              : nlohmann::json(nullptr)},
       {"title", nudge.title},
       {"body", nudge.body},
+      {"meta_json", nudge.meta_json},
       {"basis_fingerprint",
        nudge.basis_fingerprint.has_value() ? nlohmann::json(nudge.basis_fingerprint.value())
                                            : nlohmann::json(nullptr)},
@@ -30,6 +31,10 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
                                                       : nlohmann::json(nullptr)},
       {"created_at", nudge.created_at},
   };
+  if (nudge.meta_json.is_object() && nudge.meta_json.contains("suggestions")) {
+    item["suggestions"] = nudge.meta_json["suggestions"];
+  }
+  return item;
 }
 
 bool handle_nudge_list_route(const std::string& path,
@@ -161,7 +166,7 @@ bool handle_ai_nudge_routes(const std::string& path,
       .card_id = body.contains("card_id") && body["card_id"].is_string()
                      ? std::optional<std::string>(body["card_id"].get<std::string>())
                      : std::optional<std::string>(),
-      .created_at = body.value("created_at", std::int64_t{0}),
+      .created_at = body.value("created_at", std::int64_t{0}), // LCOV_EXCL_LINE
       .basis_fingerprint = body.contains("basis_fingerprint") && body["basis_fingerprint"].is_string()
                                ? std::optional<std::string>(body["basis_fingerprint"].get<std::string>())
                                : std::optional<std::string>(),

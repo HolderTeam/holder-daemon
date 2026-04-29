@@ -8,10 +8,11 @@ using holder::test::open_db_with_schema;
 TEST_CASE("HTTP ai messages capture creates thread and two messages", "[http]") {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
+  const auto project_root = dir / "project";
 
   auto db = open_db_with_schema(db_path);
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+          "VALUES('proj-1', 'Project', '" + project_root.string() + "', 1, 1);");
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);

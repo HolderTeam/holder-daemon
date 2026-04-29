@@ -18,6 +18,11 @@
 #include <functional>
 #include <string>
 #include <thread>
+#include <vector>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -36,11 +41,31 @@ std::filesystem::path find_schema_sql() {
 
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
-  const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
-  auto dir = base / ("holder_card_test_" + suffix);
-  std::filesystem::create_directories(dir);
-  return dir;
+  auto pattern = (base / "holder_card_test_XXXXXX").string();
+  std::vector<char> writable(pattern.begin(), pattern.end());
+  writable.push_back('\0');
+
+#ifndef _WIN32
+  char* created = ::mkdtemp(writable.data());
+  if (created == nullptr) {
+    throw std::runtime_error("mkdtemp failed creating holder_card_test temp dir");
+  }
+  return std::filesystem::path(created);
+#else
+  for (int attempt = 0; attempt < 64; ++attempt) {
+    const auto suffix = std::to_string(
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    auto dir = base / ("holder_card_test_" + suffix);
+    std::error_code ec;
+    if (std::filesystem::create_directory(dir, ec)) {
+      return dir;
+    }
+    if (ec && ec != std::errc::file_exists) {
+      throw std::filesystem::filesystem_error("create_directory", dir, ec);
+    }
+  }
+  throw std::runtime_error("failed to create unique holder_card_test temp dir");
+#endif
 }
 
 void apply_schema(holder::platform::Db& db) {
@@ -434,7 +459,7 @@ TEST_CASE("CardRepo read/count queries throw when sqlite step hits locked databa
   parent.updated_at = 1;
   repo.create(parent);
 
-  for (int i = 0; i < 5000; ++i) {
+  for (int i = 0; i < 128; ++i) {
     holder::model::Card root;
     root.card_id = "root-lock-" + std::to_string(i);
     root.project_id = "proj-1";
@@ -457,26 +482,15 @@ TEST_CASE("CardRepo read/count queries throw when sqlite step hits locked databa
     repo.create(child);
   }
 
-  const auto expect_interrupted = [&](const std::function<void()>& fn) {
-    std::atomic<bool> done{false};
-    std::atomic<bool> threw{false};
-    std::thread t([&]() {
-      try {
-        fn();
-      } catch (const std::exception&) {
-        threw = true;
-      }
-      done = true;
-    });
-    for (int i = 0; i < 200 && !done.load(); ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      sqlite3_interrupt(db.handle());
-    }
-    t.join();
-    REQUIRE(threw.load());
-  };
+  int interrupt_on = 1;
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);
 
-  expect_interrupted([&]() { (void) repo.list_roots("proj-1"); });
-  expect_interrupted([&]() { (void) repo.list_children("proj-1", "parent-lock"); });
-  expect_interrupted([&]() { (void) repo.list_all("proj-1"); });
+  REQUIRE_THROWS(repo.list_roots("proj-1"));
+  REQUIRE_THROWS(repo.list_children("proj-1", "parent-lock"));
+  REQUIRE_THROWS(repo.list_all("proj-1"));
+  REQUIRE_THROWS(repo.count_all_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_roots_not_deleted("proj-1"));
+  REQUIRE_THROWS(repo.count_children_not_deleted("proj-1", "parent-lock"));
+
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

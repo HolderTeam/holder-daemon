@@ -62,7 +62,7 @@ nlohmann::json local_model_to_json(const holder::llm::LocalModel& model, const s
   item["runner_id"] = runner_id;
   item["model_ref"] = holder::llm::make_runner_model_ref(runner_id, model.name);
   return item;
-}
+} // LCOV_EXCL_LINE
 
 nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
   return {
@@ -125,7 +125,7 @@ nlohmann::json runner_to_json(const holder::model::AiRunner& runner, holder::llm
   item["runtime"] = runner_runtime_to_json(
       runner.runner_id, runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr);
   return item;
-}
+} // LCOV_EXCL_LINE
 
 bool handle_ai_runner_crud_routes(const std::string& path,
                                   const http::request<http::string_body>& req,

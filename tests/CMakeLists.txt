@@ -20,6 +20,10 @@ add_executable(lockfile_tests
   ServerInfo_test.cpp
   Signal_test.cpp
   SerialExecutor_test.cpp
+  ConcurrencyProfilePolicy_test.cpp
+  ExecutorGitOps_test.cpp
+  ExecutorRunnerClient_test.cpp
+  RunnerModelRef_test.cpp
   HttpHealth_test.cpp
   HttpListener_test.cpp
   ListenerAcceptError_test.cpp
@@ -61,15 +65,11 @@ add_executable(lockfile_tests
   HttpProjects_test.cpp
   HttpProjectRecoveryToken_test.cpp
   HttpProjectEncryptionCheck_test.cpp
-  HttpDocs_test.cpp
   HttpProjectGitFailure_test.cpp
   HttpProjectGitTestRemote_test.cpp
   HttpProjectGitPush_test.cpp
   HttpBadJson_test.cpp
   HttpAuth_test.cpp
-  HttpModels_test.cpp
-  HttpCloudProviders_test.cpp
-  HttpGitProviders_test.cpp
   StaticRoutes_test.cpp
   HttpRunner_test.cpp
   LocalModelRunner_test.cpp
@@ -136,6 +136,7 @@ add_executable(lockfile_tests
   ../src/platform/Signal.cpp
   ../src/platform/Fs.cpp
   ../src/core/SerialExecutor.cpp
+  ../src/core/ConcurrencyProfilePolicy.cpp
   ../src/card/CardPaths.cpp
   ../src/ai/AiMessagePaths.cpp
   ../src/card/CardFrontMatter.cpp

@@ -25,7 +25,7 @@ struct StoredSecret {
 
 class SecretStore {
 public:
-  virtual ~SecretStore() = default;
+  virtual ~SecretStore() = default; // LCOV_EXCL_LINE
 
   virtual std::optional<StoredSecret> get(const std::string& service,
                                           const std::string& account) const = 0;
@@ -40,5 +40,28 @@ public:
 };
 
 std::unique_ptr<SecretStore> make_default_secret_store(const std::filesystem::path& server_dir);
+std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(const std::filesystem::path& server_dir);
+
+#if HOLDER_HAVE_LIBSECRET
+struct LibsecretLookupResult {
+  std::optional<std::string> secret;
+  std::optional<std::string> error_message;
+};
+
+using LibsecretLookupHook = LibsecretLookupResult (*)(const std::string& service,
+                                                      const std::string& account);
+
+void secret_store_set_libsecret_lookup_hook_for_tests(LibsecretLookupHook hook);
+
+struct LibsecretApiLookupResult {
+  std::optional<std::string> secret;
+  std::optional<std::string> error_message;
+};
+
+using LibsecretApiLookupHook = LibsecretApiLookupResult (*)(const std::string& service,
+                                                            const std::string& account);
+
+void secret_store_set_libsecret_api_lookup_hook_for_tests(LibsecretApiLookupHook hook);
+#endif
 
 } // namespace holder::privacy

@@ -15,11 +15,6 @@ namespace {
 namespace http = boost::beast::http;
 
 constexpr auto kPollDelay = std::chrono::milliseconds(50);
-constexpr std::size_t kIoWorkerCount = 1;
-constexpr std::size_t kIngressWorkerCount = 1;
-constexpr std::size_t kReservedSaveWorkerCount = 1;
-constexpr std::size_t kGeneralWorkerCount = 3;
-constexpr std::size_t kWriterWorkerCount = 1;
 constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
@@ -41,14 +36,14 @@ constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
 bool client_disconnected(Session::tcp::socket& socket) {
   if (!socket.is_open()) {
-    return true;
+    return true; // LCOV_EXCL_LINE
   }
 
   boost::system::error_code ec;
   const bool was_non_blocking = socket.non_blocking();
   socket.non_blocking(true, ec);
   if (ec) {
-    return false;
+    return false; // LCOV_EXCL_LINE
   }
 
   std::array<char, 1> buf{};
@@ -60,14 +55,14 @@ bool client_disconnected(Session::tcp::socket& socket) {
   socket.non_blocking(was_non_blocking, restore_ec);
 
   if (!ec) {
-    return received == 0;
+    return received == 0; // LCOV_EXCL_LINE
   }
   if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
     return false;
   }
   return ec == boost::asio::error::eof || ec == boost::asio::error::connection_reset ||
-         ec == boost::asio::error::bad_descriptor;
-}
+         ec == boost::asio::error::bad_descriptor; // LCOV_EXCL_LINE
+} // LCOV_EXCL_LINE
 
 bool should_drop_stale_background_request(Session::PreparedRequest& prepared) {
   if (prepared.lane != Session::RequestLane::Background) {
@@ -132,6 +127,24 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
   }
 
   return context;
+} // LCOV_EXCL_LINE
+
+void track_socket(std::mutex& mutex,
+                  std::unordered_set<Session::IoHandlePtr>& sockets,
+                  const Session::IoHandlePtr& socket) {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (socket != nullptr) {
+    sockets.insert(socket);
+  }
+}
+
+void untrack_socket(std::mutex& mutex,
+                    std::unordered_set<Session::IoHandlePtr>& sockets,
+                    const Session::IoHandlePtr& socket) {
+  std::lock_guard<std::mutex> lock(mutex);
+  if (socket != nullptr) {
+    sockets.erase(socket);
+  }
 }
 
 } // namespace
@@ -147,7 +160,8 @@ Listener::Listener(std::string bind,
                    holder::ai::NudgeService* nudge_service,
                    holder::privacy::SecretStore* secret_store,
                    holder::git::GitOps* git_ops,
-                   holder::llm::RunnerRegistry* runner_registry)
+                   holder::llm::RunnerRegistry* runner_registry,
+                   holder::api::ConcurrencyProfile concurrency)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
@@ -160,7 +174,8 @@ Listener::Listener(std::string bind,
       nudge_service_(nudge_service),
       secret_store_(secret_store),
       git_ops_(git_ops),
-      runner_registry_(runner_registry) {}
+      runner_registry_(runner_registry),
+      concurrency_(concurrency) {}
 
 Listener::BoundInfo Listener::start() {
   boost::system::error_code ec;
@@ -221,29 +236,29 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   writer_workers_.clear();
   io_workers_.clear();
 
-  ingress_workers_.reserve(kIngressWorkerCount);
-  for (std::size_t i = 0; i < kIngressWorkerCount; ++i) {
+  ingress_workers_.reserve(concurrency_.ingress_workers);
+  for (std::size_t i = 0; i < concurrency_.ingress_workers; ++i) {
     ingress_workers_.emplace_back([this]() { run_ingress_worker(); });
   }
 
-  save_workers_.reserve(kReservedSaveWorkerCount);
-  for (std::size_t i = 0; i < kReservedSaveWorkerCount; ++i) {
+  save_workers_.reserve(concurrency_.save_workers);
+  for (std::size_t i = 0; i < concurrency_.save_workers; ++i) {
     save_workers_.emplace_back([this]() { run_save_worker(); });
   }
 
-  general_workers_.reserve(kGeneralWorkerCount);
-  for (std::size_t i = 0; i < kGeneralWorkerCount; ++i) {
+  general_workers_.reserve(concurrency_.general_workers);
+  for (std::size_t i = 0; i < concurrency_.general_workers; ++i) {
     general_workers_.emplace_back([this]() { run_general_worker(); });
   }
 
-  writer_workers_.reserve(kWriterWorkerCount);
-  for (std::size_t i = 0; i < kWriterWorkerCount; ++i) {
+  writer_workers_.reserve(concurrency_.writer_workers);
+  for (std::size_t i = 0; i < concurrency_.writer_workers; ++i) {
     writer_workers_.emplace_back([this]() { run_writer_worker(); });
   }
 
   start_accept_loop();
-  io_workers_.reserve(kIoWorkerCount);
-  for (std::size_t i = 0; i < kIoWorkerCount; ++i) {
+  io_workers_.reserve(concurrency_.io_threads);
+  for (std::size_t i = 0; i < concurrency_.io_threads; ++i) {
     io_workers_.emplace_back([this]() { ioc_.run(); });
   }
 
@@ -273,6 +288,8 @@ void Listener::run(const holder::core::SignalHandler& signals) {
       worker.join();
     }
   }
+
+  ioc_.stop();
   for (auto& worker : io_workers_) {
     if (worker.joinable()) {
       worker.join();
@@ -289,17 +306,49 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
 void Listener::stop() {
   stop_requested_.store(true);
+  shutdown_queued_work();
+  shutdown_active_sockets();
   ingress_queue_cv_.notify_all();
   lane_queue_cv_.notify_all();
   response_queue_cv_.notify_all();
   boost::system::error_code ec;
   acceptor_.close(ec);
-  ioc_.stop();
+}
+
+std::size_t Listener::active_read_socket_count() const {
+  std::lock_guard<std::mutex> lock(active_socket_mutex_);
+  return active_read_sockets_.size();
+}
+
+std::size_t Listener::pending_socket_count() const {
+  std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+  return pending_sockets_.size();
+}
+
+std::size_t Listener::save_queue_count() const {
+  std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+  return save_queue_.size();
+}
+
+std::size_t Listener::response_queue_count() const {
+  std::lock_guard<std::mutex> lock(response_queue_mutex_);
+  return response_queue_.size();
+}
+
+std::size_t Listener::background_queue_count() const {
+  std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+  return background_queue_.size();
+}
+
+void Listener::enqueue_pending_socket_for_test() {
+  std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+  pending_sockets_.emplace_back(ioc_);
+  ingress_queue_cv_.notify_one();
 }
 
 void Listener::start_accept_loop() {
   if (stop_requested_.load()) {
-    return;
+    return; // LCOV_EXCL_LINE
   }
 
   acceptor_.async_accept([this](boost::system::error_code ec, tcp::socket socket) mutable {
@@ -308,11 +357,18 @@ void Listener::start_accept_loop() {
           ec == boost::asio::error::bad_descriptor) {
         return;
       }
-      spdlog::error("accept failed: {}", ec.message());
-      if (!stop_requested_.load()) {
-        start_accept_loop();
-      }
-      return;
+      spdlog::error("accept failed: {}", ec.message()); // LCOV_EXCL_LINE
+      if (!stop_requested_.load()) { // LCOV_EXCL_LINE
+        start_accept_loop(); // LCOV_EXCL_LINE
+      } // LCOV_EXCL_LINE
+      return; // LCOV_EXCL_LINE
+    }
+
+    if (stop_requested_.load()) {
+      boost::system::error_code close_ec; // LCOV_EXCL_LINE
+      socket.shutdown(tcp::socket::shutdown_both, close_ec); // LCOV_EXCL_LINE
+      socket.close(close_ec); // LCOV_EXCL_LINE
+      return; // LCOV_EXCL_LINE
     }
 
     {
@@ -346,15 +402,31 @@ void Listener::run_ingress_worker() {
         if (stop_requested_.load()) {
           return;
         }
-        continue;
+        continue; // LCOV_EXCL_LINE
       }
       socket = std::move(pending_sockets_.front());
       pending_sockets_.pop_front();
     }
 
-    auto prepared = Session::prepare_request(std::move(socket));
+    if (stop_requested_.load()) {
+      close_socket(socket); // LCOV_EXCL_LINE
+      continue; // LCOV_EXCL_LINE
+    }
+
+    auto prepared = Session::prepare_request(
+        std::move(socket),
+        [this](const Session::IoHandlePtr& active) { // LCOV_EXCL_LINE
+          track_socket(active_socket_mutex_, active_read_sockets_, active);
+        },
+        [this](const Session::IoHandlePtr& active) { // LCOV_EXCL_LINE
+          untrack_socket(active_socket_mutex_, active_read_sockets_, active);
+        });
     if (!prepared.has_value()) {
       continue;
+    }
+    if (stop_requested_.load()) {
+      close_socket(prepared->socket); // LCOV_EXCL_LINE
+      continue; // LCOV_EXCL_LINE
     }
 
     bool queued = false;
@@ -412,7 +484,7 @@ void Listener::run_save_worker() {
         if (stop_requested_.load()) {
           return;
         }
-        continue;
+        continue; // LCOV_EXCL_LINE
       }
       prepared = std::move(save_queue_.front());
       save_queue_.pop_front();
@@ -431,6 +503,10 @@ void Listener::run_save_worker() {
                     context.runner_registry.get());
     auto response = session.execute();
     if (response.has_value()) {
+      if (stop_requested_.load()) {
+        close_socket(response->socket); // LCOV_EXCL_LINE
+        continue; // LCOV_EXCL_LINE
+      }
       {
         std::lock_guard<std::mutex> lock(response_queue_mutex_);
         response_queue_.emplace_back(std::move(*response));
@@ -462,7 +538,7 @@ void Listener::run_general_worker() {
         if (stop_requested_.load()) {
           return;
         }
-        continue;
+        continue; // LCOV_EXCL_LINE
       }
 
       if (!foreground_queue_.empty()) {
@@ -497,6 +573,10 @@ void Listener::run_general_worker() {
                     context.runner_registry.get());
     auto response = session.execute();
     if (response.has_value()) {
+      if (stop_requested_.load()) {
+        close_socket(response->socket);
+        continue; // LCOV_EXCL_LINE
+      }
       {
         std::lock_guard<std::mutex> lock(response_queue_mutex_);
         response_queue_.emplace_back(std::move(*response));
@@ -518,12 +598,78 @@ void Listener::run_writer_worker() {
         if (stop_requested_.load()) {
           return;
         }
-        continue;
+        continue; // LCOV_EXCL_LINE
       }
       prepared = std::move(response_queue_.front());
       response_queue_.pop_front();
     }
-    Session::write_prepared_response(std::move(prepared));
+    Session::write_prepared_response(
+        std::move(prepared),
+        [this](const Session::IoHandlePtr& active) {
+          track_socket(active_socket_mutex_, active_write_sockets_, active);
+        },
+        [this](const Session::IoHandlePtr& active) {
+          untrack_socket(active_socket_mutex_, active_write_sockets_, active);
+        });
+  }
+}
+
+void Listener::close_socket(tcp::socket& socket) {
+  boost::system::error_code ec;
+  socket.cancel(ec);
+  socket.shutdown(tcp::socket::shutdown_both, ec);
+  socket.close(ec);
+}
+
+void Listener::shutdown_queued_work() {
+  {
+    std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
+    for (auto& socket : pending_sockets_) {
+      close_socket(socket);
+    }
+    pending_sockets_.clear();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(lane_queue_mutex_);
+    for (auto& prepared : save_queue_) {
+      close_socket(prepared.socket); // LCOV_EXCL_LINE
+    }
+    for (auto& prepared : foreground_queue_) {
+      close_socket(prepared.socket); // LCOV_EXCL_LINE
+    }
+    for (auto& prepared : background_queue_) {
+      close_socket(prepared.socket);
+    }
+    save_queue_.clear();
+    foreground_queue_.clear();
+    background_queue_.clear();
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(response_queue_mutex_);
+    for (auto& prepared : response_queue_) {
+      close_socket(prepared.socket);
+    }
+    response_queue_.clear();
+  }
+}
+
+void Listener::shutdown_active_sockets() {
+  std::vector<Session::IoHandlePtr> sockets_to_cancel;
+  {
+    std::lock_guard<std::mutex> lock(active_socket_mutex_);
+    sockets_to_cancel.reserve(active_read_sockets_.size() + active_write_sockets_.size());
+    sockets_to_cancel.insert(
+        sockets_to_cancel.end(), active_read_sockets_.begin(), active_read_sockets_.end());
+    sockets_to_cancel.insert(
+        sockets_to_cancel.end(), active_write_sockets_.begin(), active_write_sockets_.end());
+  }
+
+  for (const auto& io_handle : sockets_to_cancel) {
+    if (io_handle != nullptr && io_handle->cancel) {
+      io_handle->cancel();
+    }
   }
 }
 

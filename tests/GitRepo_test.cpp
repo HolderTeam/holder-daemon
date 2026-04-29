@@ -610,7 +610,7 @@ TEST_CASE("GitRepo credential callback attempts SSH paths and can fallback to pa
       "",
       &created);
 
-  // Depending on libgit2 behavior, this may either return passthrough or
+  // Depending on libgit2 behaviour, this may either return passthrough or
   // construct an SSH key credential object from configured key paths.
   REQUIRE((rc == GIT_PASSTHROUGH || rc == 0));
   REQUIRE(created == (rc == 0));

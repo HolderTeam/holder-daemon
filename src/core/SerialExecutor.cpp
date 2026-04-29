@@ -10,13 +10,22 @@ SerialExecutor::SerialExecutor(std::string name, std::size_t max_pending_tasks)
       worker_([this]() { run(); }) {}
 
 SerialExecutor::~SerialExecutor() {
+  stop();
+}
+
+void SerialExecutor::stop() {
+  bool already_stopped = false;
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    already_stopped = stop_requested_;
     stop_requested_ = true;
+  }
+  if (already_stopped) {
+    return;
   }
   cv_.notify_all();
   space_cv_.notify_all();
-  if (worker_.joinable()) {
+  if (worker_.joinable() && worker_.get_id() != std::this_thread::get_id()) {
     worker_.join();
   }
 }
@@ -42,11 +51,8 @@ void SerialExecutor::run() {
     {
       std::unique_lock<std::mutex> lock(mutex_);
       cv_.wait(lock, [this]() { return stop_requested_ || !tasks_.empty(); });
-      if (tasks_.empty()) {
-        if (stop_requested_) {
-          return;
-        }
-        continue;
+      if (stop_requested_ && tasks_.empty()) {
+        return;
       }
       task = std::move(tasks_.front());
       tasks_.pop_front();
@@ -55,10 +61,10 @@ void SerialExecutor::run() {
 
     try {
       task();
-    } catch (const std::exception& ex) {
-      spdlog::error("serial executor {} task failed: {}", name_, ex.what());
-      throw;
-    }
+    } catch (const std::exception& ex) { // LCOV_EXCL_LINE
+      spdlog::error("serial executor {} task failed: {}", name_, ex.what()); // LCOV_EXCL_LINE
+      throw; // LCOV_EXCL_LINE
+    } // LCOV_EXCL_LINE
   }
 }
 

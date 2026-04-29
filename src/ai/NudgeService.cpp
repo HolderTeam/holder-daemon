@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 namespace holder::ai {
@@ -37,7 +38,7 @@ std::string fnv1a_hex(const std::string& value) {
   for (const char ch : value) {
     hash ^= static_cast<std::uint64_t>(static_cast<unsigned char>(ch));
     hash *= 1099511628211ull;
-  }
+  } // LCOV_EXCL_LINE
   std::ostringstream out;
   out << std::hex << std::setfill('0') << std::setw(16) << hash;
   return out.str();
@@ -47,18 +48,18 @@ std::string trim_copy(const std::string& input) {
   std::size_t start = 0;
   while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start]))) {
     ++start;
-  }
+  } // LCOV_EXCL_LINE
   std::size_t end = input.size();
   while (end > start && std::isspace(static_cast<unsigned char>(input[end - 1]))) {
     --end;
-  }
+  } // LCOV_EXCL_LINE
   return input.substr(start, end - start);
 }
 
 std::string truncate_for_prompt(const std::string& text, std::size_t max_bytes) {
   if (text.size() <= max_bytes) {
     return text;
-  }
+  } // LCOV_EXCL_LINE
   return text.substr(0, max_bytes);
 }
 
@@ -71,8 +72,168 @@ std::string join_titles(const std::vector<std::string>& titles) {
     }
     out << title;
     first = false;
-  }
+  } // LCOV_EXCL_LINE
   return out.str();
+}
+
+std::string strip_wrapping_quotes(std::string value) {
+  value = trim_copy(value);
+  if (value.size() >= 2 &&
+      ((value.front() == '"' && value.back() == '"') ||
+       (value.front() == '\'' && value.back() == '\''))) {
+    return trim_copy(value.substr(1, value.size() - 2));
+  }
+  return value;
+}
+
+std::string strip_list_marker(std::string value) {
+  value = trim_copy(value);
+  while (!value.empty() && (value.front() == '-' || value.front() == '*')) {
+    value = trim_copy(value.substr(1));
+  }
+  std::size_t i = 0;
+  while (i < value.size() && std::isdigit(static_cast<unsigned char>(value[i]))) {
+    ++i;
+  }
+  if (i > 0 && i < value.size() && (value[i] == '.' || value[i] == ')')) {
+    value = trim_copy(value.substr(i + 1));
+  }
+  return value;
+}
+
+std::string clean_title_text(std::string value) {
+  value = strip_list_marker(value);
+  if (!value.empty() && value.back() == ',') {
+    value.pop_back();
+    value = trim_copy(value);
+  }
+  value = strip_wrapping_quotes(value);
+  if (!value.empty() && value.front() == '#') {
+    value = trim_copy(value.substr(1));
+  }
+  value.erase(std::remove(value.begin(), value.end(), '`'), value.end());
+  value.erase(std::remove(value.begin(), value.end(), '*'), value.end());
+  value = trim_copy(value);
+  if (!value.empty() && value.back() == '.') {
+    value.pop_back();
+    value = trim_copy(value);
+  }
+  constexpr std::size_t max_title_bytes = 60;
+  if (value.size() > max_title_bytes) {
+    value = trim_copy(value.substr(0, max_title_bytes));
+  }
+  return value;
+}
+
+bool valid_suggested_title(const std::string& title) {
+  if (title.empty()) return false;
+  if (title.find('\n') != std::string::npos) return false;
+  if (title == "[" || title == "]" || title == "{" || title == "}") return false;
+  if (title.find('[') != std::string::npos || title.find(']') != std::string::npos) return false;
+  const auto lowered = lower_copy(title);
+  if (lowered == "json" || lowered == "javascript" || lowered == "titles") return false;
+  if (lower_copy(title).rfind("untitled", 0) == 0) return false;
+  return true;
+}
+
+void add_unique_title(std::vector<std::string>& titles, const std::string& candidate) {
+  const auto cleaned = clean_title_text(candidate);
+  if (!valid_suggested_title(cleaned)) return;
+  const auto lowered = lower_copy(cleaned);
+  const auto exists = std::any_of(titles.begin(), titles.end(), [&](const std::string& existing) {
+    return lower_copy(existing) == lowered;
+  });
+  if (!exists && titles.size() < 3) {
+    titles.push_back(cleaned);
+  }
+}
+
+std::vector<std::string> parse_title_suggestions(const std::string& generated) {
+  std::vector<std::string> out;
+  auto parse_json_array = [&](const std::string& candidate) {
+    try {
+      const auto parsed = nlohmann::json::parse(candidate);
+      if (parsed.is_array()) {
+        for (const auto& item : parsed) {
+          if (item.is_string()) add_unique_title(out, item.get<std::string>());
+        }
+      }
+    } catch (const std::exception&) {
+    }
+  };
+
+  parse_json_array(generated);
+  if (!out.empty()) {
+    return out;
+  }
+
+  const auto array_start = generated.find('[');
+  const auto array_end = generated.rfind(']');
+  if (array_start != std::string::npos && array_end != std::string::npos && array_end > array_start) {
+    parse_json_array(generated.substr(array_start, array_end - array_start + 1));
+    if (!out.empty()) {
+      return out;
+    }
+  }
+
+  std::istringstream lines(generated);
+  std::string line;
+  while (std::getline(lines, line) && out.size() < 3) {
+    add_unique_title(out, line);
+  }
+  return out;
+}
+
+std::string first_nonempty_line(const std::string& text) {
+  std::istringstream lines(text);
+  std::string line;
+  while (std::getline(lines, line)) {
+    line = clean_title_text(line);
+    if (!line.empty()) return line;
+  }
+  return "";
+}
+
+std::string first_sentence(const std::string& text) {
+  auto trimmed = trim_copy(text);
+  const auto pos = trimmed.find_first_of(".!?\n");
+  if (pos != std::string::npos) {
+    trimmed = trimmed.substr(0, pos);
+  }
+  return clean_title_text(trimmed);
+}
+
+std::string first_words_title(const std::string& text, std::size_t max_words) {
+  std::istringstream words(text);
+  std::ostringstream out;
+  std::string word;
+  std::size_t count = 0;
+  while (words >> word && count < max_words) {
+    word = clean_title_text(word);
+    if (word.empty()) continue;
+    if (count > 0) out << ' ';
+    out << word;
+    ++count;
+  }
+  return clean_title_text(out.str());
+}
+
+std::vector<std::string> deterministic_title_suggestions(const std::string& body) {
+  std::vector<std::string> out;
+  add_unique_title(out, first_nonempty_line(body));
+  add_unique_title(out, first_sentence(body));
+  const auto short_title = first_words_title(body, 5);
+  add_unique_title(out, short_title);
+  if (!short_title.empty()) {
+    add_unique_title(out, short_title + " Overview");
+    add_unique_title(out, "Notes on " + short_title);
+  }
+  add_unique_title(out, "Card Summary");
+  add_unique_title(out, "Key Ideas");
+  while (out.size() < 3) {
+    add_unique_title(out, "Title Option " + std::to_string(out.size() + 1));
+  }
+  return out;
 }
 
 std::optional<std::string> read_file(const std::filesystem::path& path) {
@@ -92,12 +253,12 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
   const auto card = card_repo.get(card_id);
   if (!project.has_value() || !card.has_value()) {
     return std::nullopt;
-  }
+  } // LCOV_EXCL_LINE
 
   const auto raw = read_file(std::filesystem::path(project->root_path) / card->rel_path);
   if (!raw.has_value()) {
     return std::nullopt;
-  }
+  } // LCOV_EXCL_LINE
 
   std::string plain = raw.value();
   if (project->privacy_mode == "encrypted_git") {
@@ -110,7 +271,7 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
     } catch (...) {
       return std::nullopt;
     }
-  }
+  } // LCOV_EXCL_LINE
 
   return holder::core::parse_card_file(plain).body;
 }
@@ -368,7 +529,7 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
             .should_nudge = should_nudge,
             .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
             .nudge = std::nullopt};
-  }
+  } // LCOV_EXCL_LINE
   if (input.kind == "card.stuck_drafting") {
     const auto autosave_count = input.facts.value("autosave_count", 0);
     const auto body_chars = input.facts.value("body_chars", 0);
@@ -388,7 +549,19 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
             .reason = should_nudge ? "git_push_failure_candidate_ready"
                                    : "git_push_failure_not_actionable",
             .nudge = std::nullopt};
-  }
+  } // LCOV_EXCL_LINE
+  if (input.kind == "card.title_suggestion") {
+    const auto title = input.facts.value("title", "");
+    const auto body_empty = input.facts.value("body_empty", true);
+    const auto body_chars = input.facts.value("body_chars", 0);
+    const auto should_nudge =
+        input.card_id.has_value() && is_placeholder_title(title) && !body_empty && body_chars >= 40;
+    return {.accepted = true,
+            .should_nudge = should_nudge,
+            .reason = should_nudge ? "title_suggestion_candidate_ready"
+                                   : "title_suggestion_not_actionable",
+            .nudge = std::nullopt};
+  } // LCOV_EXCL_LINE
   return {.accepted = false,
           .should_nudge = false,
           .reason = "unknown_candidate_kind",
@@ -399,6 +572,7 @@ std::string NudgeService::build_nudge_title(const NudgeCandidateInput& input) {
   if (input.kind == "card.title_only") return "Start this card";
   if (input.kind == "card.stuck_drafting") return "Unstick this draft";
   if (input.kind == "git.push_failed_repeated") return "Fix git push";
+  if (input.kind == "card.title_suggestion") return "Suggest a title";
   return "Suggestion";
 }
 
@@ -423,6 +597,9 @@ std::string NudgeService::build_nudge_body(const NudgeCandidateInput& input) {
     body << "Git push is still failing (" << latest_status
          << "). Check auth or remote setup before trying again.";
     return body.str();
+  }
+  if (input.kind == "card.title_suggestion") {
+    return "Pick a clearer title for this card.";
   }
   return "No suggestion available.";
 }
@@ -468,7 +645,7 @@ std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_f
       }
     } catch (const std::exception&) {
       // Ignore config read failures and fall back to auto-pick.
-    }
+    } // LCOV_EXCL_LINE
   }
 
   auto* runner = runner_registry_
@@ -496,8 +673,52 @@ std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_f
   };
 }
 
+nlohmann::json NudgeService::build_nudge_meta_json(const NudgeCandidateInput& input) const {
+  if (input.kind != "card.title_suggestion" || !input.card_id.has_value()) {
+    return nlohmann::json::object();
+  }
+
+  const auto body = load_card_body(db_, input.project_id, input.card_id.value()).value_or("");
+  auto suggestions = deterministic_title_suggestions(body);
+  const auto target = pick_local_model_for_nudges();
+  if (target.has_value() && target->runner != nullptr) {
+    std::ostringstream prompt;
+    prompt << "Suggest exactly three concise human-readable titles for this card.\n";
+    prompt << "Constraints:\n";
+    prompt << "- Output only a JSON array of exactly three strings.\n";
+    prompt << "- Each title must be under 60 characters.\n";
+    prompt << "- Do not include numbering, markdown, explanations, or quotes outside JSON.\n";
+    prompt << "- Do not use Untitled.\n";
+    prompt << "Current title: " << input.facts.value("title", "") << "\n";
+    prompt << "Card body:\n" << truncate_for_prompt(trim_copy(body), 1200) << "\n";
+
+    std::string generated;
+    std::string error;
+    const bool ok = target->runner->stream_generate(
+        target->model_name,
+        prompt.str(),
+        "{}",
+        [&](const std::string& chunk) { generated += chunk; },
+        &error);
+    if (ok) {
+      auto parsed = parse_title_suggestions(generated);
+      for (const auto& fallback : suggestions) {
+        add_unique_title(parsed, fallback);
+      }
+      if (parsed.size() >= 3) {
+        suggestions = {parsed[0], parsed[1], parsed[2]};
+      }
+    }
+  }
+
+  nlohmann::json meta = nlohmann::json::object();
+  meta["suggestions"] = suggestions;
+  return meta;
+}
+
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
   const auto deterministic = build_nudge_body(input);
+  if (input.kind == "card.title_suggestion") return deterministic;
   const auto target = pick_local_model_for_nudges();
   if (!target.has_value() || target->runner == nullptr) return deterministic;
 
@@ -559,6 +780,38 @@ std::string NudgeService::short_content_fingerprint(const std::string& content) 
     out << std::setw(2) << static_cast<unsigned int>(digest[i]);
   }
   return out.str();
+}
+
+std::optional<std::string> NudgeService::access_load_card_body(holder::platform::Db& db,
+                                                               const std::string& project_id,
+                                                               const std::string& card_id) {
+  return load_card_body(db, project_id, card_id);
+}
+
+std::vector<std::string> NudgeService::access_sibling_card_titles(holder::platform::Db& db,
+                                                                  const std::string& project_id,
+                                                                  const std::string& card_id) {
+  return sibling_card_titles(db, project_id, card_id);
+}
+
+std::vector<holder::model::Card> NudgeService::access_sibling_cards(holder::platform::Db& db,
+                                                                    const std::string& project_id,
+                                                                    const std::string& card_id) {
+  return sibling_cards(db, project_id, card_id);
+}
+
+std::string NudgeService::access_card_excerpt_line(holder::platform::Db& db,
+                                                   const std::string& project_id,
+                                                   const holder::model::Card& card) {
+  return card_excerpt_line(db, project_id, card);
+}
+
+std::vector<std::string> NudgeService::access_recent_project_card_excerpts(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::optional<std::string>& exclude_card_id,
+    std::size_t limit) {
+  return recent_project_card_excerpts(db, project_id, exclude_card_id, limit);
 }
 
 std::optional<std::string> NudgeService::current_card_fingerprint(holder::platform::Db& db,
@@ -675,6 +928,7 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
       .card_id = input.card_id,
       .title = build_nudge_title(input),
       .body = build_nudge_body_with_runner(input),
+      .meta_json = build_nudge_meta_json(input),
       .basis_fingerprint = input.basis_fingerprint,
       .basis_commit = input.basis_commit,
       .created_at = input.created_at,

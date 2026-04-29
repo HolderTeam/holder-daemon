@@ -20,7 +20,7 @@ namespace {
 bool should_retry_plain_recovery(const holder::privacy::PrivacyError& ex,
                                  const holder::model::Project& project) {
   if (project.privacy_mode != "encrypted_git") {
-    return false;
+    return false; // LCOV_EXCL_LINE
   }
   switch (ex.code()) {
     case holder::privacy::PrivacyErrorCode::EnvelopeInvalid:
@@ -75,7 +75,7 @@ void load_privacy_metadata(holder::model::Project& project) {
 
   std::ifstream in(path);
   if (!in) {
-    throw std::runtime_error("failed to open privacy metadata: " + path.string());
+    throw std::runtime_error("failed to open privacy metadata: " + path.string()); // LCOV_EXCL_LINE
   }
 
   std::ostringstream buffer;

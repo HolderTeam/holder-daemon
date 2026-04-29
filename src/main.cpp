@@ -7,6 +7,7 @@
 #include "platform/ServerInfo.h"
 #include "platform/Signal.h"
 #include "api/HttpServer.h"
+#include "core/ConcurrencyProfilePolicy.h"
 #include "card/CardStore.h"
 #include "project/ProjectRepo.h"
 #include "model/Card.h"
@@ -24,7 +25,6 @@
 #include "privacy/SecretStore.h"
 #include "git/GitOps.h"
 #include "sync/ProjectSyncWorker.h"
-
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -259,8 +259,17 @@ int main(int argc, char* argv[]) {
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   local_runner_client.start_background_probe();
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+  const CasteResult machine_caste = detect_caste();
+  const auto concurrency = holder::core::concurrency_profile_for_caste(machine_caste.caste);
+  spdlog::info("machine caste: {} ({})", caste_name(machine_caste.caste), machine_caste.reason);
+  spdlog::info("listener concurrency: io={}, ingress={}, save={}, general={}, writer={}",
+               concurrency.io_threads,
+               concurrency.ingress_workers,
+               concurrency.save_workers,
+               concurrency.general_workers,
+               concurrency.writer_workers);
   holder::api::HttpServer server(
-      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry);
+      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry, concurrency);
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());

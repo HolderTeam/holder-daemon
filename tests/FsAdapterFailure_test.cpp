@@ -688,3 +688,89 @@ TEST_CASE("Rebuilder rejects ai message path mismatch with message_id", "[rebuil
 
   REQUIRE_THROWS(rebuilder.rebuild_project(project));
 }
+
+TEST_CASE("Rebuilder rejects cards with unresolved parent graph", "[rebuild]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const std::string project_id = "proj-1";
+  const auto root = dir / "repo";
+  std::filesystem::create_directories(root);
+  create_project(db, project_id, root.string());
+
+  holder::model::Card child;
+  child.card_id = "abcd1234";
+  child.project_id = project_id;
+  child.title = "Child";
+  child.parent_card_id = "missing999";
+  child.rel_path = holder::core::card_rel_path(child.card_id);
+  child.created_at = 1;
+  child.updated_at = 1;
+  write_file(root / child.rel_path, holder::core::render_card_front_matter(child, {}) + "body\n");
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::Rebuilder rebuilder(db, &fts);
+
+  holder::model::Project project;
+  project.project_id = project_id;
+  project.name = "Project";
+  project.root_path = root.string();
+  project.created_at = 1;
+  project.updated_at = 1;
+
+  try {
+    (void)rebuilder.rebuild_project(project);
+    FAIL("Expected unresolved parent_card_id during rebuild");
+  } catch (const std::exception& ex) {
+    REQUIRE(std::string(ex.what()) == "unresolved parent_card_id during rebuild");
+  }
+}
+
+TEST_CASE("Rebuilder tolerates invalid trashed ai messages when configured", "[rebuild]") {
+  const auto dir = make_temp_dir();
+  holder::platform::Db db;
+  db.open(dir / "holder.db");
+  apply_schema(db);
+
+  const std::string project_id = "proj-1";
+  const auto root = dir / "repo";
+  std::filesystem::create_directories(root);
+  create_project(db, project_id, root.string());
+
+  const auto card_rel = holder::core::card_rel_path("abcd1234");
+  write_file(root / card_rel, "# ok\n");
+
+  holder::model::AiMessage good_msg;
+  good_msg.message_id = "good5678";
+  good_msg.thread_id = "thread-a";
+  good_msg.role = "assistant";
+  good_msg.source = "manual";
+  good_msg.created_at = 1;
+  write_file(root / holder::core::ai_message_rel_path(good_msg.message_id),
+             holder::core::render_ai_message_front_matter(good_msg, project_id, {}) + "good body\n");
+
+  const auto bad_trash_rel = holder::core::ai_message_trash_rel_path("tras9999");
+  write_file(root / bad_trash_rel, "---\nnot: [valid\n---\nbad body\n");
+
+  holder::index::FtsIndexer fts(db);
+  holder::store::Rebuilder rebuilder(db, &fts, nullptr, true);
+
+  holder::model::Project project;
+  project.project_id = project_id;
+  project.name = "Project";
+  project.root_path = root.string();
+  project.created_at = 1;
+  project.updated_at = 1;
+
+  const auto stats = rebuilder.rebuild_project(project);
+  REQUIRE(stats.cards == 1);
+  REQUIRE(stats.ai_messages == 1);
+  REQUIRE(stats.ai_threads == 1);
+
+  holder::ai::AiMessageRepo msg_repo(db, &fts);
+  const auto msgs = msg_repo.list_by_thread("thread-a");
+  REQUIRE(msgs.size() == 1);
+  REQUIRE(msgs[0].message_id == "good5678");
+}

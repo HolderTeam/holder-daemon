@@ -710,6 +710,591 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
   REQUIRE(payload["error"]["code"] == "bad_request");
 }
 
+TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model selection", "[http]") {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  SECTION("cloud path returns service unavailable when secret store is null") {
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    {
+      std::ofstream out(cloud_cfg_path);
+      REQUIRE(out.is_open());
+      out << "models:\n";
+      out << "  Models:\n";
+      out << "    Cloud:\n";
+      out << "      - provider: Switchyard\n";
+      out << "        provider_id: switchyard\n";
+      out << "        credential_key: switchyard\n";
+      out << "        enabled: true\n";
+      out << "        base_url: https://127.0.0.1:1\n";
+      out << "        api_kind: generic_chat\n";
+      out << "        auth_type: bearer_header\n";
+      out << "        model_id: openrouter/auto\n";
+      out << "        endpoint: /api/v1/chat/completions\n";
+      out << "        role: default\n";
+      out << "  runtime:\n";
+      out << "    route_policy:\n";
+      out << "      default_provider: switchyard\n";
+    }
+    holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
+
+    boost::asio::io_context ioc;
+    tcp::socket unopened_socket(ioc);
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() =
+        nlohmann::json{{"prompt", "cloud prompt"}, {"project_id", "proj-1"}, {"provider", "switchyard"}}.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, unopened_socket, db, nullptr, nullptr, nullptr, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+    REQUIRE(res.result() == http::status::service_unavailable);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "cloud_not_configured");
+    REQUIRE(payload["error"]["message"] == "Cloud provider credential secret store is unavailable.");
+  }
+
+  SECTION("cloud path returns service unavailable when provider secret is missing") {
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto cloud_cfg_path = dir / "ai_catalog.yaml";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    {
+      std::ofstream out(cloud_cfg_path);
+      REQUIRE(out.is_open());
+      out << "models:\n";
+      out << "  Models:\n";
+      out << "    Cloud:\n";
+      out << "      - provider: Switchyard\n";
+      out << "        provider_id: switchyard\n";
+      out << "        credential_key: switchyard\n";
+      out << "        enabled: true\n";
+      out << "        base_url: https://127.0.0.1:1\n";
+      out << "        api_kind: generic_chat\n";
+      out << "        auth_type: bearer_header\n";
+      out << "        model_id: openrouter/auto\n";
+      out << "        endpoint: /api/v1/chat/completions\n";
+      out << "        role: default\n";
+      out << "  runtime:\n";
+      out << "    route_policy:\n";
+      out << "      default_provider: switchyard\n";
+    }
+    holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
+    holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
+    auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
+
+    boost::asio::io_context ioc;
+    tcp::socket unopened_socket(ioc);
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() =
+        nlohmann::json{{"prompt", "cloud prompt"}, {"project_id", "proj-1"}, {"provider", "switchyard"}}.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, unopened_socket, db, nullptr, secret_store.get(), nullptr, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+    REQUIRE(res.result() == http::status::service_unavailable);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["code"] == "cloud_not_configured");
+    REQUIRE(payload["error"]["message"] == "Cloud provider credential secret is missing.");
+  }
+
+  SECTION("empty explicit model for selected manual runner is rejected") {
+    holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-a",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+
+    boost::asio::io_context ioc;
+    tcp::socket unopened_socket(ioc);
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() = nlohmann::json{
+        {"prompt", "manual prompt"},
+        {"project_id", "proj-1"},
+        {"runner_id", "manual-a"},
+        {"model", ""},
+    }.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+    REQUIRE(res.result() == http::status::bad_request);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["message"] == "Requested model runner is not available.");
+  }
+
+  SECTION("runner_id must match model runner ref") {
+    holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-a",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+
+    boost::asio::io_context ioc;
+    tcp::socket unopened_socket(ioc);
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() = nlohmann::json{
+        {"prompt", "manual prompt"},
+        {"project_id", "proj-1"},
+        {"runner_id", "manual-a"},
+        {"model", "other-runner::fake-echo"},
+    }.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+    REQUIRE(res.result() == http::status::bad_request);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["message"] == "runner_id does not match requested model runner.");
+  }
+
+  SECTION("runner_id cannot be combined with cloud provider requests") {
+    holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-a",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+
+    holder::llm::LocalModelRunner runner;
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+
+    boost::asio::io_context ioc;
+    tcp::socket unopened_socket(ioc);
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() = nlohmann::json{
+        {"prompt", "manual prompt"},
+        {"project_id", "proj-1"},
+        {"runner_id", "manual-a"},
+        {"provider", "switchyard"},
+    }.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE_FALSE(out.streamed);
+    REQUIRE(res.result() == http::status::bad_request);
+    const auto payload = nlohmann::json::parse(res.body());
+    REQUIRE(payload["error"]["message"] == "runner_id cannot be combined with cloud provider requests.");
+  }
+}
+
+TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises generated titles", "[http]") {
+  holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  SECTION("matching runner model ref routes to manual runner") {
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+            "VALUES('thread-1', 'proj-1', 'Thread 1', 1, 1);");
+    holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
+        .runner_id = "manual-a",
+        .name = "Office Ollama",
+        .kind = "ollama",
+        .base_url = std::optional<std::string>("http://office:11434"),
+        .source = "manual",
+        .enabled = true,
+        .created_at = 1,
+        .updated_at = 1,
+    });
+
+    holder::llm::LocalModelRunner runner;
+    runner.set_fake_mode(false);
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models = {holder::llm::LocalModel{.name = "fake-echo", .size = 1}};
+    runner.set_status_override_for_tests(status);
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string&,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) -> bool {
+          if (model == "fake-echo") {
+            on_chunk("manual-output");
+            return true;
+          }
+          return false;
+        });
+
+    boost::asio::io_context ioc;
+    tcp::socket client(ioc);
+    tcp::socket server_socket(ioc);
+    try {
+      tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+      const auto endpoint = acceptor.local_endpoint();
+      client.connect(endpoint);
+      acceptor.accept(server_socket);
+    } catch (const std::exception& ex) {
+      SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+    }
+
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() = nlohmann::json{
+        {"prompt", "manual prompt"},
+        {"project_id", "proj-1"},
+        {"thread_id", "thread-1"},
+        {"model", "manual-a::fake-echo"},
+    }.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    auto* manual_client = runner_registry.get_client("manual-a");
+    REQUIRE(manual_client != nullptr);
+    (void)manual_client->retry();
+
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE(out.streamed);
+    holder::ai::AiRunRepo run_repo(db);
+    const auto runs = run_repo.list_by_thread("thread-1");
+    REQUIRE(runs.size() == 1);
+    REQUIRE(runs[0].chosen_model == std::optional<std::string>("manual-a::fake-echo"));
+
+    boost::system::error_code ec;
+    server_socket.shutdown(tcp::socket::shutdown_both, ec);
+    server_socket.close(ec);
+    client.shutdown(tcp::socket::shutdown_both, ec);
+    client.close(ec);
+  }
+
+  SECTION("configured auto-local title model updates prefixed thread title after sanitising output") {
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+            "VALUES('thread-1', 'proj-1', 'Thread 17', 1, 1);");
+
+    holder::llm::LocalModelRunner runner;
+    runner.set_fake_mode(false);
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models = {
+        holder::llm::LocalModel{.name = "main-model", .size = 100},
+        holder::llm::LocalModel{.name = "title-model", .size = 10},
+    };
+    runner.set_status_override_for_tests(status);
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string& prompt,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) -> bool {
+          if (prompt.find("Write a short human-readable thread title") != std::string::npos) {
+            REQUIRE(model == "title-model");
+            on_chunk("  \"Auto Title.\"  ");
+            return true;
+          }
+          if (model == "main-model") {
+            on_chunk("assistant-output");
+            return true;
+          }
+          return false;
+        });
+
+    holder::ai::AiLocalModelConfigRepo(db).set(
+        std::string("title-model"), std::nullopt, std::nullopt, 1);
+
+    boost::asio::io_context ioc;
+    tcp::socket client(ioc);
+    tcp::socket server_socket(ioc);
+    try {
+      tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+      const auto endpoint = acceptor.local_endpoint();
+      client.connect(endpoint);
+      acceptor.accept(server_socket);
+    } catch (const std::exception& ex) {
+      SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+    }
+
+    http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+    req.set(http::field::host, "127.0.0.1");
+    req.set(http::field::content_type, "application/json");
+    req.body() = nlohmann::json{
+        {"prompt", "local prompt"},
+        {"project_id", "proj-1"},
+        {"thread_id", "thread-1"},
+        {"model", "main-model"},
+    }.dump();
+    req.prepare_payload();
+
+    http::response<http::string_body> res;
+    int id_seq = 1;
+    holder::llm::LocalRunnerClient local_runner_client(&runner);
+    holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+    const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+        req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          return std::string("uuid-") + std::to_string(id_seq++);
+        });
+
+    REQUIRE(out.handled);
+    REQUIRE(out.streamed);
+    holder::ai::AiThreadRepo thread_repo(db);
+    const auto thread = thread_repo.get("thread-1");
+    REQUIRE(thread.has_value());
+    REQUIRE(thread->title == "Auto Title");
+
+    boost::system::error_code ec;
+    server_socket.shutdown(tcp::socket::shutdown_both, ec);
+    server_socket.close(ec);
+    client.shutdown(tcp::socket::shutdown_both, ec);
+    client.close(ec);
+  }
+
+  SECTION("title generation falls back to smallest positive model and rejects invalid title outputs") {
+    const auto dir = make_temp_dir();
+    const auto db_path = dir / "holder.db";
+    const auto repo_dir = dir / "repo";
+    std::filesystem::create_directories(repo_dir);
+
+    holder::platform::Db db = holder::test::open_db_with_schema(db_path);
+    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                        "VALUES('proj-1', 'Project', '") +
+            repo_dir.string() + "', 1, 1);");
+    db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+            "VALUES('thread-1', 'proj-1', 'Thread 2', 1, 1);");
+    db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+            "VALUES('thread-2', 'proj-1', 'AI Thread 2', 1, 1);");
+    db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
+            "VALUES('thread-3', 'proj-1', 'Thread 3', 1, 1);");
+
+    holder::llm::LocalModelRunner runner;
+    runner.set_fake_mode(false);
+    holder::llm::RunnerStatus status;
+    status.available = true;
+    status.models = {
+        holder::llm::LocalModel{.name = "main-model", .size = 100},
+        holder::llm::LocalModel{.name = "zero-title", .size = 0},
+        holder::llm::LocalModel{.name = "mid-title", .size = 50},
+        holder::llm::LocalModel{.name = "small-title", .size = 10},
+    };
+    runner.set_status_override_for_tests(status);
+
+    int title_generation_calls = 0;
+    runner.set_stream_generate_override_for_tests(
+        [&](const std::string& model,
+            const std::string& prompt,
+            const std::string&,
+            const std::function<void(const std::string&)>& on_chunk,
+            std::string*) -> bool {
+          if (prompt.find("Write a short human-readable thread title") != std::string::npos) {
+            REQUIRE(model == "small-title");
+            ++title_generation_calls;
+            if (title_generation_calls == 1) {
+              on_chunk("User: leaked title");
+            } else if (title_generation_calls == 2) {
+              on_chunk("User leaked title");
+            } else {
+              on_chunk("  This title is deliberately much longer than sixty bytes to exercise truncation.  ");
+            }
+            return true;
+          }
+          if (model == "main-model") {
+            on_chunk("assistant-output");
+            return true;
+          }
+          return false;
+        });
+
+    int id_seq = 1;
+    auto run_for_thread = [&](const std::string& thread_id) {
+      boost::asio::io_context ioc;
+      tcp::socket client(ioc);
+      tcp::socket server_socket(ioc);
+      try {
+        tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
+        const auto endpoint = acceptor.local_endpoint();
+        client.connect(endpoint);
+        acceptor.accept(server_socket);
+      } catch (const std::exception& ex) {
+        SKIP(std::string("Socket pair not available in test environment: ") + ex.what());
+      }
+
+      http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
+      req.set(http::field::host, "127.0.0.1");
+      req.set(http::field::content_type, "application/json");
+      req.body() = nlohmann::json{
+          {"prompt", "local prompt"},
+          {"project_id", "proj-1"},
+          {"thread_id", thread_id},
+          {"model", "main-model"},
+      }.dump();
+      req.prepare_payload();
+
+      http::response<http::string_body> res;
+      holder::llm::LocalRunnerClient local_runner_client(&runner);
+      holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
+      const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
+          req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+            return std::string("uuid-") + std::to_string(id_seq++);
+          });
+      REQUIRE(out.handled);
+      REQUIRE(out.streamed);
+
+      boost::system::error_code ec;
+      server_socket.shutdown(tcp::socket::shutdown_both, ec);
+      server_socket.close(ec);
+      client.shutdown(tcp::socket::shutdown_both, ec);
+      client.close(ec);
+    };
+
+    run_for_thread("thread-1");
+    run_for_thread("thread-2");
+    run_for_thread("thread-3");
+
+    holder::ai::AiThreadRepo thread_repo(db);
+    const auto thread1 = thread_repo.get("thread-1");
+    const auto thread2 = thread_repo.get("thread-2");
+    const auto thread3 = thread_repo.get("thread-3");
+    REQUIRE(thread1.has_value());
+    REQUIRE(thread2.has_value());
+    REQUIRE(thread3.has_value());
+    REQUIRE(thread1->title == "Thread 2");
+    REQUIRE(thread2->title == "AI Thread 2");
+    REQUIRE(thread3->title.size() == 60);
+    REQUIRE(thread3->title.rfind("This title is deliberately much longer than sixty bytes to", 0) == 0);
+  }
+}
+
 TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[http]") {
   CloudRunOverrideGuard cloud_guard(
       [](const holder::api::support::CloudProviderConfig&,

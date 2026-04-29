@@ -79,6 +79,7 @@ add_executable(holderd
   src/platform/Signal.cpp
   src/platform/Fs.cpp
   src/core/SerialExecutor.cpp
+  src/core/ConcurrencyProfilePolicy.cpp
   src/card/CardPaths.cpp
   src/card/CardFrontMatter.cpp
   src/ai/AiMessagePaths.cpp

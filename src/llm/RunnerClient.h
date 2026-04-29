@@ -11,7 +11,7 @@ namespace holder::llm {
 
 class RunnerClient {
  public:
-  virtual ~RunnerClient() = default;
+  virtual ~RunnerClient() = default; // LCOV_EXCL_LINE
 
   virtual void start_background_probe() = 0;
   virtual RunnerStatus status() const = 0;

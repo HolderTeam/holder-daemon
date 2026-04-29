@@ -107,7 +107,9 @@ coverage_all() {
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
-    ctest --test-dir build --output-on-failure
+    SERIAL_TEST_REGEX="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
+    ctest --test-dir build --output-on-failure -j 8 --timeout 30 -E "${SERIAL_TEST_REGEX}"
+    ctest --test-dir build --output-on-failure --timeout 30 -R "${SERIAL_TEST_REGEX}"
     ./build/holderd
     ;;
   perf-privacy)

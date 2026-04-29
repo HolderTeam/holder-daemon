@@ -202,3 +202,47 @@ TEST_CASE("Ai runner pull routes can target a manual runner by runner_id", "[htt
   REQUIRE(payload["data"]["runner_id"] == "manual-a");
   REQUIRE(payload["data"]["model_ref"] == "manual-a::fake-echo");
 }
+
+TEST_CASE("Ai runner pull routes prefer param_get runner_id over request body", "[http]") {
+  const auto dir = holder::test::make_temp_dir();
+  holder::test::EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "1");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+
+  holder::ai::AiRunnerRepo repo(db);
+  repo.upsert(holder::model::AiRunner{
+      .runner_id = "manual-a",
+      .name = "Office Ollama",
+      .kind = "ollama",
+      .base_url = std::optional<std::string>("http://office:11434"),
+      .source = "manual",
+      .enabled = true,
+      .created_at = 1,
+      .updated_at = 1,
+  });
+
+  holder::llm::RunnerRegistry runner_registry(&db, nullptr);
+  http::response<http::string_body> res;
+  http::request<http::string_body> req{http::verb::post, "/ai/runner/pull", 11};
+  req.set(http::field::host, "127.0.0.1");
+  req.set(http::field::content_type, "application/json");
+  req.body() = R"({"runner_id":"auto-local","model":"fake-echo"})";
+
+  const auto out = holder::api::routes::ai::runner::handle_ai_runner_pull_routes(
+      "/ai/runner/pull",
+      req,
+      res,
+      &runner_registry,
+      [](const std::string& key) -> std::string {
+        if (key == "runner_id") {
+          return "manual-a";
+        }
+        return {};
+      });
+  REQUIRE(out.handled);
+  REQUIRE(res.result() == http::status::ok);
+
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["runner_id"] == "manual-a");
+  REQUIRE(payload["data"]["model_ref"] == "manual-a::fake-echo");
+}
