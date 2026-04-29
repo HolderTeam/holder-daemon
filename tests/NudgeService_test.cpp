@@ -287,6 +287,33 @@ TEST_CASE("NudgeService creates title suggestion nudges with three options", "[a
   REQUIRE(duplicate.nudge->nudge_id == decision.nudge->nudge_id);
 }
 
+TEST_CASE("NudgeService does not recreate dismissed exact title suggestion nudges", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto repo_dir = dir / "repo";
+  std::filesystem::create_directories(repo_dir / "cards");
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", repo_dir.string());
+  insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
+  write_card_markdown(repo_dir,
+                      "cards/card-1.md",
+                      "Untitled",
+                      "Owls hunt quietly at night, using soft-edged feathers and sharp hearing.");
+
+  holder::ai::NudgeService service(db);
+  const auto first = service.evaluate_and_record(title_suggestion_candidate("fp-title-dismissed"));
+  REQUIRE(first.accepted);
+  REQUIRE(first.should_nudge);
+  REQUIRE(first.nudge.has_value());
+  REQUIRE(service.dismiss(first.nudge->nudge_id));
+
+  const auto duplicate = service.evaluate_and_record(title_suggestion_candidate("fp-title-dismissed"));
+  REQUIRE(duplicate.accepted);
+  REQUIRE_FALSE(duplicate.should_nudge);
+  REQUIRE(duplicate.reason == "nudge_already_dismissed");
+  REQUIRE_FALSE(duplicate.nudge.has_value());
+  REQUIRE(service.list("proj-1", std::optional<std::string>("card-1")).empty());
+}
+
 TEST_CASE("NudgeService parses fenced JSON title suggestions from runner", "[ai][nudges]") {
   const auto dir = holder::test::make_temp_dir();
   const auto repo_dir = dir / "repo";
