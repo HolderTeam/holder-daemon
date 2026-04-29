@@ -934,8 +934,14 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
       .created_at = input.created_at,
       .dismissed = false,
   };
-  repo.create(nudge);
-  decision.nudge = nudge;
+  auto stored = repo.create_or_get(nudge);
+  if (stored.dismissed) {
+    decision.should_nudge = false;
+    decision.reason = "nudge_already_dismissed";
+    decision.nudge = std::nullopt;
+    return decision;
+  }
+  decision.nudge = stored;
   return decision;
 }
 

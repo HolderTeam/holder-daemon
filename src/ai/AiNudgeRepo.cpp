@@ -84,6 +84,66 @@ void AiNudgeRepo::create(const Nudge& nudge) {
   sqlite3_finalize(stmt);
 }
 
+Nudge AiNudgeRepo::create_or_get(const Nudge& nudge) {
+  static constexpr const char* SQL =
+      "INSERT OR IGNORE INTO ai_nudges("
+      "nudge_id, kind, project_id, card_id, title, body, meta_json, basis_fingerprint, basis_commit, created_at, dismissed_at"
+      ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare ai_nudges insert failed"); // LCOV_EXCL_LINE
+  }
+  sqlite3_bind_text(stmt, 1, nudge.nudge_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, nudge.kind.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, nudge.project_id.c_str(), -1, SQLITE_TRANSIENT);
+  bind_nullable_text(stmt, 4, nudge.card_id);
+  sqlite3_bind_text(stmt, 5, nudge.title.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 6, nudge.body.c_str(), -1, SQLITE_TRANSIENT);
+  const auto meta_json = nudge.meta_json.is_null() ? std::string("{}") : nudge.meta_json.dump();
+  sqlite3_bind_text(stmt, 7, meta_json.c_str(), -1, SQLITE_TRANSIENT);
+  bind_nullable_text(stmt, 8, nudge.basis_fingerprint);
+  bind_nullable_text(stmt, 9, nudge.basis_commit);
+  sqlite3_bind_int64(stmt, 10, nudge.created_at);
+
+  if (sqlite3_step(stmt) != SQLITE_DONE) {
+    sqlite3_finalize(stmt); // LCOV_EXCL_LINE
+    throw_sqlite(db_.handle(), "insert ai_nudge failed"); // LCOV_EXCL_LINE
+  }
+  sqlite3_finalize(stmt);
+
+  auto stored = find_by_id(nudge.nudge_id);
+  if (!stored.has_value()) {
+    throw std::runtime_error("insert ai_nudge failed: row not found after insert"); // LCOV_EXCL_LINE
+  }
+  return stored.value();
+}
+
+std::optional<Nudge> AiNudgeRepo::find_by_id(const std::string& nudge_id) const {
+  static constexpr const char* SQL =
+      "SELECT nudge_id, kind, project_id, card_id, title, body, meta_json, basis_fingerprint, basis_commit, created_at, dismissed_at "
+      "FROM ai_nudges WHERE nudge_id = ? LIMIT 1;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw_sqlite(db_.handle(), "prepare ai_nudges find by id failed"); // LCOV_EXCL_LINE
+  }
+  sqlite3_bind_text(stmt, 1, nudge_id.c_str(), -1, SQLITE_TRANSIENT);
+
+  const int rc = sqlite3_step(stmt);
+  if (rc == SQLITE_ROW) {
+    auto nudge = row_to_nudge(stmt);
+    sqlite3_finalize(stmt);
+    return nudge;
+  }
+  sqlite3_finalize(stmt);
+  if (rc == SQLITE_DONE) {
+    return std::nullopt;
+  }
+  throw_sqlite(db_.handle(), "query ai_nudges by id failed"); // LCOV_EXCL_LINE
+  return std::nullopt; // LCOV_EXCL_LINE
+}
+
 std::optional<Nudge> AiNudgeRepo::find_active_exact_match(
     const std::string& kind,
     const std::string& project_id,
