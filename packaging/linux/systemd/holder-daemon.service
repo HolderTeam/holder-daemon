@@ -1,0 +1,13 @@
+[Unit]
+Description=Holder local daemon
+Documentation=https://holder.team/
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/holderd
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

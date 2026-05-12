@@ -7,6 +7,19 @@
 
 namespace holder::api::support {
 
+#ifndef HOLDER_INSTALL_DATADIR
+#define HOLDER_INSTALL_DATADIR ""
+#endif
+
+std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) {
+  namespace fs = std::filesystem;
+  const fs::path root(HOLDER_INSTALL_DATADIR);
+  if (root.empty()) return std::nullopt;
+  fs::path candidate = root / rel_path;
+  if (fs::exists(candidate)) return candidate;
+  return std::nullopt;
+}
+
 std::optional<std::filesystem::path> find_openapi_path() {
   namespace fs = std::filesystem;
   if (const char* env = std::getenv("HOLDER_OPENAPI_PATH")) {
@@ -17,6 +30,7 @@ std::optional<std::filesystem::path> find_openapi_path() {
   if (fs::exists(p1)) return p1;
   fs::path p2 = fs::current_path().parent_path() / "openapi.yaml";
   if (fs::exists(p2)) return p2;
+  if (auto installed = installed_data_path("openapi.yaml")) return installed;
   return std::nullopt;
 }
 
@@ -28,6 +42,7 @@ std::optional<std::filesystem::path> find_ai_catalog_path() {
   }
   fs::path p1 = fs::current_path() / "config" / "ai_catalog.yaml";
   if (fs::exists(p1)) return p1;
+  if (auto installed = installed_data_path("config/ai_catalog.yaml")) return installed;
   return std::nullopt;
 }
 
@@ -39,6 +54,7 @@ std::optional<std::filesystem::path> find_git_providers_path() {
   }
   fs::path p1 = fs::current_path() / "config" / "git_providers.yaml";
   if (fs::exists(p1)) return p1;
+  if (auto installed = installed_data_path("config/git_providers.yaml")) return installed;
   return std::nullopt;
 }
 
@@ -52,6 +68,9 @@ std::optional<std::filesystem::path> find_docs_root() {
   if (fs::exists(p1) && fs::is_directory(p1)) return p1;
   fs::path p2 = fs::current_path().parent_path() / "assets" / "swagger-ui";
   if (fs::exists(p2) && fs::is_directory(p2)) return p2;
+  if (auto installed = installed_data_path("assets/swagger-ui")) {
+    if (fs::is_directory(installed.value())) return installed;
+  }
   return std::nullopt;
 }
 
