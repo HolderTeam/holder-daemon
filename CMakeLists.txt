@@ -25,11 +25,11 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Boost: Beast is header-only; Asio lives under Boost.
-# You still generally want Boost::system for networking.
+# Boost: Beast/Asio/System are header-only for our usage; Filesystem still
+# needs a compiled component.
 # Boost.Process v2 usage requires Boost 1.80+.
 # For ease of testing, we require 1.83+
-find_package(Boost 1.83.0 REQUIRED COMPONENTS system filesystem)
+find_package(Boost 1.83.0 REQUIRED COMPONENTS filesystem)
 
 # JSON + logging (apt-friendly)
 # Ubuntu packages:
@@ -207,7 +207,6 @@ endif()
 
 # Link libs
 target_link_libraries(holderd PRIVATE
-  Boost::system
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -219,6 +218,9 @@ target_link_libraries(holderd PRIVATE
   yaml-cpp
   ${HOLDER_CASTE_TARGET}
 )
+if(TARGET Boost::system)
+  target_link_libraries(holderd PRIVATE Boost::system)
+endif()
 
 # Feature-linked deps
 if(CARD_SERVER_ENABLE_LIBGIT2)

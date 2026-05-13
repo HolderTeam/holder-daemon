@@ -249,7 +249,6 @@ else()
 endif()
 
 target_link_libraries(lockfile_tests PRIVATE
-  Boost::system
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -261,6 +260,9 @@ target_link_libraries(lockfile_tests PRIVATE
   yaml-cpp
   caste
 )
+if(TARGET Boost::system)
+  target_link_libraries(lockfile_tests PRIVATE Boost::system)
+endif()
 
 if(TARGET PkgConfig::LIBGIT2)
   target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBGIT2)
