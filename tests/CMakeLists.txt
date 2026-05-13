@@ -92,6 +92,7 @@ add_executable(lockfile_tests
   PrivacyError_test.cpp
   Router_test.cpp
   Cli_test.cpp
+  HolderCtl_test.cpp
   ProjectRepo_test.cpp
   StartupRecovery_test.cpp
   ProjectSyncRepo_test.cpp
@@ -238,7 +239,9 @@ target_compile_definitions(lockfile_tests PRIVATE
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
   SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
   HOLDER_BIN_PATH="$<TARGET_FILE:holderd>"
+  HOLDER_CTL_PATH="$<TARGET_FILE:holderctl>"
 )
+add_dependencies(lockfile_tests lock_helper holderd holderctl)
 
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
   target_compile_definitions(lockfile_tests PRIVATE

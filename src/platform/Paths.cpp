@@ -5,9 +5,25 @@
 
 #include <XdgUtils/BaseDir/BaseDir.h>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace holder::core {
+
+namespace {
+
+void restrict_owner_access(const fs::path& path) {
+#ifndef _WIN32
+  ::chmod(path.c_str(), S_IRWXU);
+#else
+  (void)path;
+#endif
+}
+
+} // namespace
 
 Paths Paths::resolve(std::string app_id) {
   Paths p{};
@@ -24,11 +40,13 @@ void Paths::ensure_dirs() const {
   if (ec) {
     throw std::runtime_error("Failed to create server_dir: " + server_dir().string() + " (" + ec.message() + ")");
   }
+  restrict_owner_access(server_dir());
 
   fs::create_directories(log_dir(), ec);
   if (ec) {
     throw std::runtime_error("Failed to create log_dir: " + log_dir().string() + " (" + ec.message() + ")");
   }
+  restrict_owner_access(log_dir());
 
   // Optional: also create config_dir/cache_dir if you intend to use them immediately
   fs::create_directories(config_dir, ec);

@@ -13,6 +13,10 @@
 #include <fstream>
 #include <string>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 namespace {
 
 std::filesystem::path make_temp_dir() {
@@ -30,6 +34,14 @@ bool is_hex(const std::string& s) {
   }
   return true;
 }
+
+#ifndef _WIN32
+mode_t mode_bits(const std::filesystem::path& path) {
+  struct stat st {};
+  REQUIRE(::stat(path.c_str(), &st) == 0);
+  return st.st_mode & 0777;
+}
+#endif
 
 } // namespace
 
@@ -66,6 +78,9 @@ TEST_CASE("write_server_info writes JSON with expected fields", "[serverinfo]") 
   REQUIRE(j["api_version"] == "0.1");
   REQUIRE(j["server_version"] == "0.1.0");
   REQUIRE(j["auth_token"] == "deadbeef");
+#ifndef _WIN32
+  REQUIRE(mode_bits(info_path) == 0600);
+#endif
 }
 
 TEST_CASE("write_server_info overwrites existing file", "[serverinfo]") {
