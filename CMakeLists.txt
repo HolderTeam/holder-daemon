@@ -32,10 +32,9 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Boost: Beast/Asio/System are header-only for our usage; Filesystem still
-# needs a compiled component.
-# Boost.Process v2 usage requires Boost 1.80+.
-# For ease of testing, we require 1.83+
+# Boost: Beast/Asio/System and Process v2 are header-only for our usage;
+# Filesystem still needs a compiled component. Debian packaging declares
+# Boost.Process separately where Ubuntu splits it out of the base dev package.
 find_package(Boost 1.83.0 REQUIRED COMPONENTS filesystem)
 
 # JSON + logging (apt-friendly)
