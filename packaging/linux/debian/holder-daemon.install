@@ -1,4 +1,2 @@
-usr/bin/holderd
-usr/share/holder-daemon/
 packaging/linux/systemd/holder-daemon.service usr/lib/systemd/user
 packaging/linux/autostart/team.holder.HolderDaemon.desktop etc/xdg/autostart
