@@ -1,0 +1,8 @@
+# Swagger UI is shipped here as upstream release assets with LICENSE/NOTICE
+# files in assets/swagger-ui. We do not rebuild Swagger UI in this package.
+holder-daemon source: source-is-missing [assets/swagger-ui/oauth2-redirect.js]
+holder-daemon source: source-is-missing [assets/swagger-ui/swagger-ui-bundle.js]
+holder-daemon source: source-is-missing [assets/swagger-ui/swagger-ui-es-bundle-core.js]
+holder-daemon source: source-is-missing [assets/swagger-ui/swagger-ui-es-bundle.js]
+holder-daemon source: source-is-missing [assets/swagger-ui/swagger-ui-standalone-preset.js]
+holder-daemon source: source-is-missing [assets/swagger-ui/swagger-ui.js]

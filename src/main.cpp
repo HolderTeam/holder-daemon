@@ -37,6 +37,19 @@
 #include <fstream>
 #include <sstream>
 
+#ifndef HOLDER_INSTALL_DATADIR
+#define HOLDER_INSTALL_DATADIR ""
+#endif
+
+static std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) {
+  namespace fs = std::filesystem;
+  const fs::path root(HOLDER_INSTALL_DATADIR);
+  if (root.empty()) return std::nullopt;
+  fs::path candidate = root / rel_path;
+  if (fs::exists(candidate)) return candidate;
+  return std::nullopt;
+}
+
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
 
@@ -47,6 +60,8 @@ static std::filesystem::path find_schema_sql() {
   // Or if run from build/ directory
   fs::path p2 = fs::current_path().parent_path() / "schema" / "schema.sql";
   if (fs::exists(p2)) return p2;
+
+  if (auto installed = installed_data_path("schema/schema.sql")) return installed.value();
 
   throw std::runtime_error("Cannot find schema/schema.sql from current directory."); // LCOV_EXCL_LINE
 }
@@ -64,6 +79,8 @@ static std::filesystem::path find_welcome_markdown() {
 
   fs::path p2 = fs::current_path().parent_path() / "config" / "WELCOME.md";
   if (fs::exists(p2)) return p2;
+
+  if (auto installed = installed_data_path("config/WELCOME.md")) return installed.value();
 
   throw std::runtime_error("Cannot find config/WELCOME.md from current directory."); // LCOV_EXCL_LINE
 }

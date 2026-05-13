@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Holder Daemon
+Comment=Start the Holder local backend
+Exec=systemctl --user start holder-daemon.service
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

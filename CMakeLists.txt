@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(card_server VERSION 0.1.0 LANGUAGES CXX)
+include(GNUInstallDirs)
 
 # ----------------------------
 # Build options
@@ -7,6 +8,7 @@ project(card_server VERSION 0.1.0 LANGUAGES CXX)
 option(CARD_SERVER_ENABLE_MD4C "Enable markdown parsing via md4c" ON)
 option(CARD_SERVER_ENABLE_LIBGIT2 "Enable git support via libgit2" ON)
 option(HOLDER_ENABLE_ENCRYPTED_GIT "Enable encrypted_git feature paths" ON)
+option(HOLDER_USE_SYSTEM_CASTE "Use packaged libcaste instead of third_party/caste" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,15 +60,21 @@ endif()
 pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
 
 # Holder depends on caste for hardware capability classification.
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/caste/CMakeLists.txt")
-  message(FATAL_ERROR
-    "Missing dependency at third_party/caste. "
-    "Run: git submodule update --init --recursive -- third_party/caste")
+if(HOLDER_USE_SYSTEM_CASTE)
+  find_package(caste CONFIG REQUIRED)
+  set(HOLDER_CASTE_TARGET caste::caste)
+else()
+  if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/caste/CMakeLists.txt")
+    message(FATAL_ERROR
+      "Missing dependency at third_party/caste. "
+      "Run: git submodule update --init --recursive -- third_party/caste")
+  endif()
+  set(CASTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(CASTE_BUILD_CLI OFF CACHE BOOL "" FORCE)
+  set(CASTE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/caste)
+  set(HOLDER_CASTE_TARGET caste)
 endif()
-set(CASTE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(CASTE_BUILD_CLI OFF CACHE BOOL "" FORCE)
-set(CASTE_BUILD_PYTHON OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/caste)
 
 # ----------------------------
 # Target
@@ -178,6 +186,7 @@ target_include_directories(holderd PRIVATE
 
 target_compile_definitions(holderd PRIVATE
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
+  HOLDER_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/holder-daemon"
 )
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
   target_compile_definitions(holderd PRIVATE
@@ -208,7 +217,7 @@ target_link_libraries(holderd PRIVATE
   spdlog::spdlog
   XdgUtils::BaseDir
   yaml-cpp
-  caste
+  ${HOLDER_CASTE_TARGET}
 )
 
 # Feature-linked deps
@@ -234,9 +243,18 @@ else()
 endif()
 
 # ----------------------------
-# Install (optional for later packaging)
+# Install
 # ----------------------------
-install(TARGETS holderd RUNTIME DESTINATION bin)
+install(TARGETS holderd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES schema/schema.sql DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/schema)
+install(FILES
+  config/WELCOME.md
+  config/ai_catalog.yaml
+  config/git_providers.yaml
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/config
+)
+install(FILES openapi.yaml DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon)
+install(DIRECTORY assets/swagger-ui DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/assets)
 
 # ----------------------------
 # Tests
