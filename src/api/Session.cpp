@@ -289,6 +289,12 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
 void Session::write_prepared_response(PreparedResponse prepared,
                                       SocketHook on_io_start,
                                       SocketHook on_io_done) {
+  const auto method = std::string(prepared.req.method_string());
+  const auto target = std::string(prepared.req.target());
+  const auto status = prepared.res.result_int();
+  const auto lane = prepared.lane;
+  const auto request_started = prepared.request_started;
+
   auto write_result =
       async_write_response(std::move(prepared), on_io_start, on_io_done);
   auto& ec = write_result.ec;
@@ -297,18 +303,18 @@ void Session::write_prepared_response(PreparedResponse prepared,
   }
 
   const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - prepared.request_started)
+                               std::chrono::steady_clock::now() - request_started)
                                .count();
   spdlog::info("HTTP {} {} -> {} ({}ms)",
-               prepared.req.method_string(),
-               prepared.req.target(), // LCOV_EXCL_LINE
-               prepared.res.result_int(),
+               method,
+               target, // LCOV_EXCL_LINE
+               status,
                duration_ms);
   spdlog::debug("HTTP lane={} method={} target={} status={} duration_ms={}",
-                lane_name(prepared.lane),
-                prepared.req.method_string(),
-                prepared.req.target(), // LCOV_EXCL_LINE
-                prepared.res.result_int(),
+                lane_name(lane),
+                method,
+                target, // LCOV_EXCL_LINE
+                status,
                 duration_ms);
 
   write_result.socket.shutdown(tcp::socket::shutdown_send, ec);
