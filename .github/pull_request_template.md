@@ -4,7 +4,7 @@
 
 - [ ] I confirm that I have the right to submit this contribution under the project's GPL licence.
 - [ ] I agree that this contribution may be distributed under the project's GPL licence.
-- [ ] I have read and agree to the terms in `CLA.md`.
+- [ ] I have read and agree to the terms in [CLA.md](../CLA.md).
 
 ### Code Quality
 
@@ -25,4 +25,3 @@
 ## Description
 
 Please describe your changes here.
-
