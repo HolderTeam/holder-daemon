@@ -9,10 +9,51 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 namespace holder::core {
+
+namespace {
+
+void write_owner_only_file(const std::filesystem::path& path, const std::string& body) {
+#ifdef _WIN32
+  std::ofstream out(path, std::ios::trunc);
+  if (!out.is_open()) {
+    throw std::runtime_error("Failed to open server info temp file: " + path.string());
+  }
+  out << body;
+  out.close();
+#else
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+  if (fd == -1) {
+    throw std::runtime_error("Failed to open server info temp file: " + path.string());
+  }
+
+  const char* cursor = body.data();
+  std::size_t remaining = body.size();
+  while (remaining > 0) {
+    const ssize_t written = ::write(fd, cursor, remaining);
+    if (written <= 0) {
+      ::close(fd);
+      std::filesystem::remove(path);
+      throw std::runtime_error("Failed to write server info temp file: " + path.string());
+    }
+    cursor += written;
+    remaining -= static_cast<std::size_t>(written);
+  }
+
+  if (::close(fd) != 0) {
+    std::filesystem::remove(path);
+    throw std::runtime_error("Failed to close server info temp file: " + path.string());
+  }
+  ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+}
+
+} // namespace
 
 int current_pid() {
 #ifdef _WIN32
@@ -50,15 +91,7 @@ void write_server_info(const std::filesystem::path& path, const ServerInfo& info
   j["auth_token"] = info.auth_token;
 
   const auto tmp_path = path.string() + ".tmp";
-
-  {
-    std::ofstream out(tmp_path, std::ios::trunc);
-    if (!out.is_open()) {
-      throw std::runtime_error("Failed to open server info temp file: " + tmp_path);
-    }
-    out << j.dump(2) << "\n";
-    out.close();
-  }
+  write_owner_only_file(tmp_path, j.dump(2) + "\n");
 
   std::error_code ec;
   std::filesystem::rename(tmp_path, path, ec);

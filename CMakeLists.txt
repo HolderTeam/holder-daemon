@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
-project(card_server VERSION 0.1.0 LANGUAGES CXX)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HOLDER_DAEMON_VERSION)
+string(STRIP "${HOLDER_DAEMON_VERSION}" HOLDER_DAEMON_VERSION)
+if(NOT HOLDER_DAEMON_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must contain a semantic version like 0.1.0")
+endif()
+
+project(card_server VERSION "${HOLDER_DAEMON_VERSION}" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # ----------------------------
@@ -244,10 +251,34 @@ else()
   target_compile_definitions(holderd PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
 
+add_executable(holderctl
+  src/cli/holderctl.cpp
+  src/platform/Paths.cpp
+)
+target_include_directories(holderctl PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_compile_definitions(holderctl PRIVATE
+  CARD_SERVER_VERSION="${PROJECT_VERSION}"
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(holderctl PRIVATE
+    -Wall -Wextra -Wpedantic
+    -Wshadow -Wconversion -Wsign-conversion
+    -Wno-unknown-pragmas
+  )
+endif()
+target_link_libraries(holderctl PRIVATE
+  nlohmann_json::nlohmann_json
+  XdgUtils::BaseDir
+)
+
 # ----------------------------
 # Install
 # ----------------------------
 install(TARGETS holderd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS holderctl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 install(FILES schema/schema.sql DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/schema)
 install(FILES
   config/WELCOME.md

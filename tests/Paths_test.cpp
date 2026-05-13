@@ -13,6 +13,10 @@
 #include <optional>
 #include <string>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 namespace {
 
 std::filesystem::path make_temp_dir(const std::string& prefix) {
@@ -62,6 +66,14 @@ class EnvGuard {
   std::optional<std::string> old_;
 };
 
+#ifndef _WIN32
+mode_t mode_bits(const std::filesystem::path& path) {
+  struct stat st {};
+  REQUIRE(::stat(path.c_str(), &st) == 0);
+  return st.st_mode & 0777;
+}
+#endif
+
 } // namespace
 
 TEST_CASE("Paths resolve uses XDG homes and app id", "[paths]") {
@@ -99,6 +111,10 @@ TEST_CASE("Paths ensure_dirs creates all required directories", "[paths]") {
   REQUIRE(fs::is_directory(p.log_dir()));
   REQUIRE(fs::is_directory(p.config_dir));
   REQUIRE(fs::is_directory(p.cache_dir));
+#ifndef _WIN32
+  REQUIRE(mode_bits(p.server_dir()) == 0700);
+  REQUIRE(mode_bits(p.log_dir()) == 0700);
+#endif
 }
 
 TEST_CASE("Paths ensure_dirs throws when server_dir cannot be created", "[paths]") {
