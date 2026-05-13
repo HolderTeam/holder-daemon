@@ -79,7 +79,6 @@ coverage_all() {
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_C_FLAGS="--coverage -O0 -g" \
     -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
 
   if command -v nproc >/dev/null 2>&1; then
