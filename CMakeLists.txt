@@ -32,10 +32,11 @@ endif()
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# Boost: Beast/Asio/System and Process v2 are header-only for our usage;
-# Filesystem still needs a compiled component. Debian packaging declares
-# Boost.Process separately where Ubuntu splits it out of the base dev package.
+# Boost: Beast/Asio/System are header-only for our usage; Filesystem still
+# needs a compiled component. Boost.Process is header-only on Noble but is a
+# split compiled component on newer Ubuntu, so link it when its config exists.
 find_package(Boost 1.83.0 REQUIRED COMPONENTS filesystem)
+find_package(boost_process CONFIG QUIET)
 
 # JSON + logging (apt-friendly)
 # Ubuntu packages:
@@ -226,6 +227,9 @@ target_link_libraries(holderd PRIVATE
 )
 if(TARGET Boost::system)
   target_link_libraries(holderd PRIVATE Boost::system)
+endif()
+if(TARGET Boost::process)
+  target_link_libraries(holderd PRIVATE Boost::process)
 endif()
 
 # Feature-linked deps
