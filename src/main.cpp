@@ -35,11 +35,20 @@
 #include <exception>
 #include <string>
 #include <fstream>
+#include <iostream>
 #include <sstream>
+
+#ifndef CARD_SERVER_VERSION
+#define CARD_SERVER_VERSION "0.0.0"
+#endif
 
 #ifndef HOLDER_INSTALL_DATADIR
 #define HOLDER_INSTALL_DATADIR ""
 #endif
+
+static void print_usage(std::ostream& out) {
+  out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex]\n";
+}
 
 static std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) {
   namespace fs = std::filesystem;
@@ -159,6 +168,18 @@ static void ensure_default_welcome_card(holder::card::CardStore& card_store,
 }
 
 int main(int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--version") {
+      std::cout << "holderd " << CARD_SERVER_VERSION << "\n";
+      return 0;
+    }
+    if (arg == "--help" || arg == "-h") {
+      print_usage(std::cout);
+      return 0;
+    }
+  }
+
   auto paths = holder::core::Paths::resolve("holder");
   paths.ensure_dirs();
 
@@ -200,7 +221,7 @@ int main(int argc, char* argv[]) {
         return 2;
       }
     } else if (arg == "--help" || arg == "-h") {
-      spdlog::info("Usage: holder [--bind <addr>] [--port <port>] [--reindex]");
+      print_usage(std::cout);
       return 0;
     } else if (arg == "--reindex") {
       reindex_only = true;

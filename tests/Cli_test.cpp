@@ -180,6 +180,7 @@ TEST_CASE("CLI --help and unknown args branches", "[cli]") {
 
   const std::string bin = HOLDER_BIN_PATH;
   REQUIRE(run_command("\"" + bin + "\" --help") == 0);
+  REQUIRE(run_command("\"" + bin + "\" --version") == 0);
   REQUIRE(run_command("\"" + bin + "\" --wat") == 2);
 }
 
