@@ -63,14 +63,28 @@ jobs:
         env:
           SERIES: ${{ matrix.series }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           rm -rf debian build
           cp -a packaging/linux/debian ./debian
 
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "VERSION must contain a semantic version like 0.1.0; got '$VERSION'" >&2
+            exit 1
+          fi
+
           if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
-          else
-            VERSION="${GITHUB_REF_NAME#holder-daemon-v}"
+            if [ "$INPUT_VERSION" != "$VERSION" ]; then
+              echo "workflow input version '$INPUT_VERSION' does not match VERSION '$VERSION'" >&2
+              exit 1
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#holder-daemon-v}"
+            if [ "$TAG_VERSION" != "$VERSION" ]; then
+              echo "tag version '$TAG_VERSION' does not match VERSION '$VERSION'" >&2
+              exit 1
+            fi
           fi
 
           cat > debian/changelog <<EOF

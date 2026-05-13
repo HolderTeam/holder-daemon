@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.22)
-project(card_server VERSION 0.1.0 LANGUAGES CXX)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HOLDER_DAEMON_VERSION)
+string(STRIP "${HOLDER_DAEMON_VERSION}" HOLDER_DAEMON_VERSION)
+if(NOT HOLDER_DAEMON_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "VERSION must contain a semantic version like 0.1.0")
+endif()
+
+project(card_server VERSION "${HOLDER_DAEMON_VERSION}" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # ----------------------------
