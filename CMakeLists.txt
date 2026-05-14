@@ -257,6 +257,10 @@ endif()
 
 add_executable(holderctl
   src/cli/holderctl.cpp
+  src/cli/commands/Common.cpp
+  src/cli/commands/DaemonCommands.cpp
+  src/cli/commands/DataCommands.cpp
+  src/cli/commands/SystemCommands.cpp
   src/platform/Paths.cpp
 )
 target_include_directories(holderctl PRIVATE
