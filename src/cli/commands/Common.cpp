@@ -26,6 +26,7 @@ void print_usage(std::ostream& out) {
       << "  status     Print local daemon status\n"
       << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
+      << "  project    Manage projects; use 'project new <name>' to create one\n"
       << "  projects   List Holder projects; use --json for raw API output\n"
       << "  use        Set the current project by id/name; no args resets to Home\n"
       << "  current    Print the current project\n"

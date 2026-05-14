@@ -194,6 +194,14 @@ struct CardOptions {
   std::string card_id;
 };
 
+struct ProjectNewOptions {
+  bool json_output = false;
+  bool use = false;
+  std::string name;
+  std::string privacy_mode = "encrypted_git";
+  std::optional<std::string> remote_url;
+};
+
 struct RecoveryTokenOptions {
   std::string pin;
   std::filesystem::path out_path;
@@ -458,6 +466,63 @@ void run_editor_on_file(const std::string& editor, const std::filesystem::path& 
 
 std::string resource_usage() {
   return "Usage: holderctl resource <list|add|show|edit|open|delete> ...";
+}
+
+std::string project_usage() {
+  return "Usage: holderctl project new <name> [--plain|--encrypted] [--remote <url>] [--use] [--json]";
+}
+
+ProjectNewOptions parse_project_new_options(int argc, char* argv[]) {
+  ProjectNewOptions options;
+  std::vector<std::string> name_parts;
+  bool privacy_set = false;
+
+  for (int i = 3; i < argc; ++i) {
+    const std::string arg = argv[i];
+    auto require_value = [&](const std::string& option) -> std::string {
+      if (i + 1 >= argc) {
+        throw std::runtime_error(project_usage());
+      }
+      const std::string value = argv[++i];
+      if (value.empty()) {
+        throw std::runtime_error(option + " must not be empty");
+      }
+      return value;
+    };
+
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg == "--use") {
+      options.use = true;
+    } else if (arg == "--plain") {
+      if (privacy_set && options.privacy_mode != "plain") {
+        throw std::runtime_error("--plain and --encrypted cannot be used together");
+      }
+      options.privacy_mode = "plain";
+      privacy_set = true;
+    } else if (arg == "--encrypted") {
+      if (privacy_set && options.privacy_mode != "encrypted_git") {
+        throw std::runtime_error("--plain and --encrypted cannot be used together");
+      }
+      options.privacy_mode = "encrypted_git";
+      privacy_set = true;
+    } else if (arg == "--remote") {
+      options.remote_url = require_value(arg);
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown project new option: " + arg);
+    } else {
+      name_parts.push_back(arg);
+    }
+  }
+
+  for (const auto& part : name_parts) {
+    if (!options.name.empty()) options.name += " ";
+    options.name += part;
+  }
+  if (trim_ascii_whitespace(options.name).empty()) {
+    throw std::runtime_error(project_usage());
+  }
+  return options;
 }
 
 ResourceListOptions parse_resource_list_options(int argc, char* argv[]) {
@@ -904,6 +969,53 @@ int command_reindex(const holder::core::Paths& paths, int argc) {
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to request reindex: ") + ex.what());
+  }
+}
+
+int command_project(const holder::core::Paths& paths, int argc, char* argv[]) {
+  if (argc < 3) {
+    throw std::runtime_error(project_usage());
+  }
+
+  const std::string subcommand = argv[2];
+  if (subcommand != "new") {
+    throw std::runtime_error(project_usage());
+  }
+
+  const auto options = parse_project_new_options(argc, argv);
+  nlohmann::json body = {
+      {"name", options.name},
+      {"privacy_mode", options.privacy_mode},
+      {"created_at", now_epoch_seconds()}, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
+      {"updated_at", now_epoch_seconds()}, // LCOV_EXCL_LINE
+  };
+  if (options.remote_url.has_value()) {
+    body["git_remote_url"] = options.remote_url.value();
+  }
+
+  try {
+    const auto payload = card_api_request(paths,
+                                          boost::beast::http::verb::post,
+                                          "/projects",
+                                          body,
+                                          boost::beast::http::status::created);
+    const auto& project = payload.at("data");
+    if (options.use) {
+      write_holderctl_config(paths, json_string(project, "project_id"));
+    }
+
+    if (options.json_output) {
+      std::cout << payload.dump(2) << "\n";
+    } else {
+      std::cout << "Created project: " << json_string(project, "project_id") << "\n";
+      if (options.use) {
+        std::cout << "Current project: " << json_string(project, "name") << " ("
+                  << json_string(project, "project_id") << ")\n";
+      }
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to create project: ") + ex.what());
   }
 }
 

@@ -1,5 +1,6 @@
 #include "http_test_helpers.h"
 
+#include "git/GitOps.h"
 #include "model/Resource.h"
 #include "resource/ResourceRepo.h"
 
@@ -133,6 +134,42 @@ void write_fake_editor(const std::filesystem::path& path) {
   ::chmod(path.c_str(), S_IRWXU);
 }
 #endif
+
+class HolderCtlProjectGitOps final : public holder::git::GitOps {
+public:
+  int open_count = 0;
+  std::string remote_name;
+  std::string remote_url;
+  std::filesystem::path opened_repo;
+
+  void open_or_init(const std::filesystem::path& repo_dir) override {
+    ++open_count;
+    opened_repo = repo_dir;
+  }
+  void write_file(const std::filesystem::path&, const std::string&) override {}
+  void stage_path(const std::filesystem::path&) override {}
+  void remove_path(const std::filesystem::path&) override {}
+  void commit(const std::string&) override {}
+  void set_remote(const std::string& name, const std::string& url) override {
+    remote_name = name;
+    remote_url = url;
+  }
+  void remove_remote(const std::string&) override {}
+  void pull_remote_ff_only(const std::string&) override {}
+  holder::git::RemoteProbeResult probe_remote(const std::string&) override {
+    return {.status = holder::git::RemoteProbeStatus::Reachable,
+            .remote_has_head = true,
+            .error_message = {}};
+  }
+  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    return {.status = holder::git::PushStatus::Pushed,
+            .ahead_count = 0,
+            .behind_count = 0,
+            .local_head_commit = {},
+            .error_message = {}};
+  }
+  std::filesystem::path repo_dir() const override { return opened_repo; }
+};
 
 } // namespace
 
@@ -509,6 +546,82 @@ TEST_CASE("holderctl projects reports local metadata and option problems", "[hol
   REQUIRE(run_command(bin + " projects --bad >/dev/null 2>/dev/null") == 1);
 }
 
+TEST_CASE("holderctl project new creates a project and can select it", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  HolderCtlProjectGitOps git;
+
+  const std::string token = "projectnewtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr, &git);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto json_out = xdg_root / "project-new.json";
+  REQUIRE(run_command(bin + " project new CLI Project --plain --remote https://example.com/repo.git "
+                            "--use --json > \"" + json_out.string() + "\"") == 0);
+  const auto created = nlohmann::json::parse(read_text(json_out));
+  REQUIRE(created["ok"] == true);
+  REQUIRE(created["data"]["name"] == "CLI Project");
+  REQUIRE(created["data"]["privacy_mode"] == "plain");
+  REQUIRE(created["data"]["git_remote_url"] == "https://example.com/repo.git");
+  const auto project_id = created["data"]["project_id"].get<std::string>();
+  const auto root_path = created["data"]["root_path"].get<std::string>();
+  REQUIRE_FALSE(project_id.empty());
+  REQUIRE_FALSE(root_path.empty());
+
+  REQUIRE(git.open_count == 1);
+  REQUIRE(git.remote_name == "origin");
+  REQUIRE(git.remote_url == "https://example.com/repo.git");
+  REQUIRE(git.opened_repo == std::filesystem::path(root_path));
+
+  const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
+  REQUIRE(nlohmann::json::parse(read_text(config_path))["current_project_id"] == project_id);
+
+  const auto current_out = xdg_root / "project-new-current.out";
+  REQUIRE(run_command(bin + " current > \"" + current_out.string() + "\"") == 0);
+  REQUIRE(read_text(current_out) == "Current project: CLI Project (" + project_id + ")\nRoot: " +
+                                      root_path + "\n");
+
+  const auto text_out = xdg_root / "project-new-text.out";
+  REQUIRE(run_command(bin + " project new Second Project --plain > \"" + text_out.string() + "\"") == 0);
+  REQUIRE(read_text(text_out).rfind("Created project: ", 0) == 0);
+
+  const auto use_text_out = xdg_root / "project-new-use-text.out";
+  REQUIRE(run_command(bin + " project new Third Project --plain --use > \"" +
+                      use_text_out.string() + "\"") == 0);
+  const auto use_text = read_text(use_text_out);
+  REQUIRE(use_text.rfind("Created project: ", 0) == 0);
+  REQUIRE(use_text.find("\nCurrent project: Third Project (") != std::string::npos);
+
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
+  REQUIRE(run_command(bin + " project new Broken --plain >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
@@ -517,6 +630,13 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   REQUIRE(run_command(bin + " current nope >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project nope >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new Name --plain --encrypted >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new Name --remote >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new Name --remote '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search --bad query >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search --limit >/dev/null 2>/dev/null") == 1);
