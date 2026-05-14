@@ -121,6 +121,17 @@ void write_fake_xdg_open(const std::filesystem::path& path) {
   out.close();
   ::chmod(path.c_str(), S_IRWXU);
 }
+
+void write_fake_editor(const std::filesystem::path& path) {
+  std::ofstream out(path);
+  out << "#!/bin/sh\n"
+      << "if [ \"${HOLDERCTL_FAKE_EDITOR_MODE:-write}\" = write ]; then\n"
+      << "  printf '%s' \"$HOLDERCTL_FAKE_EDITOR_CONTENT\" > \"$1\"\n"
+      << "fi\n"
+      << "exit \"${HOLDERCTL_FAKE_EDITOR_EXIT:-0}\"\n";
+  out.close();
+  ::chmod(path.c_str(), S_IRWXU);
+}
 #endif
 
 } // namespace
@@ -511,9 +522,19 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " search --limit >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search --limit nope query >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search --limit 0 query >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --limit >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --limit nope >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --limit 0 >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --limit 2 >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --parent >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --recent --parent card-id >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards extra >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card --bad card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " edit >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " edit one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " append >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource list --filter >/dev/null 2>/dev/null") == 1);
@@ -749,6 +770,103 @@ TEST_CASE("holderctl search uses the current project", "[holderctl]") {
   server_thread.join();
 }
 
+TEST_CASE("holderctl cards lists root and recent cards in the current project", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "cards-root";
+  std::filesystem::create_directories(project_root);
+  holder::test::create_project(db, "cards-project", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  holder::model::Card root_one;
+  root_one.card_id = "root-card-one";
+  root_one.project_id = "cards-project";
+  root_one.title = "Root One";
+  root_one.created_at = 10;
+  root_one.updated_at = 20;
+  card_store.create(root_one, "root one body");
+
+  holder::model::Card root_two;
+  root_two.card_id = "root-card-two";
+  root_two.project_id = "cards-project";
+  root_two.title = "Root Two";
+  root_two.created_at = 11;
+  root_two.updated_at = 30;
+  card_store.create(root_two, "root two body");
+
+  holder::model::Card child;
+  child.card_id = "child-card-one";
+  child.project_id = "cards-project";
+  child.parent_card_id = "root-card-one";
+  child.title = "Child One";
+  child.created_at = 12;
+  child.updated_at = 40;
+  card_store.create(child, "child body");
+
+  const std::string token = "cardstoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " cards >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use cards-project >/dev/null") == 0);
+
+  const auto root_out = xdg_root / "cards-root.out";
+  REQUIRE(run_command(bin + " cards > \"" + root_out.string() + "\"") == 0);
+  const auto root_output = read_text(root_out);
+  REQUIRE(root_output.find("CARD_ID\tTITLE\tCHILDREN\tUPDATED\n") == 0);
+  REQUIRE(root_output.find("root-card-one\tRoot One\t1\t20\n") != std::string::npos);
+  REQUIRE(root_output.find("root-card-two\tRoot Two\t0\t30\n") != std::string::npos);
+  REQUIRE(root_output.find("child-card-one") == std::string::npos);
+
+  const auto child_out = xdg_root / "cards-child.out";
+  REQUIRE(run_command(bin + " cards --parent root-card-one > \"" + child_out.string() + "\"") == 0);
+  const auto child_output = read_text(child_out);
+  REQUIRE(child_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
+  REQUIRE(child_output.find("root-card-two") == std::string::npos);
+
+  const auto recent_out = xdg_root / "cards-recent.out";
+  REQUIRE(run_command(bin + " cards --recent --limit 2 > \"" + recent_out.string() + "\"") == 0);
+  const auto recent_output = read_text(recent_out);
+  REQUIRE(recent_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
+  REQUIRE(recent_output.find("root-card-two\tRoot Two\t0\t30\n") != std::string::npos);
+  REQUIRE(recent_output.find("root-card-one") == std::string::npos);
+
+  const auto json_path = xdg_root / "cards.json";
+  REQUIRE(run_command(bin + " cards --json > \"" + json_path.string() + "\"") == 0);
+  const auto payload = nlohmann::json::parse(read_text(json_path));
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"].is_array());
+  REQUIRE(payload["data"].size() == 2);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl card prints a card from the current project", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
@@ -825,6 +943,112 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   server.stop();
   server_thread.join();
 }
+
+#ifndef _WIN32
+TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "ca'che").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "edit-root";
+  const auto other_root = xdg_root / "edit-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "edit-project", project_root.string());
+  holder::test::create_project(db, "edit-other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  holder::model::Card card;
+  card.card_id = "editable.card";
+  card.project_id = "edit-project";
+  card.title = "Editable Card";
+  card.created_at = 10;
+  card.updated_at = 11;
+  card_store.create(card, "original body\n");
+
+  holder::model::Card other_card;
+  other_card.card_id = "other-editable-card";
+  other_card.project_id = "edit-other-project";
+  other_card.title = "Other Editable Card";
+  other_card.created_at = 12;
+  other_card.updated_at = 13;
+  card_store.create(other_card, "other body\n");
+
+  const std::string token = "edittoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+
+  const auto editor_path = xdg_root / "fake-editor";
+  write_fake_editor(editor_path);
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use edit-project >/dev/null") == 0);
+
+  {
+    holder::test::EnvGuard editor_env("EDITOR", editor_path.string());
+    holder::test::EnvGuard editor_mode_env("HOLDERCTL_FAKE_EDITOR_MODE", "write");
+    holder::test::EnvGuard editor_content_env("HOLDERCTL_FAKE_EDITOR_CONTENT", "edited body\nsecond line\n");
+    holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "0");
+
+    const auto edit_out = xdg_root / "edit.out";
+    REQUIRE(run_command(bin + " edit editable.card > \"" + edit_out.string() + "\"") == 0);
+    REQUIRE(read_text(edit_out) == "Updated card: editable.card\n");
+  }
+
+  const auto edited_card_out = xdg_root / "edited-card.out";
+  REQUIRE(run_command(bin + " card editable.card > \"" + edited_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(edited_card_out) == "edited body\nsecond line\n");
+
+  {
+    holder::test::EnvGuard editor_env("EDITOR", editor_path.string());
+    holder::test::EnvGuard editor_mode_env("HOLDERCTL_FAKE_EDITOR_MODE", "noop");
+    holder::test::EnvGuard editor_content_env("HOLDERCTL_FAKE_EDITOR_CONTENT", "");
+    holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "0");
+
+    const auto noop_out = xdg_root / "edit-noop.out";
+    REQUIRE(run_command(bin + " edit editable.card > \"" + noop_out.string() + "\"") == 0);
+    REQUIRE(read_text(noop_out) == "No changes.\n");
+  }
+
+  {
+    holder::test::EnvGuard editor_env("EDITOR", editor_path.string());
+    holder::test::EnvGuard editor_mode_env("HOLDERCTL_FAKE_EDITOR_MODE", "noop");
+    holder::test::EnvGuard editor_content_env("HOLDERCTL_FAKE_EDITOR_CONTENT", "");
+    holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "7");
+
+    REQUIRE(run_command(bin + " edit editable.card >/dev/null 2>/dev/null") == 1);
+  }
+
+  {
+    holder::test::EnvGuard editor_env("EDITOR", "");
+    REQUIRE(run_command(bin + " edit editable.card >/dev/null 2>/dev/null") == 1);
+  }
+
+  REQUIRE(run_command(bin + " edit other-editable-card >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+#endif
 
 TEST_CASE("holderctl new and append capture cards in Home by default", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
