@@ -664,6 +664,115 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   server_thread.join();
 }
 
+TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  const std::string token = "recoverytoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const auto project_root = xdg_root / "encrypted-project";
+  const auto created = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects",
+      {{"project_id", "encrypted-project"},
+       {"name", "Encrypted Project"},
+       {"root_path", project_root.string()},
+       {"privacy_mode", "encrypted_git"},
+       {"created_at", 10},
+       {"updated_at", 10}},
+      boost::beast::http::status::created);
+  REQUIRE(created["ok"] == true);
+  REQUIRE(created["data"]["project_key_id"].is_string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " recovery-token export --pin 1234 >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use encrypted-project >/dev/null") == 0);
+
+  const auto stdout_token_path = xdg_root / "stdout-token.hrk";
+  REQUIRE(run_command(bin + " recovery-token export --pin 1234 > \"" +
+                      stdout_token_path.string() + "\"") == 0);
+  const auto stdout_token = nlohmann::json::parse(read_text(stdout_token_path));
+  REQUIRE(stdout_token["version"] == 1);
+
+  const auto token_path = xdg_root / "project.hrk";
+  const auto export_file_out = xdg_root / "export-file.out";
+  REQUIRE(run_command(bin + " recovery-token export --pin 1234 --out \"" +
+                      token_path.string() + "\" > \"" + export_file_out.string() + "\"") == 0);
+  REQUIRE(read_text(export_file_out).find("Recovery token exported: " + token_path.string()) !=
+          std::string::npos);
+  REQUIRE(nlohmann::json::parse(read_text(token_path))["version"] == 1);
+#ifndef _WIN32
+  struct stat file_stat {};
+  REQUIRE(::stat(token_path.c_str(), &file_stat) == 0);
+  REQUIRE((file_stat.st_mode & (S_IRWXG | S_IRWXO)) == 0);
+#endif
+
+  const auto import_out = xdg_root / "import.out";
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --file \"" +
+                      token_path.string() + "\" > \"" + import_out.string() + "\"") == 0);
+  REQUIRE(read_text(import_out) == "Recovery token imported for project: encrypted-project\n");
+
+  const auto token_arg = read_text(token_path);
+  const auto import_token_out = xdg_root / "import-token.out";
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --token '" +
+                      token_arg.substr(0, token_arg.size() - 1) + "' > \"" +
+                      import_token_out.string() + "\"") == 0);
+  REQUIRE(read_text(import_token_out) == "Recovery token imported for project: encrypted-project\n");
+
+  const auto deleted = holder::test::http_json_request(bound.bind,
+                                                       bound.port,
+                                                       token,
+                                                       boost::beast::http::verb::delete_,
+                                                       "/projects/encrypted-project",
+                                                       nlohmann::json::object(),
+                                                       boost::beast::http::status::ok);
+  REQUIRE(deleted["ok"] == true);
+
+  const auto global_out = xdg_root / "global-import.out";
+  REQUIRE(run_command(bin + " recovery-token import-global --pin 1234 --file \"" +
+                      token_path.string() + "\" > \"" + global_out.string() + "\"") == 0);
+  const auto global_text = read_text(global_out);
+  REQUIRE(global_text.find("Recovery token imported for project: encrypted-project\n") !=
+          std::string::npos);
+  REQUIRE(global_text.find("Project created: yes\n") != std::string::npos);
+
+  REQUIRE(run_command(bin + " recovery-token export >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import-global --pin 1234 --file \"" +
+                      token_path.string() + "\" --token x >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
