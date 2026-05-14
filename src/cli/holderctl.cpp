@@ -36,6 +36,7 @@ int main(int argc, char* argv[]) {
     if (command == "card") return holder::cli::command_card(paths, argc, argv);
     if (command == "new") return holder::cli::command_new(paths, argc, argv);
     if (command == "append") return holder::cli::command_append(paths, argc, argv);
+    if (command == "resource") return holder::cli::command_resource(paths, argc, argv);
     if (command == "recovery-token") return holder::cli::command_recovery_token(paths, argc, argv);
     if (command == "openapi") return holder::cli::command_openapi(paths, argc, argv);
     if (command == "logs") return holder::cli::command_logs(paths, argc, argv);

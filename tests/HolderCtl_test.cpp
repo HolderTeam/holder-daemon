@@ -45,6 +45,17 @@ std::string created_card_id_from_output(const std::string& output) {
   return id;
 }
 
+std::string created_resource_id_from_output(const std::string& output) {
+  const std::string prefix = "Created resource: ";
+  REQUIRE(output.rfind(prefix, 0) == 0);
+  auto id = output.substr(prefix.size());
+  if (!id.empty() && id.back() == '\n') {
+    id.pop_back();
+  }
+  REQUIRE_FALSE(id.empty());
+  return id;
+}
+
 void write_server_info(const std::filesystem::path& path,
                        int pid = 12345,
                        int port = 11499,
@@ -774,6 +785,121 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   server_thread.join();
 }
 
+TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto home_root = xdg_root / "home-root";
+  std::filesystem::create_directories(home_root);
+  holder::test::create_project(db, "home-id", home_root.string());
+  {
+    holder::project::ProjectRepo repo(db);
+    repo.update_name("home-id", "Home", 2);
+  }
+
+  const std::string token = "resourcetoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto empty_list_out = xdg_root / "resources-empty.out";
+  REQUIRE(run_command(bin + " resource list > \"" + empty_list_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_list_out) == "No resources.\n");
+
+  const auto add_out = xdg_root / "resource-add.out";
+  REQUIRE(run_command(bin + " resource add https://example.com/docs --desc 'Docs link' > \"" +
+                      add_out.string() + "\"") == 0);
+  const auto resource_id = created_resource_id_from_output(read_text(add_out));
+
+  const auto add_json_out = xdg_root / "resource-add-json.out";
+  REQUIRE(run_command(bin + " resource add git@github.com:holderteam/example.git --json > \"" +
+                      add_json_out.string() + "\"") == 0);
+  const auto added_json = nlohmann::json::parse(read_text(add_json_out));
+  REQUIRE(added_json["ok"] == true);
+  const auto repo_resource_id = added_json["data"]["resource_id"].get<std::string>();
+  REQUIRE_FALSE(repo_resource_id.empty());
+
+  const auto list_out = xdg_root / "resources.out";
+  REQUIRE(run_command(bin + " resource list > \"" + list_out.string() + "\"") == 0);
+  const auto list_text = read_text(list_out);
+  REQUIRE(list_text.find("RESOURCE_ID\tKIND\tLABEL\tURI\n") != std::string::npos);
+  REQUIRE(list_text.find(resource_id + "\turl\tdocs\thttps://example.com/docs\n") != std::string::npos);
+  REQUIRE(list_text.find(repo_resource_id + "\trepo\texample.git\tgit@github.com:holderteam/example.git\n") !=
+          std::string::npos);
+
+  const auto filtered_out = xdg_root / "resources-filtered.out";
+  REQUIRE(run_command(bin + " resource list --filter github > \"" + filtered_out.string() + "\"") == 0);
+  const auto filtered_text = read_text(filtered_out);
+  REQUIRE(filtered_text.find(repo_resource_id) != std::string::npos);
+  REQUIRE(filtered_text.find(resource_id) == std::string::npos);
+
+  const auto show_out = xdg_root / "resource-show.out";
+  REQUIRE(run_command(bin + " resource show " + resource_id + " > \"" + show_out.string() + "\"") == 0);
+  REQUIRE(read_text(show_out) == "Resource: " + resource_id + "\n"
+                                 "Kind: url\n"
+                                 "Label: docs\n"
+                                 "URI: https://example.com/docs\n"
+                                 "Desc: Docs link\n");
+
+  const auto show_json_out = xdg_root / "resource-show-json.out";
+  REQUIRE(run_command(bin + " resource show --json " + resource_id + " > \"" +
+                      show_json_out.string() + "\"") == 0);
+  const auto show_json = nlohmann::json::parse(read_text(show_json_out));
+  REQUIRE(show_json["ok"] == true);
+  REQUIRE(show_json["data"]["project_id"] == "home-id");
+  REQUIRE(show_json["data"]["label"] == "docs");
+
+  const auto edit_out = xdg_root / "resource-edit.out";
+  REQUIRE(run_command(bin + " resource edit " + resource_id +
+                      " --label Docs --kind url --uri https://example.com/reference --clear-desc > \"" +
+                      edit_out.string() + "\"") == 0);
+  REQUIRE(read_text(edit_out) == "Updated resource: " + resource_id + "\n");
+
+  const auto edited_json_out = xdg_root / "resource-edited.json";
+  REQUIRE(run_command(bin + " resource show --json " + resource_id + " > \"" +
+                      edited_json_out.string() + "\"") == 0);
+  const auto edited_json = nlohmann::json::parse(read_text(edited_json_out));
+  REQUIRE(edited_json["data"]["label"] == "Docs");
+  REQUIRE(edited_json["data"]["uri"] == "https://example.com/reference");
+  REQUIRE(edited_json["data"]["desc"].is_null());
+
+  const auto delete_out = xdg_root / "resource-delete.out";
+  REQUIRE(run_command(bin + " resource delete " + resource_id + " > \"" +
+                      delete_out.string() + "\"") == 0);
+  REQUIRE(read_text(delete_out) == "Deleted resource: " + resource_id + "\n");
+
+  REQUIRE(run_command(bin + " resource show " + resource_id + " >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit " + repo_resource_id + " >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit " + repo_resource_id +
+                      " --desc x --clear-desc >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource nope >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
@@ -945,6 +1071,63 @@ TEST_CASE("holderctl logs rejects unknown options", "[holderctl]") {
 }
 
 #ifndef _WIN32
+TEST_CASE("holderctl resource open invokes xdg-open for resource URI", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto home_root = xdg_root / "home-root";
+  std::filesystem::create_directories(home_root);
+  holder::test::create_project(db, "home-id", home_root.string());
+  {
+    holder::project::ProjectRepo repo(db);
+    repo.update_name("home-id", "Home", 2);
+  }
+
+  const std::string token = "resourceopentoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+
+  const auto fake_bin = xdg_root / "bin";
+  std::filesystem::create_directories(fake_bin);
+  write_fake_xdg_open(fake_bin / "xdg-open");
+
+  const auto args_path = xdg_root / "xdg-open.args";
+  const char* old_path = std::getenv("PATH");
+  holder::test::EnvGuard path_env(
+      "PATH", fake_bin.string() + ":" + (old_path ? std::string(old_path) : std::string{}));
+  holder::test::EnvGuard args_env("HOLDERCTL_FAKE_XDG_OPEN_ARGS", args_path.string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto add_out = xdg_root / "resource-open-add.out";
+  REQUIRE(run_command(bin + " resource add https://example.com/open-me > \"" +
+                      add_out.string() + "\"") == 0);
+  const auto resource_id = created_resource_id_from_output(read_text(add_out));
+  REQUIRE(run_command(bin + " resource open " + resource_id) == 0);
+  REQUIRE(read_text(args_path) == "https://example.com/open-me\n");
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl openapi opens Swagger docs with xdg-open", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
