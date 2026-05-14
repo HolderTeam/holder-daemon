@@ -526,6 +526,69 @@ TEST_CASE("holderctl use reports missing and ambiguous projects", "[holderctl]")
   server_thread.join();
 }
 
+TEST_CASE("holderctl search uses the current project", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "project-root";
+  std::filesystem::create_directories(project_root);
+  holder::test::create_project(db, "search-project", project_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  holder::model::Card card;
+  card.card_id = "search-card";
+  card.project_id = "search-project";
+  card.title = "Searchable Card";
+  card.created_at = 10;
+  card.updated_at = 11;
+  card_store.create(card, "unique holderctl search term");
+
+  const std::string token = "searchtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " search unique >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use search-project >/dev/null") == 0);
+
+  const auto search_out = xdg_root / "search.out";
+  REQUIRE(run_command(bin + " search unique > \"" + search_out.string() + "\"") == 0);
+  const auto output = read_text(search_out);
+  REQUIRE(output.find("search-card\tSearchable Card\n") != std::string::npos);
+
+  const auto json_path = xdg_root / "search.json";
+  REQUIRE(run_command(bin + " search --json --limit 5 \"unique\" > \"" + json_path.string() + "\"") == 0);
+  const auto payload = nlohmann::json::parse(read_text(json_path));
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"].is_array());
+  REQUIRE(payload["data"][0]["card_id"] == "search-card");
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());

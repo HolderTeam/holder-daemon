@@ -8,7 +8,9 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -111,6 +113,61 @@ nlohmann::json resolve_project(const nlohmann::json& projects, const std::string
     throw std::runtime_error("Multiple projects named '" + query + "'; use the project id.");
   }
   throw std::runtime_error("Project not found: " + query);
+}
+
+std::string url_encode_component(const std::string& value) {
+  std::ostringstream out;
+  out << std::uppercase << std::hex;
+  for (const char ch : value) {
+    const auto c = static_cast<unsigned char>(ch);
+    const bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                      (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+                      c == '.' || c == '~';
+    if (safe) {
+      out << static_cast<char>(c);
+    } else {
+      out << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+    }
+  }
+  return out.str();
+}
+
+struct SearchOptions {
+  bool json_output = false;
+  int limit = 20;
+  std::string query;
+};
+
+SearchOptions parse_search_options(int argc, char* argv[]) {
+  SearchOptions options;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg == "--limit") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("Usage: holderctl search [--json] [--limit N] <query>");
+      }
+      try {
+        options.limit = std::stoi(argv[++i]);
+      } catch (const std::exception&) {
+        throw std::runtime_error("Invalid search limit: " + std::string(argv[i]));
+      }
+      if (options.limit < 1) {
+        throw std::runtime_error("Search limit must be at least 1");
+      }
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown search option: " + arg);
+    } else {
+      if (!options.query.empty()) options.query += " ";
+      options.query += arg;
+    }
+  }
+
+  if (options.query.empty()) {
+    throw std::runtime_error("Usage: holderctl search [--json] [--limit N] <query>");
+  }
+  return options;
 }
 
 } // namespace
@@ -216,6 +273,51 @@ int command_current(const holder::core::Paths& paths, int argc) {
             << current_project_id << ")\n"
             << "Root: " << json_string(project, "root_path") << "\n";
   return 0;
+}
+
+int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_search_options(argc, argv);
+  const auto current_project_id = read_current_project_id(paths);
+  const auto projects_payload = list_projects_payload(paths, false);
+  (void)find_project_by_id(projects_payload.at("data"), current_project_id);
+
+  try {
+    const auto connection = read_secure_daemon_connection(paths);
+    const std::string target = "/search/cards?project_id=" +
+                               url_encode_component(current_project_id) + "&q=" +
+                               url_encode_component(options.query) + "&limit=" +
+                               std::to_string(options.limit);
+    const auto response = http_json_request(
+        connection, boost::beast::http::verb::get, target, std::chrono::seconds(10));
+
+    if (response.status != boost::beast::http::status::ok ||
+        !response.payload.value("ok", false)) {
+      const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
+      throw std::runtime_error("Search failed: " + api_error_message(response, fallback));
+    }
+
+    if (options.json_output) {
+      std::cout << response.payload.dump(2) << "\n";
+      return 0;
+    }
+
+    const auto& cards = response.payload.at("data");
+    if (!cards.is_array() || cards.empty()) {
+      std::cout << "No cards found.\n";
+      return 0;
+    }
+
+    for (const auto& card : cards) {
+      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\n";
+      const auto snippet = json_string(card, "snippet");
+      if (!snippet.empty()) {
+        std::cout << "  " << snippet << "\n";
+      }
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to search cards: ") + ex.what());
+  }
 }
 
 } // namespace holder::cli

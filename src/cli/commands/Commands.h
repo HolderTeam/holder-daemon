@@ -15,5 +15,6 @@ int command_reindex(const holder::core::Paths& paths, int argc);
 int command_projects(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_use(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_current(const holder::core::Paths& paths, int argc);
+int command_search(const holder::core::Paths& paths, int argc, char* argv[]);
 
 } // namespace holder::cli

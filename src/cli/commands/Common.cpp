@@ -29,6 +29,7 @@ void print_usage(std::ostream& out) {
       << "  projects   List Holder projects; use --json for raw API output\n"
       << "  use        Set the current project by id or name\n"
       << "  current    Print the current project\n"
+      << "  search     Search cards in the current project\n"
       << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
       << "  reindex    Rebuild the daemon search index from the local database\n"
       << "  restart    Restart the local daemon and rotate its bearer token\n"

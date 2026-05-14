@@ -32,6 +32,7 @@ int main(int argc, char* argv[]) {
     if (command == "projects") return holder::cli::command_projects(paths, argc, argv);
     if (command == "use") return holder::cli::command_use(paths, argc, argv);
     if (command == "current") return holder::cli::command_current(paths, argc);
+    if (command == "search") return holder::cli::command_search(paths, argc, argv);
     if (command == "openapi") return holder::cli::command_openapi(paths, argc, argv);
     if (command == "logs") return holder::cli::command_logs(paths, argc, argv);
     if (command == "reindex") return holder::cli::command_reindex(paths, argc);
