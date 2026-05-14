@@ -59,6 +59,7 @@ add_executable(lockfile_tests
   TrashRoutes_test.cpp
   HttpRebuild_test.cpp
   RebuildRoutes_test.cpp
+  ReindexRoutes_test.cpp
   ProjectRoutes_test.cpp
   HttpFirstRun_test.cpp
   HttpOpenFlow_test.cpp
@@ -183,6 +184,7 @@ add_executable(lockfile_tests
   ../src/api/routes/CardRoutes.cpp
   ../src/api/routes/ProjectRoutes.cpp
   ../src/api/routes/RebuildRoutes.cpp
+  ../src/api/routes/ReindexRoutes.cpp
   ../src/api/routes/SearchRoutes.cpp
   ../src/api/routes/TrashRoutes.cpp
   ../src/api/routes/StaticRoutes.cpp

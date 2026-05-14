@@ -42,6 +42,7 @@ void print_usage(std::ostream& out) {
       << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
       << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
+      << "  reindex    Rebuild the daemon search index from the local database\n"
       << "  restart    Restart the local daemon and rotate its bearer token\n"
       << "  logs       Print daemon logs; use --follow to tail or --path for the file path\n"
       << "  version    Print holderctl version\n";
@@ -366,6 +367,65 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
   return 0;
 }
 
+int command_reindex(const holder::core::Paths& paths, int argc) {
+  if (argc > 2) {
+    throw std::runtime_error("reindex does not take options");
+  }
+
+  require_secure_file(paths.info_path());
+  const auto info = read_server_info(paths);
+  const auto bind = json_string(info.json, "bind", "127.0.0.1");
+  const int port = json_int(info.json, "port", 11499);
+  const auto token = json_string(info.json, "auth_token");
+  if (token.empty()) {
+    throw std::runtime_error("Holder daemon info file has no auth_token: " + info.path.string());
+  }
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  try {
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+    boost::beast::tcp_stream stream(ioc);
+    stream.expires_after(std::chrono::seconds(30));
+    stream.connect(endpoints);
+
+    http::request<http::empty_body> req{http::verb::post, "/reindex", 11};
+    req.set(http::field::host, bind);
+    req.set(http::field::user_agent, "holderctl");
+    req.set(http::field::authorization, "Bearer " + token);
+    req.keep_alive(false);
+
+    http::write(stream, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    boost::system::error_code ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    if (res.result() != http::status::ok || !payload.value("ok", false)) {
+      std::string message = "HTTP " + std::to_string(res.result_int());
+      if (payload.contains("error") && payload["error"].contains("message")) {
+        message = payload["error"]["message"].get<std::string>();
+      }
+      throw std::runtime_error("Reindex failed: " + message);
+    }
+
+    std::cout << payload.value("data", nlohmann::json::object())
+                     .value("message", std::string{"Reindex complete."})
+              << "\n";
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to request reindex: ") + ex.what());
+  }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -389,6 +449,7 @@ int main(int argc, char* argv[]) {
     if (command == "paths") return command_paths(paths);
     if (command == "openapi") return command_openapi(paths, argc, argv);
     if (command == "logs") return command_logs(paths, argc, argv);
+    if (command == "reindex") return command_reindex(paths, argc);
 
     std::cerr << "Unknown command: " << command << "\n";
     print_usage(std::cerr);

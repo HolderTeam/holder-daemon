@@ -140,6 +140,7 @@ add_executable(holderd
   src/api/routes/CardRoutes.cpp
   src/api/routes/ProjectRoutes.cpp
   src/api/routes/RebuildRoutes.cpp
+  src/api/routes/ReindexRoutes.cpp
   src/api/routes/SearchRoutes.cpp
   src/api/routes/TrashRoutes.cpp
   src/api/routes/StaticRoutes.cpp
