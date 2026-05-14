@@ -41,7 +41,7 @@ void print_usage(std::ostream& out) {
       << "  status     Print local daemon status\n"
       << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
-      << "  openapi    Print the local Swagger/OpenAPI docs URL\n"
+      << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
       << "  restart    Restart the local daemon and rotate its bearer token\n"
       << "  logs       Print daemon logs; use --follow to tail or --path for the file path\n"
       << "  version    Print holderctl version\n";
@@ -234,16 +234,59 @@ int command_paths(const holder::core::Paths& paths) {
   return 0;
 }
 
-int command_openapi(const holder::core::Paths& paths) {
+std::string openapi_url(const holder::core::Paths& paths) {
   try {
     const auto info = read_server_info(paths);
     const auto bind = json_string(info.json, "bind", "127.0.0.1");
     const int port = json_int(info.json, "port", 11499);
-    std::cout << "http://" << bind << ":" << port << "/docs\n";
+    return "http://" + bind + ":" + std::to_string(port) + "/docs";
   } catch (const std::exception&) {
-    std::cout << "http://127.0.0.1:11499/docs\n";
+    return "http://127.0.0.1:11499/docs";
+  }
+}
+
+int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
+  bool url_only = false;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--url") {
+      url_only = true;
+    } else {
+      throw std::runtime_error("Unknown openapi option: " + arg);
+    }
+  }
+
+  const auto url = openapi_url(paths);
+  if (url_only) {
+    std::cout << url << "\n";
+    return 0;
+  }
+
+#if defined(__linux__)
+  const auto opener = boost::process::v2::environment::find_executable("xdg-open");
+  if (opener.empty()) {
+    std::cout << url << "\n";
+    throw std::runtime_error("xdg-open not found");
+  }
+
+  boost::asio::io_context ioc;
+  boost::process::v2::process proc(ioc.get_executor(), opener, {url});
+
+  boost::system::error_code ec;
+  const int exit_code = proc.wait(ec);
+  if (ec) {
+    std::cout << url << "\n";
+    throw std::runtime_error("Failed to run xdg-open: " + ec.message());
+  }
+  if (exit_code != 0) {
+    std::cout << url << "\n";
+    throw std::runtime_error("xdg-open failed with exit code " + std::to_string(exit_code));
   }
   return 0;
+#else
+  std::cout << url << "\n";
+  throw std::runtime_error("openapi browser launch is not supported on this platform yet"); // LCOV_EXCL_LINE
+#endif
 }
 
 int command_restart() {
@@ -344,7 +387,7 @@ int main(int argc, char* argv[]) {
     if (command == "status") return command_status(paths);
     if (command == "health") return command_health(paths);
     if (command == "paths") return command_paths(paths);
-    if (command == "openapi") return command_openapi(paths);
+    if (command == "openapi") return command_openapi(paths, argc, argv);
     if (command == "logs") return command_logs(paths, argc, argv);
 
     std::cerr << "Unknown command: " << command << "\n";

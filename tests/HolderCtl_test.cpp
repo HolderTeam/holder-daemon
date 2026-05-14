@@ -87,6 +87,15 @@ void write_fake_tail(const std::filesystem::path& path) {
   out.close();
   ::chmod(path.c_str(), S_IRWXU);
 }
+
+void write_fake_xdg_open(const std::filesystem::path& path) {
+  std::ofstream out(path);
+  out << "#!/bin/sh\n"
+      << "printf '%s\\n' \"$@\" > \"$HOLDERCTL_FAKE_XDG_OPEN_ARGS\"\n"
+      << "exit \"${HOLDERCTL_FAKE_XDG_OPEN_EXIT:-0}\"\n";
+  out.close();
+  ::chmod(path.c_str(), S_IRWXU);
+}
 #endif
 
 } // namespace
@@ -234,7 +243,7 @@ TEST_CASE("holderctl status paths openapi and version smoke", "[holderctl]") {
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   REQUIRE(run_command(bin + " status") == 0);
   REQUIRE(run_command(bin + " paths") == 0);
-  REQUIRE(run_command(bin + " openapi") == 0);
+  REQUIRE(run_command(bin + " openapi --url") == 0);
   REQUIRE(run_command(bin + " logs --path") == 0);
   REQUIRE(run_command(bin + " --version") == 0);
   REQUIRE(run_command(bin + " --help") == 0);
@@ -249,7 +258,7 @@ TEST_CASE("holderctl status reports missing or stopped daemon", "[holderctl]") {
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   REQUIRE(run_command(bin + " status") == 1);
-  REQUIRE(run_command(bin + " openapi") == 0);
+  REQUIRE(run_command(bin + " openapi --url") == 0);
 
   const auto server_dir = xdg_root / "data" / "holder" / "server";
   const auto info_path = server_dir / "holder.json";
@@ -357,6 +366,63 @@ TEST_CASE("holderctl logs rejects unknown options", "[holderctl]") {
 }
 
 #ifndef _WIN32
+TEST_CASE("holderctl openapi opens Swagger docs with xdg-open", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), 12345);
+
+  const auto fake_bin = xdg_root / "bin";
+  std::filesystem::create_directories(fake_bin);
+  write_fake_xdg_open(fake_bin / "xdg-open");
+
+  const auto args_path = xdg_root / "xdg-open.args";
+  const char* old_path = std::getenv("PATH");
+  holder::test::EnvGuard path_env(
+      "PATH", fake_bin.string() + ":" + (old_path ? std::string(old_path) : std::string{}));
+  holder::test::EnvGuard args_env("HOLDERCTL_FAKE_XDG_OPEN_ARGS", args_path.string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " openapi") == 0);
+  REQUIRE(read_text(args_path) == "http://127.0.0.1:12345/docs\n");
+}
+
+TEST_CASE("holderctl openapi reports xdg-open failure", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto fake_bin = xdg_root / "bin";
+  std::filesystem::create_directories(fake_bin);
+  write_fake_xdg_open(fake_bin / "xdg-open");
+
+  const auto args_path = xdg_root / "xdg-open.args";
+  const char* old_path = std::getenv("PATH");
+  holder::test::EnvGuard path_env(
+      "PATH", fake_bin.string() + ":" + (old_path ? std::string(old_path) : std::string{}));
+  holder::test::EnvGuard args_env("HOLDERCTL_FAKE_XDG_OPEN_ARGS", args_path.string());
+  holder::test::EnvGuard exit_env("HOLDERCTL_FAKE_XDG_OPEN_EXIT", "9");
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " openapi >/dev/null 2>/dev/null") == 1);
+  REQUIRE(read_text(args_path) == "http://127.0.0.1:11499/docs\n");
+}
+
+TEST_CASE("holderctl openapi rejects unknown options", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " openapi --bad >/dev/null 2>/dev/null") == 1);
+}
+
 TEST_CASE("holderctl restart invokes the Linux user service", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   const auto fake_bin = xdg_root / "bin";
