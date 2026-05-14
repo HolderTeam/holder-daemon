@@ -235,6 +235,12 @@ std::string title_from_content(const std::string& content) {
   return title;
 }
 
+void trim_trailing_line_breaks(std::string& text) {
+  while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+    text.pop_back();
+  }
+}
+
 long long now_epoch_seconds() {
   return static_cast<long long>(std::time(nullptr));
 }
@@ -661,14 +667,17 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
 }
 
 int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
-  if (argc != 3) {
-    throw std::runtime_error("Usage: <command> | holderctl append <card-id>");
+  if (argc < 3) {
+    throw std::runtime_error("Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>");
   }
 
   const std::string card_id = argv[2];
-  const auto addition = read_stdin_all();
+  std::string addition = join_args(3, argc, argv);
+  if (addition.empty()) {
+    addition = read_stdin_all();
+  }
   if (trim_ascii_whitespace(addition).empty()) {
-    throw std::runtime_error("append requires content on stdin");
+    throw std::runtime_error("Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>");
   }
 
   try {
@@ -683,6 +692,7 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     auto content = json_string(data, "content");
+    trim_trailing_line_breaks(content);
     if (!content.empty()) {
       content += "\n\n";
     }

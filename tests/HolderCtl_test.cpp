@@ -756,6 +756,17 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
                       appended_card_out.string() + "\"") == 0);
   REQUIRE(read_text(appended_card_out) == "Revise long division\n\nextra line\n");
 
+  const auto append_args_out = xdg_root / "append-args.out";
+  REQUIRE(run_command(bin + " append " + first_card_id + " Revise binary trees > \"" +
+                      append_args_out.string() + "\"") == 0);
+  REQUIRE(read_text(append_args_out) == "Appended to card: " + first_card_id + "\n");
+
+  const auto appended_args_card_out = xdg_root / "appended-args-card.out";
+  REQUIRE(run_command(bin + " card " + first_card_id + " > \"" +
+                      appended_args_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(appended_args_card_out) ==
+          "Revise long division\n\nextra line\n\nRevise binary trees\n");
+
   REQUIRE(run_command(bin + " new < /dev/null >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " append " + first_card_id + " < /dev/null >/dev/null 2>/dev/null") == 1);
 
