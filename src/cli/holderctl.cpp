@@ -1,7 +1,13 @@
 #include "platform/Paths.h"
 
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/process/v2/environment.hpp>
+#include <boost/process/v2/process.hpp>
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -33,8 +39,11 @@ void print_usage(std::ostream& out) {
       << "Commands:\n"
       << "  token      Print the local daemon bearer token\n"
       << "  status     Print local daemon status\n"
+      << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
       << "  openapi    Print the local Swagger/OpenAPI docs URL\n"
+      << "  restart    Restart the local daemon and rotate its bearer token\n"
+      << "  logs       Print daemon logs; use --follow to tail or --path for the file path\n"
       << "  version    Print holderctl version\n";
 }
 
@@ -136,6 +145,85 @@ int command_status(const holder::core::Paths& paths) {
   }
 }
 
+bool http_health_ok(const std::string& bind,
+                    int port,
+                    const std::string& token,
+                    std::string* detail) {
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  try {
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+    boost::beast::tcp_stream stream(ioc);
+    stream.expires_after(std::chrono::seconds(2));
+    stream.connect(endpoints);
+
+    http::request<http::empty_body> req{http::verb::get, "/health", 11};
+    req.set(http::field::host, bind);
+    req.set(http::field::user_agent, "holderctl");
+    req.set(http::field::authorization, "Bearer " + token);
+    req.keep_alive(false);
+
+    http::write(stream, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    boost::system::error_code ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+
+    if (res.result() != http::status::ok) {
+      if (detail) *detail = "HTTP " + std::to_string(res.result_int());
+      return false;
+    }
+
+    const auto body = nlohmann::json::parse(res.body());
+    const bool ok = body.value("ok", false);
+    if (detail) *detail = ok ? "ok" : "response ok=false";
+    return ok;
+  } catch (const std::exception& ex) {
+    if (detail) *detail = ex.what();
+    return false;
+  }
+}
+
+int command_health(const holder::core::Paths& paths) {
+  try {
+    require_secure_file(paths.info_path());
+    const auto info = read_server_info(paths);
+
+    const int pid = json_int(info.json, "pid");
+    const bool running = is_process_running(pid);
+    const auto bind = json_string(info.json, "bind", "127.0.0.1");
+    const int port = json_int(info.json, "port", 11499);
+    const auto token = json_string(info.json, "auth_token");
+
+    std::string http_detail = "not checked";
+    const bool has_token = !token.empty();
+    const bool http_ok = running && has_token && http_health_ok(bind, port, token, &http_detail);
+    const bool healthy = running && has_token && http_ok;
+
+    std::cout << "Holder daemon: " << (healthy ? "healthy" : "unhealthy") << "\n"
+              << "PID: " << pid << (running ? " (running)" : " (not running)") << "\n"
+              << "URL: http://" << bind << ":" << port << "\n"
+              << "API version: " << json_string(info.json, "api_version", "unknown") << "\n"
+              << "Server version: " << json_string(info.json, "server_version", "unknown") << "\n"
+              << "Info file: " << info.path.string() << "\n"
+              << "Token file: " << (has_token ? "secure" : "missing auth_token") << "\n"
+              << "HTTP health: " << http_detail << "\n";
+    return healthy ? 0 : 1;
+  } catch (const std::exception& ex) {
+    std::cout << "Holder daemon: unhealthy\n"
+              << "Info file: " << paths.info_path().string() << "\n"
+              << "Reason: " << ex.what() << "\n";
+    return 1;
+  }
+}
+
 int command_paths(const holder::core::Paths& paths) {
   std::cout << "Data:   " << paths.data_dir.string() << "\n";
   std::cout << "DB:     " << paths.db_path().string() << "\n";
@@ -158,6 +246,83 @@ int command_openapi(const holder::core::Paths& paths) {
   return 0;
 }
 
+int command_restart() {
+#if defined(__linux__)
+  const auto systemctl = boost::process::v2::environment::find_executable("systemctl");
+  if (systemctl.empty()) {
+    throw std::runtime_error("systemctl not found; restart holder-daemon.service manually");
+  }
+
+  boost::asio::io_context ioc;
+  boost::process::v2::process proc(
+      ioc.get_executor(), systemctl, {"--user", "restart", "holder-daemon.service"});
+
+  boost::system::error_code ec;
+  const int exit_code = proc.wait(ec);
+  if (ec) {
+    throw std::runtime_error("Failed to run systemctl: " + ec.message());
+  }
+  if (exit_code != 0) {
+    throw std::runtime_error("systemctl --user restart holder-daemon.service failed with exit code " +
+                             std::to_string(exit_code));
+  }
+
+  std::cout << "Holder daemon restarted. A new local API token was generated.\n";
+  return 0;
+#else
+  throw std::runtime_error("restart is not supported on this platform yet"); // LCOV_EXCL_LINE
+#endif
+}
+
+int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto log_path = paths.log_dir() / "server.log";
+  bool follow = false;
+  bool path_only = false;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--follow" || arg == "-f") {
+      follow = true;
+    } else if (arg == "--path") {
+      path_only = true;
+    } else {
+      throw std::runtime_error("Unknown logs option: " + arg);
+    }
+  }
+
+  if (path_only) {
+    std::cout << log_path.string() << "\n";
+    return 0;
+  }
+
+  if (follow) {
+#if defined(__linux__)
+    const auto tail = boost::process::v2::environment::find_executable("tail");
+    if (tail.empty()) {
+      throw std::runtime_error("tail not found; log file is: " + log_path.string());
+    }
+
+    boost::asio::io_context ioc;
+    boost::process::v2::process proc(ioc.get_executor(), tail, {"-f", log_path.string()});
+
+    boost::system::error_code ec;
+    const int exit_code = proc.wait(ec);
+    if (ec) {
+      throw std::runtime_error("Failed to run tail: " + ec.message());
+    }
+    return exit_code;
+#else
+    throw std::runtime_error("logs --follow is not supported on this platform yet"); // LCOV_EXCL_LINE
+#endif
+  }
+
+  std::ifstream in(log_path);
+  if (!in.is_open()) {
+    throw std::runtime_error("Holder daemon log file not found: " + log_path.string());
+  }
+  std::cout << in.rdbuf();
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -172,12 +337,15 @@ int main(int argc, char* argv[]) {
       std::cout << "holderctl " << CARD_SERVER_VERSION << "\n";
       return 0;
     }
+    if (command == "restart") return command_restart();
 
     const auto paths = holder::core::Paths::resolve("holder");
     if (command == "token") return command_token(paths);
     if (command == "status") return command_status(paths);
+    if (command == "health") return command_health(paths);
     if (command == "paths") return command_paths(paths);
     if (command == "openapi") return command_openapi(paths);
+    if (command == "logs") return command_logs(paths, argc, argv);
 
     std::cerr << "Unknown command: " << command << "\n";
     print_usage(std::cerr);

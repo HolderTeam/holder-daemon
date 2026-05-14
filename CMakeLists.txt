@@ -272,9 +272,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   )
 endif()
 target_link_libraries(holderctl PRIVATE
+  Boost::filesystem
   nlohmann_json::nlohmann_json
   XdgUtils::BaseDir
 )
+if(TARGET Boost::process)
+  target_link_libraries(holderctl PRIVATE Boost::process)
+endif()
 
 # ----------------------------
 # Install
