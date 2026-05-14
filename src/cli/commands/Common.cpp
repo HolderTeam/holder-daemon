@@ -31,6 +31,8 @@ void print_usage(std::ostream& out) {
       << "  current    Print the current project\n"
       << "  search     Search cards in the current project\n"
       << "  card       Print a card from the current project\n"
+      << "  new        Create a card in the current project from args or stdin\n"
+      << "  append     Append stdin to a card in the current project\n"
       << "  recovery-token  Export or import encrypted project recovery tokens\n"
       << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
       << "  reindex    Rebuild the daemon search index from the local database\n"

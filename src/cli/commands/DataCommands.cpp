@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -188,6 +189,56 @@ struct RecoveryTokenOptions {
   std::string token;
 };
 
+std::string join_args(int start, int argc, char* argv[]) {
+  std::string out;
+  for (int i = start; i < argc; ++i) {
+    if (!out.empty()) out += " ";
+    out += argv[i];
+  }
+  return out;
+}
+
+std::string read_stdin_all() {
+  std::ostringstream buffer;
+  buffer << std::cin.rdbuf();
+  return buffer.str();
+}
+
+std::string trim_ascii_whitespace(const std::string& value) {
+  const auto start = value.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) return "";
+  const auto end = value.find_last_not_of(" \t\r\n");
+  return value.substr(start, end - start + 1);
+}
+
+std::string first_non_empty_line(const std::string& text) {
+  std::istringstream in(text);
+  std::string line;
+  while (std::getline(in, line)) {
+    const auto trimmed = trim_ascii_whitespace(line);
+    if (!trimmed.empty()) {
+      return trimmed;
+    }
+  }
+  return "";
+}
+
+std::string title_from_content(const std::string& content) {
+  auto title = first_non_empty_line(content);
+  if (title.empty()) {
+    title = "Untitled";
+  }
+  constexpr std::size_t kMaxTitleLength = 80;
+  if (title.size() > kMaxTitleLength) {
+    title = title.substr(0, kMaxTitleLength);
+  }
+  return title;
+}
+
+long long now_epoch_seconds() {
+  return static_cast<long long>(std::time(nullptr));
+}
+
 SearchOptions parse_search_options(int argc, char* argv[]) {
   SearchOptions options;
   for (int i = 2; i < argc; ++i) {
@@ -306,13 +357,6 @@ RecoveryTokenOptions parse_recovery_token_options(const std::string& subcommand,
   return options;
 }
 
-std::string trim_ascii_whitespace(const std::string& value) {
-  const auto start = value.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) return "";
-  const auto end = value.find_last_not_of(" \t\r\n");
-  return value.substr(start, end - start + 1);
-}
-
 std::string read_text_file_trimmed(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open()) {
@@ -354,6 +398,30 @@ nlohmann::json recovery_token_request(const holder::core::Paths& paths,
   if ((response.status != boost::beast::http::status::ok &&
        response.status != boost::beast::http::status::created) ||
       !response.payload.value("ok", false)) {
+    const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
+    throw std::runtime_error(api_error_message(response, fallback));
+  }
+
+  return response.payload;
+}
+
+nlohmann::json require_current_project_payload(const holder::core::Paths& paths) {
+  const auto current_project_id = read_current_project_id(paths);
+  const auto projects_payload = list_projects_payload(paths, false);
+  return find_project_by_id(projects_payload.at("data"), current_project_id);
+}
+
+nlohmann::json card_api_request(const holder::core::Paths& paths,
+                                boost::beast::http::verb method,
+                                const std::string& target,
+                                const nlohmann::json& body = nlohmann::json::object(),
+                                boost::beast::http::status success = boost::beast::http::status::ok) {
+  const auto connection = read_secure_daemon_connection(paths);
+  const auto response = method == boost::beast::http::verb::get
+                            ? http_json_request(connection, method, target, std::chrono::seconds(10))
+                            : http_json_request(connection, method, target, std::chrono::seconds(30), body);
+
+  if (response.status != success || !response.payload.value("ok", false)) {
     const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
     throw std::runtime_error(api_error_message(response, fallback));
   }
@@ -561,6 +629,75 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to print card: ") + ex.what());
+  }
+}
+
+int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
+  std::string content = join_args(2, argc, argv);
+  if (content.empty()) {
+    content = read_stdin_all();
+  }
+  if (trim_ascii_whitespace(content).empty()) {
+    throw std::runtime_error("Usage: holderctl new <text>  OR  <command> | holderctl new");
+  }
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto project_id = json_string(project, "project_id");
+    const auto payload = card_api_request(paths,
+                                          boost::beast::http::verb::post,
+                                          "/cards",
+                                          {{"project_id", project_id},
+                                           {"title", title_from_content(content)},
+                                           {"content", content},
+                                           {"created_at", now_epoch_seconds()},
+                                           {"updated_at", now_epoch_seconds()}},
+                                          boost::beast::http::status::created);
+    std::cout << "Created card: " << json_string(payload.at("data"), "card_id") << "\n";
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to create card: ") + ex.what());
+  }
+}
+
+int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
+  if (argc != 3) {
+    throw std::runtime_error("Usage: <command> | holderctl append <card-id>");
+  }
+
+  const std::string card_id = argv[2];
+  const auto addition = read_stdin_all();
+  if (trim_ascii_whitespace(addition).empty()) {
+    throw std::runtime_error("append requires content on stdin");
+  }
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+    const auto fetched = card_api_request(paths,
+                                          boost::beast::http::verb::get,
+                                          "/cards/" + url_encode_component(card_id));
+    const auto& data = fetched.at("data");
+    if (json_string(data, "project_id") != current_project_id) {
+      throw std::runtime_error("Card is not in the current project: " + card_id);
+    }
+
+    auto content = json_string(data, "content");
+    if (!content.empty()) {
+      content += "\n\n";
+    }
+    content += addition;
+
+    (void)card_api_request(paths,
+                           boost::beast::http::verb::patch,
+                           "/cards/" + url_encode_component(card_id),
+                           {{"content", content},
+                            {"title", json_string(data, "title")},
+                            {"updated_at", now_epoch_seconds()}});
+    std::cout << "Appended to card: " << card_id << "\n";
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to append to card: ") + ex.what());
   }
 }
 

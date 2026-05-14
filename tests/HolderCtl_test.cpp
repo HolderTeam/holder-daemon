@@ -34,6 +34,17 @@ std::string read_text(const std::filesystem::path& path) {
   return buffer.str();
 }
 
+std::string created_card_id_from_output(const std::string& output) {
+  const std::string prefix = "Created card: ";
+  REQUIRE(output.rfind(prefix, 0) == 0);
+  auto id = output.substr(prefix.size());
+  if (!id.empty() && id.back() == '\n') {
+    id.pop_back();
+  }
+  REQUIRE_FALSE(id.empty());
+  return id;
+}
+
 void write_server_info(const std::filesystem::path& path,
                        int pid = 12345,
                        int port = 11499,
@@ -671,6 +682,82 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   REQUIRE(payload["data"]["content"] == "body from holderctl card");
 
   REQUIRE(run_command(bin + " card card-two >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl new and append capture cards in Home by default", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto home_root = xdg_root / "home-root";
+  std::filesystem::create_directories(home_root);
+  holder::test::create_project(db, "home-id", home_root.string());
+  {
+    holder::project::ProjectRepo repo(db);
+    repo.update_name("home-id", "Home", 2);
+  }
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  const std::string token = "newappendtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto new_out = xdg_root / "new.out";
+  REQUIRE(run_command(bin + " new Revise long division > \"" + new_out.string() + "\"") == 0);
+  const auto first_card_id = created_card_id_from_output(read_text(new_out));
+
+  const auto first_card_out = xdg_root / "first-card.out";
+  REQUIRE(run_command(bin + " card " + first_card_id + " > \"" + first_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(first_card_out) == "Revise long division\n");
+
+  const auto stdin_new_out = xdg_root / "stdin-new.out";
+  REQUIRE(run_command("printf 'Piped title\\nbody line\\n' | " + bin +
+                      " new > \"" + stdin_new_out.string() + "\"") == 0);
+  const auto second_card_id = created_card_id_from_output(read_text(stdin_new_out));
+
+  const auto second_card_out = xdg_root / "second-card.out";
+  REQUIRE(run_command(bin + " card " + second_card_id + " > \"" +
+                      second_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(second_card_out) == "Piped title\nbody line\n");
+
+  const auto append_out = xdg_root / "append.out";
+  REQUIRE(run_command("printf 'extra line\\n' | " + bin + " append " + first_card_id +
+                      " > \"" + append_out.string() + "\"") == 0);
+  REQUIRE(read_text(append_out) == "Appended to card: " + first_card_id + "\n");
+
+  const auto appended_card_out = xdg_root / "appended-card.out";
+  REQUIRE(run_command(bin + " card " + first_card_id + " > \"" +
+                      appended_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(appended_card_out) == "Revise long division\n\nextra line\n");
+
+  REQUIRE(run_command(bin + " new < /dev/null >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " append " + first_card_id + " < /dev/null >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
