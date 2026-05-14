@@ -6,6 +6,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -13,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <optional>
 #include <vector>
 
 #ifndef _WIN32
@@ -49,6 +51,23 @@ std::filesystem::path holderctl_config_path(const holder::core::Paths& paths) {
   return paths.config_dir / "holderctl.json";
 }
 
+bool is_home_project(const nlohmann::json& project) {
+  auto name = json_string(project, "name");
+  for (char& c : name) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+  return name == "home";
+}
+
+nlohmann::json find_home_project(const nlohmann::json& projects) {
+  for (const auto& project : projects) {
+    if (is_home_project(project)) {
+      return project;
+    }
+  }
+  throw std::runtime_error("Default Home project not found.");
+}
+
 void write_holderctl_config(const holder::core::Paths& paths, const std::string& project_id) {
   std::filesystem::create_directories(paths.config_dir);
   const auto config_path = holderctl_config_path(paths);
@@ -76,18 +95,33 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   }
 }
 
-std::string read_current_project_id(const holder::core::Paths& paths) {
+void reset_holderctl_config(const holder::core::Paths& paths) {
+  std::error_code ec;
+  std::filesystem::remove(holderctl_config_path(paths), ec);
+}
+
+std::optional<std::string> read_configured_project_id(const holder::core::Paths& paths) {
   const auto config_path = holderctl_config_path(paths);
   std::ifstream in(config_path);
   if (!in.is_open()) {
-    throw std::runtime_error("No current project set. Run: holderctl use <project>");
+    return std::nullopt;
   }
   const auto config = nlohmann::json::parse(in);
   const auto project_id = json_string(config, "current_project_id");
   if (project_id.empty()) {
-    throw std::runtime_error("No current project set. Run: holderctl use <project>");
+    return std::nullopt;
   }
   return project_id;
+}
+
+std::string read_current_project_id(const holder::core::Paths& paths) {
+  const auto configured_project_id = read_configured_project_id(paths);
+  if (configured_project_id.has_value()) {
+    return configured_project_id.value();
+  }
+
+  const auto payload = list_projects_payload(paths, false);
+  return json_string(find_home_project(payload.at("data")), "project_id");
 }
 
 nlohmann::json find_project_by_id(const nlohmann::json& projects, const std::string& project_id) {
@@ -403,15 +437,27 @@ int command_projects(const holder::core::Paths& paths, int argc, char* argv[]) {
 }
 
 int command_use(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto payload = list_projects_payload(paths, false);
+  if (argc == 2) {
+    const auto project = find_home_project(payload.at("data"));
+    reset_holderctl_config(paths);
+    std::cout << "Current project: " << json_string(project, "name") << " ("
+              << json_string(project, "project_id") << ")\n";
+    return 0;
+  }
+
   if (argc != 3) {
     throw std::runtime_error("Usage: holderctl use <project-id-or-name>");
   }
 
   const std::string query = argv[2];
-  const auto payload = list_projects_payload(paths, false);
   const auto project = resolve_project(payload.at("data"), query);
   const auto project_id = json_string(project, "project_id");
-  write_holderctl_config(paths, project_id);
+  if (is_home_project(project)) {
+    reset_holderctl_config(paths);
+  } else {
+    write_holderctl_config(paths, project_id);
+  }
 
   std::cout << "Current project: " << json_string(project, "name") << " (" << project_id << ")\n";
   return 0;

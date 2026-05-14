@@ -430,14 +430,18 @@ TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
 
   const auto db_path = xdg_root / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
+  const auto home_root = xdg_root / "home-root";
   const auto alpha_root = xdg_root / "alpha-root";
   const auto beta_root = xdg_root / "beta-root";
+  std::filesystem::create_directories(home_root);
   std::filesystem::create_directories(alpha_root);
   std::filesystem::create_directories(beta_root);
+  holder::test::create_project(db, "home-id", home_root.string());
   holder::test::create_project(db, "alpha-id", alpha_root.string());
   holder::test::create_project(db, "beta-id", beta_root.string());
   {
     holder::project::ProjectRepo repo(db);
+    repo.update_name("home-id", "Home", 3);
     repo.update_name("beta-id", "Beta Project", 2);
   }
 
@@ -463,7 +467,10 @@ TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
 #endif
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
-  REQUIRE(run_command(bin + " current >/dev/null 2>/dev/null") == 1);
+  const auto current_home_out = xdg_root / "current-home.out";
+  REQUIRE(run_command(bin + " current > \"" + current_home_out.string() + "\"") == 0);
+  REQUIRE(read_text(current_home_out) == "Current project: Home (home-id)\nRoot: " +
+                                             home_root.string() + "\n");
 
   const auto use_name_out = xdg_root / "use-name.out";
   REQUIRE(run_command(bin + " use \"Beta Project\" > \"" + use_name_out.string() + "\"") == 0);
@@ -480,6 +487,11 @@ TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
   REQUIRE(run_command(bin + " use alpha-id > \"" + use_id_out.string() + "\"") == 0);
   REQUIRE(read_text(use_id_out) == "Current project: Project (alpha-id)\n");
   REQUIRE(nlohmann::json::parse(read_text(config_path))["current_project_id"] == "alpha-id");
+
+  const auto reset_out = xdg_root / "reset.out";
+  REQUIRE(run_command(bin + " use > \"" + reset_out.string() + "\"") == 0);
+  REQUIRE(read_text(reset_out) == "Current project: Home (home-id)\n");
+  REQUIRE_FALSE(std::filesystem::exists(config_path));
 
   server.stop();
   server_thread.join();

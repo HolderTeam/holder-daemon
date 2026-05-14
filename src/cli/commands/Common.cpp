@@ -27,7 +27,7 @@ void print_usage(std::ostream& out) {
       << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
       << "  projects   List Holder projects; use --json for raw API output\n"
-      << "  use        Set the current project by id or name\n"
+      << "  use        Set the current project by id/name; no args resets to Home\n"
       << "  current    Print the current project\n"
       << "  search     Search cards in the current project\n"
       << "  card       Print a card from the current project\n"
