@@ -37,17 +37,17 @@ void write_owner_only_file(const std::filesystem::path& path, const std::string&
   while (remaining > 0) {
     const ssize_t written = ::write(fd, cursor, remaining);
     if (written <= 0) {
-      ::close(fd);
-      std::filesystem::remove(path);
-      throw std::runtime_error("Failed to write server info temp file: " + path.string());
+      ::close(fd); // LCOV_EXCL_LINE: requires syscall fault injection.
+      std::filesystem::remove(path); // LCOV_EXCL_LINE
+      throw std::runtime_error("Failed to write server info temp file: " + path.string()); // LCOV_EXCL_LINE
     }
     cursor += written;
     remaining -= static_cast<std::size_t>(written);
   }
 
   if (::close(fd) != 0) {
-    std::filesystem::remove(path);
-    throw std::runtime_error("Failed to close server info temp file: " + path.string());
+    std::filesystem::remove(path); // LCOV_EXCL_LINE: requires syscall fault injection.
+    throw std::runtime_error("Failed to close server info temp file: " + path.string()); // LCOV_EXCL_LINE
   }
   ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
 #endif

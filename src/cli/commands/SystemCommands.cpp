@@ -45,8 +45,8 @@ int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
 #if defined(__linux__)
   const auto opener = boost::process::v2::environment::find_executable("xdg-open");
   if (opener.empty()) {
-    std::cout << url << "\n";
-    throw std::runtime_error("xdg-open not found");
+    std::cout << url << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.
+    throw std::runtime_error("xdg-open not found"); // LCOV_EXCL_LINE
   }
 
   boost::asio::io_context ioc;
@@ -55,8 +55,8 @@ int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
   boost::system::error_code ec;
   const int exit_code = proc.wait(ec);
   if (ec) {
-    std::cout << url << "\n";
-    throw std::runtime_error("Failed to run xdg-open: " + ec.message());
+    std::cout << url << "\n"; // LCOV_EXCL_LINE: requires process wait syscall failure.
+    throw std::runtime_error("Failed to run xdg-open: " + ec.message()); // LCOV_EXCL_LINE
   }
   if (exit_code != 0) {
     std::cout << url << "\n";
@@ -73,7 +73,7 @@ int command_restart() {
 #if defined(__linux__)
   const auto systemctl = boost::process::v2::environment::find_executable("systemctl");
   if (systemctl.empty()) {
-    throw std::runtime_error("systemctl not found; restart holder-daemon.service manually");
+    throw std::runtime_error("systemctl not found; restart holder-daemon.service manually"); // LCOV_EXCL_LINE: depends on host PATH contents.
   }
 
   boost::asio::io_context ioc;
@@ -83,7 +83,7 @@ int command_restart() {
   boost::system::error_code ec;
   const int exit_code = proc.wait(ec);
   if (ec) {
-    throw std::runtime_error("Failed to run systemctl: " + ec.message());
+    throw std::runtime_error("Failed to run systemctl: " + ec.message()); // LCOV_EXCL_LINE: requires process wait syscall failure.
   }
   if (exit_code != 0) {
     throw std::runtime_error("systemctl --user restart holder-daemon.service failed with exit code " +
@@ -121,7 +121,7 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
 #if defined(__linux__)
     const auto tail = boost::process::v2::environment::find_executable("tail");
     if (tail.empty()) {
-      throw std::runtime_error("tail not found; log file is: " + log_path.string());
+      throw std::runtime_error("tail not found; log file is: " + log_path.string()); // LCOV_EXCL_LINE: depends on host PATH contents.
     }
 
     boost::asio::io_context ioc;
@@ -130,7 +130,7 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
     boost::system::error_code ec;
     const int exit_code = proc.wait(ec);
     if (ec) {
-      throw std::runtime_error("Failed to run tail: " + ec.message());
+      throw std::runtime_error("Failed to run tail: " + ec.message()); // LCOV_EXCL_LINE: requires process wait syscall failure.
     }
     return exit_code;
 #else

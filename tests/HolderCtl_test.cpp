@@ -1,5 +1,8 @@
 #include "http_test_helpers.h"
 
+#include "model/Resource.h"
+#include "resource/ResourceRepo.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
@@ -322,6 +325,12 @@ TEST_CASE("holderctl health checks metadata process token and HTTP endpoint", "[
   const std::string cmd = std::string("\"") + HOLDER_CTL_PATH + "\" health";
   REQUIRE(run_command(cmd) == 0);
 
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
+  REQUIRE(run_command(cmd + " >/dev/null 2>/dev/null") == 1);
+
+  write_server_info(info_path, static_cast<int>(::getpid()), 1, token);
+  REQUIRE(run_command(cmd + " >/dev/null 2>/dev/null") == 1);
+
   server.stop();
   server_thread.join();
 }
@@ -361,6 +370,9 @@ TEST_CASE("holderctl reindex requests daemon reindex", "[holderctl]") {
                           out_path.string() + "\"";
   REQUIRE(run_command(cmd) == 0);
   REQUIRE(read_text(out_path) == "Reindex complete.\n");
+
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
+  REQUIRE(run_command(std::string("\"") + HOLDER_CTL_PATH + "\" reindex >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -429,6 +441,48 @@ TEST_CASE("holderctl projects lists daemon projects", "[holderctl]") {
   REQUIRE(payload["data"].is_array());
   REQUIRE(payload["data"][0]["project_id"] == "proj-1");
 
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
+  REQUIRE(run_command(bin + " projects >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl projects reports an empty daemon project list", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+
+  const std::string token = "emptyprojecttoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto list_path = xdg_root / "projects-empty.out";
+  REQUIRE(run_command(bin + " projects > \"" + list_path.string() + "\"") == 0);
+  REQUIRE(read_text(list_path) == "No projects.\n");
+
   server.stop();
   server_thread.join();
 }
@@ -442,6 +496,50 @@ TEST_CASE("holderctl projects reports local metadata and option problems", "[hol
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   REQUIRE(run_command(bin + " projects >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " projects --bad >/dev/null 2>/dev/null") == 1);
+}
+
+TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " current nope >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " search >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " search --bad query >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " search --limit >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " search --limit nope query >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " search --limit 0 query >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card --bad card-id >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " append >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource list --filter >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource list --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add one --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add one --kind >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add one --kind '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource add one --label >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit one --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit one --kind >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource edit one --kind '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource show >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource show --json >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource open >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource open '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource open one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token nope >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token export --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token export --pin >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token export --pin '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --out x >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --file x --out y >/dev/null 2>/dev/null") == 1);
 }
 
 TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
@@ -515,6 +613,27 @@ TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
   REQUIRE(read_text(reset_out) == "Current project: Home (home-id)\n");
   REQUIRE_FALSE(std::filesystem::exists(config_path));
 
+  const auto use_home_name_out = xdg_root / "use-home-name.out";
+  REQUIRE(run_command(bin + " use Home > \"" + use_home_name_out.string() + "\"") == 0);
+  REQUIRE(read_text(use_home_name_out) == "Current project: Home (home-id)\n");
+  REQUIRE_FALSE(std::filesystem::exists(config_path));
+
+  std::filesystem::create_directories(config_path.parent_path());
+  {
+    std::ofstream out(config_path);
+    out << "{}\n";
+  }
+  const auto empty_config_current_out = xdg_root / "empty-config-current.out";
+  REQUIRE(run_command(bin + " current > \"" + empty_config_current_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_config_current_out) == "Current project: Home (home-id)\nRoot: " +
+                                                   home_root.string() + "\n");
+
+  {
+    std::ofstream out(config_path);
+    out << "{\"current_project_id\":\"missing-id\"}\n";
+  }
+  REQUIRE(run_command(bin + " current >/dev/null 2>/dev/null") == 1);
+
   server.stop();
   server_thread.join();
 }
@@ -554,6 +673,7 @@ TEST_CASE("holderctl use reports missing and ambiguous projects", "[holderctl]")
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   REQUIRE(run_command(bin + " use Project >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " use Missing >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " use >/dev/null 2>/dev/null") == 1);
 
   server.stop();
@@ -612,12 +732,18 @@ TEST_CASE("holderctl search uses the current project", "[holderctl]") {
   const auto output = read_text(search_out);
   REQUIRE(output.find("search-card\tSearchable Card\n") != std::string::npos);
 
+  const auto search_empty_out = xdg_root / "search-empty.out";
+  REQUIRE(run_command(bin + " search absentterm > \"" + search_empty_out.string() + "\"") == 0);
+  REQUIRE(read_text(search_empty_out) == "No cards found.\n");
+
   const auto json_path = xdg_root / "search.json";
   REQUIRE(run_command(bin + " search --json --limit 5 \"unique\" > \"" + json_path.string() + "\"") == 0);
   const auto payload = nlohmann::json::parse(read_text(json_path));
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"].is_array());
   REQUIRE(payload["data"][0]["card_id"] == "search-card");
+
+  REQUIRE(run_command(bin + " search \"unique holderctl\" >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -693,6 +819,8 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   REQUIRE(payload["data"]["content"] == "body from holderctl card");
 
   REQUIRE(run_command(bin + " card card-two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card missing-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " append card-two extra >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -743,6 +871,15 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   REQUIRE(run_command(bin + " new Revise long division > \"" + new_out.string() + "\"") == 0);
   const auto first_card_id = created_card_id_from_output(read_text(new_out));
 
+  const std::string long_title(96, 'A');
+  const auto long_new_out = xdg_root / "long-new.out";
+  REQUIRE(run_command(bin + " new " + long_title + " > \"" + long_new_out.string() + "\"") == 0);
+  const auto long_card_id = created_card_id_from_output(read_text(long_new_out));
+  const auto long_json_out = xdg_root / "long-card.json";
+  REQUIRE(run_command(bin + " card --json " + long_card_id + " > \"" +
+                      long_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(long_json_out))["data"]["title"].get<std::string>().size() == 80);
+
   const auto first_card_out = xdg_root / "first-card.out";
   REQUIRE(run_command(bin + " card " + first_card_id + " > \"" + first_card_out.string() + "\"") == 0);
   REQUIRE(read_text(first_card_out) == "Revise long division\n");
@@ -780,6 +917,13 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
 
   REQUIRE(run_command(bin + " new < /dev/null >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " append " + first_card_id + " < /dev/null >/dev/null 2>/dev/null") == 1);
+  const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
+  std::filesystem::create_directories(config_path.parent_path());
+  {
+    std::ofstream out(config_path);
+    out << "{\"current_project_id\":\"missing-id\"}\n";
+  }
+  REQUIRE(run_command(bin + " new Missing project card >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -840,6 +984,40 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   const auto repo_resource_id = added_json["data"]["resource_id"].get<std::string>();
   REQUIRE_FALSE(repo_resource_id.empty());
 
+  const auto local_dir = xdg_root / "local-dir";
+  const auto local_file = xdg_root / "local-file.txt";
+  const auto local_image = xdg_root / "diagram.png";
+  std::filesystem::create_directories(local_dir);
+  {
+    std::ofstream out(local_file);
+    out << "file\n";
+  }
+  {
+    std::ofstream out(local_image);
+    out << "png\n";
+  }
+  REQUIRE(run_command(bin + " resource add \"" + local_dir.string() + "\" >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add \"" + local_file.string() + "\" >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add \"" + local_image.string() + "\" >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add relative/path.txt >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add https://example.com/ >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add bareword >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add 'https://example.com/file.txt?download=1' >/dev/null") == 0);
+  REQUIRE(run_command(bin + " resource add / >/dev/null") == 0);
+
+  {
+    holder::resource::ResourceRepo repo(db);
+    holder::model::Resource empty_uri_resource;
+    empty_uri_resource.resource_id = "empty-uri";
+    empty_uri_resource.project_id = "home-id";
+    empty_uri_resource.kind = "url";
+    empty_uri_resource.uri = "";
+    empty_uri_resource.label = "empty uri";
+    empty_uri_resource.created_at = 20;
+    empty_uri_resource.updated_at = 20;
+    repo.add(empty_uri_resource);
+  }
+
   const auto list_out = xdg_root / "resources.out";
   REQUIRE(run_command(bin + " resource list > \"" + list_out.string() + "\"") == 0);
   const auto list_text = read_text(list_out);
@@ -847,12 +1025,32 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   REQUIRE(list_text.find(resource_id + "\turl\tdocs\thttps://example.com/docs\n") != std::string::npos);
   REQUIRE(list_text.find(repo_resource_id + "\trepo\texample.git\tgit@github.com:holderteam/example.git\n") !=
           std::string::npos);
+  REQUIRE(list_text.find("\tdir\tlocal-dir\t" + local_dir.string() + "\n") != std::string::npos);
+  REQUIRE(list_text.find("\tfile\tlocal-file.txt\t" + local_file.string() + "\n") != std::string::npos);
+  REQUIRE(list_text.find("\timage\tdiagram.png\t" + local_image.string() + "\n") != std::string::npos);
+  REQUIRE(list_text.find("\tfile\tpath.txt\trelative/path.txt\n") != std::string::npos);
+  REQUIRE(list_text.find("\turl\texample.com\thttps://example.com/\n") != std::string::npos);
+  REQUIRE(list_text.find("\turl\tbareword\tbareword\n") != std::string::npos);
+  REQUIRE(list_text.find("\turl\tfile.txt\thttps://example.com/file.txt?download=1\n") !=
+          std::string::npos);
+  REQUIRE(list_text.find("\tdir\t/\t/\n") != std::string::npos);
+
+  const auto list_json_out = xdg_root / "resources-list-json.out";
+  REQUIRE(run_command(bin + " resource list --json > \"" + list_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(list_json_out))["ok"] == true);
 
   const auto filtered_out = xdg_root / "resources-filtered.out";
   REQUIRE(run_command(bin + " resource list --filter github > \"" + filtered_out.string() + "\"") == 0);
   const auto filtered_text = read_text(filtered_out);
   REQUIRE(filtered_text.find(repo_resource_id) != std::string::npos);
   REQUIRE(filtered_text.find(resource_id) == std::string::npos);
+
+  const auto filtered_json_out = xdg_root / "resources-filtered.json";
+  REQUIRE(run_command(bin + " resource list --filter missing --json > \"" +
+                      filtered_json_out.string() + "\"") == 0);
+  const auto filtered_json = nlohmann::json::parse(read_text(filtered_json_out));
+  REQUIRE(filtered_json["ok"] == true);
+  REQUIRE(filtered_json["data"].empty());
 
   const auto show_out = xdg_root / "resource-show.out";
   REQUIRE(run_command(bin + " resource show " + resource_id + " > \"" + show_out.string() + "\"") == 0);
@@ -884,12 +1082,19 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   REQUIRE(edited_json["data"]["uri"] == "https://example.com/reference");
   REQUIRE(edited_json["data"]["desc"].is_null());
 
+  const auto edit_desc_json_out = xdg_root / "resource-edit-desc.json";
+  REQUIRE(run_command(bin + " resource edit " + resource_id +
+                      " --desc 'Updated description' --json > \"" +
+                      edit_desc_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(edit_desc_json_out))["ok"] == true);
+
   const auto delete_out = xdg_root / "resource-delete.out";
   REQUIRE(run_command(bin + " resource delete " + resource_id + " > \"" +
                       delete_out.string() + "\"") == 0);
   REQUIRE(read_text(delete_out) == "Deleted resource: " + resource_id + "\n");
 
   REQUIRE(run_command(bin + " resource show " + resource_id + " >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " resource open empty-uri >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource add >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource edit " + repo_resource_id + " >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource edit " + repo_resource_id +
@@ -975,6 +1180,8 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
   REQUIRE(run_command(bin + " recovery-token import --pin 1234 --file \"" +
                       token_path.string() + "\" > \"" + import_out.string() + "\"") == 0);
   REQUIRE(read_text(import_out) == "Recovery token imported for project: encrypted-project\n");
+  REQUIRE(run_command(bin + " recovery-token import --pin 9999 --file \"" +
+                      token_path.string() + "\" >/dev/null 2>/dev/null") == 1);
 
   const auto token_arg = read_text(token_path);
   const auto import_token_out = xdg_root / "import-token.out";
@@ -1004,6 +1211,20 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
   REQUIRE(run_command(bin + " recovery-token import --pin 1234 >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " recovery-token import-global --pin 1234 --file \"" +
                       token_path.string() + "\" --token x >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --file \"" +
+                      (xdg_root / "missing.hrk").string() + "\" >/dev/null 2>/dev/null") == 1);
+  const auto empty_token_path = xdg_root / "empty.hrk";
+  {
+    std::ofstream out(empty_token_path);
+    out << " \n";
+  }
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --file \"" +
+                      empty_token_path.string() + "\" >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " recovery-token import --pin 1234 --token '   ' >/dev/null 2>/dev/null") == 1);
+  const auto out_dir = xdg_root / "token-out-dir";
+  std::filesystem::create_directories(out_dir);
+  REQUIRE(run_command(bin + " recovery-token export --pin 1234 --out \"" +
+                      out_dir.string() + "\" >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -1024,6 +1245,12 @@ TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]"
 #ifndef _WIN32
   ::chmod(server_dir.c_str(), S_IRWXU);
   ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR | S_IRGRP);
+#endif
+  REQUIRE(run_command(bin + " health >/dev/null 2>/dev/null") == 1);
+
+  write_server_info_without_token(info_path);
+#ifndef _WIN32
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
 #endif
   REQUIRE(run_command(bin + " health >/dev/null 2>/dev/null") == 1);
 }
@@ -1123,6 +1350,14 @@ TEST_CASE("holderctl resource open invokes xdg-open for resource URI", "[holderc
   const auto resource_id = created_resource_id_from_output(read_text(add_out));
   REQUIRE(run_command(bin + " resource open " + resource_id) == 0);
   REQUIRE(read_text(args_path) == "https://example.com/open-me\n");
+
+  {
+    holder::test::EnvGuard exit_env("HOLDERCTL_FAKE_XDG_OPEN_EXIT", "9");
+    const auto open_fail_out = xdg_root / "resource-open-fail.out";
+    REQUIRE(run_command(bin + " resource open " + resource_id + " > \"" +
+                        open_fail_out.string() + "\" 2>/dev/null") == 1);
+    REQUIRE(read_text(open_fail_out) == "https://example.com/open-me\n");
+  }
 
   server.stop();
   server_thread.join();
