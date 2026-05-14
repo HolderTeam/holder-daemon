@@ -355,6 +355,73 @@ TEST_CASE("holderctl reindex reports local metadata problems", "[holderctl]") {
   REQUIRE(run_command(bin + " reindex --bad >/dev/null 2>/dev/null") == 1);
 }
 
+TEST_CASE("holderctl projects lists daemon projects", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "project-root";
+  std::filesystem::create_directories(project_root);
+  holder::test::create_project(db, "proj-1", project_root.string());
+
+  const std::string token = "projecttoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const auto list_path = xdg_root / "projects.out";
+  REQUIRE(run_command(bin + " projects > \"" + list_path.string() + "\"") == 0);
+  REQUIRE(read_text(list_path) == "PROJECT_ID\tNAME\tROOT\nproj-1\tProject\t" +
+                                     project_root.string() + "\n");
+
+  const auto count_path = xdg_root / "projects-count.out";
+  REQUIRE(run_command(bin + " projects --count > \"" + count_path.string() + "\"") == 0);
+  REQUIRE(read_text(count_path) == "PROJECT_ID\tNAME\tCARDS\tROOT_CARDS\tROOT\n"
+                                    "proj-1\tProject\t0\t0\t" +
+                                      project_root.string() + "\n");
+
+  const auto json_path = xdg_root / "projects.json";
+  REQUIRE(run_command(bin + " projects --json > \"" + json_path.string() + "\"") == 0);
+  const auto payload = nlohmann::json::parse(read_text(json_path));
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"].is_array());
+  REQUIRE(payload["data"][0]["project_id"] == "proj-1");
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl projects reports local metadata and option problems", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " projects >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " projects --bad >/dev/null 2>/dev/null") == 1);
+}
+
 TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());

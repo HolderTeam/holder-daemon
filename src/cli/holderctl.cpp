@@ -41,6 +41,7 @@ void print_usage(std::ostream& out) {
       << "  status     Print local daemon status\n"
       << "  health     Check daemon metadata, process state, token, and HTTP health\n"
       << "  paths      Print Holder data/config/cache paths\n"
+      << "  projects   List Holder projects; use --json for raw API output\n"
       << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
       << "  reindex    Rebuild the daemon search index from the local database\n"
       << "  restart    Restart the local daemon and rotate its bearer token\n"
@@ -426,6 +427,97 @@ int command_reindex(const holder::core::Paths& paths, int argc) {
   }
 }
 
+int command_projects(const holder::core::Paths& paths, int argc, char* argv[]) {
+  bool json_output = false;
+  bool include_count = false;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      json_output = true;
+    } else if (arg == "--count") {
+      include_count = true;
+    } else {
+      throw std::runtime_error("Unknown projects option: " + arg);
+    }
+  }
+
+  require_secure_file(paths.info_path());
+  const auto info = read_server_info(paths);
+  const auto bind = json_string(info.json, "bind", "127.0.0.1");
+  const int port = json_int(info.json, "port", 11499);
+  const auto token = json_string(info.json, "auth_token");
+  if (token.empty()) {
+    throw std::runtime_error("Holder daemon info file has no auth_token: " + info.path.string());
+  }
+
+  namespace http = boost::beast::http;
+  using tcp = boost::asio::ip::tcp;
+
+  try {
+    boost::asio::io_context ioc;
+    tcp::resolver resolver(ioc);
+    auto endpoints = resolver.resolve(bind, std::to_string(port));
+
+    boost::beast::tcp_stream stream(ioc);
+    stream.expires_after(std::chrono::seconds(10));
+    stream.connect(endpoints);
+
+    const std::string target = include_count ? "/projects?count=true" : "/projects";
+    http::request<http::empty_body> req{http::verb::get, target, 11};
+    req.set(http::field::host, bind);
+    req.set(http::field::user_agent, "holderctl");
+    req.set(http::field::authorization, "Bearer " + token);
+    req.keep_alive(false);
+
+    http::write(stream, req);
+
+    boost::beast::flat_buffer buffer;
+    http::response<http::string_body> res;
+    http::read(stream, buffer, res);
+
+    boost::system::error_code ec;
+    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+
+    const auto payload = nlohmann::json::parse(res.body());
+    if (res.result() != http::status::ok || !payload.value("ok", false)) {
+      std::string message = "HTTP " + std::to_string(res.result_int());
+      if (payload.contains("error") && payload["error"].contains("message")) {
+        message = payload["error"]["message"].get<std::string>();
+      }
+      throw std::runtime_error("Projects request failed: " + message);
+    }
+
+    if (json_output) {
+      std::cout << payload.dump(2) << "\n";
+      return 0;
+    }
+
+    const auto& projects = payload.at("data");
+    if (!projects.is_array() || projects.empty()) {
+      std::cout << "No projects.\n";
+      return 0;
+    }
+
+    if (include_count) {
+      std::cout << "PROJECT_ID\tNAME\tCARDS\tROOT_CARDS\tROOT\n";
+    } else {
+      std::cout << "PROJECT_ID\tNAME\tROOT\n";
+    }
+    for (const auto& project : projects) {
+      std::cout << json_string(project, "project_id") << "\t"
+                << json_string(project, "name") << "\t";
+      if (include_count) {
+        std::cout << project.value("card_count", 0) << "\t"
+                  << project.value("root_card_count", 0) << "\t";
+      }
+      std::cout << json_string(project, "root_path") << "\n";
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to list projects: ") + ex.what());
+  }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -447,6 +539,7 @@ int main(int argc, char* argv[]) {
     if (command == "status") return command_status(paths);
     if (command == "health") return command_health(paths);
     if (command == "paths") return command_paths(paths);
+    if (command == "projects") return command_projects(paths, argc, argv);
     if (command == "openapi") return command_openapi(paths, argc, argv);
     if (command == "logs") return command_logs(paths, argc, argv);
     if (command == "reindex") return command_reindex(paths, argc);
