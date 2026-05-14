@@ -138,6 +138,11 @@ struct SearchOptions {
   std::string query;
 };
 
+struct CardOptions {
+  bool json_output = false;
+  std::string card_id;
+};
+
 SearchOptions parse_search_options(int argc, char* argv[]) {
   SearchOptions options;
   for (int i = 2; i < argc; ++i) {
@@ -166,6 +171,27 @@ SearchOptions parse_search_options(int argc, char* argv[]) {
 
   if (options.query.empty()) {
     throw std::runtime_error("Usage: holderctl search [--json] [--limit N] <query>");
+  }
+  return options;
+}
+
+CardOptions parse_card_options(int argc, char* argv[]) {
+  CardOptions options;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown card option: " + arg);
+    } else if (options.card_id.empty()) {
+      options.card_id = arg;
+    } else {
+      throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
+    }
+  }
+
+  if (options.card_id.empty()) {
+    throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
   }
   return options;
 }
@@ -317,6 +343,47 @@ int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to search cards: ") + ex.what());
+  }
+}
+
+int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_card_options(argc, argv);
+  const auto current_project_id = read_current_project_id(paths);
+  const auto projects_payload = list_projects_payload(paths, false);
+  (void)find_project_by_id(projects_payload.at("data"), current_project_id);
+
+  try {
+    const auto connection = read_secure_daemon_connection(paths);
+    const auto response = http_json_request(connection,
+                                            boost::beast::http::verb::get,
+                                            "/cards/" + url_encode_component(options.card_id),
+                                            std::chrono::seconds(10));
+
+    if (response.status != boost::beast::http::status::ok ||
+        !response.payload.value("ok", false)) {
+      const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
+      throw std::runtime_error("Card request failed: " + api_error_message(response, fallback));
+    }
+
+    const auto& data = response.payload.at("data");
+    const auto card_project_id = json_string(data, "project_id");
+    if (card_project_id != current_project_id) {
+      throw std::runtime_error("Card is not in the current project: " + options.card_id);
+    }
+
+    if (options.json_output) {
+      std::cout << response.payload.dump(2) << "\n";
+      return 0;
+    }
+
+    const auto content = json_string(data, "content");
+    std::cout << content;
+    if (content.empty() || content.back() != '\n') {
+      std::cout << "\n";
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to print card: ") + ex.what());
   }
 }
 

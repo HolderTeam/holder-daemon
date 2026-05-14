@@ -589,6 +589,81 @@ TEST_CASE("holderctl search uses the current project", "[holderctl]") {
   server_thread.join();
 }
 
+TEST_CASE("holderctl card prints a card from the current project", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "project-root";
+  const auto other_root = xdg_root / "other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "card-project", project_root.string());
+  holder::test::create_project(db, "other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  holder::model::Card card;
+  card.card_id = "card-one";
+  card.project_id = "card-project";
+  card.title = "Card One";
+  card.created_at = 10;
+  card.updated_at = 11;
+  card_store.create(card, "body from holderctl card");
+
+  holder::model::Card other_card;
+  other_card.card_id = "card-two";
+  other_card.project_id = "other-project";
+  other_card.title = "Card Two";
+  other_card.created_at = 12;
+  other_card.updated_at = 13;
+  card_store.create(other_card, "other body");
+
+  const std::string token = "cardtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " card card-one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use card-project >/dev/null") == 0);
+
+  const auto card_out = xdg_root / "card.out";
+  REQUIRE(run_command(bin + " card card-one > \"" + card_out.string() + "\"") == 0);
+  REQUIRE(read_text(card_out) == "body from holderctl card\n");
+
+  const auto json_path = xdg_root / "card.json";
+  REQUIRE(run_command(bin + " card --json card-one > \"" + json_path.string() + "\"") == 0);
+  const auto payload = nlohmann::json::parse(read_text(json_path));
+  REQUIRE(payload["ok"] == true);
+  REQUIRE(payload["data"]["card_id"] == "card-one");
+  REQUIRE(payload["data"]["content"] == "body from holderctl card");
+
+  REQUIRE(run_command(bin + " card card-two >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
