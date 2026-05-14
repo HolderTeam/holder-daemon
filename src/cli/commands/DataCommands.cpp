@@ -6,9 +6,12 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 
@@ -19,6 +22,95 @@ std::string api_error_message(const HttpJsonResponse& response, const std::strin
     return response.payload["error"]["message"].get<std::string>();
   }
   return fallback;
+}
+
+nlohmann::json list_projects_payload(const holder::core::Paths& paths, bool include_count) {
+  const auto connection = read_secure_daemon_connection(paths);
+  const std::string target = include_count ? "/projects?count=true" : "/projects";
+  const auto response = http_json_request(
+      connection, boost::beast::http::verb::get, target, std::chrono::seconds(10));
+
+  if (response.status != boost::beast::http::status::ok ||
+      !response.payload.value("ok", false)) {
+    const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
+    throw std::runtime_error("Projects request failed: " + api_error_message(response, fallback));
+  }
+
+  return response.payload;
+}
+
+std::filesystem::path holderctl_config_path(const holder::core::Paths& paths) {
+  return paths.config_dir / "holderctl.json";
+}
+
+void write_holderctl_config(const holder::core::Paths& paths, const std::string& project_id) {
+  std::filesystem::create_directories(paths.config_dir);
+  const auto config_path = holderctl_config_path(paths);
+  const auto tmp_path = config_path.string() + ".tmp";
+
+  nlohmann::json config;
+  config["current_project_id"] = project_id;
+  {
+    std::ofstream out(tmp_path, std::ios::trunc);
+    if (!out.is_open()) {
+      throw std::runtime_error("Failed to open holderctl config: " + tmp_path);
+    }
+    out << config.dump(2) << "\n";
+  }
+
+  std::error_code ec;
+  std::filesystem::rename(tmp_path, config_path, ec);
+  if (ec) {
+    std::filesystem::remove(config_path, ec);
+    std::filesystem::rename(tmp_path, config_path, ec);
+    if (ec) {
+      throw std::runtime_error("Failed to write holderctl config: " + config_path.string() +
+                               " (" + ec.message() + ")");
+    }
+  }
+}
+
+std::string read_current_project_id(const holder::core::Paths& paths) {
+  const auto config_path = holderctl_config_path(paths);
+  std::ifstream in(config_path);
+  if (!in.is_open()) {
+    throw std::runtime_error("No current project set. Run: holderctl use <project>");
+  }
+  const auto config = nlohmann::json::parse(in);
+  const auto project_id = json_string(config, "current_project_id");
+  if (project_id.empty()) {
+    throw std::runtime_error("No current project set. Run: holderctl use <project>");
+  }
+  return project_id;
+}
+
+nlohmann::json find_project_by_id(const nlohmann::json& projects, const std::string& project_id) {
+  for (const auto& project : projects) {
+    if (json_string(project, "project_id") == project_id) {
+      return project;
+    }
+  }
+  throw std::runtime_error("Current project no longer exists: " + project_id);
+}
+
+nlohmann::json resolve_project(const nlohmann::json& projects, const std::string& query) {
+  std::vector<nlohmann::json> name_matches;
+  for (const auto& project : projects) {
+    if (json_string(project, "project_id") == query) {
+      return project;
+    }
+    if (json_string(project, "name") == query) {
+      name_matches.push_back(project);
+    }
+  }
+
+  if (name_matches.size() == 1) {
+    return name_matches.front();
+  }
+  if (name_matches.size() > 1) {
+    throw std::runtime_error("Multiple projects named '" + query + "'; use the project id.");
+  }
+  throw std::runtime_error("Project not found: " + query);
 }
 
 } // namespace
@@ -63,23 +155,14 @@ int command_projects(const holder::core::Paths& paths, int argc, char* argv[]) {
   }
 
   try {
-    const auto connection = read_secure_daemon_connection(paths);
-    const std::string target = include_count ? "/projects?count=true" : "/projects";
-    const auto response = http_json_request(
-        connection, boost::beast::http::verb::get, target, std::chrono::seconds(10));
-
-    if (response.status != boost::beast::http::status::ok ||
-        !response.payload.value("ok", false)) {
-      const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
-      throw std::runtime_error("Projects request failed: " + api_error_message(response, fallback));
-    }
+    const auto payload = list_projects_payload(paths, include_count);
 
     if (json_output) {
-      std::cout << response.payload.dump(2) << "\n";
+      std::cout << payload.dump(2) << "\n";
       return 0;
     }
 
-    const auto& projects = response.payload.at("data");
+    const auto& projects = payload.at("data");
     if (!projects.is_array() || projects.empty()) {
       std::cout << "No projects.\n";
       return 0;
@@ -103,6 +186,36 @@ int command_projects(const holder::core::Paths& paths, int argc, char* argv[]) {
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list projects: ") + ex.what());
   }
+}
+
+int command_use(const holder::core::Paths& paths, int argc, char* argv[]) {
+  if (argc != 3) {
+    throw std::runtime_error("Usage: holderctl use <project-id-or-name>");
+  }
+
+  const std::string query = argv[2];
+  const auto payload = list_projects_payload(paths, false);
+  const auto project = resolve_project(payload.at("data"), query);
+  const auto project_id = json_string(project, "project_id");
+  write_holderctl_config(paths, project_id);
+
+  std::cout << "Current project: " << json_string(project, "name") << " (" << project_id << ")\n";
+  return 0;
+}
+
+int command_current(const holder::core::Paths& paths, int argc) {
+  if (argc != 2) {
+    throw std::runtime_error("current does not take options");
+  }
+
+  const auto current_project_id = read_current_project_id(paths);
+  const auto payload = list_projects_payload(paths, false);
+  const auto project = find_project_by_id(payload.at("data"), current_project_id);
+
+  std::cout << "Current project: " << json_string(project, "name") << " ("
+            << current_project_id << ")\n"
+            << "Root: " << json_string(project, "root_path") << "\n";
+  return 0;
 }
 
 } // namespace holder::cli

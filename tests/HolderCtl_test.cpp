@@ -422,6 +422,110 @@ TEST_CASE("holderctl projects reports local metadata and option problems", "[hol
   REQUIRE(run_command(bin + " projects --bad >/dev/null 2>/dev/null") == 1);
 }
 
+TEST_CASE("holderctl use and current manage current project", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto alpha_root = xdg_root / "alpha-root";
+  const auto beta_root = xdg_root / "beta-root";
+  std::filesystem::create_directories(alpha_root);
+  std::filesystem::create_directories(beta_root);
+  holder::test::create_project(db, "alpha-id", alpha_root.string());
+  holder::test::create_project(db, "beta-id", beta_root.string());
+  {
+    holder::project::ProjectRepo repo(db);
+    repo.update_name("beta-id", "Beta Project", 2);
+  }
+
+  const std::string token = "usetoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " current >/dev/null 2>/dev/null") == 1);
+
+  const auto use_name_out = xdg_root / "use-name.out";
+  REQUIRE(run_command(bin + " use \"Beta Project\" > \"" + use_name_out.string() + "\"") == 0);
+  REQUIRE(read_text(use_name_out) == "Current project: Beta Project (beta-id)\n");
+  const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
+  REQUIRE(nlohmann::json::parse(read_text(config_path))["current_project_id"] == "beta-id");
+
+  const auto current_out = xdg_root / "current.out";
+  REQUIRE(run_command(bin + " current > \"" + current_out.string() + "\"") == 0);
+  REQUIRE(read_text(current_out) == "Current project: Beta Project (beta-id)\nRoot: " +
+                                      beta_root.string() + "\n");
+
+  const auto use_id_out = xdg_root / "use-id.out";
+  REQUIRE(run_command(bin + " use alpha-id > \"" + use_id_out.string() + "\"") == 0);
+  REQUIRE(read_text(use_id_out) == "Current project: Project (alpha-id)\n");
+  REQUIRE(nlohmann::json::parse(read_text(config_path))["current_project_id"] == "alpha-id");
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl use reports missing and ambiguous projects", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  holder::test::create_project(db, "first-id", (xdg_root / "first").string());
+  holder::test::create_project(db, "second-id", (xdg_root / "second").string());
+
+  const std::string token = "ambiguoususetoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use Project >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use Missing >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
 TEST_CASE("holderctl health reports missing or insecure metadata", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
