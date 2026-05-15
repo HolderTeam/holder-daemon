@@ -72,10 +72,15 @@ coverage_all() {
   local info_base="${build_dir}/coverage-base.info"
   local info_tests="${build_dir}/coverage-tests.info"
   local info_total="${build_dir}/coverage.info"
+  local coverage_json="${report_dir}/coverage.json"
   local -a lcov_capture_flags=(
     --ignore-errors gcov,gcov
     --rc geninfo_unexecuted_blocks=1
   )
+  local gcov_executable="gcov"
+  if command -v gcov-13 >/dev/null 2>&1; then
+    gcov_executable="gcov-13"
+  fi
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
@@ -100,6 +105,24 @@ coverage_all() {
     '*/CMakeFiles/*/CompilerIdCXX/*' \
     --output-file "${info_total}"
   genhtml "${info_total}" --output-directory "${report_dir}" --title "holder backend coverage"
+  if command -v gcovr >/dev/null 2>&1; then
+    gcovr \
+      --root . \
+      --object-directory "${build_dir}" \
+      --filter 'src/' \
+      --exclude 'tests/' \
+      --exclude 'third_party/' \
+      --gcov-executable "${gcov_executable}" \
+      --gcov-ignore-errors all \
+      --exclude-unreachable-branches \
+      --exclude-throw-branches \
+      --exclude-function-lines \
+      --json-pretty \
+      --output "${coverage_json}"
+    echo "Coverage JSON:   ${coverage_json}"
+  else
+    echo "Coverage JSON:   skipped (gcovr not found)" >&2
+  fi
   echo "Coverage report: ${report_dir}/index.html"
 }
 
