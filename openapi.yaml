@@ -544,6 +544,21 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/RebuildData"
+    ReindexData:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    ReindexResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/ReindexData"
     CardCreateRequest:
       type: object
       required: [project_id, title, content]
@@ -1924,6 +1939,28 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /reindex:
+    post:
+      summary: Rebuild search indexes from database state
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReindexResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
           content:
             application/json:
               schema:

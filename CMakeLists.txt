@@ -140,6 +140,7 @@ add_executable(holderd
   src/api/routes/CardRoutes.cpp
   src/api/routes/ProjectRoutes.cpp
   src/api/routes/RebuildRoutes.cpp
+  src/api/routes/ReindexRoutes.cpp
   src/api/routes/SearchRoutes.cpp
   src/api/routes/TrashRoutes.cpp
   src/api/routes/StaticRoutes.cpp
@@ -256,6 +257,17 @@ endif()
 
 add_executable(holderctl
   src/cli/holderctl.cpp
+  src/cli/commands/Common.cpp
+  src/cli/commands/DaemonCommands.cpp
+  src/cli/commands/Support.cpp
+  src/cli/commands/card.cpp
+  src/cli/commands/links.cpp
+  src/cli/commands/project.cpp
+  src/cli/commands/recovery.cpp
+  src/cli/commands/reindex.cpp
+  src/cli/commands/resource.cpp
+  src/cli/commands/trash.cpp
+  src/cli/commands/SystemCommands.cpp
   src/platform/Paths.cpp
 )
 target_include_directories(holderctl PRIVATE
@@ -272,9 +284,13 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   )
 endif()
 target_link_libraries(holderctl PRIVATE
+  Boost::filesystem
   nlohmann_json::nlohmann_json
   XdgUtils::BaseDir
 )
+if(TARGET Boost::process)
+  target_link_libraries(holderctl PRIVATE Boost::process)
+endif()
 
 # ----------------------------
 # Install

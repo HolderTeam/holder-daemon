@@ -5,6 +5,7 @@
 #endif
 
 #include "api/routes/ai/AiNudgeRoutes.h"
+#include "ai/AiNudgeRepo.h"
 #include "ai/NudgeService.h"
 #include "http_test_helpers.h"
 
@@ -42,6 +43,43 @@ void write_text(const std::filesystem::path& path, const std::string& content) {
 }
 
 } // namespace
+
+TEST_CASE("AiNudgeRepo creates and finds nudges directly", "[ai][nudges]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1");
+  create_card_fixture(db, "proj-1", "card-1");
+  holder::ai::AiNudgeRepo repo(db);
+
+  REQUIRE_FALSE(repo.find_by_id("missing-nudge").has_value());
+
+  repo.create({
+      .nudge_id = "nudge-1",
+      .kind = "card.title_only",
+      .project_id = "proj-1",
+      .card_id = "card-1",
+      .title = "Start this card",
+      .body = "Add the first useful detail.",
+      .meta_json = {{"source", "direct-test"}},
+      .basis_fingerprint = "fingerprint-1",
+      .basis_commit = "commit-1",
+      .created_at = 123,
+  });
+
+  const auto stored = repo.find_by_id("nudge-1");
+  REQUIRE(stored.has_value());
+  REQUIRE(stored->nudge_id == "nudge-1");
+  REQUIRE(stored->kind == "card.title_only");
+  REQUIRE(stored->project_id == "proj-1");
+  REQUIRE(stored->card_id == "card-1");
+  REQUIRE(stored->title == "Start this card");
+  REQUIRE(stored->body == "Add the first useful detail.");
+  REQUIRE(stored->meta_json == nlohmann::json{{"source", "direct-test"}});
+  REQUIRE(stored->basis_fingerprint == "fingerprint-1");
+  REQUIRE(stored->basis_commit == "commit-1");
+  REQUIRE(stored->created_at == 123);
+  REQUIRE_FALSE(stored->dismissed);
+}
 
 TEST_CASE("AiNudgeRoutes evaluates known nudge candidates", "[ai][nudges]") {
   const auto dir = holder::test::make_temp_dir();
