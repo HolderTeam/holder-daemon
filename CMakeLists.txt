@@ -259,7 +259,14 @@ add_executable(holderctl
   src/cli/holderctl.cpp
   src/cli/commands/Common.cpp
   src/cli/commands/DaemonCommands.cpp
-  src/cli/commands/DataCommands.cpp
+  src/cli/commands/Support.cpp
+  src/cli/commands/card.cpp
+  src/cli/commands/links.cpp
+  src/cli/commands/project.cpp
+  src/cli/commands/recovery.cpp
+  src/cli/commands/reindex.cpp
+  src/cli/commands/resource.cpp
+  src/cli/commands/trash.cpp
   src/cli/commands/SystemCommands.cpp
   src/platform/Paths.cpp
 )
