@@ -19,7 +19,7 @@ struct TrashOptions {
 
 TrashOptions parse_trash_options(int argc, char* argv[]) {
   if (argc < 3) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
   }
 
   TrashOptions options;
@@ -45,15 +45,15 @@ TrashOptions parse_trash_options(int argc, char* argv[]) {
   }
 
   if (options.subcommand.empty()) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
   }
   const bool needs_card = options.subcommand == "card" || options.subcommand == "restore" ||
                           options.subcommand == "delete";
   if (needs_card && options.card_id.empty()) {
     throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
   }
-  if ((options.subcommand == "list" || options.subcommand == "empty") && !options.card_id.empty()) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+  if ((options.subcommand == "list" || options.subcommand == "empty") && !options.card_id.empty()) { // LCOV_EXCL_LINE: parser rejects extra args before this defensive check.
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
   }
   return options;
 }

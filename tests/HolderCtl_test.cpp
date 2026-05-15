@@ -615,6 +615,14 @@ TEST_CASE("holderctl project new creates a project and can select it", "[holderc
   REQUIRE(use_text.rfind("Created project: ", 0) == 0);
   REQUIRE(use_text.find("\nCurrent project: Third Project (") != std::string::npos);
 
+  const auto encrypted_json_out = xdg_root / "project-new-encrypted.json";
+  REQUIRE(run_command(bin + " project new Encrypted Project --encrypted --json > \"" +
+                      encrypted_json_out.string() + "\"") == 0);
+  const auto encrypted = nlohmann::json::parse(read_text(encrypted_json_out));
+  REQUIRE(encrypted["ok"] == true);
+  REQUIRE(encrypted["data"]["name"] == "Encrypted Project");
+  REQUIRE(encrypted["data"]["privacy_mode"] == "encrypted_git");
+
   write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
   REQUIRE(run_command(bin + " project new Broken --plain >/dev/null 2>/dev/null") == 1);
 
@@ -635,6 +643,7 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " project new >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " project new --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " project new Name --plain --encrypted >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " project new Name --encrypted --plain >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " project new Name --remote >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " project new Name --remote '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " search >/dev/null 2>/dev/null") == 1);
@@ -648,6 +657,7 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " cards --limit 0 >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards --limit 2 >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards --parent >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " cards --parent '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards --recent --parent card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards extra >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
@@ -666,8 +676,11 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " link one two three >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " link one two --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " link one two --kind >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two --kind '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " link one two --label >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two --label '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash --json >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash list extra >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash restore >/dev/null 2>/dev/null") == 1);
@@ -676,6 +689,7 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " trash delete one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash empty extra >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " restore >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore --json >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " restore one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " restore one --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " append >/dev/null 2>/dev/null") == 1);
@@ -992,6 +1006,10 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   REQUIRE(child_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
   REQUIRE(child_output.find("root-card-two") == std::string::npos);
 
+  const auto empty_child_out = xdg_root / "cards-empty-child.out";
+  REQUIRE(run_command(bin + " cards --parent child-card-one > \"" + empty_child_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_child_out) == "No root cards.\n");
+
   const auto recent_out = xdg_root / "cards-recent.out";
   REQUIRE(run_command(bin + " cards --recent --limit 2 > \"" + recent_out.string() + "\"") == 0);
   const auto recent_output = read_text(recent_out);
@@ -1005,6 +1023,9 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"].is_array());
   REQUIRE(payload["data"].size() == 2);
+
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), "wrongtoken");
+  REQUIRE(run_command(bin + " cards >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -1302,7 +1323,7 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
   REQUIRE(links_json["data"][0]["to_card_id"] == "target-card");
 
   const auto backlinks_json_out = xdg_root / "backlinks.json";
-  REQUIRE(run_command(bin + " backlinks --json target-card > \"" +
+  REQUIRE(run_command(bin + " backlinks --json --include-deleted target-card > \"" +
                       backlinks_json_out.string() + "\"") == 0);
   const auto backlinks_json = nlohmann::json::parse(read_text(backlinks_json_out));
   REQUIRE(backlinks_json["ok"] == true);
@@ -1358,6 +1379,7 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
 
   create_card("trash-card", "trash-project", "Trash Card", 11);
   create_card("delete-card", "trash-project", "Delete Card", 13);
+  create_card("json-trash-card", "trash-project", "JSON Trash Card", 14);
   create_card("empty-card-one", "trash-project", "Empty Card One", 15);
   create_card("empty-card-two", "trash-project", "Empty Card Two", 17);
   create_card("other-trash-card", "trash-other-project", "Other Trash Card", 19);
@@ -1396,6 +1418,13 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
   REQUIRE(read_text(trash_out) == "Trashed card: trash-card\n");
   REQUIRE(run_command(bin + " card trash-card >/dev/null 2>/dev/null") == 1);
 
+  const auto trash_card_json_out = xdg_root / "trash-card.json";
+  REQUIRE(run_command(bin + " trash json-trash-card --json > \"" +
+                      trash_card_json_out.string() + "\"") == 0);
+  const auto trash_card_json = nlohmann::json::parse(read_text(trash_card_json_out));
+  REQUIRE(trash_card_json["ok"] == true);
+  REQUIRE(trash_card_json["data"]["card_id"] == "json-trash-card");
+
   const auto trash_list_out = xdg_root / "trash-list.out";
   REQUIRE(run_command(bin + " trash list > \"" + trash_list_out.string() + "\"") == 0);
   const auto trash_list = read_text(trash_list_out);
@@ -1423,17 +1452,38 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
                       trash_restore_json_out.string() + "\"") == 0);
   REQUIRE(nlohmann::json::parse(read_text(trash_restore_json_out))["ok"] == true);
 
+  REQUIRE(run_command(bin + " trash trash-card >/dev/null") == 0);
+  const auto restore_json_out = xdg_root / "restore-json.out";
+  REQUIRE(run_command(bin + " restore --json trash-card > \"" + restore_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(restore_json_out))["ok"] == true);
+
   REQUIRE(run_command(bin + " trash delete trash-card >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " trash delete other-trash-card >/dev/null 2>/dev/null") == 1);
 
   REQUIRE(run_command(bin + " trash delete-card >/dev/null") == 0);
-  const auto delete_out = xdg_root / "trash-delete.out";
-  REQUIRE(run_command(bin + " trash delete delete-card > \"" + delete_out.string() + "\"") == 0);
-  REQUIRE(read_text(delete_out) == "Deleted trashed card: delete-card\n");
+  const auto delete_json_out = xdg_root / "trash-delete.json";
+  REQUIRE(run_command(bin + " trash delete delete-card --json > \"" +
+                      delete_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(delete_json_out))["ok"] == true);
   REQUIRE(run_command(bin + " restore delete-card >/dev/null 2>/dev/null") == 1);
+
+  create_card("delete-card-two", "trash-project", "Delete Card Two", 21);
+  REQUIRE(run_command(bin + " trash delete-card-two >/dev/null") == 0);
+  const auto delete_out = xdg_root / "trash-delete.out";
+  REQUIRE(run_command(bin + " trash delete delete-card-two > \"" + delete_out.string() + "\"") == 0);
+  REQUIRE(read_text(delete_out) == "Deleted trashed card: delete-card-two\n");
+  REQUIRE(run_command(bin + " restore delete-card-two >/dev/null 2>/dev/null") == 1);
 
   REQUIRE(run_command(bin + " trash empty-card-one >/dev/null") == 0);
   REQUIRE(run_command(bin + " trash empty-card-two >/dev/null") == 0);
+  const auto empty_json_out = xdg_root / "trash-empty.json";
+  REQUIRE(run_command(bin + " trash empty --json > \"" + empty_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(empty_json_out))["ok"] == true);
+
+  create_card("empty-card-three", "trash-project", "Empty Card Three", 23);
+  create_card("empty-card-four", "trash-project", "Empty Card Four", 25);
+  REQUIRE(run_command(bin + " trash empty-card-three >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash empty-card-four >/dev/null") == 0);
   const auto empty_out = xdg_root / "trash-empty-command.out";
   REQUIRE(run_command(bin + " trash empty > \"" + empty_out.string() + "\"") == 0);
   REQUIRE(read_text(empty_out) == "Emptied card trash.\n");

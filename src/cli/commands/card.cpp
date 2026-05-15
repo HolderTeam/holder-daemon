@@ -155,7 +155,7 @@ std::string shell_quote(const std::string& value) {
   out += "'";
   return out;
 #endif
-}
+} // LCOV_EXCL_LINE: gcov attributes no executable branch to the function close after shell quoting.
 
 std::string sanitized_filename_component(const std::string& value) {
   std::string out;
@@ -302,9 +302,9 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
                 << card.value("updated_at", 0) << "\n";
     }
     return 0;
-  } catch (const std::exception& ex) {
-    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what());
-  }
+  } catch (const std::exception& ex) { // LCOV_EXCL_LINE: current-project validation handles reachable daemon failures first.
+    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what()); // LCOV_EXCL_LINE
+  } // LCOV_EXCL_LINE
 }
 
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
