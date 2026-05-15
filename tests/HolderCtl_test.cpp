@@ -655,6 +655,29 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " edit >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " edit one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links --bad one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks --bad one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two three >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two --kind >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link one two --label >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash list extra >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash restore >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash restore one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash delete >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash delete one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash empty extra >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore one --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " append >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource list --filter >/dev/null 2>/dev/null") == 1);
@@ -1169,6 +1192,258 @@ TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project
   server_thread.join();
 }
 #endif
+
+TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "link-root";
+  const auto other_root = xdg_root / "link-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "link-project", project_root.string());
+  holder::test::create_project(db, "link-other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  holder::model::Card source;
+  source.card_id = "source-card";
+  source.project_id = "link-project";
+  source.title = "Source Card";
+  source.created_at = 10;
+  source.updated_at = 11;
+  card_store.create(source, "source body\n");
+
+  holder::model::Card target;
+  target.card_id = "target-card";
+  target.project_id = "link-project";
+  target.title = "Target Card";
+  target.created_at = 12;
+  target.updated_at = 13;
+  card_store.create(target, "target body\n");
+
+  holder::model::Card other_source;
+  other_source.card_id = "other-source-card";
+  other_source.project_id = "link-other-project";
+  other_source.title = "Other Source Card";
+  other_source.created_at = 14;
+  other_source.updated_at = 15;
+  card_store.create(other_source, "other source body\n");
+
+  holder::model::Card other_target;
+  other_target.card_id = "other-target-card";
+  other_target.project_id = "link-other-project";
+  other_target.title = "Other Target Card";
+  other_target.created_at = 16;
+  other_target.updated_at = 17;
+  card_store.create(other_target, "other target body\n");
+
+  const std::string token = "linktoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " links source-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use link-project >/dev/null") == 0);
+
+  const auto empty_links_out = xdg_root / "links-empty.out";
+  REQUIRE(run_command(bin + " links source-card > \"" + empty_links_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_links_out) == "No links.\n");
+
+  const auto empty_backlinks_out = xdg_root / "backlinks-empty.out";
+  REQUIRE(run_command(bin + " backlinks target-card > \"" + empty_backlinks_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_backlinks_out) == "No backlinks.\n");
+
+  const auto link_out = xdg_root / "link.out";
+  REQUIRE(run_command(bin + " link source-card target-card --kind cite --label 'Related Card' > \"" +
+                      link_out.string() + "\"") == 0);
+  REQUIRE(read_text(link_out) == "Linked card: source-card -> target-card\n");
+
+  const auto links_out = xdg_root / "links.out";
+  REQUIRE(run_command(bin + " links source-card > \"" + links_out.string() + "\"") == 0);
+  const auto links_text = read_text(links_out);
+  REQUIRE(links_text.find("TO_ID\tTYPE\tKIND\tLABEL\tCREATED\n") == 0);
+  REQUIRE(links_text.find("target-card\tcard\tcite\tRelated Card\t") != std::string::npos);
+
+  const auto backlinks_out = xdg_root / "backlinks.out";
+  REQUIRE(run_command(bin + " backlinks target-card > \"" + backlinks_out.string() + "\"") == 0);
+  const auto backlinks_text = read_text(backlinks_out);
+  REQUIRE(backlinks_text.find("FROM_ID\tTYPE\tKIND\tLABEL\tCREATED\n") == 0);
+  REQUIRE(backlinks_text.find("source-card\tcard\tcite\tRelated Card\t") != std::string::npos);
+
+  const auto links_json_out = xdg_root / "links.json";
+  REQUIRE(run_command(bin + " links --json --include-deleted source-card > \"" +
+                      links_json_out.string() + "\"") == 0);
+  const auto links_json = nlohmann::json::parse(read_text(links_json_out));
+  REQUIRE(links_json["ok"] == true);
+  REQUIRE(links_json["data"].is_array());
+  REQUIRE(links_json["data"][0]["to_card_id"] == "target-card");
+
+  const auto backlinks_json_out = xdg_root / "backlinks.json";
+  REQUIRE(run_command(bin + " backlinks --json target-card > \"" +
+                      backlinks_json_out.string() + "\"") == 0);
+  const auto backlinks_json = nlohmann::json::parse(read_text(backlinks_json_out));
+  REQUIRE(backlinks_json["ok"] == true);
+  REQUIRE(backlinks_json["data"][0]["from_card_id"] == "source-card");
+
+  const auto link_json_out = xdg_root / "link.json";
+  REQUIRE(run_command(bin + " link source-card target-card --json > \"" +
+                      link_json_out.string() + "\"") == 0);
+  const auto link_json = nlohmann::json::parse(read_text(link_json_out));
+  REQUIRE(link_json["ok"] == true);
+  REQUIRE(link_json["data"]["from_card_id"] == "source-card");
+  REQUIRE(link_json["data"]["to_card_id"] == "target-card");
+
+  REQUIRE(run_command(bin + " link other-source-card other-target-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link source-card other-target-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links other-source-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks other-target-card >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holderctl]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "trash-root";
+  const auto other_root = xdg_root / "trash-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "trash-project", project_root.string());
+  holder::test::create_project(db, "trash-other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+
+  auto create_card = [&](const std::string& card_id,
+                         const std::string& project_id,
+                         const std::string& title,
+                         long long updated_at) {
+    holder::model::Card card;
+    card.card_id = card_id;
+    card.project_id = project_id;
+    card.title = title;
+    card.created_at = updated_at - 1;
+    card.updated_at = updated_at;
+    card_store.create(card, title + " body\n");
+  };
+
+  create_card("trash-card", "trash-project", "Trash Card", 11);
+  create_card("delete-card", "trash-project", "Delete Card", 13);
+  create_card("empty-card-one", "trash-project", "Empty Card One", 15);
+  create_card("empty-card-two", "trash-project", "Empty Card Two", 17);
+  create_card("other-trash-card", "trash-other-project", "Other Trash Card", 19);
+
+  const std::string token = "trashtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " trash trash-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " use trash-project >/dev/null") == 0);
+
+  const auto empty_trash_out = xdg_root / "trash-empty.out";
+  REQUIRE(run_command(bin + " trash list > \"" + empty_trash_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_trash_out) == "Trash is empty.\n");
+
+  const auto trash_out = xdg_root / "trash.out";
+  REQUIRE(run_command(bin + " trash trash-card > \"" + trash_out.string() + "\"") == 0);
+  REQUIRE(read_text(trash_out) == "Trashed card: trash-card\n");
+  REQUIRE(run_command(bin + " card trash-card >/dev/null 2>/dev/null") == 1);
+
+  const auto trash_list_out = xdg_root / "trash-list.out";
+  REQUIRE(run_command(bin + " trash list > \"" + trash_list_out.string() + "\"") == 0);
+  const auto trash_list = read_text(trash_list_out);
+  REQUIRE(trash_list.find("CARD_ID\tTITLE\tDELETED\n") == 0);
+  REQUIRE(trash_list.find("trash-card\tTrash Card\t") != std::string::npos);
+  REQUIRE(trash_list.find("other-trash-card") == std::string::npos);
+
+  const auto trash_json_out = xdg_root / "trash-list.json";
+  REQUIRE(run_command(bin + " trash list --json > \"" + trash_json_out.string() + "\"") == 0);
+  const auto trash_json = nlohmann::json::parse(read_text(trash_json_out));
+  REQUIRE(trash_json["ok"] == true);
+  REQUIRE(trash_json["data"].is_array());
+  REQUIRE(trash_json["data"][0]["card_id"] == "trash-card");
+
+  const auto restore_out = xdg_root / "restore.out";
+  REQUIRE(run_command(bin + " restore trash-card > \"" + restore_out.string() + "\"") == 0);
+  REQUIRE(read_text(restore_out) == "Restored card: trash-card\n");
+  const auto restored_card_out = xdg_root / "restored-card.out";
+  REQUIRE(run_command(bin + " card trash-card > \"" + restored_card_out.string() + "\"") == 0);
+  REQUIRE(read_text(restored_card_out) == "Trash Card body\n");
+
+  REQUIRE(run_command(bin + " trash trash-card >/dev/null") == 0);
+  const auto trash_restore_json_out = xdg_root / "trash-restore.json";
+  REQUIRE(run_command(bin + " trash restore trash-card --json > \"" +
+                      trash_restore_json_out.string() + "\"") == 0);
+  REQUIRE(nlohmann::json::parse(read_text(trash_restore_json_out))["ok"] == true);
+
+  REQUIRE(run_command(bin + " trash delete trash-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash delete other-trash-card >/dev/null 2>/dev/null") == 1);
+
+  REQUIRE(run_command(bin + " trash delete-card >/dev/null") == 0);
+  const auto delete_out = xdg_root / "trash-delete.out";
+  REQUIRE(run_command(bin + " trash delete delete-card > \"" + delete_out.string() + "\"") == 0);
+  REQUIRE(read_text(delete_out) == "Deleted trashed card: delete-card\n");
+  REQUIRE(run_command(bin + " restore delete-card >/dev/null 2>/dev/null") == 1);
+
+  REQUIRE(run_command(bin + " trash empty-card-one >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash empty-card-two >/dev/null") == 0);
+  const auto empty_out = xdg_root / "trash-empty-command.out";
+  REQUIRE(run_command(bin + " trash empty > \"" + empty_out.string() + "\"") == 0);
+  REQUIRE(read_text(empty_out) == "Emptied card trash.\n");
+  const auto emptied_list_out = xdg_root / "trash-emptied-list.out";
+  REQUIRE(run_command(bin + " trash list > \"" + emptied_list_out.string() + "\"") == 0);
+  REQUIRE(read_text(emptied_list_out) == "Trash is empty.\n");
+
+  server.stop();
+  server_thread.join();
+}
 
 TEST_CASE("holderctl new and append capture cards in Home by default", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();

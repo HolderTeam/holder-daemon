@@ -37,6 +37,11 @@ int main(int argc, char* argv[]) {
     if (command == "search") return holder::cli::command_search(paths, argc, argv);
     if (command == "card") return holder::cli::command_card(paths, argc, argv);
     if (command == "edit") return holder::cli::command_edit(paths, argc, argv);
+    if (command == "links") return holder::cli::command_links(paths, argc, argv);
+    if (command == "backlinks") return holder::cli::command_backlinks(paths, argc, argv);
+    if (command == "link") return holder::cli::command_link(paths, argc, argv);
+    if (command == "trash") return holder::cli::command_trash(paths, argc, argv);
+    if (command == "restore") return holder::cli::command_restore(paths, argc, argv);
     if (command == "new") return holder::cli::command_new(paths, argc, argv);
     if (command == "append") return holder::cli::command_append(paths, argc, argv);
     if (command == "resource") return holder::cli::command_resource(paths, argc, argv);

@@ -194,6 +194,26 @@ struct CardOptions {
   std::string card_id;
 };
 
+struct LinkListOptions {
+  bool json_output = false;
+  bool include_deleted = false;
+  std::string card_id;
+};
+
+struct LinkCreateOptions {
+  bool json_output = false;
+  std::string from_card_id;
+  std::string to_card_id;
+  std::string kind = "ref";
+  std::optional<std::string> label;
+};
+
+struct TrashOptions {
+  bool json_output = false;
+  std::string subcommand;
+  std::string card_id;
+};
+
 struct ProjectNewOptions {
   bool json_output = false;
   bool use = false;
@@ -745,6 +765,136 @@ CardOptions parse_card_options(int argc, char* argv[]) {
   return options;
 }
 
+LinkListOptions parse_link_list_options(int argc,
+                                        char* argv[],
+                                        const std::string& usage,
+                                        const std::string& command_name) {
+  LinkListOptions options;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg == "--include-deleted") {
+      options.include_deleted = true;
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown " + command_name + " option: " + arg);
+    } else if (options.card_id.empty()) {
+      options.card_id = arg;
+    } else {
+      throw std::runtime_error(usage);
+    }
+  }
+
+  if (options.card_id.empty()) {
+    throw std::runtime_error(usage);
+  }
+  return options;
+}
+
+LinkCreateOptions parse_link_create_options(int argc, char* argv[]) {
+  LinkCreateOptions options;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    auto require_value = [&](const std::string& usage) -> std::string {
+      if (i + 1 >= argc) {
+        throw std::runtime_error(usage);
+      }
+      const std::string value = argv[++i];
+      if (value.empty()) {
+        throw std::runtime_error("link option value must not be empty");
+      }
+      return value;
+    };
+
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg == "--kind") {
+      options.kind = require_value("Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]");
+    } else if (arg == "--label") {
+      options.label = require_value("Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]");
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown link option: " + arg);
+    } else if (options.from_card_id.empty()) {
+      options.from_card_id = arg;
+    } else if (options.to_card_id.empty()) {
+      options.to_card_id = arg;
+    } else {
+      throw std::runtime_error("Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]");
+    }
+  }
+
+  if (options.from_card_id.empty() || options.to_card_id.empty()) {
+    throw std::runtime_error("Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]");
+  }
+  return options;
+}
+
+TrashOptions parse_trash_options(int argc, char* argv[]) {
+  if (argc < 3) {
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+  }
+
+  TrashOptions options;
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown trash option: " + arg);
+    } else if (options.subcommand.empty()) {
+      if (arg == "list" || arg == "restore" || arg == "delete" || arg == "empty") {
+        options.subcommand = arg;
+      } else {
+        options.card_id = arg;
+        options.subcommand = "card";
+      }
+    } else if ((options.subcommand == "restore" || options.subcommand == "delete") &&
+               options.card_id.empty()) {
+      options.card_id = arg;
+    } else {
+      throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+    }
+  }
+
+  if (options.subcommand.empty()) {
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+  }
+  const bool needs_card = options.subcommand == "card" || options.subcommand == "restore" ||
+                          options.subcommand == "delete";
+  if (needs_card && options.card_id.empty()) {
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+  }
+  if ((options.subcommand == "list" || options.subcommand == "empty") && !options.card_id.empty()) {
+    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+  }
+  return options;
+}
+
+TrashOptions parse_restore_options(int argc, char* argv[]) {
+  if (argc < 3) {
+    throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+  }
+
+  TrashOptions options;
+  options.subcommand = "restore";
+  for (int i = 2; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--json") {
+      options.json_output = true;
+    } else if (arg.rfind("--", 0) == 0) {
+      throw std::runtime_error("Unknown restore option: " + arg);
+    } else if (options.card_id.empty()) {
+      options.card_id = arg;
+    } else {
+      throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+    }
+  }
+  if (options.card_id.empty()) {
+    throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+  }
+  return options;
+}
+
 std::string recovery_token_usage(const std::string& subcommand) {
   if (subcommand == "export") {
     return "Usage: holderctl recovery-token export --pin <pin> [--out <file>]";
@@ -882,12 +1032,42 @@ nlohmann::json card_api_request(const holder::core::Paths& paths,
   return response.payload;
 }
 
+nlohmann::json fetch_card_in_current_project(const holder::core::Paths& paths,
+                                             const std::string& current_project_id,
+                                             const std::string& card_id) {
+  const auto payload = card_api_request(paths,
+                                        boost::beast::http::verb::get,
+                                        "/cards/" + url_encode_component(card_id));
+  const auto& data = payload.at("data");
+  if (json_string(data, "project_id") != current_project_id) {
+    throw std::runtime_error("Card is not in the current project: " + card_id);
+  }
+  return payload;
+}
+
 nlohmann::json list_current_project_resources_payload(const holder::core::Paths& paths) {
   const auto project = require_current_project_payload(paths);
   const auto project_id = json_string(project, "project_id");
   return card_api_request(paths,
                           boost::beast::http::verb::get,
                           "/resources?project_id=" + url_encode_component(project_id));
+}
+
+nlohmann::json list_current_project_trash_payload(const holder::core::Paths& paths,
+                                                  const std::string& project_id) {
+  return card_api_request(paths,
+                          boost::beast::http::verb::get,
+                          "/trash?project_id=" + url_encode_component(project_id) + "&type=card");
+}
+
+nlohmann::json find_trashed_card_in_payload(const nlohmann::json& trash,
+                                            const std::string& card_id) {
+  for (const auto& item : trash) {
+    if (json_string(item, "type") == "card" && json_string(item, "card_id") == card_id) {
+      return item;
+    }
+  }
+  throw std::runtime_error("Card is not in the current project trash: " + card_id);
 }
 
 nlohmann::json find_resource_in_payload(const nlohmann::json& resources,
@@ -1278,6 +1458,211 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to edit card: ") + ex.what());
+  }
+}
+
+void print_links_table(const nlohmann::json& links, bool backlinks) {
+  if (!links.is_array() || links.empty()) {
+    std::cout << (backlinks ? "No backlinks.\n" : "No links.\n");
+    return;
+  }
+
+  std::cout << (backlinks ? "FROM_ID" : "TO_ID") << "\tTYPE\tKIND\tLABEL\tCREATED\n";
+  for (const auto& link : links) {
+    std::cout << json_string(link, backlinks ? "from_card_id" : "to_card_id") << "\t"
+              << json_string(link, "to_type") << "\t"
+              << json_string(link, "kind") << "\t"
+              << json_string(link, "label") << "\t"
+              << link.value("created_at", 0) << "\n";
+  }
+}
+
+int command_links(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_link_list_options(
+      argc, argv, "Usage: holderctl links <card-id> [--include-deleted] [--json]", "links");
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+
+    std::string target = "/cards/" + url_encode_component(options.card_id) + "/links";
+    if (options.include_deleted) {
+      target += "?include_deleted=1";
+    }
+    const auto payload = card_api_request(paths, boost::beast::http::verb::get, target);
+    if (options.json_output) {
+      std::cout << payload.dump(2) << "\n";
+    } else {
+      print_links_table(payload.at("data"), false);
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to list links: ") + ex.what());
+  }
+}
+
+int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_link_list_options(
+      argc, argv, "Usage: holderctl backlinks <card-id> [--include-deleted] [--json]", "backlinks");
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+
+    std::string target = "/cards/" + url_encode_component(options.card_id) + "/backlinks";
+    if (options.include_deleted) {
+      target += "?include_deleted=1";
+    }
+    const auto payload = card_api_request(paths, boost::beast::http::verb::get, target);
+    if (options.json_output) {
+      std::cout << payload.dump(2) << "\n";
+    } else {
+      print_links_table(payload.at("data"), true);
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to list backlinks: ") + ex.what());
+  }
+}
+
+int command_link(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_link_create_options(argc, argv);
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+    (void)fetch_card_in_current_project(paths, current_project_id, options.from_card_id);
+
+    nlohmann::json body = {
+        {"to_card_id", options.to_card_id},
+        {"to_type", "card"},
+        {"kind", options.kind},
+        {"created_at", now_epoch_seconds()}, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer line.
+    };
+    if (options.label.has_value()) {
+      body["label"] = options.label.value();
+    }
+
+    const auto payload = card_api_request(paths,
+                                          boost::beast::http::verb::post,
+                                          "/cards/" + url_encode_component(options.from_card_id) + "/links",
+                                          body,
+                                          boost::beast::http::status::created);
+    if (options.json_output) {
+      std::cout << payload.dump(2) << "\n";
+    } else {
+      std::cout << "Linked card: " << options.from_card_id << " -> " << options.to_card_id << "\n";
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to link cards: ") + ex.what());
+  }
+}
+
+void print_trash_table(const nlohmann::json& trash) {
+  if (!trash.is_array() || trash.empty()) {
+    std::cout << "Trash is empty.\n";
+    return;
+  }
+
+  std::cout << "CARD_ID\tTITLE\tDELETED\n";
+  for (const auto& item : trash) {
+    std::cout << json_string(item, "card_id") << "\t"
+              << json_string(item, "title") << "\t"
+              << item.value("deleted_at", 0) << "\n";
+  }
+}
+
+int restore_trashed_card(const holder::core::Paths& paths,
+                         const std::string& current_project_id,
+                         const TrashOptions& options) {
+  const auto trash = list_current_project_trash_payload(paths, current_project_id);
+  (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
+  const auto payload = card_api_request(paths,
+                                        boost::beast::http::verb::post,
+                                        "/cards/" + url_encode_component(options.card_id) + "/restore");
+  if (options.json_output) {
+    std::cout << payload.dump(2) << "\n";
+  } else {
+    std::cout << "Restored card: " << options.card_id << "\n";
+  }
+  return 0;
+}
+
+int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_trash_options(argc, argv);
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+
+    if (options.subcommand == "list") {
+      const auto payload = list_current_project_trash_payload(paths, current_project_id);
+      if (options.json_output) {
+        std::cout << payload.dump(2) << "\n";
+      } else {
+        print_trash_table(payload.at("data"));
+      }
+      return 0;
+    }
+
+    if (options.subcommand == "restore") {
+      return restore_trashed_card(paths, current_project_id, options);
+    }
+
+    if (options.subcommand == "delete") {
+      const auto trash = list_current_project_trash_payload(paths, current_project_id);
+      (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
+      const auto payload = card_api_request(paths,
+                                            boost::beast::http::verb::delete_,
+                                            "/trash/card/" + url_encode_component(options.card_id));
+      if (options.json_output) {
+        std::cout << payload.dump(2) << "\n";
+      } else {
+        std::cout << "Deleted trashed card: " << options.card_id << "\n";
+      }
+      return 0;
+    }
+
+    if (options.subcommand == "empty") {
+      const auto payload = card_api_request(paths,
+                                            boost::beast::http::verb::delete_,
+                                            "/trash?project_id=" + url_encode_component(current_project_id) +
+                                                "&type=card");
+      if (options.json_output) {
+        std::cout << payload.dump(2) << "\n";
+      } else {
+        std::cout << "Emptied card trash.\n";
+      }
+      return 0;
+    }
+
+    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+    const auto payload = card_api_request(paths,
+                                          boost::beast::http::verb::delete_,
+                                          "/cards/" + url_encode_component(options.card_id));
+    if (options.json_output) {
+      std::cout << payload.dump(2) << "\n";
+    } else {
+      std::cout << "Trashed card: " << options.card_id << "\n";
+    }
+    return 0;
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to manage trash: ") + ex.what());
+  }
+}
+
+int command_restore(const holder::core::Paths& paths, int argc, char* argv[]) {
+  const auto options = parse_restore_options(argc, argv);
+
+  try {
+    const auto project = require_current_project_payload(paths);
+    const auto current_project_id = json_string(project, "project_id");
+    return restore_trashed_card(paths, current_project_id, options);
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to restore card: ") + ex.what());
   }
 }
 
