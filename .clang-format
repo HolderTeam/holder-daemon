@@ -1,5 +1,14 @@
----
 Language: Cpp
 BasedOnStyle: LLVM
 IndentWidth: 2
-ColumnLimit: 80
+ColumnLimit: 100
+PointerAlignment: Left
+ReferenceAlignment: Pointer
+SortIncludes: false
+AccessModifierOffset: -2
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLambdasOnASingleLine: None
+AlignTrailingComments: false
+BinPackArguments: false
+BinPackParameters: false
+BreakStringLiterals: false
