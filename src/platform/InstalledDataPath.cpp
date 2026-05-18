@@ -7,9 +7,7 @@
 namespace holder::core {
 
 // LCOV_EXCL_START
-std::optional<std::filesystem::path> installed_data_path(
-    const std::filesystem::path& rel_path
-) {
+std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) {
   const std::filesystem::path root(HOLDER_INSTALL_DATADIR);
   if (root.empty()) return std::nullopt;
 

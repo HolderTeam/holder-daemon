@@ -74,9 +74,7 @@ void require_secure_file(const std::filesystem::path& path) {
   }
   if (file_stat.st_uid != ::geteuid()) { // LCOV_EXCL_LINE: requires a file owned by another user.
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "Token file is not owned by the current user: " + path.string()
-    );
+    throw std::runtime_error("Token file is not owned by the current user: " + path.string());
     // LCOV_EXCL_STOP
   }
   if ((file_stat.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
@@ -88,9 +86,7 @@ void require_secure_file(const std::filesystem::path& path) {
   if (::stat(parent.c_str(), &dir_stat) != 0 ||
       !S_ISDIR(dir_stat.st_mode)) { // LCOV_EXCL_LINE: parent exists for a normal info path.
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "Cannot inspect token directory: " + parent.string()
-    );
+    throw std::runtime_error("Cannot inspect token directory: " + parent.string());
     // LCOV_EXCL_STOP
   }
   if (dir_stat.st_uid !=

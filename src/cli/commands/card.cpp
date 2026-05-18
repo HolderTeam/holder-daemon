@@ -140,6 +140,14 @@ CardOptions parse_card_options(int argc, char* argv[]) {
   return options;
 }
 
+nlohmann::json card_update_body(const nlohmann::json& card, const std::string& content) {
+  nlohmann::json body;
+  body["content"] = content;
+  body["title"] = json_string(card, "title");
+  body["updated_at"] = now_epoch_seconds();
+  return body;
+} // LCOV_EXCL_LINE
+
 std::string shell_quote(const std::string& value) {
 #ifdef _WIN32
   std::string out = "\"";
@@ -186,9 +194,7 @@ std::string read_text_file_raw(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open()) {
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "Failed to read editor temp file: " + path.string()
-    );
+    throw std::runtime_error("Failed to read editor temp file: " + path.string());
     // LCOV_EXCL_STOP
   }
   std::ostringstream buffer;
@@ -203,9 +209,7 @@ void write_text_file_raw(const std::filesystem::path& path, const std::string& c
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "Failed to create editor temp file: " + path.string()
-    );
+    throw std::runtime_error("Failed to create editor temp file: " + path.string());
     // LCOV_EXCL_STOP
   }
   out << content;
@@ -316,10 +320,11 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
                 << card.value("child_count", 0) << "\t" << card.value("updated_at", 0) << "\n";
     }
     return 0;
-  } catch (const std::exception& ex
-  ) { // LCOV_EXCL_LINE: current-project validation handles reachable daemon failures first.
-    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what()); // LCOV_EXCL_LINE
-  } // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what());
+  }
+  // LCOV_EXCL_STOP
 }
 
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
@@ -401,11 +406,7 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
         paths,
         boost::beast::http::verb::patch,
         "/cards/" + url_encode_component(card_id),
-        // LCOV_EXCL_START
-        {{"content", edited_content},
-         {"title", json_string(data, "title")},
-         {"updated_at", now_epoch_seconds()}}
-        // LCOV_EXCL_STOP
+        card_update_body(data, edited_content)
     );
     remove_temp_file(temp_path);
     std::cout << "Updated card: " << card_id << "\n";
@@ -489,11 +490,7 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
         paths,
         boost::beast::http::verb::patch,
         "/cards/" + url_encode_component(card_id),
-        // LCOV_EXCL_START
-        {{"content", content},
-         {"title", json_string(data, "title")},
-         {"updated_at", now_epoch_seconds()}}
-        // LCOV_EXCL_STOP
+        card_update_body(data, content)
     );
     std::cout << "Appended to card: " << card_id << "\n";
     return 0;

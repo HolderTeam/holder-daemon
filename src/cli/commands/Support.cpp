@@ -70,9 +70,7 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
     std::ofstream out(tmp_path, std::ios::trunc);
     if (!out.is_open()) {
       // LCOV_EXCL_START
-      throw std::runtime_error(
-          "Failed to open holderctl config: " + tmp_path
-      );
+      throw std::runtime_error("Failed to open holderctl config: " + tmp_path);
       // LCOV_EXCL_STOP
     }
     out << config.dump(2) << "\n";
@@ -82,15 +80,11 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   std::filesystem::rename(tmp_path, config_path, ec);
   if (ec) {
     // LCOV_EXCL_START
-    std::filesystem::remove(
-        config_path,
-        ec
-    );
+    std::filesystem::remove(config_path, ec);
     std::filesystem::rename(tmp_path, config_path, ec);
     if (ec) {
       throw std::runtime_error(
-          "Failed to write holderctl config: " + config_path.string() +
-          " (" + ec.message() + ")"
+          "Failed to write holderctl config: " + config_path.string() + " (" + ec.message() + ")"
       );
     }
     // LCOV_EXCL_STOP

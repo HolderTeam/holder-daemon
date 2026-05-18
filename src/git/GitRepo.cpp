@@ -87,6 +87,20 @@ static PushStatus classify_push_error(const std::string& message) {
   return PushStatus::UnknownError;
 }
 
+// LCOV_EXCL_START
+static PushResult push_head_error_result(git_remote* remote, const std::string& local_head_commit) {
+  const std::string error = git_error_message_or_default("git_repository_head failed");
+  git_remote_free(remote);
+  return {
+      .status = classify_push_error(error),
+      .ahead_count = 0,
+      .behind_count = 0,
+      .local_head_commit = local_head_commit,
+      .error_message = error,
+  };
+}
+// LCOV_EXCL_STOP
+
 static std::string home_dir_or_empty() {
   const char* home = std::getenv("HOME");
   return home ? std::string(home) : std::string();
@@ -655,16 +669,8 @@ PushResult GitRepo::push_branch(
     };
   }
   if (rc != 0) {
-    const std::string error = git_error_message_or_default("git_repository_head failed"); // LCOV_EXCL_LINE
-    git_remote_free(remote); // LCOV_EXCL_LINE
-    return {
-        .status = classify_push_error(error), // LCOV_EXCL_LINE
-        .ahead_count = 0,
-        .behind_count = 0,
-        .local_head_commit = local_head_commit,
-        .error_message = error, // LCOV_EXCL_LINE
-    }; // LCOV_EXCL_LINE
-  } // LCOV_EXCL_LINE
+    return push_head_error_result(remote, local_head_commit); // LCOV_EXCL_LINE
+  }
   git_reference_free(head);
 
   // Push current local HEAD to the resolved remote branch. This avoids failures
@@ -745,9 +751,7 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
       remote_branch = "master"; // LCOV_EXCL_LINE
     } else {
       // LCOV_EXCL_START
-      throw std::runtime_error(
-          "Unable to determine remote default branch for " + name
-      );
+      throw std::runtime_error("Unable to determine remote default branch for " + name);
       // LCOV_EXCL_STOP
     }
   }

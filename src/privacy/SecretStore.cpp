@@ -55,9 +55,7 @@ nlohmann::json read_json_or_empty(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "failed to open secret metadata file: " + path.string()
-    );
+    throw std::runtime_error("failed to open secret metadata file: " + path.string());
     // LCOV_EXCL_STOP
   }
   std::ostringstream buffer;
@@ -73,9 +71,7 @@ void write_json(const std::filesystem::path& path, const nlohmann::json& body) {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out) {
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "failed to write secret metadata file: " + path.string()
-    );
+    throw std::runtime_error("failed to write secret metadata file: " + path.string());
     // LCOV_EXCL_STOP
   }
   out << body.dump(2);
@@ -169,9 +165,7 @@ class TestDirSecretBackend final : public RawSecretBackend {
     std::ifstream in(path, std::ios::binary);
     if (!in) {
       // LCOV_EXCL_START
-      throw std::runtime_error(
-          "failed to open test secret file: " + path.string()
-      );
+      throw std::runtime_error("failed to open test secret file: " + path.string());
       // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
@@ -356,9 +350,7 @@ std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
     std::ifstream in(key_path, std::ios::binary);
     if (!in) {
       // LCOV_EXCL_START
-      throw std::runtime_error(
-          "failed to open secret-store master key: " + key_path.string()
-      );
+      throw std::runtime_error("failed to open secret-store master key: " + key_path.string());
       // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
@@ -371,9 +363,7 @@ std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
   std::ofstream out(key_path, std::ios::binary | std::ios::trunc);
   if (!out) {
     // LCOV_EXCL_START
-    throw std::runtime_error(
-        "failed to write secret-store master key: " + key_path.string()
-    );
+    throw std::runtime_error("failed to write secret-store master key: " + key_path.string());
     // LCOV_EXCL_STOP
   }
   out << key_to_base64(key);

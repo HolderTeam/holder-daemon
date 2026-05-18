@@ -204,14 +204,12 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
     // LCOV_EXCL_STOP
     if (data.contains("remote_error") && !data.at("remote_error").is_null()) {
       // LCOV_EXCL_START
-      std::cout << "Remote error: " << data.at("remote_error").get<std::string>()
-                << "\n";
+      std::cout << "Remote error: " << data.at("remote_error").get<std::string>() << "\n";
       // LCOV_EXCL_STOP
     }
     if (data.contains("pull_error") && !data.at("pull_error").is_null()) {
       // LCOV_EXCL_START
-      std::cout << "Pull error: " << data.at("pull_error").get<std::string>()
-                << "\n";
+      std::cout << "Pull error: " << data.at("pull_error").get<std::string>() << "\n";
       // LCOV_EXCL_STOP
     }
     return 0;

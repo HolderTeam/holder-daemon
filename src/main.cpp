@@ -61,7 +61,8 @@ static std::filesystem::path find_schema_sql() {
   if (auto installed = holder::core::installed_data_path("schema/schema.sql")) // LCOV_EXCL_LINE
     return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find schema/schema.sql from current directory."); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find schema/schema.sql from current directory."
+  ); // LCOV_EXCL_LINE
 }
 
 static std::string generate_uuid_v4() {
@@ -81,7 +82,8 @@ static std::filesystem::path find_welcome_markdown() {
   if (auto installed = holder::core::installed_data_path("config/WELCOME.md")) // LCOV_EXCL_LINE
     return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."
+  ); // LCOV_EXCL_LINE
 }
 
 static std::string load_welcome_markdown_body() {

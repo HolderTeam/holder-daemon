@@ -81,11 +81,7 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
       path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
   if (job_id.empty()) {
     // LCOV_EXCL_START
-    res = support::error_response(
-        http::status::not_found,
-        "not_found",
-        "Pull job not found."
-    );
+    res = support::error_response(http::status::not_found, "not_found", "Pull job not found.");
     return out;
     // LCOV_EXCL_STOP
   }

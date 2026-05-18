@@ -31,7 +31,8 @@ std::optional<std::filesystem::path> find_ai_catalog_path() {
   }
   fs::path p1 = fs::current_path() / "config" / "ai_catalog.yaml";
   if (fs::exists(p1)) return p1;
-  if (auto installed = holder::core::installed_data_path("config/ai_catalog.yaml")) return installed;
+  if (auto installed = holder::core::installed_data_path("config/ai_catalog.yaml"))
+    return installed;
   return std::nullopt;
 }
 
@@ -43,7 +44,8 @@ std::optional<std::filesystem::path> find_git_providers_path() {
   }
   fs::path p1 = fs::current_path() / "config" / "git_providers.yaml";
   if (fs::exists(p1)) return p1;
-  if (auto installed = holder::core::installed_data_path("config/git_providers.yaml")) return installed;
+  if (auto installed = holder::core::installed_data_path("config/git_providers.yaml"))
+    return installed;
   return std::nullopt;
 }
 
