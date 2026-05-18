@@ -54,9 +54,11 @@ nlohmann::json read_json_or_empty(const std::filesystem::path& path) {
 
   std::ifstream in(path, std::ios::binary);
   if (!in) {
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "failed to open secret metadata file: " + path.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   std::ostringstream buffer;
   buffer << in.rdbuf();
@@ -70,9 +72,11 @@ void write_json(const std::filesystem::path& path, const nlohmann::json& body) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out) {
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "failed to write secret metadata file: " + path.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   out << body.dump(2);
 }
@@ -164,9 +168,11 @@ class TestDirSecretBackend final : public RawSecretBackend {
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "failed to open test secret file: " + path.string()
-      ); // LCOV_EXCL_LINE
+      );
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -349,9 +355,11 @@ std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
   if (std::filesystem::exists(key_path)) {
     std::ifstream in(key_path, std::ios::binary);
     if (!in) {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "failed to open secret-store master key: " + key_path.string()
-      ); // LCOV_EXCL_LINE
+      );
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -362,9 +370,11 @@ std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
   std::filesystem::create_directories(key_path.parent_path());
   std::ofstream out(key_path, std::ios::binary | std::ios::trunc);
   if (!out) {
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "failed to write secret-store master key: " + key_path.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   out << key_to_base64(key);
   out.close();
@@ -413,10 +423,12 @@ class EncryptedFileSecretBackend final : public RawSecretBackend {
 
     std::ifstream in(store_path_, std::ios::binary);
     if (!in) {
+      // LCOV_EXCL_START
       throw PrivacyError(
           PrivacyErrorCode::KeyringUnavailable,
           "failed to open fallback secret file: " + store_path_.string()
-      ); // LCOV_EXCL_LINE
+      );
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -446,10 +458,12 @@ class EncryptedFileSecretBackend final : public RawSecretBackend {
     std::filesystem::create_directories(store_path_.parent_path());
     std::ofstream out(store_path_, std::ios::binary | std::ios::trunc);
     if (!out) {
+      // LCOV_EXCL_START
       throw PrivacyError(
           PrivacyErrorCode::KeyringUnavailable,
           "failed to write fallback secret file: " + store_path_.string()
-      ); // LCOV_EXCL_LINE
+      );
+      // LCOV_EXCL_STOP
     }
     out << ciphertext;
   }

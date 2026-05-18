@@ -14,6 +14,7 @@
 #include "llm/RunnerRegistry.h"
 #include "model/Card.h"
 #include "platform/Db.h"
+#include "platform/InstalledDataPath.h"
 #include "platform/LockFile.h"
 #include "platform/Migrations.h"
 #include "platform/Paths.h"
@@ -42,26 +43,9 @@
 #define CARD_SERVER_VERSION "0.0.0"
 #endif
 
-#ifndef HOLDER_INSTALL_DATADIR
-#define HOLDER_INSTALL_DATADIR ""
-#endif
-
 static void print_usage(std::ostream& out) {
   out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex]\n";
 }
-
-static std::optional<std::filesystem::path> installed_data_path(
-    const std::filesystem::path& rel_path
-) { // LCOV_EXCL_LINE
-  // LCOV_EXCL_START: install-layout fallback is exercised by Debian packages, not repo-local tests.
-  namespace fs = std::filesystem;
-  const fs::path root(HOLDER_INSTALL_DATADIR);
-  if (root.empty()) return std::nullopt;
-  fs::path candidate = root / rel_path;
-  if (fs::exists(candidate)) return candidate;
-  return std::nullopt;
-  // LCOV_EXCL_STOP
-} // LCOV_EXCL_LINE
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -74,11 +58,10 @@ static std::filesystem::path find_schema_sql() {
   fs::path p2 = fs::current_path().parent_path() / "schema" / "schema.sql";
   if (fs::exists(p2)) return p2;
 
-  if (auto installed = installed_data_path("schema/schema.sql"))
+  if (auto installed = holder::core::installed_data_path("schema/schema.sql")) // LCOV_EXCL_LINE
     return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find schema/schema.sql from current directory."
-  ); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find schema/schema.sql from current directory."); // LCOV_EXCL_LINE
 }
 
 static std::string generate_uuid_v4() {
@@ -95,11 +78,10 @@ static std::filesystem::path find_welcome_markdown() {
   fs::path p2 = fs::current_path().parent_path() / "config" / "WELCOME.md";
   if (fs::exists(p2)) return p2;
 
-  if (auto installed = installed_data_path("config/WELCOME.md"))
+  if (auto installed = holder::core::installed_data_path("config/WELCOME.md")) // LCOV_EXCL_LINE
     return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."
-  ); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."); // LCOV_EXCL_LINE
 }
 
 static std::string load_welcome_markdown_body() {

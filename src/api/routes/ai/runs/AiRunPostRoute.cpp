@@ -892,9 +892,10 @@ RouteDispatchResult execute_cloud_post_path(
         attempt["cooldown"] = {
             {"failure_count", cooldown.failure_count},
             {"cooldown_until", cooldown.cooldown_until},
+            // LCOV_EXCL_START
             {"remaining_seconds",
-             std::max(0LL, cooldown.cooldown_until - support::now_epoch_seconds())
-            }, // LCOV_EXCL_LINE
+             std::max(0LL, cooldown.cooldown_until - support::now_epoch_seconds())},
+            // LCOV_EXCL_STOP
         };
         if (!policy_trace["attempts"].empty() && policy_trace["attempts"].back().is_object() &&
             policy_trace["attempts"].back().value("model", "") == candidate->id &&
@@ -1107,11 +1108,10 @@ RouteDispatchResult execute_local_post_path(
     caste_candidates.reserve(candidates.size());
     for (const auto& candidate : candidates) {
       const auto it = model_meta.find(candidate);
+      // LCOV_EXCL_START
       if (it == model_meta.end() || it->second.hardware_tier.empty() ||
-          support::caste_meets_or_exceeds(
-              machine_caste->name,
-              it->second.hardware_tier
-          )) { // LCOV_EXCL_LINE
+          support::caste_meets_or_exceeds(machine_caste->name, it->second.hardware_tier)) {
+        // LCOV_EXCL_STOP
         caste_candidates.push_back(candidate);
       }
     }

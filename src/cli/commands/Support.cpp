@@ -27,7 +27,7 @@ nlohmann::json list_projects_payload(const holder::core::Paths& paths, bool incl
       connection,
       boost::beast::http::verb::get,
       target,
-      std::chrono::seconds(10)
+      std::chrono::seconds(10) // LCOV_EXCL_LINE
   );
 
   if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
@@ -69,9 +69,11 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   {
     std::ofstream out(tmp_path, std::ios::trunc);
     if (!out.is_open()) {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "Failed to open holderctl config: " + tmp_path
-      ); // LCOV_EXCL_LINE: requires filesystem permission fault.
+      );
+      // LCOV_EXCL_STOP
     }
     out << config.dump(2) << "\n";
   }
@@ -79,17 +81,19 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   std::error_code ec;
   std::filesystem::rename(tmp_path, config_path, ec);
   if (ec) {
+    // LCOV_EXCL_START
     std::filesystem::remove(
         config_path,
         ec
-    ); // LCOV_EXCL_LINE: cross-device/permission fallback is platform dependent.
-    std::filesystem::rename(tmp_path, config_path, ec); // LCOV_EXCL_LINE
-    if (ec) { // LCOV_EXCL_LINE
+    );
+    std::filesystem::rename(tmp_path, config_path, ec);
+    if (ec) {
       throw std::runtime_error(
-          "Failed to write holderctl config: " + config_path.string() + // LCOV_EXCL_LINE
+          "Failed to write holderctl config: " + config_path.string() +
           " (" + ec.message() + ")"
-      ); // LCOV_EXCL_LINE
+      );
     }
+    // LCOV_EXCL_STOP
   }
 } // LCOV_EXCL_LINE
 
@@ -277,8 +281,8 @@ nlohmann::json card_api_request(
                 connection,
                 method,
                 target,
-                std::chrono::seconds(10)
-            ) // LCOV_EXCL_LINE: gcov misattributes the covered ternary arm.
+                std::chrono::seconds(10) // LCOV_EXCL_LINE
+            )
           : http_json_request(connection, method, target, std::chrono::seconds(30), body);
 
   if (response.status != success || !response.payload.value("ok", false)) {

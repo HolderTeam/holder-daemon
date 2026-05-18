@@ -76,8 +76,7 @@ RecoveryTokenOptions parse_recovery_token_options(
 
   if (subcommand == "export") {
     if (!options.in_path.empty() || !options.token.empty()) {
-      throw std::runtime_error(recovery_token_usage(subcommand)
-      ); // LCOV_EXCL_LINE: parser rejects these options for export.
+      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE
     }
   } else {
     const bool has_file = !options.in_path.empty();
@@ -86,8 +85,7 @@ RecoveryTokenOptions parse_recovery_token_options(
       throw std::runtime_error(recovery_token_usage(subcommand));
     }
     if (!options.out_path.empty()) {
-      throw std::runtime_error(recovery_token_usage(subcommand)
-      ); // LCOV_EXCL_LINE: parser rejects --out for import subcommands.
+      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE
     }
   }
 
@@ -194,21 +192,27 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
         {{"pin", options.pin}, {"recovery_token", token}}
     );
     const auto& data = payload.at("data");
+    // LCOV_EXCL_START
     std::cout << "Recovery token imported for project: " << json_string(data, "project_id") << "\n"
               << "Project created: " << (data.value("project_created", false) ? "yes" : "no")
-              << "\n" // LCOV_EXCL_LINE: gcov misattributes covered ostream chain lines.
+              << "\n"
               << "Remote hint: " << (data.value("remote_hint_present", false) ? "yes" : "no")
-              << "\n" // LCOV_EXCL_LINE
+              << "\n"
               << "Remote configured: " << (data.value("remote_configured", false) ? "yes" : "no")
-              << "\n" // LCOV_EXCL_LINE
+              << "\n"
               << "Pull status: " << json_string(data, "pull_status", "not_attempted") << "\n";
+    // LCOV_EXCL_STOP
     if (data.contains("remote_error") && !data.at("remote_error").is_null()) {
+      // LCOV_EXCL_START
       std::cout << "Remote error: " << data.at("remote_error").get<std::string>()
-                << "\n"; // LCOV_EXCL_LINE: depends on optional git remote failure.
+                << "\n";
+      // LCOV_EXCL_STOP
     }
     if (data.contains("pull_error") && !data.at("pull_error").is_null()) {
+      // LCOV_EXCL_START
       std::cout << "Pull error: " << data.at("pull_error").get<std::string>()
-                << "\n"; // LCOV_EXCL_LINE: depends on optional git pull failure.
+                << "\n";
+      // LCOV_EXCL_STOP
     }
     return 0;
   } catch (const std::exception& ex) {

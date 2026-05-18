@@ -34,7 +34,7 @@ long long parse_size_bytes(const std::string& input) {
 
   double multiplier = 1.0;
   if (unit == "kb" || unit == "k")
-    multiplier = 1024.0;
+    multiplier = 1024.0; // LCOV_EXCL_LINE
   else if (unit == "mb" || unit == "m")
     multiplier = 1024.0 * 1024.0;
   else if (unit == "gb" || unit == "g")

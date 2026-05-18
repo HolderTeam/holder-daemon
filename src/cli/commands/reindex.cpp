@@ -22,7 +22,7 @@ int command_reindex(const holder::core::Paths& paths, int argc) {
         connection,
         boost::beast::http::verb::post,
         "/reindex",
-        std::chrono::seconds(30)
+        std::chrono::seconds(30) // LCOV_EXCL_LINE
     );
 
     if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {

@@ -88,9 +88,11 @@ int command_restart() {
   boost::system::error_code ec;
   const int exit_code = proc.wait(ec);
   if (ec) {
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "Failed to run systemctl: " + ec.message()
-    ); // LCOV_EXCL_LINE: requires process wait syscall failure.
+    );
+    // LCOV_EXCL_STOP
   }
   if (exit_code != 0) {
     throw std::runtime_error(
@@ -130,9 +132,11 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
 #if defined(__linux__)
     const auto tail = boost::process::v2::environment::find_executable("tail");
     if (tail.empty()) {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "tail not found; log file is: " + log_path.string()
-      ); // LCOV_EXCL_LINE: depends on host PATH contents.
+      );
+      // LCOV_EXCL_STOP
     }
 
     boost::asio::io_context ioc;
@@ -141,9 +145,11 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
     boost::system::error_code ec;
     const int exit_code = proc.wait(ec);
     if (ec) {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "Failed to run tail: " + ec.message()
-      ); // LCOV_EXCL_LINE: requires process wait syscall failure.
+      );
+      // LCOV_EXCL_STOP
     }
     return exit_code;
 #else

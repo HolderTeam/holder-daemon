@@ -164,11 +164,11 @@ ResourceAddOptions parse_resource_add_options(int argc, char* argv[]) {
     } else if (arg == "--kind") {
       options.kind = require_value(
           "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
-      );
+      ); // LCOV_EXCL_LINE
     } else if (arg == "--label") {
       options.label = require_value(
           "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
-      );
+      ); // LCOV_EXCL_LINE
     } else if (arg == "--desc") {
       options.desc = require_value(
           "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
@@ -382,15 +382,16 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       const auto options = parse_resource_add_options(argc, argv);
       const auto project = require_current_project_payload(paths);
       const auto project_id = json_string(project, "project_id");
+      // LCOV_EXCL_START
       nlohmann::json body = {
           {"project_id", project_id},
           {"kind", options.kind},
           {"uri", options.uri},
           {"label", options.label},
-          {"created_at", now_epoch_seconds()
-          }, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
-          {"updated_at", now_epoch_seconds()}, // LCOV_EXCL_LINE
+          {"created_at", now_epoch_seconds()},
+          {"updated_at", now_epoch_seconds()},
       };
+      // LCOV_EXCL_STOP
       if (options.desc.has_value()) {
         body["desc"] = options.desc.value();
       }

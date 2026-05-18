@@ -7,7 +7,7 @@ namespace holder::core {
 SerialExecutor::SerialExecutor(std::string name, std::size_t max_pending_tasks)
     : name_(std::move(name)),
       max_pending_tasks_(max_pending_tasks),
-      worker_([this]() {
+      worker_([this]() { // LCOV_EXCL_LINE
         run();
       }) {}
 

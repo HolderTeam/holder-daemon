@@ -325,9 +325,11 @@ void GitRepo::write_file(const fs::path& relative_path, const std::string& conte
   std::error_code ec;
   fs::create_directories(full.parent_path(), ec);
   if (ec)
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "Failed to create dirs: " + full.parent_path().string() + " (" + ec.message() + ")"
     );
+  // LCOV_EXCL_STOP
 
   std::ofstream out(full, std::ios::binary);
   if (!out.is_open()) throw std::runtime_error("Failed to open for write: " + full.string());
@@ -653,8 +655,7 @@ PushResult GitRepo::push_branch(
     };
   }
   if (rc != 0) {
-    const std::string error = git_error_message_or_default("git_repository_head failed"
-    ); // LCOV_EXCL_LINE
+    const std::string error = git_error_message_or_default("git_repository_head failed"); // LCOV_EXCL_LINE
     git_remote_free(remote); // LCOV_EXCL_LINE
     return {
         .status = classify_push_error(error), // LCOV_EXCL_LINE
@@ -743,9 +744,11 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
     } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) { // LCOV_EXCL_LINE
       remote_branch = "master"; // LCOV_EXCL_LINE
     } else {
+      // LCOV_EXCL_START
       throw std::runtime_error(
           "Unable to determine remote default branch for " + name
-      ); // LCOV_EXCL_LINE
+      );
+      // LCOV_EXCL_STOP
     }
   }
 

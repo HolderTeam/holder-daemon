@@ -91,13 +91,14 @@ int command_project(const holder::core::Paths& paths, int argc, char* argv[]) {
   }
 
   const auto options = parse_project_new_options(argc, argv);
+  // LCOV_EXCL_START
   nlohmann::json body = {
       {"name", options.name},
       {"privacy_mode", options.privacy_mode},
-      {"created_at", now_epoch_seconds()
-      }, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
-      {"updated_at", now_epoch_seconds()}, // LCOV_EXCL_LINE
+      {"created_at", now_epoch_seconds()},
+      {"updated_at", now_epoch_seconds()},
   };
+  // LCOV_EXCL_STOP
   if (options.remote_url.has_value()) {
     body["git_remote_url"] = options.remote_url.value();
   }

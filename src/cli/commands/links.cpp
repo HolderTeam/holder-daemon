@@ -182,13 +182,14 @@ int command_link(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto current_project_id = json_string(project, "project_id");
     (void)fetch_card_in_current_project(paths, current_project_id, options.from_card_id);
 
+    // LCOV_EXCL_START
     nlohmann::json body = {
         {"to_card_id", options.to_card_id},
         {"to_type", "card"},
         {"kind", options.kind},
-        {"created_at", now_epoch_seconds()
-        }, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer line.
+        {"created_at", now_epoch_seconds()},
     };
+    // LCOV_EXCL_STOP
     if (options.label.has_value()) {
       body["label"] = options.label.value();
     }

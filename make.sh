@@ -114,6 +114,7 @@ coverage_all() {
       --exclude 'third_party/' \
       --gcov-executable "${gcov_executable}" \
       --gcov-ignore-errors all \
+      --exclude-pattern-prefix LCOV \
       --exclude-unreachable-branches \
       --exclude-throw-branches \
       --exclude-function-lines \

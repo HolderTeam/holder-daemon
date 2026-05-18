@@ -73,9 +73,11 @@ void require_secure_file(const std::filesystem::path& path) {
     throw std::runtime_error("Token file is not a regular file: " + path.string());
   }
   if (file_stat.st_uid != ::geteuid()) { // LCOV_EXCL_LINE: requires a file owned by another user.
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "Token file is not owned by the current user: " + path.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   if ((file_stat.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
     throw std::runtime_error("Token file must be readable only by its owner: " + path.string());
@@ -85,15 +87,19 @@ void require_secure_file(const std::filesystem::path& path) {
   struct stat dir_stat {};
   if (::stat(parent.c_str(), &dir_stat) != 0 ||
       !S_ISDIR(dir_stat.st_mode)) { // LCOV_EXCL_LINE: parent exists for a normal info path.
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "Cannot inspect token directory: " + parent.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   if (dir_stat.st_uid !=
       ::geteuid()) { // LCOV_EXCL_LINE: requires a directory owned by another user.
+    // LCOV_EXCL_START
     throw std::runtime_error(
         "Token directory is not owned by the current user: " + parent.string()
-    ); // LCOV_EXCL_LINE
+    );
+    // LCOV_EXCL_STOP
   }
   if ((dir_stat.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
     throw std::runtime_error(

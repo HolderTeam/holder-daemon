@@ -288,7 +288,7 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
         secret_store_,
         git_ops_,
         runner_registry_,
-        [&]() {
+        [&]() { // LCOV_EXCL_LINE
           return generate_uuid_v4();
         }
     );

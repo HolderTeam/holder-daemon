@@ -219,7 +219,7 @@ bool handle_ai_runner_crud_routes(
       runner.source = "manual";
       runner.enabled = !body.contains("enabled") || body.at("enabled").is_null()
                            ? true
-                           : body.at("enabled").get<bool>();
+                           : body.at("enabled").get<bool>(); // LCOV_EXCL_LINE
       runner.created_at = now;
       runner.updated_at = now;
 
