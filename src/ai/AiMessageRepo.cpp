@@ -2,8 +2,8 @@
 
 #include "ai/AiMessageFrontMatter.h"
 #include "ai/AiMessagePaths.h"
-#include "platform/Fs.h"
 #include "git/GitOps.h"
+#include "platform/Fs.h"
 
 #include <sqlite3.h>
 
@@ -87,10 +87,12 @@ holder::model::AiMessage read_message(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiMessageRepo::AiMessageRepo(holder::platform::Db& db,
-                             holder::index::FtsIndexer* fts,
-                             holder::core::Fs* fs,
-                             holder::git::GitOps* git)
+AiMessageRepo::AiMessageRepo(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    holder::core::Fs* fs,
+    holder::git::GitOps* git
+)
     : db_(db),
       fs_(&resolve_fs(fs)),
       git_(&resolve_git(git)),
@@ -120,9 +122,8 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
     throw std::runtime_error("conflict: ai message file already exists");
   }
 
-  const auto front_matter = holder::core::render_ai_message_front_matter(message,
-                                                                         project_opt->project_id,
-                                                                         {});
+  const auto front_matter =
+      holder::core::render_ai_message_front_matter(message, project_opt->project_id, {});
   git_->write_file(rel_path, front_matter + message.content);
 
   static constexpr const char* SQL =
@@ -159,18 +160,20 @@ void AiMessageRepo::append(const holder::model::AiMessage& message) {
   }
 
   if (fts_) {
-    fts_->upsert_message(message.message_id,
-                         message.thread_id,
-                         project_opt->project_id,
-                         message.content);
+    fts_->upsert_message(
+        message.message_id,
+        message.thread_id,
+        project_opt->project_id,
+        message.content
+    );
   }
 
   git_->stage_path(rel_path);
   git_->commit("Add ai message " + message.message_id);
 }
 
-std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(
-    const std::string& thread_id) const {
+std::vector<holder::model::AiMessage> AiMessageRepo::list_by_thread(const std::string& thread_id
+) const {
   static constexpr const char* SQL =
       "SELECT message_id, thread_id, role, source, provider, model, content, created_at, deleted_at, prompt_hash, meta_json "
       "FROM ai_messages WHERE thread_id = ? ORDER BY created_at ASC;";
@@ -240,16 +243,16 @@ void AiMessageRepo::update(const holder::model::AiMessage& message) {
 
   const std::string rel_path = holder::core::ai_message_rel_path(message.message_id);
   const auto links = link_repo_.list_outgoing(project_opt->project_id, message.message_id);
-  const auto front_matter = holder::core::render_ai_message_front_matter(message,
-                                                                         project_opt->project_id,
-                                                                         links);
+  const auto front_matter =
+      holder::core::render_ai_message_front_matter(message, project_opt->project_id, links);
   git_->write_file(rel_path, front_matter + message.content);
   git_->stage_path(rel_path);
   git_->commit("Update ai message " + message.message_id);
 }
 
 std::vector<holder::model::AiMessage> AiMessageRepo::list_deleted_by_project(
-    const std::string& project_id) const {
+    const std::string& project_id
+) const {
   static constexpr const char* SQL =
       "SELECT m.message_id, m.thread_id, m.role, m.source, m.provider, m.model, "
       "m.content, m.created_at, m.deleted_at, m.prompt_hash, m.meta_json "
@@ -313,8 +316,7 @@ void AiMessageRepo::trash(const std::string& message_id, long long deleted_at) {
   fs_->create_directories(dst_path.parent_path());
   fs_->rename(src_path, dst_path);
 
-  static constexpr const char* SQL =
-      "UPDATE ai_messages SET deleted_at = ? WHERE message_id = ?;";
+  static constexpr const char* SQL = "UPDATE ai_messages SET deleted_at = ? WHERE message_id = ?;";
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw_sqlite(db_.handle(), "prepare trash ai message failed");
@@ -470,16 +472,14 @@ void AiMessageRepo::update_links(const std::string& message_id) {
   }
 
   const auto links = link_repo_.list_outgoing(project_opt->project_id, message_id);
-  const auto front_matter = holder::core::render_ai_message_front_matter(msg_opt.value(),
-                                                                         project_opt->project_id,
-                                                                         links);
+  const auto front_matter =
+      holder::core::render_ai_message_front_matter(msg_opt.value(), project_opt->project_id, links);
   git_->write_file(rel_path, front_matter + msg_opt->content);
   git_->stage_path(rel_path);
   git_->commit("Update ai message links " + message_id);
 }
 
-std::optional<holder::model::AiMessage> AiMessageRepo::get(
-    const std::string& message_id) const {
+std::optional<holder::model::AiMessage> AiMessageRepo::get(const std::string& message_id) const {
   static constexpr const char* SQL =
       "SELECT message_id, thread_id, role, source, provider, model, content, created_at, deleted_at, prompt_hash, meta_json "
       "FROM ai_messages WHERE message_id = ? LIMIT 1;";

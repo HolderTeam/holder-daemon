@@ -1,9 +1,9 @@
 #include "api/routes/ai/messages/AiMessageLinkRoutes.h"
 
-#include "api/support/HttpResponses.h"
-#include "api/support/Time.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
 #include "resource/ResourceRepo.h"
@@ -19,10 +19,12 @@ namespace {
 
 namespace http = boost::beast::http;
 
-bool should_include_link_target(holder::card::CardRepo& card_repo,
-                                holder::ai::AiMessageRepo& msg_repo,
-                                const holder::model::CardLink& link,
-                                bool include_deleted) {
+bool should_include_link_target(
+    holder::card::CardRepo& card_repo,
+    holder::ai::AiMessageRepo& msg_repo,
+    const holder::model::CardLink& link,
+    bool include_deleted
+) {
   if (include_deleted) return true;
   if (link.to_type == "card") {
     const auto target = card_repo.get(link.to_card_id);
@@ -35,10 +37,12 @@ bool should_include_link_target(holder::card::CardRepo& card_repo,
   return true;
 }
 
-bool should_include_backlink_source(holder::card::CardRepo& card_repo,
-                                    holder::ai::AiMessageRepo& msg_repo,
-                                    const holder::model::CardLink& link,
-                                    bool include_deleted) {
+bool should_include_backlink_source(
+    holder::card::CardRepo& card_repo,
+    holder::ai::AiMessageRepo& msg_repo,
+    const holder::model::CardLink& link,
+    bool include_deleted
+) {
   if (include_deleted) return true;
   const auto as_card = card_repo.get(link.from_card_id);
   if (as_card.has_value()) {
@@ -51,11 +55,13 @@ bool should_include_backlink_source(holder::card::CardRepo& card_repo,
   return false;
 }
 
-bool validate_link_target(holder::platform::Db& db,
-                          const std::string& project_id,
-                          const std::string& to_id,
-                          const std::string& to_type_raw,
-                          std::string& error) {
+bool validate_link_target(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& to_id,
+    const std::string& to_type_raw,
+    std::string& error
+) {
   if (to_id.empty()) {
     error = "Missing to_card_id.";
     return false;
@@ -127,12 +133,14 @@ bool validate_link_target(holder::platform::Db& db,
 
 } // namespace
 
-bool handle_ai_message_link_routes(const std::string& path,
-                                   const http::request<http::string_body>& req,
-                                   http::response<http::string_body>& res,
-                                   holder::platform::Db& db,
-                                   holder::index::FtsIndexer* fts,
-                                   const std::function<std::string(const std::string&)>& param_get) {
+bool handle_ai_message_link_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (path.rfind("/ai/messages/", 0) != 0) {
     return false;
   }
@@ -154,14 +162,16 @@ bool handle_ai_message_link_routes(const std::string& path,
       holder::ai::AiMessageRepo message_repo(db, fts);
       const auto msg_opt = message_repo.get(message_id);
       if (!msg_opt.has_value()) {
-        res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
+        res =
+            support::error_response(http::status::not_found, "not_found", "AI message not found.");
         return true;
       }
 
       holder::ai::AiThreadRepo thread_repo(db);
       const auto thread_opt = thread_repo.get(msg_opt->thread_id);
       if (!thread_opt.has_value()) {
-        res = support::error_response(http::status::bad_request, "bad_request", "Thread not found.");
+        res =
+            support::error_response(http::status::bad_request, "bad_request", "Thread not found.");
         return true;
       }
 
@@ -184,8 +194,8 @@ bool handle_ai_message_link_routes(const std::string& path,
           item["to_type"] = link.to_type;
           item["kind"] = link.kind;
           item["created_at"] = link.created_at;
-          item["label"] =
-              link.label.has_value() ? nlohmann::json(link.label.value()) : nlohmann::json(nullptr);
+          item["label"] = link.label.has_value() ? nlohmann::json(link.label.value())
+                                                 : nlohmann::json(nullptr);
           data.push_back(std::move(item));
         }
         nlohmann::json payload;
@@ -195,7 +205,11 @@ bool handle_ai_message_link_routes(const std::string& path,
       } else if (req.method() == http::verb::post) {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("to_card_id")) {
-          res = support::error_response(http::status::bad_request, "bad_request", "Missing to_card_id.");
+          res = support::error_response(
+              http::status::bad_request,
+              "bad_request",
+              "Missing to_card_id."
+          );
         } else {
           holder::model::CardLink link;
           link.project_id = project_id;
@@ -222,8 +236,15 @@ bool handle_ai_message_link_routes(const std::string& path,
             link.created_at = support::now_epoch_seconds();
           }
           std::string validation_error;
-          if (!validate_link_target(db, project_id, link.to_card_id, link.to_type, validation_error)) {
-            res = support::error_response(http::status::bad_request, "bad_request", validation_error);
+          if (!validate_link_target(
+                  db,
+                  project_id,
+                  link.to_card_id,
+                  link.to_type,
+                  validation_error
+              )) {
+            res =
+                support::error_response(http::status::bad_request, "bad_request", validation_error);
           } else {
             link_repo.upsert_links(project_id, message_id, {link});
             message_repo.update_links(message_id);
@@ -236,8 +257,9 @@ bool handle_ai_message_link_routes(const std::string& path,
                 {"to_type", link.to_type},
                 {"kind", link.kind},
                 {"created_at", link.created_at},
-                {"label", link.label.has_value() ? nlohmann::json(link.label.value())
-                                                 : nlohmann::json(nullptr)},
+                {"label",
+                 link.label.has_value() ? nlohmann::json(link.label.value())
+                                        : nlohmann::json(nullptr)},
             };
             res = support::json_response(http::status::created, payload);
           }
@@ -271,7 +293,10 @@ bool handle_ai_message_link_routes(const std::string& path,
         res = support::json_response(http::status::ok, payload);
       } else {
         res = support::error_response(
-            http::status::method_not_allowed, "method_not_allowed", "Method not allowed.");
+            http::status::method_not_allowed,
+            "method_not_allowed",
+            "Method not allowed."
+        );
       }
     } catch (const std::exception& ex) {
       res = support::error_response(http::status::bad_request, "bad_request", ex.what());
@@ -284,15 +309,23 @@ bool handle_ai_message_link_routes(const std::string& path,
       holder::ai::AiMessageRepo message_repo(db, fts);
       const auto msg_opt = message_repo.get(message_id);
       if (!msg_opt.has_value()) {
-        res = support::error_response(http::status::not_found, "not_found", "AI message not found.");
+        res =
+            support::error_response(http::status::not_found, "not_found", "AI message not found.");
       } else if (req.method() != http::verb::get) {
         res = support::error_response(
-            http::status::method_not_allowed, "method_not_allowed", "Method not allowed.");
+            http::status::method_not_allowed,
+            "method_not_allowed",
+            "Method not allowed."
+        );
       } else {
         holder::ai::AiThreadRepo thread_repo(db);
         const auto thread_opt = thread_repo.get(msg_opt->thread_id);
         if (!thread_opt.has_value()) {
-          res = support::error_response(http::status::bad_request, "bad_request", "Thread not found.");
+          res = support::error_response(
+              http::status::bad_request,
+              "bad_request",
+              "Thread not found."
+          );
         } else {
           const std::string project_id = thread_opt->project_id;
           holder::card::LinkRepo link_repo(db);
@@ -312,8 +345,8 @@ bool handle_ai_message_link_routes(const std::string& path,
             item["to_type"] = link.to_type;
             item["kind"] = link.kind;
             item["created_at"] = link.created_at;
-            item["label"] =
-                link.label.has_value() ? nlohmann::json(link.label.value()) : nlohmann::json(nullptr);
+            item["label"] = link.label.has_value() ? nlohmann::json(link.label.value())
+                                                   : nlohmann::json(nullptr);
             data.push_back(std::move(item));
           }
           nlohmann::json payload;

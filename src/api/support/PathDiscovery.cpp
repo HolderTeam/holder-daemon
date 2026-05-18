@@ -11,7 +11,8 @@ namespace holder::api::support {
 #define HOLDER_INSTALL_DATADIR ""
 #endif
 
-std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) { // LCOV_EXCL_LINE
+std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path
+) { // LCOV_EXCL_LINE
   // LCOV_EXCL_START: install-layout fallback is exercised by packaged builds, not repo-local tests.
   namespace fs = std::filesystem;
   const fs::path root(HOLDER_INSTALL_DATADIR);

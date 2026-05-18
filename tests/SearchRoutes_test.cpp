@@ -24,7 +24,8 @@ http::request<http::string_body> make_request(http::verb method, const std::stri
 }
 
 std::function<std::string(const std::string&)> map_param_getter(
-    const std::unordered_map<std::string, std::string>& params) {
+    const std::unordered_map<std::string, std::string>& params
+) {
   return [params](const std::string& key) {
     const auto it = params.find(key);
     return it == params.end() ? std::string() : it->second;
@@ -87,10 +88,11 @@ TEST_CASE("SearchRoutes returns false for unmatched paths", "[search-routes]") {
 
   auto req = make_request(http::verb::get, "/search/unknown");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const bool handled =
       holder::api::routes::handle_search_routes("/search/unknown", req, res, nullptr, param_get);
   REQUIRE_FALSE(handled);
 }
-

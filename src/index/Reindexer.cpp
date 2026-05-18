@@ -15,7 +15,8 @@ void throw_sqlite(sqlite3* db, const std::string& what) {
 
 } // namespace
 
-Reindexer::Reindexer(holder::platform::Db& db) : db_(db) {}
+Reindexer::Reindexer(holder::platform::Db& db)
+    : db_(db) {}
 
 void Reindexer::run() {
   holder::index::FtsIndexer fts(db_);
@@ -24,9 +25,8 @@ void Reindexer::run() {
   db_.exec("DELETE FROM ai_fts;");
 
   {
-    static constexpr const char* SQL =
-        "SELECT card_id, project_id, title, rel_path "
-        "FROM cards WHERE deleted_at IS NULL;";
+    static constexpr const char* SQL = "SELECT card_id, project_id, title, rel_path "
+                                       "FROM cards WHERE deleted_at IS NULL;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
       throw_sqlite(db_.handle(), "prepare reindex cards failed");
@@ -41,7 +41,8 @@ void Reindexer::run() {
         const auto* rel_path = sqlite3_column_text(stmt, 3);
 
         const std::string card_id_str = card_id ? reinterpret_cast<const char*>(card_id) : "";
-        const std::string project_id_str = project_id ? reinterpret_cast<const char*>(project_id) : "";
+        const std::string project_id_str = project_id ? reinterpret_cast<const char*>(project_id)
+                                                      : "";
         const std::string title_str = title ? reinterpret_cast<const char*>(title) : "";
         const std::string rel_path_str = rel_path ? reinterpret_cast<const char*>(rel_path) : "";
 
@@ -57,10 +58,9 @@ void Reindexer::run() {
   }
 
   {
-    static constexpr const char* SQL =
-        "SELECT m.message_id, m.thread_id, t.project_id, m.content "
-        "FROM ai_messages m "
-        "JOIN ai_threads t ON t.thread_id = m.thread_id;";
+    static constexpr const char* SQL = "SELECT m.message_id, m.thread_id, t.project_id, m.content "
+                                       "FROM ai_messages m "
+                                       "JOIN ai_threads t ON t.thread_id = m.thread_id;";
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
       throw_sqlite(db_.handle(), "prepare reindex ai messages failed");
@@ -74,9 +74,11 @@ void Reindexer::run() {
         const auto* project_id = sqlite3_column_text(stmt, 2);
         const auto* content = sqlite3_column_text(stmt, 3);
 
-        const std::string message_id_str = message_id ? reinterpret_cast<const char*>(message_id) : "";
+        const std::string message_id_str = message_id ? reinterpret_cast<const char*>(message_id)
+                                                      : "";
         const std::string thread_id_str = thread_id ? reinterpret_cast<const char*>(thread_id) : "";
-        const std::string project_id_str = project_id ? reinterpret_cast<const char*>(project_id) : "";
+        const std::string project_id_str = project_id ? reinterpret_cast<const char*>(project_id)
+                                                      : "";
         const std::string content_str = content ? reinterpret_cast<const char*>(content) : "";
 
         fts.upsert_message(message_id_str, thread_id_str, project_id_str, content_str);

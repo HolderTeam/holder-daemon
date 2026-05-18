@@ -10,13 +10,13 @@ struct CloudModelConfig {
   std::string id;
   std::string endpoint;
   std::string role;
-  std::string cost_tier;      // e.g. free, low, paid
+  std::string cost_tier; // e.g. free, low, paid
   bool default_for_low_budget = false;
   long long rpm = 0;
   long long tpm = 0;
   long long rpd = 0;
   long long cooldown_base_seconds = 0; // 0 => use provider/global default
-  long long cooldown_cap_seconds = 0;  // 0 => use provider/global default
+  long long cooldown_cap_seconds = 0; // 0 => use provider/global default
 };
 
 struct CloudProviderConfig {
@@ -36,7 +36,7 @@ struct CloudProviderConfig {
   std::string bearer_prefix;
   std::string credential_provider_key;
   long long cooldown_base_seconds = 0; // 0 => use global default
-  long long cooldown_cap_seconds = 0;  // 0 => use global default
+  long long cooldown_cap_seconds = 0; // 0 => use global default
   std::vector<CloudModelConfig> models;
 };
 
@@ -63,14 +63,22 @@ struct CloudProvidersConfig {
 };
 
 std::optional<CloudProvidersConfig> load_cloudproviders_config();
-const CloudProviderConfig* find_cloud_provider(const CloudProvidersConfig& cfg,
-                                               const std::string& provider_id);
-const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
-                                           const std::string& requested_model);
-const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
-                                         const std::string& model_id);
-std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
-                                                            const std::string& requested_model);
+const CloudProviderConfig* find_cloud_provider(
+    const CloudProvidersConfig& cfg,
+    const std::string& provider_id
+);
+const CloudModelConfig* choose_cloud_model(
+    const CloudProviderConfig& provider,
+    const std::string& requested_model
+);
+const CloudModelConfig* find_cloud_model(
+    const CloudProviderConfig& provider,
+    const std::string& model_id
+);
+std::vector<const CloudModelConfig*> cloud_model_candidates(
+    const CloudProviderConfig& provider,
+    const std::string& requested_model
+);
 std::vector<const CloudProviderConfig*> ordered_cloud_providers(const CloudProvidersConfig& cfg);
 
 } // namespace holder::api::support

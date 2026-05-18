@@ -4,9 +4,9 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "ai/AiRunRepo.h"
 #include "api/routes/ai/runs/AiRunQueryRoutes.h"
 #include "http_test_helpers.h"
-#include "ai/AiRunRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -23,7 +23,12 @@ TEST_CASE("AiRunQueryRoutes list route validates params and supports project_id"
 
   http::response<http::string_body> res;
   auto missing = holder::api::routes::ai::runs::handle_ai_runs_list_route(
-      [](const std::string&) { return std::string(); }, res, db);
+      [](const std::string&) {
+        return std::string();
+      },
+      res,
+      db
+  );
   REQUIRE(missing.handled == true);
   REQUIRE(res.result() == http::status::bad_request);
   const auto missing_payload = nlohmann::json::parse(res.body());
@@ -44,9 +49,12 @@ TEST_CASE("AiRunQueryRoutes list route validates params and supports project_id"
   repo.create(run);
 
   auto listed = holder::api::routes::ai::runs::handle_ai_runs_list_route(
-      [](const std::string& key) { return key == "project_id" ? std::string("proj-1") : std::string(); },
+      [](const std::string& key) {
+        return key == "project_id" ? std::string("proj-1") : std::string();
+      },
       res,
-      db);
+      db
+  );
   REQUIRE(listed.handled == true);
   REQUIRE(res.result() == http::status::ok);
   const auto list_payload = nlohmann::json::parse(res.body());
@@ -118,13 +126,17 @@ TEST_CASE("AiRunQueryRoutes list/get return bad_request when DB access throws", 
   http::response<http::string_body> res;
 
   auto list_out = holder::api::routes::ai::runs::handle_ai_runs_list_route(
-      [](const std::string& key) { return key == "project_id" ? std::string("proj-1") : std::string(); },
+      [](const std::string& key) {
+        return key == "project_id" ? std::string("proj-1") : std::string();
+      },
       res,
-      unopened_db);
+      unopened_db
+  );
   REQUIRE(list_out.handled == true);
   REQUIRE(res.result() == http::status::bad_request);
 
-  auto get_out = holder::api::routes::ai::runs::handle_ai_runs_get_route("/ai/runs/run-1", res, unopened_db);
+  auto get_out =
+      holder::api::routes::ai::runs::handle_ai_runs_get_route("/ai/runs/run-1", res, unopened_db);
   REQUIRE(get_out.handled == true);
   REQUIRE(res.result() == http::status::bad_request);
 }

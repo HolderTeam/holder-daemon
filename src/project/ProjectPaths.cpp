@@ -5,8 +5,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
 
 namespace holder::core {
@@ -56,9 +56,11 @@ std::filesystem::path default_projects_root() {
   return paths.data_dir / "projects";
 }
 
-std::string unique_project_root(const std::filesystem::path& base_root,
-                                const std::string& slug,
-                                const std::vector<holder::model::Project>& existing) {
+std::string unique_project_root(
+    const std::filesystem::path& base_root,
+    const std::string& slug,
+    const std::vector<holder::model::Project>& existing
+) {
   std::unordered_set<std::string> used;
   used.reserve(existing.size());
   for (const auto& project : existing) {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstddef>
 #include <condition_variable>
+#include <cstddef>
 #include <deque>
 #include <functional>
 #include <future>
@@ -25,13 +25,14 @@ class SerialExecutor {
   void submit(std::function<void()> task) const;
   void stop();
 
-  template <typename Fn>
-  auto call(Fn&& fn) const -> decltype(fn()) {
+  template <typename Fn> auto call(Fn&& fn) const -> decltype(fn()) {
     using Result = decltype(fn());
 
     auto task = std::make_shared<std::packaged_task<Result()>>(std::forward<Fn>(fn));
     auto future = task->get_future();
-    submit([task]() mutable { (*task)(); });
+    submit([task]() mutable {
+      (*task)();
+    });
 
     if constexpr (std::is_void_v<Result>) {
       future.get();

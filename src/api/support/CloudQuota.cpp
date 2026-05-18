@@ -9,9 +9,11 @@
 namespace holder::api::support {
 namespace {
 
-long long failure_cooldown_seconds(long long failure_count,
-                                   long long base_seconds,
-                                   long long cap_seconds) {
+long long failure_cooldown_seconds(
+    long long failure_count,
+    long long base_seconds,
+    long long cap_seconds
+) {
   // Exponential backoff with a conservative cap.
   if (failure_count <= 0) return 0;
   const long long safe_base = std::max(1LL, base_seconds);
@@ -23,14 +25,15 @@ long long failure_cooldown_seconds(long long failure_count,
 
 } // namespace
 
-CloudQuotaWindowUsage load_cloud_window_usage(holder::platform::Db& db,
-                                              const std::string& provider,
-                                              const std::string& model_id,
-                                              long long since_epoch_seconds) {
-  static constexpr const char* SQL =
-      "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) "
-      "FROM ai_cloud_usage_events "
-      "WHERE provider = ? AND model_id = ? AND created_at >= ?;";
+CloudQuotaWindowUsage load_cloud_window_usage(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long since_epoch_seconds
+) {
+  static constexpr const char* SQL = "SELECT COUNT(*), COALESCE(SUM(total_tokens), 0) "
+                                     "FROM ai_cloud_usage_events "
+                                     "WHERE provider = ? AND model_id = ? AND created_at >= ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -50,21 +53,22 @@ CloudQuotaWindowUsage load_cloud_window_usage(holder::platform::Db& db,
   return usage;
 }
 
-void record_cloud_usage_event(holder::platform::Db& db,
-                              const std::string& provider,
-                              const std::string& model_id,
-                              long long prompt_tokens,
-                              long long response_tokens,
-                              long long created_at,
-                              const std::string& event_id_seed) {
+void record_cloud_usage_event(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long prompt_tokens,
+    long long response_tokens,
+    long long created_at,
+    const std::string& event_id_seed
+) {
   static constexpr const char* SQL =
       "INSERT INTO ai_cloud_usage_events("
       "event_id, provider, model_id, prompt_tokens, response_tokens, total_tokens, created_at) "
       "VALUES(?, ?, ?, ?, ?, ?, ?);";
 
-  const std::string event_id =
-      "cloud-" + event_id_seed + "-" + std::to_string(created_at) + "-" +
-      std::to_string(static_cast<unsigned long long>(std::rand()));
+  const std::string event_id = "cloud-" + event_id_seed + "-" + std::to_string(created_at) + "-" +
+                               std::to_string(static_cast<unsigned long long>(std::rand()));
   const long long total_tokens = prompt_tokens + response_tokens;
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -84,9 +88,11 @@ void record_cloud_usage_event(holder::platform::Db& db,
   }
 }
 
-std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::platform::Db& db,
-                                                                  const std::string& provider,
-                                                                  const std::string& model_id) {
+std::optional<CloudModelCooldownState> load_cloud_model_cooldown(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id
+) {
   static constexpr const char* SQL =
       "SELECT provider, model_id, failure_count, cooldown_until, COALESCE(last_error, ''), updated_at "
       "FROM ai_cloud_model_cooldowns "
@@ -118,13 +124,15 @@ std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::platfor
   return out;
 }
 
-CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
-                                                   const std::string& provider,
-                                                   const std::string& model_id,
-                                                   const std::string& error,
-                                                   long long now_epoch_seconds,
-                                                   long long cooldown_base_seconds,
-                                                   long long cooldown_cap_seconds) {
+CloudModelCooldownState record_cloud_model_failure(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    const std::string& error,
+    long long now_epoch_seconds,
+    long long cooldown_base_seconds,
+    long long cooldown_cap_seconds
+) {
   long long failure_count = 1;
   if (const auto current = load_cloud_model_cooldown(db, provider, model_id); current.has_value()) {
     failure_count = std::max(1LL, current->failure_count + 1);
@@ -169,10 +177,12 @@ CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
   return out;
 } // LCOV_EXCL_LINE
 
-void clear_cloud_model_cooldown(holder::platform::Db& db,
-                                const std::string& provider,
-                                const std::string& model_id,
-                                long long now_epoch_seconds) {
+void clear_cloud_model_cooldown(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long now_epoch_seconds
+) {
   static constexpr const char* SQL =
       "INSERT INTO ai_cloud_model_cooldowns("
       "provider, model_id, failure_count, cooldown_until, last_error, updated_at) "

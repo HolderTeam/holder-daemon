@@ -1,18 +1,18 @@
-#include "http_test_helpers.h"
+#include "ai/AiLocalModelConfigRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRunRepo.h"
+#include "ai/AiRunnerRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "api/routes/ai/runs/AiRunPostRoute.h"
 #include "api/support/CloudClient.h"
 #include "api/support/CloudQuota.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
-#include "ai/AiLocalModelConfigRepo.h"
-#include "ai/AiProviderCredentialRepo.h"
-#include "ai/AiProviderSettingRepo.h"
-#include "ai/AiRunnerRepo.h"
-#include "ai/AiRunRepo.h"
-#include "ai/AiThreadRepo.h"
-#include "ai/AiMessageRepo.h"
-#include "llm/LocalRunnerClient.h"
+#include "http_test_helpers.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 #include "privacy/SecretStore.h"
 
 using holder::test::make_temp_dir;
@@ -24,15 +24,15 @@ class CloudRunOverrideGuard {
   explicit CloudRunOverrideGuard(holder::api::support::CloudModelRunnerOverride fn) {
     holder::api::support::set_run_cloud_model_override_for_tests(std::move(fn));
   }
-  ~CloudRunOverrideGuard() {
-    holder::api::support::clear_run_cloud_model_override_for_tests();
-  }
+  ~CloudRunOverrideGuard() { holder::api::support::clear_run_cloud_model_override_for_tests(); }
 };
 
 class ServerThreadGuard {
  public:
   ServerThreadGuard(holder::api::HttpServer& server, holder::core::SignalHandler& signals)
-      : thread_([&server, &signals]() { server.run(signals); }) {}
+      : thread_([&server, &signals]() {
+          server.run(signals);
+        }) {}
 
   ~ServerThreadGuard() {
     if (thread_.joinable()) {
@@ -49,12 +49,14 @@ class ServerThreadGuard {
 
 namespace {
 
-void seed_provider_credential(holder::platform::Db& db,
-                              holder::privacy::SecretStore& secret_store,
-                              const std::string& provider,
-                              const std::string& api_key,
-                              long long created_at,
-                              long long updated_at) {
+void seed_provider_credential(
+    holder::platform::Db& db,
+    holder::privacy::SecretStore& secret_store,
+    const std::string& provider,
+    const std::string& api_key,
+    long long created_at,
+    long long updated_at
+) {
   static constexpr const char* kSecretService = "holder.ai_provider_credentials";
   const std::string preview = "stored-preview";
   holder::ai::AiProviderCredentialRepo cred_repo(db);
@@ -64,13 +66,19 @@ void seed_provider_credential(holder::platform::Db& db,
 
 } // namespace
 
-TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thread runs", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute cloud path stores context and compaction trace for thread runs",
+    "[http]"
+) {
   CloudRunOverrideGuard cloud_guard(
       [](const holder::api::support::CloudProviderConfig&,
          const holder::api::support::CloudModelConfig&,
          const std::string&,
          const std::string&,
-         std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
+         std::string*) -> std::optional<std::string> {
+        return std::string("cloud output");
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -111,9 +119,11 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
@@ -137,13 +147,14 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "openrouter/auto"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", "x"}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "openrouter/auto"},
+      {"context", {{"card_id", "card-1"}, {"card_body", "x"}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -156,7 +167,10 @@ TEST_CASE("AiRunPostRoute cloud path stores context and compaction trace for thr
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -215,9 +229,11 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -228,15 +244,16 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{
-      {"prompt", "cloud prompt"},
-      {"project_id", "proj-1"},
-      {"thread_id", "thread-1"},
-      {"provider", "switchyard"},
-      {"model", "openrouter/auto"},
-      {"context", {{"card_id", "card-1"}, {"card_title", "Card"}, {"card_body", "Body"}}},
-  }
-                   .dump();
+  req.body() =
+      nlohmann::json{
+          {"prompt", "cloud prompt"},
+          {"project_id", "proj-1"},
+          {"thread_id", "thread-1"},
+          {"provider", "switchyard"},
+          {"model", "openrouter/auto"},
+          {"context", {{"card_id", "card-1"}, {"card_title", "Card"}, {"card_body", "Body"}}},
+      }
+          .dump();
   req.prepare_payload();
 
   boost::asio::io_context ioc;
@@ -251,7 +268,10 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -279,9 +299,11 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", missing_cfg.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -289,11 +311,12 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{
-      {"prompt", "cloud prompt"},
-      {"project_id", "proj-1"},
-  }
-                   .dump();
+  req.body() =
+      nlohmann::json{
+          {"prompt", "cloud prompt"},
+          {"project_id", "proj-1"},
+      }
+          .dump();
   req.prepare_payload();
 
   boost::asio::io_context ioc;
@@ -308,7 +331,10 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed == false);
@@ -325,11 +351,12 @@ TEST_CASE("AiRunPostRoute direct catches DB failures from thread creation path",
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{
-      {"prompt", "needs thread"},
-      {"project_id", "proj-1"},
-  }
-                   .dump();
+  req.body() =
+      nlohmann::json{
+          {"prompt", "needs thread"},
+          {"project_id", "proj-1"},
+      }
+          .dump();
   req.prepare_payload();
 
   boost::asio::io_context ioc;
@@ -344,7 +371,10 @@ TEST_CASE("AiRunPostRoute direct catches DB failures from thread creation path",
       nullptr,
       nullptr,
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::bad_request);
@@ -387,9 +417,11 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   seed_provider_credential(db, *secret_store, "second", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
@@ -398,11 +430,12 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{
-      {"prompt", "fallback provider selection"},
-      {"project_id", "proj-1"},
-  }
-                   .dump();
+  req.body() =
+      nlohmann::json{
+          {"prompt", "fallback provider selection"},
+          {"project_id", "proj-1"},
+      }
+          .dump();
   req.prepare_payload();
 
   boost::asio::io_context ioc;
@@ -417,7 +450,10 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -427,7 +463,10 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   REQUIRE(runs[0].status == "started");
 }
 
-TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router context", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute local routing uses router ranking and truncates router context",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -436,9 +475,11 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
@@ -484,7 +525,8 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
         }
         if (error) *error = "unexpected model";
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -504,11 +546,12 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "route locally"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", huge_context}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "route locally"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"context", {{"card_id", "card-1"}, {"card_body", huge_context}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -523,7 +566,10 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
       nullptr,
       nullptr,
       &runner_registry,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -544,7 +590,8 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   const auto msgs = msg_repo.list_by_thread("thread-1");
   bool saw_assistant = false;
   for (const auto& msg : msgs) {
-    if (msg.role == "assistant" && msg.model.has_value() && msg.model.value() == "auto-local::model-b") {
+    if (msg.role == "assistant" && msg.model.has_value() &&
+        msg.model.value() == "auto-local::model-b") {
       saw_assistant = true;
     }
   }
@@ -557,7 +604,10 @@ TEST_CASE("AiRunPostRoute local routing uses router ranking and truncates router
   client.close(ec);
 }
 
-TEST_CASE("AiRunPostRoute local routing falls back to largest model when router ranking is invalid", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute local routing falls back to largest model when router ranking is invalid",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -566,9 +616,11 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
@@ -597,7 +649,8 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
           return true;
         }
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -616,10 +669,11 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "route locally"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "route locally"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -634,7 +688,10 @@ TEST_CASE("AiRunPostRoute local routing falls back to largest model when router 
       nullptr,
       nullptr,
       &runner_registry,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -662,9 +719,11 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
 
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(false);
@@ -681,12 +740,13 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{
-      {"prompt", "force local"},
-      {"project_id", "proj-1"},
-      {"model", "missing-model"},
-  }
-                   .dump();
+  req.body() =
+      nlohmann::json{
+          {"prompt", "force local"},
+          {"project_id", "proj-1"},
+          {"model", "missing-model"},
+      }
+          .dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -701,7 +761,10 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
       nullptr,
       nullptr,
       &runner_registry,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed == false);
@@ -744,9 +807,11 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
 
     boost::asio::io_context ioc;
@@ -754,23 +819,36 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() =
-        nlohmann::json{{"prompt", "cloud prompt"}, {"project_id", "proj-1"}, {"provider", "switchyard"}}.dump();
+    req.body() = nlohmann::json{
+        {"prompt", "cloud prompt"},
+        {"project_id", "proj-1"},
+        {"provider", "switchyard"}
+    }.dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
     int id_seq = 1;
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, unopened_socket, db, nullptr, nullptr, nullptr, [&id_seq]() {
+        req,
+        res,
+        unopened_socket,
+        db,
+        nullptr,
+        nullptr,
+        nullptr,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE_FALSE(out.streamed);
     REQUIRE(res.result() == http::status::service_unavailable);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["code"] == "cloud_not_configured");
-    REQUIRE(payload["error"]["message"] == "Cloud provider credential secret store is unavailable.");
+    REQUIRE(
+        payload["error"]["message"] == "Cloud provider credential secret store is unavailable."
+    );
   }
 
   SECTION("cloud path returns service unavailable when provider secret is missing") {
@@ -805,9 +883,11 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
 
     boost::asio::io_context ioc;
@@ -815,16 +895,27 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() =
-        nlohmann::json{{"prompt", "cloud prompt"}, {"project_id", "proj-1"}, {"provider", "switchyard"}}.dump();
+    req.body() = nlohmann::json{
+        {"prompt", "cloud prompt"},
+        {"project_id", "proj-1"},
+        {"provider", "switchyard"}
+    }.dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
     int id_seq = 1;
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, unopened_socket, db, nullptr, secret_store.get(), nullptr, [&id_seq]() {
+        req,
+        res,
+        unopened_socket,
+        db,
+        nullptr,
+        secret_store.get(),
+        nullptr,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE_FALSE(out.streamed);
@@ -842,9 +933,11 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
         .runner_id = "manual-a",
         .name = "Office Ollama",
@@ -865,20 +958,30 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() = nlohmann::json{
-        {"prompt", "manual prompt"},
-        {"project_id", "proj-1"},
-        {"runner_id", "manual-a"},
-        {"model", ""},
-    }.dump();
+    req.body() =
+        nlohmann::json{
+            {"prompt", "manual prompt"},
+            {"project_id", "proj-1"},
+            {"runner_id", "manual-a"},
+            {"model", ""},
+        }
+            .dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
     int id_seq = 1;
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+        req,
+        res,
+        unopened_socket,
+        db,
+        nullptr,
+        nullptr,
+        &runner_registry,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE_FALSE(out.streamed);
@@ -895,9 +998,11 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
         .runner_id = "manual-a",
         .name = "Office Ollama",
@@ -918,20 +1023,30 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() = nlohmann::json{
-        {"prompt", "manual prompt"},
-        {"project_id", "proj-1"},
-        {"runner_id", "manual-a"},
-        {"model", "other-runner::fake-echo"},
-    }.dump();
+    req.body() =
+        nlohmann::json{
+            {"prompt", "manual prompt"},
+            {"project_id", "proj-1"},
+            {"runner_id", "manual-a"},
+            {"model", "other-runner::fake-echo"},
+        }
+            .dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
     int id_seq = 1;
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+        req,
+        res,
+        unopened_socket,
+        db,
+        nullptr,
+        nullptr,
+        &runner_registry,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE_FALSE(out.streamed);
@@ -948,9 +1063,11 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
         .runner_id = "manual-a",
         .name = "Office Ollama",
@@ -971,30 +1088,45 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() = nlohmann::json{
-        {"prompt", "manual prompt"},
-        {"project_id", "proj-1"},
-        {"runner_id", "manual-a"},
-        {"provider", "switchyard"},
-    }.dump();
+    req.body() =
+        nlohmann::json{
+            {"prompt", "manual prompt"},
+            {"project_id", "proj-1"},
+            {"runner_id", "manual-a"},
+            {"provider", "switchyard"},
+        }
+            .dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
     int id_seq = 1;
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, unopened_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+        req,
+        res,
+        unopened_socket,
+        db,
+        nullptr,
+        nullptr,
+        &runner_registry,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE_FALSE(out.streamed);
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
-    REQUIRE(payload["error"]["message"] == "runner_id cannot be combined with cloud provider requests.");
+    REQUIRE(
+        payload["error"]["message"] == "runner_id cannot be combined with cloud provider requests."
+    );
   }
 }
 
-TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises generated titles", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute direct accepts matching runner model ref and sanitises generated titles",
+    "[http]"
+) {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -1006,9 +1138,11 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
             "VALUES('thread-1', 'proj-1', 'Thread 1', 1, 1);");
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
@@ -1039,7 +1173,8 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
             return true;
           }
           return false;
-        });
+        }
+    );
 
     boost::asio::io_context ioc;
     tcp::socket client(ioc);
@@ -1056,12 +1191,14 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() = nlohmann::json{
-        {"prompt", "manual prompt"},
-        {"project_id", "proj-1"},
-        {"thread_id", "thread-1"},
-        {"model", "manual-a::fake-echo"},
-    }.dump();
+    req.body() =
+        nlohmann::json{
+            {"prompt", "manual prompt"},
+            {"project_id", "proj-1"},
+            {"thread_id", "thread-1"},
+            {"model", "manual-a::fake-echo"},
+        }
+            .dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
@@ -1073,9 +1210,17 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     (void)manual_client->retry();
 
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+        req,
+        res,
+        server_socket,
+        db,
+        nullptr,
+        nullptr,
+        &runner_registry,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(out.streamed);
@@ -1091,16 +1236,19 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     client.close(ec);
   }
 
-  SECTION("configured auto-local title model updates prefixed thread title after sanitising output") {
+  SECTION("configured auto-local title model updates prefixed thread title after sanitising output"
+  ) {
     const auto dir = make_temp_dir();
     const auto db_path = dir / "holder.db";
     const auto repo_dir = dir / "repo";
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
             "VALUES('thread-1', 'proj-1', 'Thread 17', 1, 1);");
 
@@ -1129,10 +1277,11 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
             return true;
           }
           return false;
-        });
+        }
+    );
 
-    holder::ai::AiLocalModelConfigRepo(db).set(
-        std::string("title-model"), std::nullopt, std::nullopt, 1);
+    holder::ai::AiLocalModelConfigRepo(db)
+        .set(std::string("title-model"), std::nullopt, std::nullopt, 1);
 
     boost::asio::io_context ioc;
     tcp::socket client(ioc);
@@ -1149,12 +1298,14 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
     req.set(http::field::host, "127.0.0.1");
     req.set(http::field::content_type, "application/json");
-    req.body() = nlohmann::json{
-        {"prompt", "local prompt"},
-        {"project_id", "proj-1"},
-        {"thread_id", "thread-1"},
-        {"model", "main-model"},
-    }.dump();
+    req.body() =
+        nlohmann::json{
+            {"prompt", "local prompt"},
+            {"project_id", "proj-1"},
+            {"thread_id", "thread-1"},
+            {"model", "main-model"},
+        }
+            .dump();
     req.prepare_payload();
 
     http::response<http::string_body> res;
@@ -1162,9 +1313,17 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
     const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-        req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+        req,
+        res,
+        server_socket,
+        db,
+        nullptr,
+        nullptr,
+        &runner_registry,
+        [&id_seq]() {
           return std::string("uuid-") + std::to_string(id_seq++);
-        });
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(out.streamed);
@@ -1180,16 +1339,19 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     client.close(ec);
   }
 
-  SECTION("title generation falls back to smallest positive model and rejects invalid title outputs") {
+  SECTION("title generation falls back to smallest positive model and rejects invalid title outputs"
+  ) {
     const auto dir = make_temp_dir();
     const auto db_path = dir / "holder.db";
     const auto repo_dir = dir / "repo";
     std::filesystem::create_directories(repo_dir);
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-    db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                        "VALUES('proj-1', 'Project', '") +
-            repo_dir.string() + "', 1, 1);");
+    db.exec(
+        std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                    "VALUES('proj-1', 'Project', '") +
+        repo_dir.string() + "', 1, 1);"
+    );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
             "VALUES('thread-1', 'proj-1', 'Thread 2', 1, 1);");
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1224,7 +1386,9 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
             } else if (title_generation_calls == 2) {
               on_chunk("User leaked title");
             } else {
-              on_chunk("  This title is deliberately much longer than sixty bytes to exercise truncation.  ");
+              on_chunk(
+                  "  This title is deliberately much longer than sixty bytes to exercise truncation.  "
+              );
             }
             return true;
           }
@@ -1233,7 +1397,8 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
             return true;
           }
           return false;
-        });
+        }
+    );
 
     int id_seq = 1;
     auto run_for_thread = [&](const std::string& thread_id) {
@@ -1252,21 +1417,31 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
       http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
       req.set(http::field::host, "127.0.0.1");
       req.set(http::field::content_type, "application/json");
-      req.body() = nlohmann::json{
-          {"prompt", "local prompt"},
-          {"project_id", "proj-1"},
-          {"thread_id", thread_id},
-          {"model", "main-model"},
-      }.dump();
+      req.body() =
+          nlohmann::json{
+              {"prompt", "local prompt"},
+              {"project_id", "proj-1"},
+              {"thread_id", thread_id},
+              {"model", "main-model"},
+          }
+              .dump();
       req.prepare_payload();
 
       http::response<http::string_body> res;
       holder::llm::LocalRunnerClient local_runner_client(&runner);
       holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
       const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-          req, res, server_socket, db, nullptr, nullptr, &runner_registry, [&id_seq]() {
+          req,
+          res,
+          server_socket,
+          db,
+          nullptr,
+          nullptr,
+          &runner_registry,
+          [&id_seq]() {
             return std::string("uuid-") + std::to_string(id_seq++);
-          });
+          }
+      );
       REQUIRE(out.handled);
       REQUIRE(out.streamed);
 
@@ -1291,7 +1466,9 @@ TEST_CASE("AiRunPostRoute direct accepts matching runner model ref and sanitises
     REQUIRE(thread1->title == "Thread 2");
     REQUIRE(thread2->title == "AI Thread 2");
     REQUIRE(thread3->title.size() == 60);
-    REQUIRE(thread3->title.rfind("This title is deliberately much longer than sixty bytes to", 0) == 0);
+    REQUIRE(
+        thread3->title.rfind("This title is deliberately much longer than sixty bytes to", 0) == 0
+    );
   }
 }
 
@@ -1304,7 +1481,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
          std::string*) -> std::optional<std::string> {
         if (model.id == "main-model") return std::string("cloud output");
         return std::string("summary output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -1355,9 +1533,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -1380,13 +1560,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", "tiny"}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", "tiny"}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -1399,7 +1580,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -1427,7 +1611,8 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
          std::string* error) -> std::optional<std::string> {
         if (error) *error = "forced cloud failure";
         return std::nullopt;
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -1470,9 +1655,11 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   namespace http = boost::beast::http;
@@ -1493,11 +1680,12 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"provider", "switchyard"},
-                              {"model", "failing-model"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"provider", "switchyard"},
+      {"model", "failing-model"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -1510,7 +1698,10 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -1606,22 +1797,40 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const long long now = holder::api::support::now_epoch_seconds();
-  db.exec("INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
-          "last_error, updated_at) VALUES('switchyard', 'model-cooldown', 2, 4102444800, "
-          "'cooldown test', " +
-          std::to_string(now) + ");");
+  db.exec(
+      "INSERT INTO ai_cloud_model_cooldowns(provider, model_id, failure_count, cooldown_until, "
+      "last_error, updated_at) VALUES('switchyard', 'model-cooldown', 2, 4102444800, "
+      "'cooldown test', " +
+      std::to_string(now) + ");"
+  );
   holder::api::support::record_cloud_usage_event(
-      db, "switchyard", "model-rpm", 10, 5, now, "rpm-seed");
+      db,
+      "switchyard",
+      "model-rpm",
+      10,
+      5,
+      now,
+      "rpm-seed"
+  );
   holder::api::support::record_cloud_usage_event(
-      db, "switchyard", "model-rpd", 10, 5, now, "rpd-seed");
+      db,
+      "switchyard",
+      "model-rpd",
+      10,
+      5,
+      now,
+      "rpd-seed"
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -1640,12 +1849,13 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "make this fail but keep context"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", "context body"}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "make this fail but keep context"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"context", {{"card_id", "card-1"}, {"card_body", "context body"}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -1658,7 +1868,10 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -1713,7 +1926,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
          std::string*) -> std::optional<std::string> {
         if (model.id == "main-model") return std::string("cloud output");
         return std::string("summary output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -1764,9 +1978,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -1794,14 +2010,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context(6000, 'x');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"},
-                                           {"card_body", long_context}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -1814,7 +2030,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -1842,7 +2061,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
          std::string*) -> std::optional<std::string> {
         if (model.id == "main-model") return std::string("cloud output");
         return std::string("summary output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -1893,9 +2113,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -1924,13 +2146,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_delta(6000, 'd');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_delta}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_delta}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -1943,7 +2166,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -1970,7 +2196,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
          std::string*) -> std::optional<std::string> {
         if (model.id == "main-model") return std::string("cloud output");
         return std::string("summary output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -2021,9 +2248,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -2050,13 +2279,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_cooldown(6000, 'c');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_cooldown}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_cooldown}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2069,7 +2299,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -2087,7 +2320,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
   client.close(ec);
 }
 
-TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normalized summary", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute cloud compaction refresh completes and stores normalized summary",
+    "[http]"
+) {
   CloudRunOverrideGuard cloud_guard(
       [](const holder::api::support::CloudProviderConfig&,
          const holder::api::support::CloudModelConfig& model,
@@ -2105,7 +2341,8 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
                              "- Add client-facing bootstrap endpoint\n");
         }
         return std::string("cloud output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -2156,9 +2393,11 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -2186,14 +2425,14 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_complete(6000, 'z');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"},
-                                           {"card_body", long_context_complete}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_complete}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2206,7 +2445,10 @@ TEST_CASE("AiRunPostRoute cloud compaction refresh completes and stores normaliz
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -2236,7 +2478,10 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
          const holder::api::support::CloudModelConfig&,
          const std::string&,
          const std::string&,
-         std::string*) -> std::optional<std::string> { return std::string("cloud output"); });
+         std::string*) -> std::optional<std::string> {
+        return std::string("cloud output");
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -2289,15 +2534,24 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
   const auto now = holder::api::support::now_epoch_seconds();
   holder::api::support::record_cloud_usage_event(
-      db, "switchyard", "compact-model", 10, 5, now, "compact-rpm");
+      db,
+      "switchyard",
+      "compact-model",
+      10,
+      5,
+      now,
+      "compact-rpm"
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2317,21 +2571,30 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_rpm(6000, 'r');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"}, {"card_body", long_context_rpm}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_rpm}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
   int id_seq = 1;
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), nullptr, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      nullptr,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
   holder::ai::AiRunRepo run_repo(db);
@@ -2355,9 +2618,11 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
 
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(false);
@@ -2382,9 +2647,17 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, unopened_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      unopened_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
 }
@@ -2397,9 +2670,11 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
@@ -2422,7 +2697,8 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
         if (model == "router-model") return true;
         if (error) *error = "forced failure";
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2441,10 +2717,11 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "local prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "local prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2452,9 +2729,17 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
   holder::ai::AiRunRepo run_repo(db);
@@ -2470,7 +2755,10 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   client.close(ec);
 }
 
-TEST_CASE("AiRunPostRoute local routing uses configured fast model and category metadata", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute local routing uses configured fast model and category metadata",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -2492,9 +2780,11 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
   holder::test::EnvGuard ai_catalog_env("HOLDER_AI_CATALOG_PATH", ai_catalog_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
@@ -2531,7 +2821,8 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
           return true;
         }
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2550,10 +2841,11 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "route via project cfg"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "route via project cfg"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2561,9 +2853,17 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
   REQUIRE(router_used_project_cfg);
@@ -2576,7 +2876,10 @@ TEST_CASE("AiRunPostRoute local routing uses configured fast model and category 
   client.close(ec);
 }
 
-TEST_CASE("AiRunPostRoute local routing catches router config repo errors and falls back", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute local routing catches router config repo errors and falls back",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -2585,9 +2888,11 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   db.exec("DROP TABLE ai_local_model_config;");
@@ -2616,7 +2921,8 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
           return true;
         }
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2635,10 +2941,11 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "fallback when cfg repo throws"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "fallback when cfg repo throws"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2646,9 +2953,17 @@ TEST_CASE("AiRunPostRoute local routing catches router config repo errors and fa
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
 
@@ -2673,9 +2988,11 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
@@ -2711,7 +3028,8 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
           return true;
         }
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2730,10 +3048,11 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "use strong model"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "use strong model"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2741,9 +3060,17 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
   REQUIRE_FALSE(saw_fast_model);
@@ -2771,9 +3098,11 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
   std::filesystem::create_directories(repo_dir);
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
@@ -2788,7 +3117,11 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
   });
   holder::ai::AiLocalModelConfigRepo local_model_cfg_repo(db);
   local_model_cfg_repo.set(
-      std::string("manual-a::fake-echo"), std::string("auto-local::strong-model"), std::nullopt, 1);
+      std::string("manual-a::fake-echo"),
+      std::string("auto-local::strong-model"),
+      std::nullopt,
+      1
+  );
 
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(false);
@@ -2820,7 +3153,8 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
           return true;
         }
         return false;
-      });
+      }
+  );
 
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -2839,10 +3173,11 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "use strong model"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "use strong model"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2854,9 +3189,17 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
   (void)manual_client->retry();
 
   const auto out = holder::api::routes::ai::runs::handle_ai_runs_post_route(
-      req, res, server_socket, db, nullptr, secret_store.get(), &runner_registry, [&id_seq]() {
+      req,
+      res,
+      server_socket,
+      db,
+      nullptr,
+      secret_store.get(),
+      &runner_registry,
+      [&id_seq]() {
         return std::string("uuid-") + std::to_string(id_seq++);
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
   REQUIRE(saw_main_generation);
@@ -2885,7 +3228,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
           return std::string("ok");
         }
         return std::string("cloud output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -2936,9 +3280,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -2961,14 +3307,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_quality(6000, 'q');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"},
-                                           {"card_body", long_context_quality}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_quality}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -2981,7 +3327,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -3011,7 +3360,8 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
           return std::nullopt;
         }
         return std::string("cloud output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -3067,9 +3417,11 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -3092,14 +3444,14 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
   req.set(http::field::host, "127.0.0.1");
   req.set(http::field::content_type, "application/json");
   const std::string long_context_summary_fail(6000, 'f');
-  req.body() = nlohmann::json{{"prompt", "cloud prompt"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"provider", "switchyard"},
-                              {"model", "main-model"},
-                              {"context", {{"card_id", "card-1"},
-                                           {"card_body", long_context_summary_fail}}}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "cloud prompt"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"provider", "switchyard"},
+      {"model", "main-model"},
+      {"context", {{"card_id", "card-1"}, {"card_body", long_context_summary_fail}}}
+  }.dump();
   req.prepare_payload();
 
   http::response<http::string_body> res;
@@ -3112,7 +3464,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
       nullptr,
       secret_store.get(),
       nullptr,
-      [&id_seq]() { return std::string("uuid-") + std::to_string(id_seq++); });
+      [&id_seq]() {
+        return std::string("uuid-") + std::to_string(id_seq++);
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(out.streamed);
@@ -3149,9 +3504,11 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
           "VALUES('card-1', 'proj-1', 'Card', 'cards/ca/rd/card-1.md', 1, 1);");
 
@@ -3161,7 +3518,8 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -3171,7 +3529,9 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   namespace http = boost::beast::http;
@@ -3184,9 +3544,9 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   boost::asio::connect(socket, endpoints);
 
   nlohmann::json body = {
-    {"prompt", "hello world"},
-    {"project_id", "proj-1"},
-    {"context", { {"card_id", "card-1"}, {"card_title", "First"}, {"card_body", "Body"} }}
+      {"prompt", "hello world"},
+      {"project_id", "proj-1"},
+      {"context", {{"card_id", "card-1"}, {"card_title", "First"}, {"card_body", "Body"}}}
   };
 
   http::request<http::string_body> req{http::verb::post, "/ai/runs", 11};
@@ -3240,7 +3600,8 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
           return std::nullopt;
         }
         return std::string("forced cloud output");
-      });
+      }
+  );
 
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
@@ -3272,9 +3633,11 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
   const std::string token = "testtoken";
@@ -3283,7 +3646,8 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
 
   holder::api::HttpServer::BoundInfo bound;
   try {
@@ -3293,7 +3657,9 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   namespace http = boost::beast::http;
@@ -3361,7 +3727,8 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3370,7 +3737,9 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   namespace http = boost::beast::http;
@@ -3397,13 +3766,15 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   REQUIRE(res.result() == http::status::bad_request);
   socket.shutdown(tcp::socket::shutdown_both);
 
-  const auto missing_prompt = holder::test::http_json_request(bound.bind,
-                                                              bound.port,
-                                                              token,
-                                                              http::verb::post,
-                                                              "/ai/runs",
-                                                              nlohmann::json{{"mode", "auto"}},
-                                                              http::status::bad_request);
+  const auto missing_prompt = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::post,
+      "/ai/runs",
+      nlohmann::json{{"mode", "auto"}},
+      http::status::bad_request
+  );
   REQUIRE(missing_prompt["ok"] == false);
   REQUIRE(missing_prompt["error"]["code"] == "bad_request");
 
@@ -3429,7 +3800,8 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3438,7 +3810,9 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   namespace http = boost::beast::http;
@@ -3519,7 +3893,8 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3528,7 +3903,9 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto out = holder::test::http_json_request(
@@ -3538,7 +3915,8 @@ TEST_CASE("HTTP ai runs cloud path rejects disabled requested provider", "[http]
       boost::beast::http::verb::post,
       "/ai/runs",
       nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}, {"provider", "switchyard"}},
-      boost::beast::http::status::service_unavailable);
+      boost::beast::http::status::service_unavailable
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "cloud_not_configured");
 
@@ -3582,7 +3960,8 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3591,7 +3970,9 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto out = holder::test::http_json_request(
@@ -3600,11 +3981,14 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
       token,
       boost::beast::http::verb::post,
       "/ai/runs",
-      nlohmann::json{{"prompt", "hello"},
-                     {"project_id", "proj-1"},
-                     {"provider", "switchyard"},
-                     {"model", "not-installed"}},
-      boost::beast::http::status::service_unavailable);
+      nlohmann::json{
+          {"prompt", "hello"},
+          {"project_id", "proj-1"},
+          {"provider", "switchyard"},
+          {"model", "not-installed"}
+      },
+      boost::beast::http::status::service_unavailable
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "cloud_not_configured");
 
@@ -3612,7 +3996,10 @@ TEST_CASE("HTTP ai runs cloud path rejects unknown requested model", "[http]") {
   server_thread.join();
 }
 
-TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced installed model", "[http]") {
+TEST_CASE(
+    "HTTP ai runs local path accepts explicit thread_id and forced installed model",
+    "[http]"
+) {
   holder::test::EnvGuard fake_runner("HOLDER_MODEL_RUNNER_FAKE", "1");
 
   const auto dir = make_temp_dir();
@@ -3622,9 +4009,11 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
@@ -3634,7 +4023,8 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   (void)runner.retry();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3660,11 +4050,12 @@ TEST_CASE("HTTP ai runs local path accepts explicit thread_id and forced install
   req.set(http::field::user_agent, "holder-tests");
   req.set(http::field::authorization, "Bearer " + token);
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "hello thread"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"model", "fake-echo"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "hello thread"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"model", "fake-echo"}
+  }.dump();
   req.prepare_payload();
 
   http::write(socket, req);
@@ -3720,7 +4111,8 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
   runner.start_background_probe();
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3729,7 +4121,9 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto out = holder::test::http_json_request(
@@ -3739,7 +4133,8 @@ TEST_CASE("HTTP ai runs local path rejects forced model that is not installed", 
       boost::beast::http::verb::post,
       "/ai/runs",
       nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}, {"model", "missing-model"}},
-      boost::beast::http::status::bad_request);
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "bad_request");
   REQUIRE(out["error"]["message"] == "Requested model is not installed.");
@@ -3758,9 +4153,11 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
-  db.exec(std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-                      "VALUES('proj-1', 'Project', '") +
-          repo_dir.string() + "', 1, 1);");
+  db.exec(
+      std::string("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+                  "VALUES('proj-1', 'Project', '") +
+      repo_dir.string() + "', 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 1, 1);");
 
@@ -3779,7 +4176,8 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   const std::string token = "testtoken";
   holder::card::CardStore card_store(db, nullptr);
   holder::llm::RunnerRegistry runner_registry(&db, nullptr);
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
+  holder::api::HttpServer
+      server("127.0.0.1", 0, db, token, &card_store, nullptr, nullptr, &runner_registry);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -3805,12 +4203,13 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   req.set(http::field::user_agent, "holder-tests");
   req.set(http::field::authorization, "Bearer " + token);
   req.set(http::field::content_type, "application/json");
-  req.body() = nlohmann::json{{"prompt", "hello manual"},
-                              {"project_id", "proj-1"},
-                              {"thread_id", "thread-1"},
-                              {"runner_id", "manual-a"},
-                              {"model", "fake-echo"}}
-                   .dump();
+  req.body() = nlohmann::json{
+      {"prompt", "hello manual"},
+      {"project_id", "proj-1"},
+      {"thread_id", "thread-1"},
+      {"runner_id", "manual-a"},
+      {"model", "fake-echo"}
+  }.dump();
   req.prepare_payload();
 
   http::write(socket, req);
@@ -3835,7 +4234,10 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   REQUIRE(runs[0].chosen_model == std::optional<std::string>("manual-a::fake-echo"));
 }
 
-TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provider has creds", "[http]") {
+TEST_CASE(
+    "HTTP ai runs cloud path returns not configured when no enabled provider has creds",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -3874,7 +4276,9 @@ TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provid
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto out = holder::test::http_json_request(
@@ -3884,7 +4288,8 @@ TEST_CASE("HTTP ai runs cloud path returns not configured when no enabled provid
       boost::beast::http::verb::post,
       "/ai/runs",
       nlohmann::json{{"prompt", "hello"}, {"project_id", "proj-1"}},
-      boost::beast::http::status::service_unavailable);
+      boost::beast::http::status::service_unavailable
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "cloud_not_configured");
 

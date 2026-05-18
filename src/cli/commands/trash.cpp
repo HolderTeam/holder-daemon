@@ -19,7 +19,9 @@ struct TrashOptions {
 
 TrashOptions parse_trash_options(int argc, char* argv[]) {
   if (argc < 3) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
+    throw std::runtime_error(
+        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+    ); // LCOV_EXCL_LINE
   }
 
   TrashOptions options;
@@ -40,20 +42,30 @@ TrashOptions parse_trash_options(int argc, char* argv[]) {
                options.card_id.empty()) {
       options.card_id = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+      throw std::runtime_error(
+          "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+      );
     }
   }
 
   if (options.subcommand.empty()) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
+    throw std::runtime_error(
+        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+    ); // LCOV_EXCL_LINE
   }
   const bool needs_card = options.subcommand == "card" || options.subcommand == "restore" ||
                           options.subcommand == "delete";
   if (needs_card && options.card_id.empty()) {
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]");
+    throw std::runtime_error(
+        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+    );
   }
-  if ((options.subcommand == "list" || options.subcommand == "empty") && !options.card_id.empty()) { // LCOV_EXCL_LINE: parser rejects extra args before this defensive check.
-    throw std::runtime_error("Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"); // LCOV_EXCL_LINE
+  if ((options.subcommand == "list" || options.subcommand == "empty") &&
+      !options.card_id.empty(
+      )) { // LCOV_EXCL_LINE: parser rejects extra args before this defensive check.
+    throw std::runtime_error(
+        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+    ); // LCOV_EXCL_LINE
   }
   return options;
 }
@@ -83,15 +95,21 @@ TrashOptions parse_restore_options(int argc, char* argv[]) {
   return options;
 }
 
-nlohmann::json list_current_project_trash_payload(const holder::core::Paths& paths,
-                                                  const std::string& project_id) {
-  return card_api_request(paths,
-                          boost::beast::http::verb::get,
-                          "/trash?project_id=" + url_encode_component(project_id) + "&type=card");
+nlohmann::json list_current_project_trash_payload(
+    const holder::core::Paths& paths,
+    const std::string& project_id
+) {
+  return card_api_request(
+      paths,
+      boost::beast::http::verb::get,
+      "/trash?project_id=" + url_encode_component(project_id) + "&type=card"
+  );
 }
 
-nlohmann::json find_trashed_card_in_payload(const nlohmann::json& trash,
-                                            const std::string& card_id) {
+nlohmann::json find_trashed_card_in_payload(
+    const nlohmann::json& trash,
+    const std::string& card_id
+) {
   for (const auto& item : trash) {
     if (json_string(item, "type") == "card" && json_string(item, "card_id") == card_id) {
       return item;
@@ -108,20 +126,23 @@ void print_trash_table(const nlohmann::json& trash) {
 
   std::cout << "CARD_ID\tTITLE\tDELETED\n";
   for (const auto& item : trash) {
-    std::cout << json_string(item, "card_id") << "\t"
-              << json_string(item, "title") << "\t"
+    std::cout << json_string(item, "card_id") << "\t" << json_string(item, "title") << "\t"
               << item.value("deleted_at", 0) << "\n";
   }
 }
 
-int restore_trashed_card(const holder::core::Paths& paths,
-                         const std::string& current_project_id,
-                         const TrashOptions& options) {
+int restore_trashed_card(
+    const holder::core::Paths& paths,
+    const std::string& current_project_id,
+    const TrashOptions& options
+) {
   const auto trash = list_current_project_trash_payload(paths, current_project_id);
   (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
-  const auto payload = card_api_request(paths,
-                                        boost::beast::http::verb::post,
-                                        "/cards/" + url_encode_component(options.card_id) + "/restore");
+  const auto payload = card_api_request(
+      paths,
+      boost::beast::http::verb::post,
+      "/cards/" + url_encode_component(options.card_id) + "/restore"
+  );
   if (options.json_output) {
     std::cout << payload.dump(2) << "\n";
   } else {
@@ -156,9 +177,11 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
     if (options.subcommand == "delete") {
       const auto trash = list_current_project_trash_payload(paths, current_project_id);
       (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
-      const auto payload = card_api_request(paths,
-                                            boost::beast::http::verb::delete_,
-                                            "/trash/card/" + url_encode_component(options.card_id));
+      const auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::delete_,
+          "/trash/card/" + url_encode_component(options.card_id)
+      );
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
@@ -168,10 +191,11 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     if (options.subcommand == "empty") {
-      const auto payload = card_api_request(paths,
-                                            boost::beast::http::verb::delete_,
-                                            "/trash?project_id=" + url_encode_component(current_project_id) +
-                                                "&type=card");
+      const auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::delete_,
+          "/trash?project_id=" + url_encode_component(current_project_id) + "&type=card"
+      );
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
@@ -181,9 +205,11 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
-    const auto payload = card_api_request(paths,
-                                          boost::beast::http::verb::delete_,
-                                          "/cards/" + url_encode_component(options.card_id));
+    const auto payload = card_api_request(
+        paths,
+        boost::beast::http::verb::delete_,
+        "/cards/" + url_encode_component(options.card_id)
+    );
     if (options.json_output) {
       std::cout << payload.dump(2) << "\n";
     } else {

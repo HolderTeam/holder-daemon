@@ -4,7 +4,7 @@
 namespace holder::platform {
 
 class Tx {
-public:
+ public:
   explicit Tx(Db& db);
   ~Tx();
 
@@ -13,7 +13,7 @@ public:
 
   void commit();
 
-private:
+ private:
   Db& db_;
   bool committed_ = false;
 };

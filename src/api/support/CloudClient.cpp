@@ -53,9 +53,8 @@ std::string url_encode_component(const std::string& in) {
   out.reserve(in.size() * 3);
   for (const char raw_ch : in) {
     const unsigned char ch = static_cast<unsigned char>(raw_ch);
-    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-        (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
-        ch == '.' || ch == '~') {
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+        ch == '-' || ch == '_' || ch == '.' || ch == '~') {
       out.push_back(static_cast<char>(ch));
     } else {
       out.push_back('%');
@@ -73,13 +72,15 @@ std::string truncate_bytes(const std::string& text, size_t max_bytes) {
 
 // Uses live TLS sockets; validated via integration/system tests.
 // LCOV_EXCL_START
-bool https_post_json(const std::string& base_url,
-                     const std::string& target_path_and_query,
-                     const std::vector<std::pair<std::string, std::string>>& headers,
-                     const nlohmann::json& body,
-                     int* out_status,
-                     std::string* out_body,
-                     std::string* error) {
+bool https_post_json(
+    const std::string& base_url,
+    const std::string& target_path_and_query,
+    const std::vector<std::pair<std::string, std::string>>& headers,
+    const nlohmann::json& body,
+    int* out_status,
+    std::string* out_body,
+    std::string* error
+) {
   namespace http = boost::beast::http;
   namespace ssl = boost::asio::ssl;
   using tcp = boost::asio::ip::tcp;
@@ -161,9 +162,11 @@ bool contains_insensitive(const std::string& haystack, const std::string& needle
   return lowercase_ascii(haystack).find(lowercase_ascii(needle)) != std::string::npos;
 }
 
-std::optional<std::string> classify_error_from_body(const std::string& provider_kind,
-                                                    int status,
-                                                    const std::string& response_body) {
+std::optional<std::string> classify_error_from_body(
+    const std::string& provider_kind,
+    int status,
+    const std::string& response_body
+) {
   if (status == 401 || status == 403) return std::string("auth_failed");
   if (status == 408 || status == 504) return std::string("provider_timeout");
   if (status >= 500) return std::string("provider_unavailable");
@@ -209,7 +212,8 @@ std::optional<std::string> classify_error_from_body(const std::string& provider_
 }
 
 std::optional<std::string> parse_chocolatefactory_text(const nlohmann::json& parsed) {
-  if (!parsed.contains("candidates") || !parsed["candidates"].is_array() || parsed["candidates"].empty()) {
+  if (!parsed.contains("candidates") || !parsed["candidates"].is_array() ||
+      parsed["candidates"].empty()) {
     return std::nullopt;
   }
   const auto& first = parsed["candidates"][0];
@@ -279,9 +283,11 @@ long long estimate_tokens_from_text(const std::string& text) {
   return static_cast<long long>((text.size() + 3) / 4);
 }
 
-std::string compact_context_tail(const std::string& context_json,
-                                 long long allowed_context_tokens,
-                                 bool* compacted) {
+std::string compact_context_tail(
+    const std::string& context_json,
+    long long allowed_context_tokens,
+    bool* compacted
+) {
   if (compacted) *compacted = false;
   if (allowed_context_tokens <= 0) {
     if (compacted) *compacted = !context_json.empty();
@@ -296,14 +302,17 @@ std::string compact_context_tail(const std::string& context_json,
   return std::string("[context_compacted]\n") + context_json.substr(context_json.size() - keep);
 }
 
-CloudResponseParse parse_cloud_response(const std::string& provider_kind,
-                                        int status,
-                                        const std::string& response_body) {
+CloudResponseParse parse_cloud_response(
+    const std::string& provider_kind,
+    int status,
+    const std::string& response_body
+) {
   CloudResponseParse out;
   if (status < 200 || status >= 300) {
     out.error_code = classify_error_from_body(provider_kind, status, response_body)
                          .value_or(status_error_code(status));
-    out.error_message = "cloud HTTP " + std::to_string(status) + ": " + truncate_bytes(response_body, 300);
+    out.error_message = "cloud HTTP " + std::to_string(status) + ": " +
+                        truncate_bytes(response_body, 300);
     return out;
   }
 
@@ -336,11 +345,13 @@ CloudResponseParse parse_cloud_response(const std::string& provider_kind,
   }
 } // LCOV_EXCL_LINE
 
-std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
-                                           const CloudModelConfig& model,
-                                           const std::string& api_key,
-                                           const std::string& prompt_with_context,
-                                           std::string* error) {
+std::optional<std::string> run_cloud_model(
+    const CloudProviderConfig& provider,
+    const CloudModelConfig& model,
+    const std::string& api_key,
+    const std::string& prompt_with_context,
+    std::string* error
+) {
   CloudModelRunnerOverride override_fn;
   {
     std::lock_guard<std::mutex> lock(g_run_cloud_model_override_mu);
@@ -350,9 +361,8 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
     return override_fn(provider, model, api_key, prompt_with_context, error);
   }
 
-  if (provider.kind != "chocolatefactory_generative_language" &&
-      provider.kind != "generic_chat" && provider.kind != "generic_responses" &&
-      provider.kind != "mechatropic_messages") {
+  if (provider.kind != "chocolatefactory_generative_language" && provider.kind != "generic_chat" &&
+      provider.kind != "generic_responses" && provider.kind != "mechatropic_messages") {
     if (error) *error = "unsupported provider kind: " + provider.kind;
     return std::nullopt;
   }
@@ -367,11 +377,13 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
     const std::string key_param = provider.key_param.empty() ? "key" : provider.key_param;
     target += "?" + key_param + "=" + url_encode_component(api_key);
   } else if (provider.auth_type == "bearer_header") {
-    const std::string header_name = provider.header_name.empty() ? "Authorization" : provider.header_name;
+    const std::string header_name = provider.header_name.empty() ? "Authorization"
+                                                                 : provider.header_name;
     const std::string prefix = provider.bearer_prefix.empty() ? "Bearer" : provider.bearer_prefix;
     headers.emplace_back(header_name, prefix + " " + api_key);
   } else if (provider.auth_type == "header_key") {
-    const std::string header_name = provider.header_name.empty() ? "x-api-key" : provider.header_name;
+    const std::string header_name = provider.header_name.empty() ? "x-api-key"
+                                                                 : provider.header_name;
     headers.emplace_back(header_name, api_key);
   } else {
     if (error) *error = "unsupported auth type: " + provider.auth_type;
@@ -380,8 +392,9 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
 
   nlohmann::json req;
   if (provider.kind == "chocolatefactory_generative_language") {
-    req["contents"] = nlohmann::json::array(
-        {nlohmann::json{{"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}}});
+    req["contents"] = nlohmann::json::array({nlohmann::json{
+        {"parts", nlohmann::json::array({nlohmann::json{{"text", prompt_with_context}}})}
+    }});
   } else if (provider.kind == "generic_chat") {
     req["model"] = model.id;
     req["messages"] = nlohmann::json::array({nlohmann::json{
@@ -409,25 +422,28 @@ std::optional<std::string> run_cloud_model(const CloudProviderConfig& provider,
     std::lock_guard<std::mutex> lock(g_cloud_transport_post_override_mu);
     transport_override = g_cloud_transport_post_override;
   }
-  const bool transport_ok = transport_override
-                                ? transport_override(provider.base_url,
+  const bool transport_ok = transport_override ? transport_override(
+                                                     provider.base_url,
                                                      target,
                                                      headers,
                                                      req.dump(),
                                                      &status,
                                                      &response_body,
-                                                     &transport_error)
-                                : https_post_json(provider.base_url,
-                                                  target,
-                                                  headers,
-                                                  req,
-                                                  &status,
-                                                  &response_body,
-                                                  &transport_error);
+                                                     &transport_error
+                                                 )
+                                               : https_post_json(
+                                                     provider.base_url,
+                                                     target,
+                                                     headers,
+                                                     req,
+                                                     &status,
+                                                     &response_body,
+                                                     &transport_error
+                                                 );
   if (!transport_ok) {
     if (error) {
-      *error = "transport_error: " + (transport_error.empty() ? std::string("cloud request failed")
-                                                               : transport_error);
+      *error = "transport_error: " +
+               (transport_error.empty() ? std::string("cloud request failed") : transport_error);
     }
     return std::nullopt;
   }

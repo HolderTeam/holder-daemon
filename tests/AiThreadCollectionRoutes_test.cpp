@@ -16,9 +16,11 @@ namespace {
 
 namespace http = boost::beast::http;
 
-http::request<http::string_body> make_request(http::verb method,
-                                               const std::string& target,
-                                               const std::string& body = "") {
+http::request<http::string_body> make_request(
+    http::verb method,
+    const std::string& target,
+    const std::string& body = ""
+) {
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
   if (!body.empty()) {
@@ -35,14 +37,24 @@ TEST_CASE("AiThreadCollectionRoutes guards and GET error handling", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
-  const auto uuid_v4 = []() -> std::string { return "unused"; };
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto uuid_v4 = []() -> std::string {
+    return "unused";
+  };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   SECTION("non matching route returns false") {
     auto req = make_request(http::verb::get, "/ai/threadz");
     http::response<http::string_body> res;
     REQUIRE_FALSE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threadz", req, res, db, uuid_v4, param_get));
+        "/ai/threadz",
+        req,
+        res,
+        db,
+        uuid_v4,
+        param_get
+    ));
   }
 
   SECTION("GET catches repo exception as bad_request") {
@@ -54,7 +66,13 @@ TEST_CASE("AiThreadCollectionRoutes guards and GET error handling", "[http]") {
       return {};
     };
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threads", req, res, db, uuid_v4, param_project));
+        "/ai/threads",
+        req,
+        res,
+        db,
+        uuid_v4,
+        param_project
+    ));
     REQUIRE(res.result() == http::status::bad_request);
   }
 }
@@ -75,25 +93,45 @@ TEST_CASE("AiThreadCollectionRoutes POST branch coverage", "[http]") {
   card.updated_at = 5;
   card_repo.create(card);
 
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   SECTION("POST missing required fields") {
     auto req = make_request(http::verb::post, "/ai/threads", R"({"project_id":"proj-1"})");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threads", req, res, db, []() { return "unused"; }, param_get));
+        "/ai/threads",
+        req,
+        res,
+        db,
+        []() {
+          return "unused";
+        },
+        param_get
+    ));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "Missing required fields.");
   }
 
   SECTION("POST generates thread_id and defaults timestamps and optional card_id") {
-    auto req = make_request(http::verb::post,
-                            "/ai/threads",
-                            R"({"project_id":"proj-1","title":"T","card_id":"card-1"})");
+    auto req = make_request(
+        http::verb::post,
+        "/ai/threads",
+        R"({"project_id":"proj-1","title":"T","card_id":"card-1"})"
+    );
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threads", req, res, db, []() { return "generated-id"; }, param_get));
+        "/ai/threads",
+        req,
+        res,
+        db,
+        []() {
+          return "generated-id";
+        },
+        param_get
+    ));
     REQUIRE(res.result() == http::status::created);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["data"]["thread_id"] == "generated-id");
@@ -105,7 +143,15 @@ TEST_CASE("AiThreadCollectionRoutes POST branch coverage", "[http]") {
       return {};
     };
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threads", get_req, get_res, db, []() { return "unused"; }, param_project));
+        "/ai/threads",
+        get_req,
+        get_res,
+        db,
+        []() {
+          return "unused";
+        },
+        param_project
+    ));
     REQUIRE(get_res.result() == http::status::ok);
     const auto listed = nlohmann::json::parse(get_res.body());
     REQUIRE(listed["data"].is_array());
@@ -117,15 +163,19 @@ TEST_CASE("AiThreadCollectionRoutes POST branch coverage", "[http]") {
   }
 
   SECTION("POST maps conflict-prefixed exceptions to conflict response") {
-    auto req = make_request(http::verb::post, "/ai/threads", R"({"project_id":"proj-1","title":"A"})");
+    auto req =
+        make_request(http::verb::post, "/ai/threads", R"({"project_id":"proj-1","title":"A"})");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
         "/ai/threads",
         req,
         res,
         db,
-        []() -> std::string { throw std::runtime_error("conflict: synthetic"); },
-        param_get));
+        []() -> std::string {
+          throw std::runtime_error("conflict: synthetic");
+        },
+        param_get
+    ));
     REQUIRE(res.result() == http::status::conflict);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["code"] == "conflict");
@@ -135,7 +185,15 @@ TEST_CASE("AiThreadCollectionRoutes POST branch coverage", "[http]") {
     auto req = make_request(http::verb::post, "/ai/threads", "not-json");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_collection_routes(
-        "/ai/threads", req, res, db, []() { return "unused"; }, param_get));
+        "/ai/threads",
+        req,
+        res,
+        db,
+        []() {
+          return "unused";
+        },
+        param_get
+    ));
     REQUIRE(res.result() == http::status::bad_request);
   }
 }

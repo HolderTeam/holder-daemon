@@ -31,12 +31,12 @@ holder::model::AiProviderCredential read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiProviderCredentialRepo::AiProviderCredentialRepo(holder::platform::Db& db) : db_(db) {}
+AiProviderCredentialRepo::AiProviderCredentialRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 std::vector<holder::model::AiProviderCredential> AiProviderCredentialRepo::list() const {
-  static constexpr const char* SQL =
-      "SELECT provider, api_key_preview, created_at, updated_at "
-      "FROM ai_provider_credentials ORDER BY provider ASC;";
+  static constexpr const char* SQL = "SELECT provider, api_key_preview, created_at, updated_at "
+                                     "FROM ai_provider_credentials ORDER BY provider ASC;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -60,10 +60,10 @@ std::vector<holder::model::AiProviderCredential> AiProviderCredentialRepo::list(
 } // LCOV_EXCL_LINE
 
 std::optional<holder::model::AiProviderCredential> AiProviderCredentialRepo::get(
-    const std::string& provider) const {
-  static constexpr const char* SQL =
-      "SELECT provider, api_key_preview, created_at, updated_at "
-      "FROM ai_provider_credentials WHERE provider = ?;";
+    const std::string& provider
+) const {
+  static constexpr const char* SQL = "SELECT provider, api_key_preview, created_at, updated_at "
+                                     "FROM ai_provider_credentials WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -84,10 +84,12 @@ std::optional<holder::model::AiProviderCredential> AiProviderCredentialRepo::get
   return std::nullopt;
 }
 
-void AiProviderCredentialRepo::upsert(const std::string& provider,
-                                      const std::string& api_key_preview,
-                                      long long created_at,
-                                      long long updated_at) {
+void AiProviderCredentialRepo::upsert(
+    const std::string& provider,
+    const std::string& api_key_preview,
+    long long created_at,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "INSERT INTO ai_provider_credentials(provider, api_key_preview, created_at, updated_at) "
       "VALUES(?, ?, ?, ?) "
@@ -111,8 +113,7 @@ void AiProviderCredentialRepo::upsert(const std::string& provider,
 }
 
 void AiProviderCredentialRepo::remove(const std::string& provider) {
-  static constexpr const char* SQL =
-      "DELETE FROM ai_provider_credentials WHERE provider = ?;";
+  static constexpr const char* SQL = "DELETE FROM ai_provider_credentials WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

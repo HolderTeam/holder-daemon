@@ -64,7 +64,8 @@ holder::model::Project read_project(sqlite3_stmt* stmt) {
 
 } // namespace
 
-ProjectRepo::ProjectRepo(holder::platform::Db& db) : db_(db) {}
+ProjectRepo::ProjectRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 void ProjectRepo::create(const holder::model::Project& project) {
   static constexpr const char* SQL =
@@ -148,9 +149,11 @@ std::vector<holder::model::Project> ProjectRepo::list() const {
   return out;
 }
 
-void ProjectRepo::update_name(const std::string& project_id,
-                              const std::string& name,
-                              long long updated_at) {
+void ProjectRepo::update_name(
+    const std::string& project_id,
+    const std::string& name,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET name = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -170,9 +173,11 @@ void ProjectRepo::update_name(const std::string& project_id,
   }
 }
 
-void ProjectRepo::update_root_path(const std::string& project_id,
-                                   const std::string& root_path,
-                                   long long updated_at) {
+void ProjectRepo::update_root_path(
+    const std::string& project_id,
+    const std::string& root_path,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET root_path = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -192,9 +197,11 @@ void ProjectRepo::update_root_path(const std::string& project_id,
   }
 }
 
-void ProjectRepo::update_git_remote(const std::string& project_id,
-                                    const std::optional<std::string>& git_remote_url,
-                                    long long updated_at) {
+void ProjectRepo::update_git_remote(
+    const std::string& project_id,
+    const std::optional<std::string>& git_remote_url,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET git_remote_url = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -214,9 +221,11 @@ void ProjectRepo::update_git_remote(const std::string& project_id,
   }
 }
 
-void ProjectRepo::update_git_provider(const std::string& project_id,
-                                      const std::optional<std::string>& git_provider,
-                                      long long updated_at) {
+void ProjectRepo::update_git_provider(
+    const std::string& project_id,
+    const std::optional<std::string>& git_provider,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET git_provider = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -236,9 +245,11 @@ void ProjectRepo::update_git_provider(const std::string& project_id,
   }
 }
 
-void ProjectRepo::update_privacy_mode(const std::string& project_id,
-                                      const std::string& privacy_mode,
-                                      long long updated_at) {
+void ProjectRepo::update_privacy_mode(
+    const std::string& project_id,
+    const std::string& privacy_mode,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET privacy_mode = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -258,9 +269,11 @@ void ProjectRepo::update_privacy_mode(const std::string& project_id,
   }
 }
 
-void ProjectRepo::update_project_key_id(const std::string& project_id,
-                                        const std::optional<std::string>& project_key_id,
-                                        long long updated_at) {
+void ProjectRepo::update_project_key_id(
+    const std::string& project_id,
+    const std::optional<std::string>& project_key_id,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE projects SET project_key_id = ?, updated_at = ? WHERE project_id = ?;";
 
@@ -281,8 +294,7 @@ void ProjectRepo::update_project_key_id(const std::string& project_id,
 }
 
 void ProjectRepo::touch_updated(const std::string& project_id, long long updated_at) {
-  static constexpr const char* SQL =
-      "UPDATE projects SET updated_at = ? WHERE project_id = ?;";
+  static constexpr const char* SQL = "UPDATE projects SET updated_at = ? WHERE project_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

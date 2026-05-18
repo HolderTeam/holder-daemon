@@ -15,7 +15,7 @@
 namespace {
 
 class RecordingRunnerClient final : public holder::llm::RunnerClient {
-public:
+ public:
   std::atomic<int> background_probe_calls{0};
   std::atomic<int> status_calls{0};
   std::atomic<int> retry_calls{0};
@@ -52,11 +52,13 @@ public:
     const_cast<RecordingRunnerClient*>(this)->list_pulls_calls.fetch_add(1);
     return list_pulls_result;
   }
-  bool stream_generate(const std::string&,
-                       const std::string&,
-                       const std::string&,
-                       const std::function<void(const std::string&)>& on_chunk,
-                       std::string* error) override {
+  bool stream_generate(
+      const std::string&,
+      const std::string&,
+      const std::string&,
+      const std::function<void(const std::string&)>& on_chunk,
+      std::string* error
+  ) override {
     stream_generate_calls.fetch_add(1);
     on_chunk("chunk");
     if (error != nullptr) {
@@ -68,8 +70,10 @@ public:
 
 } // namespace
 
-TEST_CASE("ExecutorRunnerClient delegates retry and pull operations through SerialExecutor",
-          "[llm][executor]") {
+TEST_CASE(
+    "ExecutorRunnerClient delegates retry and pull operations through SerialExecutor",
+    "[llm][executor]"
+) {
   holder::core::SerialExecutor executor("runner-executor-test");
   RecordingRunnerClient inner;
 
@@ -122,7 +126,14 @@ TEST_CASE("ExecutorRunnerClient delegates retry and pull operations through Seri
   std::string error;
   std::string chunk;
   const bool ok = client.stream_generate(
-      "model-a", "prompt", "{}", [&](const std::string& piece) { chunk += piece; }, &error);
+      "model-a",
+      "prompt",
+      "{}",
+      [&](const std::string& piece) {
+        chunk += piece;
+      },
+      &error
+  );
   REQUIRE(inner.stream_generate_calls.load() == 1);
   REQUIRE(ok);
   REQUIRE(chunk == "chunk");
@@ -142,6 +153,12 @@ TEST_CASE("ExecutorRunnerClient handles null inner client safely", "[llm][execut
 
   std::string error = "unchanged";
   REQUIRE_FALSE(client.stream_generate(
-      "model-a", "prompt", "{}", [](const std::string&) {}, &error));
+      "model-a",
+      "prompt",
+      "{}",
+      [](const std::string&) {
+      },
+      &error
+  ));
   REQUIRE(error == "unchanged");
 }

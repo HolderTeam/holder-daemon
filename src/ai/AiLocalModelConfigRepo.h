@@ -12,10 +12,12 @@ class AiLocalModelConfigRepo {
   explicit AiLocalModelConfigRepo(holder::platform::Db& db);
 
   std::optional<holder::model::AiLocalModelConfig> get() const;
-  void set(const std::optional<std::string>& fast_model,
-           const std::optional<std::string>& strong_model,
-           const std::optional<std::string>& deep_model,
-           long long updated_at);
+  void set(
+      const std::optional<std::string>& fast_model,
+      const std::optional<std::string>& strong_model,
+      const std::optional<std::string>& deep_model,
+      long long updated_at
+  );
   void clear();
 
  private:

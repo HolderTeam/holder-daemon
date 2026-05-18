@@ -3,8 +3,10 @@
 #include "platform/ServerInfo.h"
 
 namespace holder::api::support {
-nlohmann::json build_health_data(holder::platform::Db& db,
-                                 std::chrono::steady_clock::time_point started_at) {
+nlohmann::json build_health_data(
+    holder::platform::Db& db,
+    std::chrono::steady_clock::time_point started_at
+) {
   bool db_ok = true;
   try {
     db.exec("SELECT 1;");
@@ -13,7 +15,8 @@ nlohmann::json build_health_data(holder::platform::Db& db,
   }
 
   const auto uptime_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() - started_at)
+                             std::chrono::steady_clock::now() - started_at
+  )
                              .count();
 
   nlohmann::json data;

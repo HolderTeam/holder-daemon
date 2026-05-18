@@ -43,7 +43,8 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4) {
+    const std::function<std::string()>& uuid_v4
+) {
   auto param = [&](const std::string& key) -> std::string {
     return support::query_param_value(query_string, key);
   };
@@ -61,19 +62,19 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
   } else if (resource == "search") {
     if (handle_search_routes(path, req, res, fts, param)) return {};
   } else if (resource == "ai") {
-    const auto route_result =
-        ai::dispatch_ai_routes(
-            path,
-            req,
-            res,
-            socket,
-            db,
-            fts,
-            nudge_service,
-            secret_store,
-            runner_registry,
-            uuid_v4,
-            param);
+    const auto route_result = ai::dispatch_ai_routes(
+        path,
+        req,
+        res,
+        socket,
+        db,
+        fts,
+        nudge_service,
+        secret_store,
+        runner_registry,
+        uuid_v4,
+        param
+    );
     if (route_result.handled) {
       return {.streamed = route_result.streamed};
     }

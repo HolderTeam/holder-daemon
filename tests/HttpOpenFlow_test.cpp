@@ -1,10 +1,10 @@
 #include "http_test_helpers.h"
 
+using holder::test::ensure_uuid_seeded;
+using holder::test::EnvGuard;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
-using holder::test::ensure_uuid_seeded;
-using holder::test::EnvGuard;
 
 TEST_CASE("HTTP open flow lists projects then cards", "[http]") {
   const auto dir = make_temp_dir();
@@ -30,19 +30,23 @@ TEST_CASE("HTTP open flow lists projects then cards", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json project_body = {
-      {"name", "Project A"}
-  };
+  nlohmann::json project_body = {{"name", "Project A"}};
 
-  const auto created_project = http_json_request(bound.bind, bound.port, token,
-                                                 boost::beast::http::verb::post,
-                                                 "/projects",
-                                                 project_body,
-                                                 boost::beast::http::status::created);
+  const auto created_project = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects",
+      project_body,
+      boost::beast::http::status::created
+  );
   const std::string project_id = created_project["data"]["project_id"].get<std::string>();
 
   nlohmann::json card_body = {
@@ -51,18 +55,26 @@ TEST_CASE("HTTP open flow lists projects then cards", "[http]") {
       {"content", "hello"}
   };
 
-  const auto created_card = http_json_request(bound.bind, bound.port, token,
-                                              boost::beast::http::verb::post,
-                                              "/cards",
-                                              card_body,
-                                              boost::beast::http::status::created);
+  const auto created_card = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_body,
+      boost::beast::http::status::created
+  );
   const std::string card_id = created_card["data"]["card_id"].get<std::string>();
 
-  const auto projects = http_json_request(bound.bind, bound.port, token,
-                                          boost::beast::http::verb::get,
-                                          "/projects",
-                                          nlohmann::json::object(),
-                                          boost::beast::http::status::ok);
+  const auto projects = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/projects",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(projects["ok"] == true);
   REQUIRE(projects["data"].is_array());
 
@@ -75,11 +87,15 @@ TEST_CASE("HTTP open flow lists projects then cards", "[http]") {
   }
   REQUIRE(found_project);
 
-  const auto cards = http_json_request(bound.bind, bound.port, token,
-                                       boost::beast::http::verb::get,
-                                       "/cards?project_id=" + project_id,
-                                       nlohmann::json::object(),
-                                       boost::beast::http::status::ok);
+  const auto cards = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards?project_id=" + project_id,
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(cards["ok"] == true);
   REQUIRE(cards["data"].is_array());
   REQUIRE(cards["data"].size() == 1);

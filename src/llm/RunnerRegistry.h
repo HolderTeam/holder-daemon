@@ -20,9 +20,11 @@ class RunnerRegistry {
  public:
   static constexpr const char* kAutoLocalRunnerId = "auto-local";
 
-  explicit RunnerRegistry(holder::platform::Db* db = nullptr,
-                          RunnerClient* auto_local_client = nullptr,
-                          const holder::core::SerialExecutor* executor = nullptr);
+  explicit RunnerRegistry(
+      holder::platform::Db* db = nullptr,
+      RunnerClient* auto_local_client = nullptr,
+      const holder::core::SerialExecutor* executor = nullptr
+  );
 
   void refresh();
   std::vector<holder::model::AiRunner> list_runners() const;

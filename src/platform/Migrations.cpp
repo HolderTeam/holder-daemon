@@ -1,9 +1,9 @@
 #include "platform/Migrations.h"
 #include "platform/Tx.h"
 
+#include <fstream>
 #include <spdlog/spdlog.h>
 #include <sqlite3.h>
-#include <fstream>
 #include <sstream>
 #include <stdexcept>
 
@@ -21,12 +21,11 @@ std::string Migrations::read_file(const std::filesystem::path& p) {
 
 bool Migrations::has_any_tables(Db& db) {
   // Check for any non-internal tables.
-  static constexpr const char* SQL =
-      "SELECT 1 "
-      "FROM sqlite_master "
-      "WHERE type='table' "
-      "  AND name NOT LIKE 'sqlite_%' "
-      "LIMIT 1;";
+  static constexpr const char* SQL = "SELECT 1 "
+                                     "FROM sqlite_master "
+                                     "WHERE type='table' "
+                                     "  AND name NOT LIKE 'sqlite_%' "
+                                     "LIMIT 1;";
 
   sqlite3_stmt* stmt = nullptr;
   int rc = sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr);
@@ -73,9 +72,10 @@ void Migrations::ensure_schema_version(Db& db, int expected_version) {
     const int version = sqlite3_column_int(stmt, 0);
     sqlite3_finalize(stmt);
     if (version != expected_version) {
-      throw std::runtime_error("Schema version mismatch. Expected " +
-                               std::to_string(expected_version) + ", got " +
-                               std::to_string(version));
+      throw std::runtime_error(
+          "Schema version mismatch. Expected " + std::to_string(expected_version) + ", got " +
+          std::to_string(version)
+      );
     }
     return;
   }

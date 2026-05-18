@@ -4,13 +4,13 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
-#include "api/routes/ai/status/AiCapabilitiesRoutes.h"
 #include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiRunnerRepo.h"
+#include "api/routes/ai/status/AiCapabilitiesRoutes.h"
+#include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
 #include "http_test_helpers.h"
-#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -22,7 +22,7 @@ namespace {
 namespace http = boost::beast::http;
 
 class FakeRunnerClient final : public holder::llm::RunnerClient {
-public:
+ public:
   void start_background_probe() override {}
   holder::llm::RunnerStatus status() const override { return status_result; }
   holder::llm::RunnerStatus retry() override { return status_result; }
@@ -31,11 +31,9 @@ public:
     return std::nullopt;
   }
   std::vector<holder::llm::RunnerPullJob> list_pulls() const override { return pulls_result; }
-  bool stream_generate(const std::string&,
-                       const std::string&,
-                       const std::string&,
-                       const std::function<void(const std::string&)>&,
-                       std::string*) override {
+  bool
+  stream_generate(const std::string&, const std::string&, const std::string&, const std::function<void(const std::string&)>&, std::string*)
+      override {
     return true;
   }
 
@@ -90,7 +88,10 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
         res,
         db,
         &runner_registry,
-        [](const std::string&) -> std::string { return {}; }));
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    ));
     REQUIRE(res.result() == http::status::ok);
 
     const auto payload = nlohmann::json::parse(res.body());
@@ -119,7 +120,6 @@ TEST_CASE("AiRuntimeStatusRoutes handles runner status and retry payloads", "[ht
       REQUIRE(pull["active"].is_boolean());
     }
   }
-
 }
 
 TEST_CASE("AiRuntimeStatusRoutes counts only active pull jobs", "[http]") {
@@ -161,7 +161,10 @@ TEST_CASE("AiRuntimeStatusRoutes counts only active pull jobs", "[http]") {
       res,
       db,
       &runner_registry,
-      [](const std::string&) -> std::string { return {}; }));
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -185,7 +188,10 @@ TEST_CASE("AiRuntimeStatusRoutes recovers when ai_runs count query cannot be pre
       res,
       db,
       nullptr,
-      [](const std::string&) -> std::string { return {}; }));
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -201,10 +207,18 @@ TEST_CASE("AiCapabilitiesRoutes returns local model config", "[http]") {
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, nullptr, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      nullptr,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -221,10 +235,18 @@ TEST_CASE("AiCapabilitiesRoutes returns null local model config when unset", "[h
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, nullptr, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      nullptr,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -241,10 +263,18 @@ TEST_CASE("AiCapabilitiesRoutes catches local model config repo errors", "[http]
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, nullptr, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      nullptr,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -278,10 +308,18 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner_registry, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      &runner_registry,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -303,7 +341,10 @@ TEST_CASE("AiCapabilitiesRoutes with runner returns status model list", "[http]"
   REQUIRE(payload["data"]["runners"][0]["runtime"]["models"][0]["modified_at"] == "t1");
 }
 
-TEST_CASE("AiCapabilitiesRoutes serializes runtime pulls and unconfigured listed runners", "[http]") {
+TEST_CASE(
+    "AiCapabilitiesRoutes serializes runtime pulls and unconfigured listed runners",
+    "[http]"
+) {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
@@ -335,10 +376,18 @@ TEST_CASE("AiCapabilitiesRoutes serializes runtime pulls and unconfigured listed
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner_registry, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      &runner_registry,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -382,10 +431,18 @@ TEST_CASE("AiCapabilitiesRoutes without runner includes recommendation entries",
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, nullptr, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      nullptr,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());
@@ -410,7 +467,12 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
   status.last_checked = 456;
   status.version = "runner-v";
   status.models = {
-      holder::llm::LocalModel{.name = "model-installed", .digest = "d", .size = 11, .modified_at = "t"},
+      holder::llm::LocalModel{
+          .name = "model-installed",
+          .digest = "d",
+          .size = 11,
+          .modified_at = "t"
+      },
   };
   runner.set_status_override_for_tests(status);
   holder::llm::LocalRunnerClient local_runner_client(&runner);
@@ -418,10 +480,18 @@ TEST_CASE("AiCapabilitiesRoutes with runner separates installed recommendations"
 
   auto req = make_request(http::verb::get, "/ai/capabilities");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
 
   REQUIRE(holder::api::routes::ai::status::handle_ai_capabilities_routes(
-      "/ai/capabilities", req, res, db, &runner_registry, param_get));
+      "/ai/capabilities",
+      req,
+      res,
+      db,
+      &runner_registry,
+      param_get
+  ));
   REQUIRE(res.result() == http::status::ok);
 
   const auto payload = nlohmann::json::parse(res.body());

@@ -9,29 +9,28 @@
 #include <string>
 
 TEST_CASE("parse_card_file reads front matter and body", "[card_front_matter]") {
-  const std::string raw =
-      "---\n"
-      "card_id: abcd1234\n"
-      "project_id: proj-1\n"
-      "title: Hello\n"
-      "created_at: 10\n"
-      "updated_at: 20\n"
-      "parent_card_id: null\n"
-      "sort_key: 1.5\n"
-      "rel_path: cards/ab/cd/abcd1234.md\n"
-      "deleted_at: null\n"
-      "links:\n"
-      "  - to: efgh5678\n"
-      "    to_type: card\n"
-      "    kind: ref\n"
-      "    created_at: 15\n"
-      "    label: \"See also\"\n"
-      "  - to: wxyz9999\n"
-      "    to_type: ai_message\n"
-      "    kind: parent\n"
-      "    created_at: 16\n"
-      "---\n"
-      "Body text\n";
+  const std::string raw = "---\n"
+                          "card_id: abcd1234\n"
+                          "project_id: proj-1\n"
+                          "title: Hello\n"
+                          "created_at: 10\n"
+                          "updated_at: 20\n"
+                          "parent_card_id: null\n"
+                          "sort_key: 1.5\n"
+                          "rel_path: cards/ab/cd/abcd1234.md\n"
+                          "deleted_at: null\n"
+                          "links:\n"
+                          "  - to: efgh5678\n"
+                          "    to_type: card\n"
+                          "    kind: ref\n"
+                          "    created_at: 15\n"
+                          "    label: \"See also\"\n"
+                          "  - to: wxyz9999\n"
+                          "    to_type: ai_message\n"
+                          "    kind: parent\n"
+                          "    created_at: 16\n"
+                          "---\n"
+                          "Body text\n";
 
   const auto parsed = holder::core::parse_card_file(raw);
   REQUIRE(parsed.has_front_matter);
@@ -112,45 +111,44 @@ TEST_CASE("render_card_front_matter writes deleted_at and null link label", "[ca
 
   const auto front_matter = holder::core::render_card_front_matter(card, {link});
   REQUIRE(front_matter.find("deleted_at: 99") != std::string::npos);
-  REQUIRE((front_matter.find("label: ~") != std::string::npos ||
-           front_matter.find("label: null") != std::string::npos));
+  REQUIRE(
+      (front_matter.find("label: ~") != std::string::npos ||
+       front_matter.find("label: null") != std::string::npos)
+  );
 }
 
 TEST_CASE("parse_card_file falls back when front matter is unterminated", "[card_front_matter]") {
-  const std::string raw =
-      "---\n"
-      "card_id: abcd1234\n"
-      "project_id: proj-1\n";
+  const std::string raw = "---\n"
+                          "card_id: abcd1234\n"
+                          "project_id: proj-1\n";
   const auto parsed = holder::core::parse_card_file(raw);
   REQUIRE_FALSE(parsed.has_front_matter);
   REQUIRE(parsed.body == raw);
 }
 
 TEST_CASE("parse_card_file falls back when yaml root is not a map", "[card_front_matter]") {
-  const std::string raw =
-      "---\n"
-      "- list-item\n"
-      "---\n"
-      "Body\n";
+  const std::string raw = "---\n"
+                          "- list-item\n"
+                          "---\n"
+                          "Body\n";
   const auto parsed = holder::core::parse_card_file(raw);
   REQUIRE_FALSE(parsed.has_front_matter);
   REQUIRE(parsed.body == raw);
 }
 
 TEST_CASE("parse_card_file reads deleted_at when present", "[card_front_matter]") {
-  const std::string raw =
-      "---\n"
-      "card_id: abcd1234\n"
-      "project_id: proj-1\n"
-      "title: Hello\n"
-      "created_at: 10\n"
-      "updated_at: 20\n"
-      "parent_card_id: null\n"
-      "sort_key: 1.5\n"
-      "rel_path: cards/ab/cd/abcd1234.md\n"
-      "deleted_at: 123\n"
-      "---\n"
-      "Body text\n";
+  const std::string raw = "---\n"
+                          "card_id: abcd1234\n"
+                          "project_id: proj-1\n"
+                          "title: Hello\n"
+                          "created_at: 10\n"
+                          "updated_at: 20\n"
+                          "parent_card_id: null\n"
+                          "sort_key: 1.5\n"
+                          "rel_path: cards/ab/cd/abcd1234.md\n"
+                          "deleted_at: 123\n"
+                          "---\n"
+                          "Body text\n";
 
   const auto parsed = holder::core::parse_card_file(raw);
   REQUIRE(parsed.has_front_matter);
@@ -159,11 +157,10 @@ TEST_CASE("parse_card_file reads deleted_at when present", "[card_front_matter]"
 }
 
 TEST_CASE("parse_card_file falls back on yaml parse exception", "[card_front_matter]") {
-  const std::string raw =
-      "---\n"
-      "card_id: [\n"
-      "---\n"
-      "Body text\n";
+  const std::string raw = "---\n"
+                          "card_id: [\n"
+                          "---\n"
+                          "Body text\n";
   const auto parsed = holder::core::parse_card_file(raw);
   REQUIRE_FALSE(parsed.has_front_matter);
   REQUIRE(parsed.body == raw);

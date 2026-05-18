@@ -1,8 +1,8 @@
 #include "sync/ProjectSyncWorker.h"
 
-#include "platform/Signal.h"
 #include "git/GitRepo.h"
 #include "model/Project.h"
+#include "platform/Signal.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
 
@@ -18,7 +18,7 @@
 namespace {
 
 class SyncWorkerHookGuard {
-public:
+ public:
   SyncWorkerHookGuard() = default;
   ~SyncWorkerHookGuard() {
     holder::sync::ProjectSyncWorker::set_fail_post_pull_metrics_for_tests(false);
@@ -29,28 +29,36 @@ public:
 void run_worker_for_seconds(const std::filesystem::path& db_path, int seconds) {
   holder::core::SignalHandler signals;
   holder::sync::ProjectSyncWorker worker(db_path, 2000000000, 1, 1);
-  std::thread thread([&worker, &signals]() { worker.run(signals); });
+  std::thread thread([&worker, &signals]() {
+    worker.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::seconds(seconds));
   std::raise(SIGTERM);
   thread.join();
 }
 
-void run_worker_with_intervals_for_seconds(const std::filesystem::path& db_path,
-                                           int push_interval_seconds,
-                                           int pull_interval_seconds,
-                                           int poll_interval_seconds,
-                                           int seconds) {
+void run_worker_with_intervals_for_seconds(
+    const std::filesystem::path& db_path,
+    int push_interval_seconds,
+    int pull_interval_seconds,
+    int poll_interval_seconds,
+    int seconds
+) {
   holder::core::SignalHandler signals;
-  holder::sync::ProjectSyncWorker worker(
-      db_path, push_interval_seconds, pull_interval_seconds, poll_interval_seconds);
-  std::thread thread([&worker, &signals]() { worker.run(signals); });
+  holder::sync::ProjectSyncWorker
+      worker(db_path, push_interval_seconds, pull_interval_seconds, poll_interval_seconds);
+  std::thread thread([&worker, &signals]() {
+    worker.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::seconds(seconds));
   std::raise(SIGTERM);
   thread.join();
 }
 
-std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
-                                           const std::string& project_id) {
+std::optional<long long> load_last_pull_at(
+    const std::filesystem::path& db_path,
+    const std::string& project_id
+) {
   holder::platform::Db db;
   db.open(db_path);
   holder::project::ProjectSyncRepo sync(db);
@@ -61,8 +69,10 @@ std::optional<long long> load_last_pull_at(const std::filesystem::path& db_path,
   return state->last_pull_at;
 }
 
-std::optional<holder::model::ProjectSyncState> load_sync_state(const std::filesystem::path& db_path,
-                                                               const std::string& project_id) {
+std::optional<holder::model::ProjectSyncState> load_sync_state(
+    const std::filesystem::path& db_path,
+    const std::string& project_id
+) {
   holder::platform::Db db;
   db.open(db_path);
   holder::project::ProjectSyncRepo sync(db);
@@ -71,15 +81,18 @@ std::optional<holder::model::ProjectSyncState> load_sync_state(const std::filesy
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
+             std::chrono::system_clock::now().time_since_epoch()
+  )
       .count();
 }
 
-void create_project(holder::project::ProjectRepo& projects,
-                    const std::string& project_id,
-                    const std::filesystem::path& root_path,
-                    const std::string& remote,
-                    const std::string& privacy_mode = "plain") {
+void create_project(
+    holder::project::ProjectRepo& projects,
+    const std::string& project_id,
+    const std::filesystem::path& root_path,
+    const std::string& remote,
+    const std::string& privacy_mode = "plain"
+) {
   holder::model::Project project;
   project.project_id = project_id;
   project.name = "Project";
@@ -217,9 +230,21 @@ TEST_CASE("ProjectSyncWorker push cycle records pull failure", "[sync][worker]")
     auto db = holder::test::open_db_with_schema(db_path);
     holder::project::ProjectRepo projects(db);
     holder::project::ProjectSyncRepo sync(db);
-    create_project(projects, "proj-pull-fail", local_dir, (dir / "missing_remote").string(), "plain");
+    create_project(
+        projects,
+        "proj-pull-fail",
+        local_dir,
+        (dir / "missing_remote").string(),
+        "plain"
+    );
     // Make startup skip pull, then force run_push_cycle pull attempt.
-    sync.record_pull_result("proj-pull-fail", "succeeded", true, std::nullopt, now_epoch_seconds() - 10000);
+    sync.record_pull_result(
+        "proj-pull-fail",
+        "succeeded",
+        true,
+        std::nullopt,
+        now_epoch_seconds() - 10000
+    );
   }
 
   run_worker_with_intervals_for_seconds(db_path, 3600, 1, 1, 2);
@@ -339,8 +364,10 @@ TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[
   REQUIRE(thread_error == nullptr);
 }
 
-TEST_CASE("ProjectSyncWorker startup handles pull and metrics failures on corrupted repo",
-          "[sync][worker]") {
+TEST_CASE(
+    "ProjectSyncWorker startup handles pull and metrics failures on corrupted repo",
+    "[sync][worker]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   const auto remote_dir = dir / "remote_repo";
@@ -366,16 +393,16 @@ TEST_CASE("ProjectSyncWorker startup handles pull and metrics failures on corrup
   {
     auto db = holder::test::open_db_with_schema(db_path);
     holder::project::ProjectRepo projects(db);
-    create_project(
-        projects, "proj-startup-postpull", local_dir, remote_dir.string(), "plain");
+    create_project(projects, "proj-startup-postpull", local_dir, remote_dir.string(), "plain");
   }
 
   run_worker_with_intervals_for_seconds(
       db_path,
       2000000000, // effectively disable push attempts
-      3600,       // pull interval irrelevant for startup pass
+      3600, // pull interval irrelevant for startup pass
       1,
-      2);
+      2
+  );
 
   const auto state = load_sync_state(db_path, "proj-startup-postpull");
   REQUIRE(state.has_value());
@@ -398,13 +425,21 @@ TEST_CASE("ProjectSyncWorker catches post-pull metrics refresh failure", "[sync]
     auto db = holder::test::open_db_with_schema(db_path);
     holder::project::ProjectRepo projects(db);
     holder::project::ProjectSyncRepo sync(db);
-    create_project(projects, "proj-post-pull-metrics-fail", local_dir, (dir / "missing_remote").string(), "plain");
+    create_project(
+        projects,
+        "proj-post-pull-metrics-fail",
+        local_dir,
+        (dir / "missing_remote").string(),
+        "plain"
+    );
     // Force pull attempt in push cycle.
-    sync.record_pull_result("proj-post-pull-metrics-fail",
-                            "succeeded",
-                            true,
-                            std::nullopt,
-                            now_epoch_seconds() - 10000);
+    sync.record_pull_result(
+        "proj-post-pull-metrics-fail",
+        "succeeded",
+        true,
+        std::nullopt,
+        now_epoch_seconds() - 10000
+    );
   }
 
   SyncWorkerHookGuard guard;
@@ -435,13 +470,21 @@ TEST_CASE("ProjectSyncWorker catches post-push metrics refresh failure", "[sync]
     auto db = holder::test::open_db_with_schema(db_path);
     holder::project::ProjectRepo projects(db);
     holder::project::ProjectSyncRepo sync(db);
-    create_project(projects, "proj-post-push-metrics-fail", local_dir, remote_dir.string(), "plain");
+    create_project(
+        projects,
+        "proj-post-push-metrics-fail",
+        local_dir,
+        remote_dir.string(),
+        "plain"
+    );
     // Skip pull path; focus on push path.
-    sync.record_pull_result("proj-post-push-metrics-fail",
-                            "succeeded",
-                            true,
-                            std::nullopt,
-                            now_epoch_seconds());
+    sync.record_pull_result(
+        "proj-post-push-metrics-fail",
+        "succeeded",
+        true,
+        std::nullopt,
+        now_epoch_seconds()
+    );
   }
 
   SyncWorkerHookGuard guard;

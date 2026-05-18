@@ -1,9 +1,9 @@
 #include "http_test_helpers.h"
 
-#include "model/AiMessage.h"
-#include "model/AiThread.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "model/AiMessage.h"
+#include "model/AiThread.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -31,7 +31,9 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -43,11 +45,15 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   card.updated_at = 10;
   card_store.create(card, "search term");
 
-  const auto cards = http_json_request(bound.bind, bound.port, token,
-                                       boost::beast::http::verb::get,
-                                       "/search/cards?project_id=proj-1&q=search",
-                                       nlohmann::json::object(),
-                                       boost::beast::http::status::ok);
+  const auto cards = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/cards?project_id=proj-1&q=search",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(cards["ok"] == true);
   REQUIRE(cards["data"].is_array());
   REQUIRE(cards["data"].size() >= 1);
@@ -77,11 +83,15 @@ TEST_CASE("HTTP search endpoints return results", "[http]") {
   holder::ai::AiMessageRepo msg_repo(db, &fts);
   msg_repo.append(msg);
 
-  const auto messages = http_json_request(bound.bind, bound.port, token,
-                                          boost::beast::http::verb::get,
-                                          "/search/ai?project_id=proj-1&q=search",
-                                          nlohmann::json::object(),
-                                          boost::beast::http::status::ok);
+  const auto messages = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/ai?project_id=proj-1&q=search",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(messages["ok"] == true);
   REQUIRE(messages["data"].is_array());
   REQUIRE(messages["data"].size() >= 1);
@@ -115,24 +125,34 @@ TEST_CASE("HTTP search endpoints reject missing params", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto missing_project = http_json_request(bound.bind, bound.port, token,
-                                                 boost::beast::http::verb::get,
-                                                 "/search/cards?q=term",
-                                                 nlohmann::json::object(),
-                                                 boost::beast::http::status::bad_request);
+  const auto missing_project = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/cards?q=term",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_project["ok"] == false);
   REQUIRE(missing_project["error"]["code"] == "bad_request");
   REQUIRE(missing_project["error"]["message"].is_string());
 
-  const auto missing_q = http_json_request(bound.bind, bound.port, token,
-                                           boost::beast::http::verb::get,
-                                           "/search/ai?project_id=proj-1",
-                                           nlohmann::json::object(),
-                                           boost::beast::http::status::bad_request);
+  const auto missing_q = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/ai?project_id=proj-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_q["ok"] == false);
   REQUIRE(missing_q["error"]["code"] == "bad_request");
   REQUIRE(missing_q["error"]["message"].is_string());
@@ -160,25 +180,31 @@ TEST_CASE("HTTP search endpoints reject bad params", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto bad_limit = http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           boost::beast::http::verb::get,
-                                           "/search/cards?project_id=proj-1&q=test&limit=abc",
-                                           nlohmann::json::object(),
-                                           boost::beast::http::status::bad_request);
+  const auto bad_limit = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/cards?project_id=proj-1&q=test&limit=abc",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(bad_limit["ok"] == false);
 
-  const auto bad_offset = http_json_request(bound.bind,
-                                            bound.port,
-                                            token,
-                                            boost::beast::http::verb::get,
-                                            "/search/ai?project_id=proj-1&q=test&offset=oops",
-                                            nlohmann::json::object(),
-                                            boost::beast::http::status::bad_request);
+  const auto bad_offset = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/ai?project_id=proj-1&q=test&offset=oops",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(bad_offset["ok"] == false);
 
   std::raise(SIGTERM);

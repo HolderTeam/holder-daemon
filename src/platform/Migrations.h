@@ -7,12 +7,12 @@
 namespace holder::platform {
 
 class Migrations {
-public:
+ public:
   // Apply schema.sql if DB is new/empty (v0.1).
   static void ensure_schema(Db& db, const std::filesystem::path& schema_sql_path);
   static void ensure_schema_version(Db& db, int expected_version);
 
-private:
+ private:
   static bool has_any_tables(Db& db);
   static std::string read_file(const std::filesystem::path& p);
 };

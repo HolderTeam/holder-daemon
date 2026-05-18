@@ -19,10 +19,12 @@ struct RunEventStream {
   long long updated_at = 0;
 };
 
-void append_run_event(const std::string& run_id,
-                      std::string name,
-                      nlohmann::json data,
-                      bool finished);
+void append_run_event(
+    const std::string& run_id,
+    std::string name,
+    nlohmann::json data,
+    bool finished
+);
 std::optional<RunEventStream> get_run_event_stream(const std::string& run_id);
 
 } // namespace holder::api::support

@@ -12,8 +12,10 @@ std::string slugify(const std::string& input);
 
 std::filesystem::path default_projects_root();
 
-std::string unique_project_root(const std::filesystem::path& base_root,
-                                const std::string& slug,
-                                const std::vector<holder::model::Project>& existing);
+std::string unique_project_root(
+    const std::filesystem::path& base_root,
+    const std::string& slug,
+    const std::vector<holder::model::Project>& existing
+);
 
 } // namespace holder::core

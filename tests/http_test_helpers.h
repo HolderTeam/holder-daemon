@@ -7,12 +7,12 @@
 #endif
 
 #include "api/HttpServer.h"
-#include "platform/Signal.h"
+#include "card/CardStore.h"
 #include "git/GitRepo.h"
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
-#include "card/CardStore.h"
 #include "platform/Db.h"
+#include "platform/Signal.h"
 #include "project/ProjectRepo.h"
 
 #include <boost/asio.hpp>
@@ -29,8 +29,8 @@
 #include <fstream>
 #include <optional>
 #include <string>
-#include <thread>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #ifndef _WIN32
@@ -54,7 +54,8 @@ inline std::filesystem::path make_temp_dir() {
 #else
   for (int attempt = 0; attempt < 64; ++attempt) {
     const auto suffix = std::to_string(
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+    );
     auto dir = base / ("holder_http_test_" + suffix);
     std::error_code ec;
     if (std::filesystem::create_directory(dir, ec)) {
@@ -68,9 +69,11 @@ inline std::filesystem::path make_temp_dir() {
 #endif
 }
 
-inline nlohmann::json get_health(const std::string& bind,
-                                 unsigned short port,
-                                 const std::string& token) {
+inline nlohmann::json get_health(
+    const std::string& bind,
+    unsigned short port,
+    const std::string& token
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -101,9 +104,11 @@ inline nlohmann::json get_health(const std::string& bind,
   return nlohmann::json::parse(res.body());
 }
 
-inline bool wait_for_http_listener(const std::string& bind,
-                                   unsigned short port,
-                                   std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+inline bool wait_for_http_listener(
+    const std::string& bind,
+    unsigned short port,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)
+) {
   using tcp = boost::asio::ip::tcp;
 
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -127,11 +132,12 @@ inline bool wait_for_http_listener(const std::string& bind,
   return false;
 }
 
-inline bool wait_for_http_health_ready(const std::string& bind,
-                                       unsigned short port,
-                                       const std::string& token,
-                                       std::chrono::milliseconds timeout =
-                                           std::chrono::seconds(2)) {
+inline bool wait_for_http_health_ready(
+    const std::string& bind,
+    unsigned short port,
+    const std::string& token,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -184,9 +190,11 @@ inline holder::platform::Db open_db_with_schema(const std::filesystem::path& db_
   return db;
 }
 
-inline void create_project(holder::platform::Db& db,
-                           const std::string& project_id,
-                           const std::string& root_path = "/tmp/project") {
+inline void create_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& root_path = "/tmp/project"
+) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
@@ -199,13 +207,15 @@ inline void create_project(holder::platform::Db& db,
   repo.create(project);
 }
 
-inline nlohmann::json http_json_request(const std::string& bind,
-                                        unsigned short port,
-                                        const std::string& token,
-                                        boost::beast::http::verb method,
-                                        const std::string& target,
-                                        const nlohmann::json& body,
-                                        boost::beast::http::status expected) {
+inline nlohmann::json http_json_request(
+    const std::string& bind,
+    unsigned short port,
+    const std::string& token,
+    boost::beast::http::verb method,
+    const std::string& target,
+    const nlohmann::json& body,
+    boost::beast::http::status expected
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -251,7 +261,8 @@ struct HttpResult {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value) : key_(key) {
+  EnvGuard(const char* key, std::string value)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current) {
       old_ = current;
@@ -288,15 +299,15 @@ class EnvGuard {
   std::optional<std::string> old_;
 };
 
-inline void ensure_uuid_seeded() {
-  static EnvGuard guard("HOLDER_UUID_SEED", "1337");
-}
+inline void ensure_uuid_seeded() { static EnvGuard guard("HOLDER_UUID_SEED", "1337"); }
 
-inline HttpResult http_request_raw(const std::string& bind,
-                                   unsigned short port,
-                                   const std::string& token,
-                                   boost::beast::http::verb method,
-                                   const std::string& target) {
+inline HttpResult http_request_raw(
+    const std::string& bind,
+    unsigned short port,
+    const std::string& token,
+    boost::beast::http::verb method,
+    const std::string& target
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 

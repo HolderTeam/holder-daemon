@@ -8,7 +8,7 @@
 namespace holder::core {
 
 class LockFile {
-public:
+ public:
   explicit LockFile(std::filesystem::path path);
   ~LockFile();
 
@@ -24,7 +24,7 @@ public:
   void release();
   bool is_locked() const { return locked_; }
 
-private:
+ private:
   void ensure_lock();
 
   std::filesystem::path path_;

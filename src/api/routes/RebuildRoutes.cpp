@@ -14,11 +14,13 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-bool handle_rebuild_routes(const std::string& path,
-                           const http::request<http::string_body>& req,
-                           http::response<http::string_body>& res,
-                           holder::platform::Db& db,
-                           holder::index::FtsIndexer* fts) {
+bool handle_rebuild_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts
+) {
   if (path != "/rebuild" || req.method() != http::verb::post) {
     return false;
   }
@@ -26,7 +28,8 @@ bool handle_rebuild_routes(const std::string& path,
   try {
     const auto body = nlohmann::json::parse(req.body());
     if (!body.contains("project_id")) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
 

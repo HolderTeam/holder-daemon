@@ -40,23 +40,28 @@ holder::model::AiLocalModelConfig read_config(sqlite3_stmt* stmt) {
   const auto deep_model = column_optional_text(stmt, 2);
   out.fast_model = fast_model.has_value()
                        ? std::optional<std::string>(
-                             holder::llm::normalize_local_runner_model_ref(fast_model.value()))
+                             holder::llm::normalize_local_runner_model_ref(fast_model.value())
+                         )
                        : std::nullopt;
   out.strong_model = strong_model.has_value()
                          ? std::optional<std::string>(
-                               holder::llm::normalize_local_runner_model_ref(strong_model.value()))
+                               holder::llm::normalize_local_runner_model_ref(strong_model.value())
+                           )
                          : std::nullopt;
   out.deep_model = deep_model.has_value()
                        ? std::optional<std::string>(
-                             holder::llm::normalize_local_runner_model_ref(deep_model.value()))
+                             holder::llm::normalize_local_runner_model_ref(deep_model.value())
+                         )
                        : std::nullopt;
   out.updated_at = sqlite3_column_int64(stmt, 3);
   return out;
 }
 
-bool has_any_model(const std::optional<std::string>& fast_model,
-                   const std::optional<std::string>& strong_model,
-                   const std::optional<std::string>& deep_model) {
+bool has_any_model(
+    const std::optional<std::string>& fast_model,
+    const std::optional<std::string>& strong_model,
+    const std::optional<std::string>& deep_model
+) {
   return (fast_model.has_value() && !fast_model->empty()) ||
          (strong_model.has_value() && !strong_model->empty()) ||
          (deep_model.has_value() && !deep_model->empty());
@@ -64,12 +69,12 @@ bool has_any_model(const std::optional<std::string>& fast_model,
 
 } // namespace
 
-AiLocalModelConfigRepo::AiLocalModelConfigRepo(holder::platform::Db& db) : db_(db) {}
+AiLocalModelConfigRepo::AiLocalModelConfigRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 std::optional<holder::model::AiLocalModelConfig> AiLocalModelConfigRepo::get() const {
-  static constexpr const char* SQL =
-      "SELECT fast_model, strong_model, deep_model, updated_at "
-      "FROM ai_local_model_config WHERE key = 'global';";
+  static constexpr const char* SQL = "SELECT fast_model, strong_model, deep_model, updated_at "
+                                     "FROM ai_local_model_config WHERE key = 'global';";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -89,10 +94,12 @@ std::optional<holder::model::AiLocalModelConfig> AiLocalModelConfigRepo::get() c
   return std::nullopt;
 }
 
-void AiLocalModelConfigRepo::set(const std::optional<std::string>& fast_model,
-                                 const std::optional<std::string>& strong_model,
-                                 const std::optional<std::string>& deep_model,
-                                 long long updated_at) {
+void AiLocalModelConfigRepo::set(
+    const std::optional<std::string>& fast_model,
+    const std::optional<std::string>& strong_model,
+    const std::optional<std::string>& deep_model,
+    long long updated_at
+) {
   if (!has_any_model(fast_model, strong_model, deep_model)) {
     clear();
     return;
@@ -100,15 +107,19 @@ void AiLocalModelConfigRepo::set(const std::optional<std::string>& fast_model,
 
   const auto normalized_fast_model =
       fast_model.has_value() ? std::optional<std::string>(
-                                   holder::llm::normalize_local_runner_model_ref(fast_model.value()))
+                                   holder::llm::normalize_local_runner_model_ref(fast_model.value())
+                               )
                              : std::nullopt;
   const auto normalized_strong_model =
-      strong_model.has_value() ? std::optional<std::string>(
-                                     holder::llm::normalize_local_runner_model_ref(strong_model.value()))
-                               : std::nullopt;
+      strong_model.has_value()
+          ? std::optional<std::string>(
+                holder::llm::normalize_local_runner_model_ref(strong_model.value())
+            )
+          : std::nullopt;
   const auto normalized_deep_model =
       deep_model.has_value() ? std::optional<std::string>(
-                                   holder::llm::normalize_local_runner_model_ref(deep_model.value()))
+                                   holder::llm::normalize_local_runner_model_ref(deep_model.value())
+                               )
                              : std::nullopt;
 
   static constexpr const char* SQL =

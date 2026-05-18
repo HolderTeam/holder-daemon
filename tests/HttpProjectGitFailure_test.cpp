@@ -10,7 +10,7 @@
 namespace {
 
 class FailingGitOps final : public holder::git::GitOps {
-public:
+ public:
   std::filesystem::path repo_dir_;
   bool fail_set_remote = false;
   bool fail_remove_remote = false;
@@ -31,10 +31,19 @@ public:
   }
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override {
-    return {.status = holder::git::RemoteProbeStatus::Reachable, .remote_has_head = true, .error_message = {}};
+    return {
+        .status = holder::git::RemoteProbeStatus::Reachable,
+        .remote_has_head = true,
+        .error_message = {}
+    };
   }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
-    return {.status = holder::git::PushStatus::Pushed, .ahead_count = 0, .behind_count = 0, .error_message = {}};
+    return {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = {}
+    };
   }
   std::filesystem::path repo_dir() const override { return repo_dir_; }
 };
@@ -69,21 +78,22 @@ TEST_CASE("Project patch propagates git remove_remote failure", "[git][http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json patch_body = {
-      {"git_remote_url", nullptr},
-      {"updated_at", 2}
-  };
+  nlohmann::json patch_body = {{"git_remote_url", nullptr}, {"updated_at", 2}};
 
-  const auto patch = holder::test::http_json_request(bound.bind,
-                                                     bound.port,
-                                                     token,
-                                                     boost::beast::http::verb::patch,
-                                                     "/projects/proj-1",
-                                                     patch_body,
-                                                     boost::beast::http::status::bad_request);
+  const auto patch = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/projects/proj-1",
+      patch_body,
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(patch["ok"] == false);
 
   const auto fetched = repo.get("proj-1");
@@ -121,21 +131,22 @@ TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json patch_body = {
-      {"git_remote_url", "git@example.com:repo.git"},
-      {"updated_at", 2}
-  };
+  nlohmann::json patch_body = {{"git_remote_url", "git@example.com:repo.git"}, {"updated_at", 2}};
 
-  const auto patch = holder::test::http_json_request(bound.bind,
-                                                     bound.port,
-                                                     token,
-                                                     boost::beast::http::verb::patch,
-                                                     "/projects/proj-1",
-                                                     patch_body,
-                                                     boost::beast::http::status::bad_request);
+  const auto patch = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/projects/proj-1",
+      patch_body,
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(patch["ok"] == false);
 
   const auto fetched = repo.get("proj-1");
@@ -170,35 +181,43 @@ TEST_CASE("Global recovery import keeps success when git remote setup fails", "[
     }
 
     holder::core::SignalHandler signals;
-    std::thread server_thread([&export_server, &signals]() { export_server.run(signals); });
+    std::thread server_thread([&export_server, &signals]() {
+      export_server.run(signals);
+    });
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    holder::test::http_json_request(bound.bind,
-                                    bound.port,
-                                    token,
-                                    boost::beast::http::verb::post,
-                                    "/projects",
-                                    {{"project_id", "proj-1"},
-                                     {"name", "Project"},
-                                     {"git_remote_url", "https://example.com/recovered.git"}},
-                                    boost::beast::http::status::created);
+    holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/projects",
+        {{"project_id", "proj-1"},
+         {"name", "Project"},
+         {"git_remote_url", "https://example.com/recovered.git"}},
+        boost::beast::http::status::created
+    );
 
-    const auto exported = holder::test::http_json_request(bound.bind,
-                                                          bound.port,
-                                                          token,
-                                                          boost::beast::http::verb::post,
-                                                          "/projects/proj-1/recovery-token/export",
-                                                          {{"pin", "1234"}},
-                                                          boost::beast::http::status::ok);
+    const auto exported = holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/projects/proj-1/recovery-token/export",
+        {{"pin", "1234"}},
+        boost::beast::http::status::ok
+    );
     const std::string recovery_token = exported["data"]["recovery_token"].get<std::string>();
 
-    holder::test::http_json_request(bound.bind,
-                                    bound.port,
-                                    token,
-                                    boost::beast::http::verb::delete_,
-                                    "/projects/proj-1",
-                                    nlohmann::json::object(),
-                                    boost::beast::http::status::ok);
+    holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::delete_,
+        "/projects/proj-1",
+        nlohmann::json::object(),
+        boost::beast::http::status::ok
+    );
 
     std::raise(SIGTERM);
     server_thread.join();
@@ -215,16 +234,20 @@ TEST_CASE("Global recovery import keeps success when git remote setup fails", "[
     }
 
     holder::core::SignalHandler import_signals;
-    std::thread import_thread([&import_server, &import_signals]() { import_server.run(import_signals); });
+    std::thread import_thread([&import_server, &import_signals]() {
+      import_server.run(import_signals);
+    });
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    const auto imported = holder::test::http_json_request(import_bound.bind,
-                                                          import_bound.port,
-                                                          token,
-                                                          boost::beast::http::verb::post,
-                                                          "/recovery-token/import",
-                                                          {{"pin", "1234"}, {"recovery_token", recovery_token}},
-                                                          boost::beast::http::status::created);
+    const auto imported = holder::test::http_json_request(
+        import_bound.bind,
+        import_bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/recovery-token/import",
+        {{"pin", "1234"}, {"recovery_token", recovery_token}},
+        boost::beast::http::status::created
+    );
     REQUIRE(imported["ok"] == true);
     REQUIRE(imported["data"]["project_id"] == "proj-1");
     REQUIRE(imported["data"]["project_created"] == true);

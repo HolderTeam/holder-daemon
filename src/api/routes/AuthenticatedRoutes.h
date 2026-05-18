@@ -1,10 +1,10 @@
 #pragma once
 
 #include "ai/NudgeService.h"
+#include "card/CardStore.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "llm/RunnerRegistry.h"
-#include "card/CardStore.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
 
@@ -33,6 +33,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4);
+    const std::function<std::string()>& uuid_v4
+);
 
 } // namespace holder::api::routes

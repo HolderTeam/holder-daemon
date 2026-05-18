@@ -4,21 +4,21 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "ai/AiMessagePaths.h"
 #include "ai/AiMessageFrontMatter.h"
+#include "ai/AiMessagePaths.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
-#include "platform/Fs.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "index/FtsIndexer.h"
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
 #include "model/Card.h"
 #include "model/Project.h"
-#include "ai/AiMessageRepo.h"
-#include "ai/AiThreadRepo.h"
-#include "card/CardRepo.h"
-#include "card/CardStore.h"
 #include "platform/Db.h"
+#include "platform/Fs.h"
 #include "project/ProjectRepo.h"
 #include "project/Rebuilder.h"
 
@@ -34,7 +34,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_fs_adapter_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -48,9 +49,11 @@ void apply_schema(holder::platform::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::platform::Db& db,
-                    const std::string& project_id,
-                    const std::string& root_path) {
+void create_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& root_path
+) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
@@ -63,9 +66,11 @@ void create_project(holder::platform::Db& db,
   repo.create(project);
 }
 
-std::optional<std::string> select_text_optional(holder::platform::Db& db,
-                                                const std::string& sql,
-                                                const std::string& key) {
+std::optional<std::string> select_text_optional(
+    holder::platform::Db& db,
+    const std::string& sql,
+    const std::string& key
+) {
   sqlite3_stmt* stmt = nullptr;
   REQUIRE(sqlite3_prepare_v2(db.handle(), sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK);
   REQUIRE(sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK);
@@ -79,9 +84,7 @@ std::optional<std::string> select_text_optional(holder::platform::Db& db,
   return out;
 }
 
-long long select_int64(holder::platform::Db& db,
-                       const std::string& sql,
-                       const std::string& key) {
+long long select_int64(holder::platform::Db& db, const std::string& sql, const std::string& key) {
   sqlite3_stmt* stmt = nullptr;
   REQUIRE(sqlite3_prepare_v2(db.handle(), sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK);
   REQUIRE(sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK);
@@ -107,22 +110,17 @@ struct FailingFs final : holder::core::Fs {
   std::optional<std::filesystem::path> fail_rename_from;
   std::optional<std::filesystem::path> fail_read_path;
 
-  bool exists(const std::filesystem::path& path) const override {
-    return real.exists(path);
-  }
+  bool exists(const std::filesystem::path& path) const override { return real.exists(path); }
   void create_directories(const std::filesystem::path& path) const override {
     real.create_directories(path);
   }
-  void rename(const std::filesystem::path& from,
-              const std::filesystem::path& to) const override {
+  void rename(const std::filesystem::path& from, const std::filesystem::path& to) const override {
     if (fail_rename_from.has_value() && from == fail_rename_from.value()) {
       throw std::runtime_error("rename failed");
     }
     real.rename(from, to);
   }
-  void remove(const std::filesystem::path& path) const override {
-    real.remove(path);
-  }
+  void remove(const std::filesystem::path& path) const override { real.remove(path); }
   long long last_write_time_seconds(const std::filesystem::path& path) const override {
     return real.last_write_time_seconds(path);
   }
@@ -132,8 +130,7 @@ struct FailingFs final : holder::core::Fs {
     }
     return real.read_file(path);
   }
-  void write_file(const std::filesystem::path& path,
-                  const std::string& content) const override {
+  void write_file(const std::filesystem::path& path, const std::string& content) const override {
     real.write_file(path, content);
   }
 };
@@ -364,8 +361,10 @@ TEST_CASE("Rebuilder rebuilds cards/messages with defaults, links, trash and FTS
   card_link.to_type = "card";
   card_link.kind = "ref";
   card_link.created_at = 0; // rebuilt default path
-  write_file(root / card_b.rel_path,
-             holder::core::render_card_front_matter(card_b, {card_link}) + "linked body\n");
+  write_file(
+      root / card_b.rel_path,
+      holder::core::render_card_front_matter(card_b, {card_link}) + "linked body\n"
+  );
 
   // Trash card without front matter -> deleted_at gets mtime.
   const auto card_t_rel = holder::core::card_trash_rel_path("dead9999");
@@ -388,8 +387,10 @@ TEST_CASE("Rebuilder rebuilds cards/messages with defaults, links, trash and FTS
   msg_link.to_type = "card";
   msg_link.kind = "ref";
   msg_link.created_at = 0; // rebuilt default path
-  write_file(root / holder::core::ai_message_rel_path(msg_b.message_id),
-             holder::core::render_ai_message_front_matter(msg_b, project_id, {msg_link}) + "answer\n");
+  write_file(
+      root / holder::core::ai_message_rel_path(msg_b.message_id),
+      holder::core::render_ai_message_front_matter(msg_b, project_id, {msg_link}) + "answer\n"
+  );
 
   // Trash message without front matter -> deleted_at gets mtime.
   const auto msg_t_rel = holder::core::ai_message_trash_rel_path("tras9999");
@@ -412,36 +413,32 @@ TEST_CASE("Rebuilder rebuilds cards/messages with defaults, links, trash and FTS
   REQUIRE(stats.links == 2);
 
   // Derived title + created/updated fallback from mtime.
-  const auto title = select_text_optional(db,
-      "SELECT title FROM cards WHERE card_id = ?;",
-      "abcd1234");
+  const auto title =
+      select_text_optional(db, "SELECT title FROM cards WHERE card_id = ?;", "abcd1234");
   REQUIRE(title.has_value());
   REQUIRE(title.value() == "Heading Title");
-  const auto created = select_int64(db,
-      "SELECT created_at FROM cards WHERE card_id = ?;",
-      "abcd1234");
-  const auto updated = select_int64(db,
-      "SELECT updated_at FROM cards WHERE card_id = ?;",
-      "abcd1234");
+  const auto created =
+      select_int64(db, "SELECT created_at FROM cards WHERE card_id = ?;", "abcd1234");
+  const auto updated =
+      select_int64(db, "SELECT updated_at FROM cards WHERE card_id = ?;", "abcd1234");
   REQUIRE(created > 0);
   REQUIRE(updated == created);
 
   // Trash card was marked deleted.
-  const auto card_deleted = select_int64(db,
-      "SELECT deleted_at FROM cards WHERE card_id = ?;",
-      "dead9999");
+  const auto card_deleted =
+      select_int64(db, "SELECT deleted_at FROM cards WHERE card_id = ?;", "dead9999");
   REQUIRE(card_deleted > 0);
 
   // Message defaults were applied for no-front-matter file.
-  const auto role = select_text_optional(db,
-      "SELECT role FROM ai_messages WHERE message_id = ?;",
-      "mesa1234");
-  const auto source = select_text_optional(db,
-      "SELECT source FROM ai_messages WHERE message_id = ?;",
-      "mesa1234");
-  const auto thread = select_text_optional(db,
+  const auto role =
+      select_text_optional(db, "SELECT role FROM ai_messages WHERE message_id = ?;", "mesa1234");
+  const auto source =
+      select_text_optional(db, "SELECT source FROM ai_messages WHERE message_id = ?;", "mesa1234");
+  const auto thread = select_text_optional(
+      db,
       "SELECT thread_id FROM ai_messages WHERE message_id = ?;",
-      "mesa1234");
+      "mesa1234"
+  );
   REQUIRE(role.has_value());
   REQUIRE(role.value() == "assistant");
   REQUIRE(source.has_value());
@@ -495,9 +492,8 @@ TEST_CASE("Rebuilder derive_title falls back when heading is blank", "[rebuild]"
   const auto stats = rebuilder.rebuild_project(project);
   REQUIRE(stats.cards == 1);
 
-  const auto title = select_text_optional(db,
-      "SELECT title FROM cards WHERE card_id = ?;",
-      "abcd1234");
+  const auto title =
+      select_text_optional(db, "SELECT title FROM cards WHERE card_id = ?;", "abcd1234");
   REQUIRE(title.has_value());
   REQUIRE(title.value() == "abcd1234");
 }
@@ -529,9 +525,8 @@ TEST_CASE("Rebuilder derive_title falls back when first line is whitespace only"
   const auto stats = rebuilder.rebuild_project(project);
   REQUIRE(stats.cards == 1);
 
-  const auto title = select_text_optional(db,
-      "SELECT title FROM cards WHERE card_id = ?;",
-      "abcd1234");
+  const auto title =
+      select_text_optional(db, "SELECT title FROM cards WHERE card_id = ?;", "abcd1234");
   REQUIRE(title.has_value());
   REQUIRE(title.value() == "abcd1234");
 }
@@ -579,8 +574,10 @@ TEST_CASE("Rebuilder rejects ai message front matter with missing message_id", "
   write_file(root / card_rel, "# ok\n");
 
   const auto msg_rel = holder::core::ai_message_rel_path("mesa1234");
-  write_file(root / msg_rel,
-             "---\nthread_id: thread-1\nrole: assistant\nsource: manual\ncreated_at: 1\n---\nbody\n");
+  write_file(
+      root / msg_rel,
+      "---\nthread_id: thread-1\nrole: assistant\nsource: manual\ncreated_at: 1\n---\nbody\n"
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::store::Rebuilder rebuilder(db, &fts);
@@ -673,8 +670,10 @@ TEST_CASE("Rebuilder rejects ai message path mismatch with message_id", "[rebuil
   msg.source = "manual";
   msg.created_at = 1;
   const auto wrong_rel = holder::core::ai_message_rel_path("mesa1234");
-  write_file(root / wrong_rel,
-             holder::core::render_ai_message_front_matter(msg, project_id, {}) + "body\n");
+  write_file(
+      root / wrong_rel,
+      holder::core::render_ai_message_front_matter(msg, project_id, {}) + "body\n"
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::store::Rebuilder rebuilder(db, &fts);
@@ -748,8 +747,10 @@ TEST_CASE("Rebuilder tolerates invalid trashed ai messages when configured", "[r
   good_msg.role = "assistant";
   good_msg.source = "manual";
   good_msg.created_at = 1;
-  write_file(root / holder::core::ai_message_rel_path(good_msg.message_id),
-             holder::core::render_ai_message_front_matter(good_msg, project_id, {}) + "good body\n");
+  write_file(
+      root / holder::core::ai_message_rel_path(good_msg.message_id),
+      holder::core::render_ai_message_front_matter(good_msg, project_id, {}) + "good body\n"
+  );
 
   const auto bad_trash_rel = holder::core::ai_message_trash_rel_path("tras9999");
   write_file(root / bad_trash_rel, "---\nnot: [valid\n---\nbad body\n");

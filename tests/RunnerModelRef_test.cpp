@@ -18,19 +18,27 @@ TEST_CASE("RunnerModelRef helpers normalize and resolve refs", "[llm]") {
   }
 
   SECTION("local_model_name_from_ref returns raw value for plain model names") {
-    REQUIRE(holder::llm::local_model_name_from_ref(std::optional<std::string>("m1"), "auto-local") ==
-            std::optional<std::string>("m1"));
+    REQUIRE(
+        holder::llm::local_model_name_from_ref(std::optional<std::string>("m1"), "auto-local") ==
+        std::optional<std::string>("m1")
+    );
   }
 
-  SECTION("resolve_configured_runner_model returns nullopt for invalid normalized refs and missing clients") {
+  SECTION(
+      "resolve_configured_runner_model returns nullopt for invalid normalized refs and missing clients"
+  ) {
     holder::llm::RunnerRegistry empty_registry(nullptr, nullptr);
 
-    REQUIRE_FALSE(
-        holder::llm::resolve_configured_runner_model(std::optional<std::string>("manual-a::"), &empty_registry)
-            .has_value());
-    REQUIRE_FALSE(
-        holder::llm::resolve_configured_runner_model(std::optional<std::string>("manual-a::m1"), &empty_registry)
-            .has_value());
+    REQUIRE_FALSE(holder::llm::resolve_configured_runner_model(
+                      std::optional<std::string>("manual-a::"),
+                      &empty_registry
+    )
+                      .has_value());
+    REQUIRE_FALSE(holder::llm::resolve_configured_runner_model(
+                      std::optional<std::string>("manual-a::m1"),
+                      &empty_registry
+    )
+                      .has_value());
   }
 
   SECTION("resolve_configured_runner_model resolves auto-local plain refs") {

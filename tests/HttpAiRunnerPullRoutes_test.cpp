@@ -1,8 +1,8 @@
-#include "http_test_helpers.h"
-#include "api/routes/ai/runner/AiRunnerPullRoutes.h"
 #include "ai/AiRunnerRepo.h"
-#include "llm/LocalRunnerClient.h"
+#include "api/routes/ai/runner/AiRunnerPullRoutes.h"
+#include "http_test_helpers.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -16,16 +16,24 @@ holder::api::routes::RunnerRouteDispatchResult call_pull_route(
     http::verb method,
     const std::string& body,
     holder::llm::RunnerRegistry* runner_registry,
-    http::response<http::string_body>& res) {
+    http::response<http::string_body>& res
+) {
   http::request<http::string_body> req{method, path, 11};
   req.set(http::field::host, "127.0.0.1");
   if (!body.empty()) {
     req.set(http::field::content_type, "application/json");
     req.body() = body;
   }
-  const auto param_get = [](const std::string&) -> std::string { return {}; };
+  const auto param_get = [](const std::string&) -> std::string {
+    return {};
+  };
   return holder::api::routes::ai::runner::handle_ai_runner_pull_routes(
-      path, req, res, runner_registry, param_get);
+      path,
+      req,
+      res,
+      runner_registry,
+      param_get
+  );
 }
 
 } // namespace
@@ -33,7 +41,12 @@ holder::api::routes::RunnerRouteDispatchResult call_pull_route(
 TEST_CASE("Ai runner pull routes ignore unmatched paths", "[http]") {
   http::response<http::string_body> res;
   auto out = call_pull_route(
-      "/ai/runner/unknown", http::verb::get, "", static_cast<holder::llm::RunnerRegistry*>(nullptr), res);
+      "/ai/runner/unknown",
+      http::verb::get,
+      "",
+      static_cast<holder::llm::RunnerRegistry*>(nullptr),
+      res
+  );
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -44,8 +57,13 @@ TEST_CASE("Ai runner pull routes POST returns unavailable when runner not ready"
   holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
-  auto out =
-      call_pull_route("/ai/runner/pull", http::verb::post, R"({"model":"fake-echo"})", &runner_registry, res);
+  auto out = call_pull_route(
+      "/ai/runner/pull",
+      http::verb::post,
+      R"({"model":"fake-echo"})",
+      &runner_registry,
+      res
+  );
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
   REQUIRE(res.result() == http::status::service_unavailable);
@@ -61,7 +79,8 @@ TEST_CASE("Ai runner pull routes POST validates request body", "[http]") {
 
   SECTION("missing model") {
     http::response<http::string_body> res;
-    auto out = call_pull_route("/ai/runner/pull", http::verb::post, R"({"x":"y"})", &runner_registry, res);
+    auto out =
+        call_pull_route("/ai/runner/pull", http::verb::post, R"({"x":"y"})", &runner_registry, res);
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
     REQUIRE(res.body().find("Missing model.") != std::string::npos);
@@ -84,7 +103,13 @@ TEST_CASE("Ai runner pull routes POST returns error when pull start fails", "[ht
   holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
-  auto out = call_pull_route("/ai/runner/pull", http::verb::post, R"({"model":""})", &runner_registry, res);
+  auto out = call_pull_route(
+      "/ai/runner/pull",
+      http::verb::post,
+      R"({"model":""})",
+      &runner_registry,
+      res
+  );
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::bad_request);
   REQUIRE(res.body().find("missing model") != std::string::npos);
@@ -98,8 +123,13 @@ TEST_CASE("Ai runner pull routes POST returns job on success", "[http]") {
   holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
   http::response<http::string_body> res;
 
-  auto out =
-      call_pull_route("/ai/runner/pull", http::verb::post, R"({"model":"fake-echo"})", &runner_registry, res);
+  auto out = call_pull_route(
+      "/ai/runner/pull",
+      http::verb::post,
+      R"({"model":"fake-echo"})",
+      &runner_registry,
+      res
+  );
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::ok);
 
@@ -129,7 +159,8 @@ TEST_CASE("Ai runner pull routes GET validates job lookup", "[http]") {
 
   SECTION("missing job id") {
     http::response<http::string_body> res;
-    auto out = call_pull_route("/ai/runner/pull/missing-job", http::verb::get, "", &runner_registry, res);
+    auto out =
+        call_pull_route("/ai/runner/pull/missing-job", http::verb::get, "", &runner_registry, res);
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
     REQUIRE(res.body().find("Pull job not found.") != std::string::npos);
@@ -146,7 +177,12 @@ TEST_CASE("Ai runner pull routes GET returns job payload", "[http]") {
 
   http::response<http::string_body> res;
   auto out = call_pull_route(
-      "/ai/runner/pull/" + started.job_id, http::verb::get, "", &runner_registry, res);
+      "/ai/runner/pull/" + started.job_id,
+      http::verb::get,
+      "",
+      &runner_registry,
+      res
+  );
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::ok);
 
@@ -193,7 +229,10 @@ TEST_CASE("Ai runner pull routes can target a manual runner by runner_id", "[htt
       req,
       res,
       &runner_registry,
-      [](const std::string&) -> std::string { return {}; });
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::ok);
 
@@ -237,7 +276,8 @@ TEST_CASE("Ai runner pull routes prefer param_get runner_id over request body", 
           return "manual-a";
         }
         return {};
-      });
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::ok);
 

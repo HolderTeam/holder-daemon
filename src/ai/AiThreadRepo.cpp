@@ -50,7 +50,8 @@ holder::model::AiThread read_thread(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiThreadRepo::AiThreadRepo(holder::platform::Db& db) : db_(db) {}
+AiThreadRepo::AiThreadRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 void AiThreadRepo::create(const holder::model::AiThread& thread) {
   static constexpr const char* SQL =
@@ -130,9 +131,11 @@ std::vector<holder::model::AiThread> AiThreadRepo::list(const std::string& proje
   return out;
 } // LCOV_EXCL_LINE
 
-void AiThreadRepo::update_title(const std::string& thread_id,
-                                const std::string& title,
-                                long long updated_at) {
+void AiThreadRepo::update_title(
+    const std::string& thread_id,
+    const std::string& title,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE ai_threads SET title = ?, updated_at = ? WHERE thread_id = ?;";
 
@@ -152,10 +155,11 @@ void AiThreadRepo::update_title(const std::string& thread_id,
   }
 }
 
-void AiThreadRepo::update_card_id(const std::string& thread_id,
-                                  const std::optional<std::string>& card_id) {
-  static constexpr const char* SQL =
-      "UPDATE ai_threads SET card_id = ? WHERE thread_id = ?;";
+void AiThreadRepo::update_card_id(
+    const std::string& thread_id,
+    const std::optional<std::string>& card_id
+) {
+  static constexpr const char* SQL = "UPDATE ai_threads SET card_id = ? WHERE thread_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -173,8 +177,7 @@ void AiThreadRepo::update_card_id(const std::string& thread_id,
 }
 
 void AiThreadRepo::touch_updated(const std::string& thread_id, long long updated_at) {
-  static constexpr const char* SQL =
-      "UPDATE ai_threads SET updated_at = ? WHERE thread_id = ?;";
+  static constexpr const char* SQL = "UPDATE ai_threads SET updated_at = ? WHERE thread_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

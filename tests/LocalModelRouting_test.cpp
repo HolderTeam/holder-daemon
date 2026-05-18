@@ -17,7 +17,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_local_model_routing_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -25,7 +26,8 @@ std::filesystem::path make_temp_dir() {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, const std::string& value) : key_(key) {
+  EnvGuard(const char* key, const std::string& value)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current != nullptr) {
       had_old_ = true;
@@ -50,7 +52,10 @@ class EnvGuard {
 
 } // namespace
 
-TEST_CASE("LocalModelRouting normalize helpers cover aliases and unknowns", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting normalize helpers cover aliases and unknowns",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   REQUIRE(trim_ascii("  hi\t") == "hi");
@@ -73,7 +78,10 @@ TEST_CASE("LocalModelRouting caste comparisons", "[local_model_routing]") {
   REQUIRE_FALSE(caste_meets_or_exceeds("mini", "mystery"));
 }
 
-TEST_CASE("LocalModelRouting load_local_model_meta handles missing and invalid catalog", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting load_local_model_meta handles missing and invalid catalog",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   const auto dir = make_temp_dir();
@@ -104,7 +112,10 @@ TEST_CASE("LocalModelRouting load_local_model_meta handles missing and invalid c
   }
 }
 
-TEST_CASE("LocalModelRouting load_local_model_meta parses local metadata and sizes", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting load_local_model_meta parses local metadata and sizes",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   const auto dir = make_temp_dir();
@@ -141,14 +152,19 @@ TEST_CASE("LocalModelRouting load_local_model_meta parses local metadata and siz
 
   REQUIRE(meta.size() == 4);
   REQUIRE(meta.at("small-router").hardware_tier == "mini");
-  REQUIRE(meta.at("small-router").size_bytes == static_cast<long long>(1.5 * 1024.0 * 1024.0 * 1024.0));
+  REQUIRE(
+      meta.at("small-router").size_bytes == static_cast<long long>(1.5 * 1024.0 * 1024.0 * 1024.0)
+  );
   REQUIRE(meta.at("dev-model").hardware_tier == "developer");
   REQUIRE(meta.at("dev-model").size_bytes == 512LL * 1024LL * 1024LL);
   REQUIRE(meta.at("no-size").size_bytes == 0);
   REQUIRE(meta.at("huge-tb").size_bytes == 1024LL * 1024LL * 1024LL * 1024LL);
 }
 
-TEST_CASE("LocalModelRouting build recommendations sorts by quality then speed", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting build recommendations sorts by quality then speed",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   std::unordered_map<std::string, LocalModelMeta> meta;
@@ -194,7 +210,10 @@ TEST_CASE("LocalModelRouting build recommendations sorts by quality then speed",
   REQUIRE(out[1]["installed"] == true);
 }
 
-TEST_CASE("LocalModelRouting recommendation tie-break uses speed_rank and tag order", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting recommendation tie-break uses speed_rank and tag order",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   std::unordered_map<std::string, LocalModelMeta> meta;
@@ -250,8 +269,10 @@ TEST_CASE("LocalModelRouting recommendation tie-break uses speed_rank and tag or
   REQUIRE(out[4]["tag"] == "speed-unknown-b");
 }
 
-TEST_CASE("LocalModelRouting treats bare tags and :latest as the same installed model",
-          "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting treats bare tags and :latest as the same installed model",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
 
   std::unordered_map<std::string, LocalModelMeta> meta;
@@ -270,7 +291,12 @@ TEST_CASE("LocalModelRouting treats bare tags and :latest as the same installed 
 
   SECTION("installed model has :latest but recommendation is bare tag") {
     const std::vector<holder::llm::LocalModel> installed = {
-        holder::llm::LocalModel{.name = "llama3.2:latest", .digest = "", .size = 10, .modified_at = ""},
+        holder::llm::LocalModel{
+            .name = "llama3.2:latest",
+            .digest = "",
+            .size = 10,
+            .modified_at = ""
+        },
     };
 
     const auto out = build_caste_recommendations(installed, meta, "developer");
@@ -299,7 +325,10 @@ TEST_CASE("LocalModelRouting treats bare tags and :latest as the same installed 
   }
 }
 
-TEST_CASE("LocalModelRouting parse_ranked_models filters and de-duplicates", "[local_model_routing]") {
+TEST_CASE(
+    "LocalModelRouting parse_ranked_models filters and de-duplicates",
+    "[local_model_routing]"
+) {
   using namespace holder::api::support;
   const std::vector<std::string> candidates = {"m1", "m2", "m3"};
 
@@ -308,9 +337,8 @@ TEST_CASE("LocalModelRouting parse_ranked_models filters and de-duplicates", "[l
   REQUIRE(parse_ranked_models(R"(prefix ["m1",] suffix)", candidates).empty());
   REQUIRE(parse_ranked_models(R"({"x":1})", candidates).empty());
 
-  const auto ranked = parse_ranked_models(
-      R"(prefix ["m2","m1","m2","unknown",123] suffix)",
-      candidates);
+  const auto ranked =
+      parse_ranked_models(R"(prefix ["m2","m1","m2","unknown",123] suffix)", candidates);
   REQUIRE(ranked.size() == 2);
   REQUIRE(ranked[0] == "m2");
   REQUIRE(ranked[1] == "m1");

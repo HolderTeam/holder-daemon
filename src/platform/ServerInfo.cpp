@@ -39,7 +39,9 @@ void write_owner_only_file(const std::filesystem::path& path, const std::string&
     if (written <= 0) {
       ::close(fd); // LCOV_EXCL_LINE: requires syscall fault injection.
       std::filesystem::remove(path); // LCOV_EXCL_LINE
-      throw std::runtime_error("Failed to write server info temp file: " + path.string()); // LCOV_EXCL_LINE
+      throw std::runtime_error(
+          "Failed to write server info temp file: " + path.string()
+      ); // LCOV_EXCL_LINE
     }
     cursor += written;
     remaining -= static_cast<std::size_t>(written);
@@ -47,7 +49,9 @@ void write_owner_only_file(const std::filesystem::path& path, const std::string&
 
   if (::close(fd) != 0) {
     std::filesystem::remove(path); // LCOV_EXCL_LINE: requires syscall fault injection.
-    throw std::runtime_error("Failed to close server info temp file: " + path.string()); // LCOV_EXCL_LINE
+    throw std::runtime_error(
+        "Failed to close server info temp file: " + path.string()
+    ); // LCOV_EXCL_LINE
   }
   ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
 #endif
@@ -99,8 +103,9 @@ void write_server_info(const std::filesystem::path& path, const ServerInfo& info
     std::filesystem::remove(path, ec);
     std::filesystem::rename(tmp_path, path, ec);
     if (ec) {
-      throw std::runtime_error("Failed to write server info: " + path.string() +
-                               " (" + ec.message() + ")");
+      throw std::runtime_error(
+          "Failed to write server info: " + path.string() + " (" + ec.message() + ")"
+      );
     }
   }
 }

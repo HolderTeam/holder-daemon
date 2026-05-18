@@ -24,8 +24,9 @@
 namespace {
 
 class EnvGuard {
-public:
-  EnvGuard(const char* key, const std::string& value) : key_(key) {
+ public:
+  EnvGuard(const char* key, const std::string& value)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current != nullptr) {
       had_old_ = true;
@@ -42,7 +43,7 @@ public:
     }
   }
 
-private:
+ private:
   const char* key_;
   bool had_old_ = false;
   std::string old_;
@@ -64,22 +65,28 @@ uint16_t reserve_loopback_port() {
 std::string make_runner_script(const std::string& body) {
   const auto dir = std::filesystem::temp_directory_path() / "holder_runner_test_scripts";
   std::filesystem::create_directories(dir);
-  const auto path = dir / ("runner-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".sh");
+  const auto path = dir /
+                    ("runner-" +
+                     std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                     ".sh");
   std::ofstream out(path);
   out << "#!/usr/bin/env bash\n";
   out << body;
   out.close();
-  std::filesystem::permissions(path,
-                               std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
-                                   std::filesystem::perms::owner_write,
-                               std::filesystem::perm_options::add);
+  std::filesystem::permissions(
+      path,
+      std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
+          std::filesystem::perms::owner_write,
+      std::filesystem::perm_options::add
+  );
   return path.string();
 }
 
 class StubHttpServer {
-public:
+ public:
   StubHttpServer(uint16_t port, std::vector<HttpResponseSpec> responses)
-      : port_(port), responses_(std::move(responses)) {}
+      : port_(port),
+        responses_(std::move(responses)) {}
 
   void start() {
     thread_ = std::thread([this]() {
@@ -119,7 +126,8 @@ public:
           socket.shutdown(tcp::socket::shutdown_both, ec);
         }
       } catch (...) {
-        // Tests assert behaviour through client results; server thread should not crash test process.
+        // Tests assert behaviour through client results; server thread should not crash test
+        // process.
         {
           std::lock_guard<std::mutex> lock(mu_);
           ready_ = true;
@@ -128,7 +136,9 @@ public:
       }
     });
     std::unique_lock<std::mutex> lock(mu_);
-    cv_.wait(lock, [&]() { return ready_; });
+    cv_.wait(lock, [&]() {
+      return ready_;
+    });
   }
 
   ~StubHttpServer() {
@@ -137,7 +147,7 @@ public:
     }
   }
 
-private:
+ private:
   uint16_t port_;
   std::vector<HttpResponseSpec> responses_;
   std::thread thread_;
@@ -176,13 +186,29 @@ TEST_CASE("LocalModelRunner retry and stream_generate fake-mode branches", "[llm
 
   std::string out;
   std::string err;
-  REQUIRE(runner.stream_generate("fake-echo", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE(runner.stream_generate(
+      "fake-echo",
+      "hello",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  ));
   REQUIRE(out == "hello");
   REQUIRE(err.empty());
 
   out.clear();
   err.clear();
-  REQUIRE_FALSE(runner.stream_generate("", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE_FALSE(runner.stream_generate(
+      "",
+      "hello",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  ));
   REQUIRE(out.empty());
   REQUIRE(err == "missing model");
 }
@@ -228,7 +254,10 @@ TEST_CASE("LocalModelRunner stop without process is a no-op", "[llm]") {
   REQUIRE_NOTHROW(runner.stop());
 }
 
-TEST_CASE("LocalModelRunner clear_overrides_for_tests resets status and stream overrides", "[llm]") {
+TEST_CASE(
+    "LocalModelRunner clear_overrides_for_tests resets status and stream overrides",
+    "[llm]"
+) {
   holder::llm::LocalModelRunner runner;
   runner.set_fake_mode(true);
   const auto baseline = runner.retry();
@@ -240,17 +269,16 @@ TEST_CASE("LocalModelRunner clear_overrides_for_tests resets status and stream o
   forced.spawn_attempted = true;
   forced.error = "forced status";
   runner.set_status_override_for_tests(forced);
-  runner.set_stream_generate_override_for_tests(
-      [](const std::string&,
-         const std::string&,
-         const std::string&,
-         const std::function<void(const std::string&)>&,
-         std::string* error) {
-        if (error) {
-          *error = "forced stream";
-        }
-        return false;
-      });
+  runner.set_stream_generate_override_for_tests([](const std::string&,
+                                                   const std::string&,
+                                                   const std::string&,
+                                                   const std::function<void(const std::string&)>&,
+                                                   std::string* error) {
+    if (error) {
+      *error = "forced stream";
+    }
+    return false;
+  });
 
   const auto overridden = runner.status();
   REQUIRE(overridden.available == false);
@@ -258,8 +286,15 @@ TEST_CASE("LocalModelRunner clear_overrides_for_tests resets status and stream o
 
   std::string out;
   std::string err;
-  REQUIRE_FALSE(
-      runner.stream_generate("fake-echo", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE_FALSE(runner.stream_generate(
+      "fake-echo",
+      "hello",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  ));
   REQUIRE(out.empty());
   REQUIRE(err == "forced stream");
 
@@ -271,8 +306,15 @@ TEST_CASE("LocalModelRunner clear_overrides_for_tests resets status and stream o
 
   out.clear();
   err.clear();
-  REQUIRE(
-      runner.stream_generate("fake-echo", "hello", "", [&](const std::string& chunk) { out += chunk; }, &err));
+  REQUIRE(runner.stream_generate(
+      "fake-echo",
+      "hello",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  ));
   REQUIRE(out == "hello");
   REQUIRE(err.empty());
 }
@@ -319,8 +361,12 @@ TEST_CASE("LocalModelRunner retry non-fake reads version and tags from HTTP", "[
       port,
       {
           HttpResponseSpec{200, R"({"version":"test-v1"})"},
-          HttpResponseSpec{200, R"({"models":[{"name":"m1","digest":"d1","size":42,"modified_at":"now"}]})"},
-      });
+          HttpResponseSpec{
+              200,
+              R"({"models":[{"name":"m1","digest":"d1","size":42,"modified_at":"now"}]})"
+          },
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -343,12 +389,15 @@ TEST_CASE("LocalModelRunner stream_generate parses streamed response lines", "[l
   StubHttpServer server(
       port,
       {
-          HttpResponseSpec{200,
-                           "  \n"
-                           "not-json\n"
-                           "{\"response\":\"hi\"}\n"
-                           "{\"response\":\" there\",\"done\":true}\n"},
-      });
+          HttpResponseSpec{
+              200,
+              "  \n"
+              "not-json\n"
+              "{\"response\":\"hi\"}\n"
+              "{\"response\":\" there\",\"done\":true}\n"
+          },
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -360,7 +409,14 @@ TEST_CASE("LocalModelRunner stream_generate parses streamed response lines", "[l
   std::string out;
   std::string err;
   const bool ok = runner.stream_generate(
-      "model-a", "prompt", "", [&](const std::string& chunk) { out += chunk; }, &err);
+      "model-a",
+      "prompt",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  );
   REQUIRE(ok);
   REQUIRE(err.empty());
   REQUIRE(out == "hi there");
@@ -431,9 +487,11 @@ TEST_CASE("LocalModelRunner retry non-fake surfaces HTTP status errors", "[llm]"
   const auto status = runner.retry();
   REQUIRE(status.available == false);
   REQUIRE_FALSE(status.error.empty());
-  REQUIRE((status.error.find("HTTP 500") != std::string::npos ||
-           status.error.find("model runner executable not found") != std::string::npos ||
-           status.error.find("No such file or directory") != std::string::npos));
+  REQUIRE(
+      (status.error.find("HTTP 500") != std::string::npos ||
+       status.error.find("model runner executable not found") != std::string::npos ||
+       status.error.find("No such file or directory") != std::string::npos)
+  );
 }
 
 TEST_CASE("LocalModelRunner retry non-fake handles malformed version JSON", "[llm]") {
@@ -443,7 +501,8 @@ TEST_CASE("LocalModelRunner retry non-fake handles malformed version JSON", "[ll
       {
           HttpResponseSpec{200, "{not-json"},
           HttpResponseSpec{500, R"({"error":"tags-down"})"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -466,10 +525,12 @@ TEST_CASE("LocalModelRunner start_pull non-fake parses stream progress to comple
               200,
               "not-json\n"
               "{\"status\":\"verifying\",\"completed\":1,\"total\":4}\n"
-              "{\"status\":\"success\",\"completed\":4,\"total\":4}\n"},
+              "{\"status\":\"success\",\"completed\":4,\"total\":4}\n"
+          },
           HttpResponseSpec{200, R"({"version":"after-pull"})"},
           HttpResponseSpec{200, R"({"models":[]})"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -573,7 +634,14 @@ TEST_CASE("LocalModelRunner stream_generate returns false on HTTP error status",
   std::string out;
   std::string err;
   const bool ok = runner.stream_generate(
-      "model-http-err", "prompt", "", [&](const std::string& chunk) { out += chunk; }, &err);
+      "model-http-err",
+      "prompt",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  );
   REQUIRE_FALSE(ok);
   REQUIRE(out.empty());
   REQUIRE(err.find("HTTP 500") != std::string::npos);
@@ -589,7 +657,14 @@ TEST_CASE("LocalModelRunner stream_generate returns false on invalid options JSO
   std::string out;
   std::string err;
   const bool ok = runner.stream_generate(
-      "model-opts", "prompt", "{not-json", [&](const std::string& chunk) { out += chunk; }, &err);
+      "model-opts",
+      "prompt",
+      "{not-json",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  );
   REQUIRE_FALSE(ok);
   REQUIRE(out.empty());
   REQUIRE_FALSE(err.empty());
@@ -600,10 +675,13 @@ TEST_CASE("LocalModelRunner stream_generate can succeed without explicit done ma
   StubHttpServer server(
       port,
       {
-          HttpResponseSpec{200,
-                           "{\"response\":\"hello\"}   \n"
-                           "{\"response\":\" world\"}\n"},
-      });
+          HttpResponseSpec{
+              200,
+              "{\"response\":\"hello\"}   \n"
+              "{\"response\":\" world\"}\n"
+          },
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -615,7 +693,14 @@ TEST_CASE("LocalModelRunner stream_generate can succeed without explicit done ma
   std::string out;
   std::string err;
   const bool ok = runner.stream_generate(
-      "model-no-done", "prompt", "", [&](const std::string& chunk) { out += chunk; }, &err);
+      "model-no-done",
+      "prompt",
+      "",
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  );
   REQUIRE(ok);
   REQUIRE(err.empty());
   REQUIRE(out == "hello world");
@@ -627,7 +712,8 @@ TEST_CASE("LocalModelRunner stream_generate accepts valid options JSON", "[llm]"
       port,
       {
           HttpResponseSpec{200, "{\"response\":\"ok\",\"done\":true}\n"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -642,8 +728,11 @@ TEST_CASE("LocalModelRunner stream_generate accepts valid options JSON", "[llm]"
       "model-with-options",
       "prompt",
       R"({"temperature":0.1})",
-      [&](const std::string& chunk) { out += chunk; },
-      &err);
+      [&](const std::string& chunk) {
+        out += chunk;
+      },
+      &err
+  );
   REQUIRE(ok);
   REQUIRE(err.empty());
   REQUIRE(out == "ok");
@@ -679,7 +768,10 @@ TEST_CASE("LocalModelRunner start_pull reuses job when existing status is verify
   REQUIRE(second.job_id == first.job_id);
 }
 
-TEST_CASE("LocalModelRunner retry non-fake reports missing executable and handles repeat attempts", "[llm]") {
+TEST_CASE(
+    "LocalModelRunner retry non-fake reports missing executable and handles repeat attempts",
+    "[llm]"
+) {
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
   EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
   EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", "9");
@@ -705,7 +797,8 @@ TEST_CASE("LocalModelRunner retry non-fake handles malformed tags JSON", "[llm]"
       {
           HttpResponseSpec{200, R"({"version":"v1"})"},
           HttpResponseSpec{200, "{not-json"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -720,13 +813,17 @@ TEST_CASE("LocalModelRunner retry non-fake handles malformed tags JSON", "[llm]"
   REQUIRE_FALSE(status.error.empty());
 }
 
-TEST_CASE("LocalModelRunner retry non-fake surfaces tags transport error when version is OK", "[llm]") {
+TEST_CASE(
+    "LocalModelRunner retry non-fake surfaces tags transport error when version is OK",
+    "[llm]"
+) {
   const uint16_t port = reserve_loopback_port();
   StubHttpServer server(
       port,
       {
           HttpResponseSpec{200, R"({"version":"v1"})"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
@@ -747,7 +844,8 @@ TEST_CASE("LocalModelRunner start_pull maps non-terminal status to downloading",
       port,
       {
           HttpResponseSpec{200, "{\"status\":\"pulling\",\"completed\":1,\"total\":2}\n"},
-      });
+      }
+  );
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");

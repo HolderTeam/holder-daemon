@@ -5,7 +5,7 @@
 namespace holder::core {
 
 class SignalHandler {
-public:
+ public:
   SignalHandler();
   ~SignalHandler();
 
@@ -15,7 +15,7 @@ public:
   bool is_requested() const;
   int last_signal() const;
 
-private:
+ private:
   static void handle(int signum);
 
   bool installed_ = false;

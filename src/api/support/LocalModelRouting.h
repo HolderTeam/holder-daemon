@@ -37,13 +37,18 @@ std::unordered_map<std::string, LocalModelMeta> load_local_model_meta();
 std::vector<nlohmann::json> build_caste_recommendations(
     const std::vector<holder::llm::LocalModel>& installed_models,
     const std::unordered_map<std::string, LocalModelMeta>& model_meta,
-    const std::string& machine_caste);
+    const std::string& machine_caste
+);
 
-std::vector<std::string> parse_ranked_models(const std::string& text,
-                                             const std::vector<std::string>& candidates);
+std::vector<std::string> parse_ranked_models(
+    const std::string& text,
+    const std::vector<std::string>& candidates
+);
 std::string pick_smallest_model(const std::vector<holder::llm::LocalModel>& models);
-std::string pick_router_model(const std::vector<holder::llm::LocalModel>& models,
-                              const std::unordered_map<std::string, LocalModelMeta>& meta);
+std::string pick_router_model(
+    const std::vector<holder::llm::LocalModel>& models,
+    const std::unordered_map<std::string, LocalModelMeta>& meta
+);
 std::string pick_largest_model(const std::vector<holder::llm::LocalModel>& models);
 
 } // namespace holder::api::support

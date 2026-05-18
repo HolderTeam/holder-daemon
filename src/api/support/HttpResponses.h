@@ -9,7 +9,8 @@ namespace holder::api::support {
 
 inline boost::beast::http::response<boost::beast::http::string_body> json_response(
     boost::beast::http::status status,
-    const nlohmann::json& payload) {
+    const nlohmann::json& payload
+) {
   namespace http = boost::beast::http;
   http::response<http::string_body> res{status, 11};
   res.set(http::field::content_type, "application/json");
@@ -22,7 +23,8 @@ inline boost::beast::http::response<boost::beast::http::string_body> json_respon
 inline boost::beast::http::response<boost::beast::http::string_body> error_response(
     boost::beast::http::status status,
     std::string code,
-    std::string message) {
+    std::string message
+) {
   nlohmann::json payload;
   payload["ok"] = false;
   payload["error"] = {{"code", std::move(code)}, {"message", std::move(message)}};

@@ -5,11 +5,11 @@
 #endif
 
 #include "card/CardPaths.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
 #include "model/Project.h"
-#include "card/CardRepo.h"
-#include "card/CardStore.h"
 #include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
@@ -22,7 +22,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_card_store_fs_fail_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -36,9 +37,11 @@ void apply_schema(holder::platform::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::platform::Db& db,
-                    const std::string& project_id,
-                    const std::string& root_path) {
+void create_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& root_path
+) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;

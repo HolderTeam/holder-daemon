@@ -1,7 +1,7 @@
-#include "http_test_helpers.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
-#include "llm/LocalRunnerClient.h"
+#include "http_test_helpers.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
@@ -20,8 +20,10 @@ struct StreamResult {
   std::string raw_response;
 };
 
-StreamResult invoke_pull_event_route_and_capture(const std::string& path,
-                                                 holder::llm::RunnerRegistry* runner_registry) {
+StreamResult invoke_pull_event_route_and_capture(
+    const std::string& path,
+    holder::llm::RunnerRegistry* runner_registry
+) {
   boost::asio::io_context ioc;
   tcp::acceptor acceptor(ioc, {boost::asio::ip::make_address("127.0.0.1"), 0});
 
@@ -38,9 +40,17 @@ StreamResult invoke_pull_event_route_and_capture(const std::string& path,
   holder::api::routes::RunnerRouteDispatchResult route_result{};
 
   std::thread route_thread([&]() {
-    const auto param_get = [](const std::string&) -> std::string { return {}; };
+    const auto param_get = [](const std::string&) -> std::string {
+      return {};
+    };
     route_result = holder::api::routes::ai::runner::handle_ai_runner_pull_event_routes(
-        path, req, res, server, runner_registry, param_get);
+        path,
+        req,
+        res,
+        server,
+        runner_registry,
+        param_get
+    );
     boost::system::error_code ec;
     server.shutdown(tcp::socket::shutdown_both, ec);
     server.close(ec);
@@ -78,7 +88,10 @@ TEST_CASE("Ai runner pull events route ignores non-GET request", "[http]") {
       res,
       socket,
       static_cast<holder::llm::RunnerRegistry*>(nullptr),
-      [](const std::string&) -> std::string { return {}; });
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -96,7 +109,10 @@ TEST_CASE("Ai runner pull events route returns not_implemented when runner missi
       res,
       socket,
       static_cast<holder::llm::RunnerRegistry*>(nullptr),
-      [](const std::string&) -> std::string { return {}; });
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
   REQUIRE(res.result() == http::status::not_found);
@@ -121,7 +137,10 @@ TEST_CASE("Ai runner pull events route rejects empty job id path at guard", "[ht
       res,
       socket,
       &runner_registry,
-      [](const std::string&) -> std::string { return {}; });
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }
@@ -150,8 +169,10 @@ TEST_CASE("Ai runner pull events route streams progress and completed for job", 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(nullptr, &local_runner_client);
 
-  const auto stream =
-      invoke_pull_event_route_and_capture("/ai/runner/pull/" + job.job_id + "/events", &runner_registry);
+  const auto stream = invoke_pull_event_route_and_capture(
+      "/ai/runner/pull/" + job.job_id + "/events",
+      &runner_registry
+  );
   REQUIRE(stream.route_result.handled);
   REQUIRE(stream.route_result.streamed);
   REQUIRE(stream.raw_response.find("text/event-stream") != std::string::npos);

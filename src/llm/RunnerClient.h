@@ -19,11 +19,13 @@ class RunnerClient {
   virtual RunnerPullJob start_pull(const std::string& model) = 0;
   virtual std::optional<RunnerPullJob> get_pull(const std::string& job_id) const = 0;
   virtual std::vector<RunnerPullJob> list_pulls() const = 0;
-  virtual bool stream_generate(const std::string& model,
-                               const std::string& prompt,
-                               const std::string& options_json,
-                               const std::function<void(const std::string&)>& on_chunk,
-                               std::string* error) = 0;
+  virtual bool stream_generate(
+      const std::string& model,
+      const std::string& prompt,
+      const std::string& options_json,
+      const std::function<void(const std::string&)>& on_chunk,
+      std::string* error
+  ) = 0;
 };
 
 } // namespace holder::llm

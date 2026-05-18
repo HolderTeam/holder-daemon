@@ -4,12 +4,12 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "model/Project.h"
 #include "platform/Paths.h"
 #include "project/ProjectPaths.h"
-#include "model/Project.h"
 
-#include <filesystem>
 #include <cstdlib>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,7 +18,8 @@ namespace {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value) : key_(key) {
+  EnvGuard(const char* key, std::string value)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current) {
       old_ = current;
@@ -126,7 +127,10 @@ TEST_CASE("unique_project_root skips existing filesystem paths", "[project_paths
   REQUIRE(unique == (base / "demo-2").string());
 }
 
-TEST_CASE("unique_project_root handles collisions with existing dirs and DB entries", "[project_paths]") {
+TEST_CASE(
+    "unique_project_root handles collisions with existing dirs and DB entries",
+    "[project_paths]"
+) {
   namespace fs = std::filesystem;
   const auto base = fs::temp_directory_path() / "holder_unique_root_collision_test";
   fs::create_directories(base);
@@ -162,7 +166,7 @@ TEST_CASE("unique_project_root throws after exhausting candidate attempts", "[pr
 
   bool threw = false;
   try {
-    (void) holder::core::unique_project_root(base, "demo", existing);
+    (void)holder::core::unique_project_root(base, "demo", existing);
   } catch (const std::runtime_error& e) {
     threw = true;
     REQUIRE(std::string(e.what()) == "Unable to generate unique project root path.");

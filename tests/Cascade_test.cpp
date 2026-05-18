@@ -4,18 +4,18 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
+#include "index/FtsIndexer.h"
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
 #include "model/Card.h"
 #include "model/CardLink.h"
 #include "model/Project.h"
 #include "model/Resource.h"
-#include "index/FtsIndexer.h"
-#include "ai/AiMessageRepo.h"
-#include "ai/AiThreadRepo.h"
-#include "card/CardRepo.h"
 #include "platform/Db.h"
-#include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 #include "resource/ResourceRepo.h"
 
@@ -42,7 +42,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_cascade_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;

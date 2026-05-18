@@ -16,7 +16,9 @@ struct ParsedCardFile {
 };
 
 ParsedCardFile parse_card_file(const std::string& raw);
-std::string render_card_front_matter(const holder::model::Card& card,
-                                     const std::vector<holder::model::CardLink>& links);
+std::string render_card_front_matter(
+    const holder::model::Card& card,
+    const std::vector<holder::model::CardLink>& links
+);
 
 } // namespace holder::core

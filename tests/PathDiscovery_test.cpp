@@ -2,8 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("PathDiscovery content_type_for_extension covers image/text and fallback mappings",
-          "[path_discovery]") {
+TEST_CASE(
+    "PathDiscovery content_type_for_extension covers image/text and fallback mappings",
+    "[path_discovery]"
+) {
   using holder::api::support::content_type_for_extension;
 
   REQUIRE(content_type_for_extension(".svg") == "image/svg+xml");

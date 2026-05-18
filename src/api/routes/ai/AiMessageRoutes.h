@@ -17,6 +17,7 @@ bool handle_ai_message_routes(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get);
+    const std::function<std::string(const std::string&)>& param_get
+);
 
 } // namespace holder::api::routes

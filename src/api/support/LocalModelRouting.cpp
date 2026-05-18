@@ -29,13 +29,18 @@ long long parse_size_bytes(const std::string& input) {
   if (pos == 0) return 0;
   const double value = std::stod(s.substr(0, pos));
   std::string unit = s.substr(pos);
-  for (auto& ch : unit) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  for (auto& ch : unit)
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
 
   double multiplier = 1.0;
-  if (unit == "kb" || unit == "k") multiplier = 1024.0;
-  else if (unit == "mb" || unit == "m") multiplier = 1024.0 * 1024.0;
-  else if (unit == "gb" || unit == "g") multiplier = 1024.0 * 1024.0 * 1024.0;
-  else if (unit == "tb" || unit == "t") multiplier = 1024.0 * 1024.0 * 1024.0 * 1024.0;
+  if (unit == "kb" || unit == "k")
+    multiplier = 1024.0;
+  else if (unit == "mb" || unit == "m")
+    multiplier = 1024.0 * 1024.0;
+  else if (unit == "gb" || unit == "g")
+    multiplier = 1024.0 * 1024.0 * 1024.0;
+  else if (unit == "tb" || unit == "t")
+    multiplier = 1024.0 * 1024.0 * 1024.0 * 1024.0;
 
   return static_cast<long long>(value * multiplier);
 }
@@ -89,9 +94,13 @@ std::string normalize_model_tag_for_match(std::string name) {
 } // namespace
 
 std::string trim_ascii(std::string s) {
-  auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front())))
+    s.erase(s.begin());
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back())))
+    s.pop_back();
   return s;
 }
 
@@ -105,7 +114,8 @@ std::string lowercase_ascii(std::string s) {
 std::string normalize_caste_name(const std::string& raw) {
   const std::string key = lowercase_ascii(trim_ascii(raw));
   if (key.empty()) return {};
-  if (key == "mini" || key == "user" || key == "developer" || key == "workstation" || key == "rig") {
+  if (key == "mini" || key == "user" || key == "developer" || key == "workstation" ||
+      key == "rig") {
     return key;
   }
   if (key == "tiny") return "mini";
@@ -130,7 +140,7 @@ std::optional<CasteInfo> detect_machine_caste() {
     out.reason = result.reason;
     if (out.name.empty()) return std::nullopt;
     return out;
-  // LCOV_EXCL_START
+    // LCOV_EXCL_START
   } catch (const std::exception&) {
     return std::nullopt;
   }
@@ -173,7 +183,8 @@ std::unordered_map<std::string, LocalModelMeta> load_local_model_meta() {
 std::vector<nlohmann::json> build_caste_recommendations(
     const std::vector<holder::llm::LocalModel>& installed_models,
     const std::unordered_map<std::string, LocalModelMeta>& model_meta,
-    const std::string& machine_caste) {
+    const std::string& machine_caste
+) {
   std::unordered_set<std::string> installed;
   for (const auto& model : installed_models) {
     installed.insert(normalize_model_tag_for_match(model.name));
@@ -186,9 +197,11 @@ std::vector<nlohmann::json> build_caste_recommendations(
 
     nlohmann::json item;
     item["tag"] = tag;
-    item["provider"] = meta.provider.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.provider);
+    item["provider"] = meta.provider.empty() ? nlohmann::json(nullptr)
+                                             : nlohmann::json(meta.provider);
     item["engine"] = meta.engine.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.engine);
-    item["category"] = meta.category.empty() ? nlohmann::json(nullptr) : nlohmann::json(meta.category);
+    item["category"] = meta.category.empty() ? nlohmann::json(nullptr)
+                                             : nlohmann::json(meta.category);
     item["required_caste"] = meta.hardware_tier;
     item["installed"] = installed.find(normalize_model_tag_for_match(tag)) != installed.end();
     out.push_back(std::move(item));
@@ -211,8 +224,10 @@ std::vector<nlohmann::json> build_caste_recommendations(
   return out;
 }
 
-std::vector<std::string> parse_ranked_models(const std::string& text,
-                                             const std::vector<std::string>& candidates) {
+std::vector<std::string> parse_ranked_models(
+    const std::string& text,
+    const std::vector<std::string>& candidates
+) {
   const auto array_text = extract_json_array(text);
   if (!array_text.has_value()) return {};
   try {
@@ -245,8 +260,10 @@ std::string pick_smallest_model(const std::vector<holder::llm::LocalModel>& mode
   return best->name;
 }
 
-std::string pick_router_model(const std::vector<holder::llm::LocalModel>& models,
-                              const std::unordered_map<std::string, LocalModelMeta>& meta) {
+std::string pick_router_model(
+    const std::vector<holder::llm::LocalModel>& models,
+    const std::unordered_map<std::string, LocalModelMeta>& meta
+) {
   long long best_size = 0;
   std::string best;
   for (const auto& model : models) {

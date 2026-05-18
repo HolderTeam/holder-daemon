@@ -13,7 +13,7 @@
 namespace {
 
 class RecordingGitOps final : public holder::git::GitOps {
-public:
+ public:
   std::filesystem::path opened_repo;
   std::filesystem::path last_path;
   std::string last_name;
@@ -39,8 +39,12 @@ public:
   void write_file(const std::filesystem::path& relative_path, const std::string&) override {
     last_path = relative_path;
   }
-  void stage_path(const std::filesystem::path& relative_path) override { last_path = relative_path; }
-  void remove_path(const std::filesystem::path& relative_path) override { last_path = relative_path; }
+  void stage_path(const std::filesystem::path& relative_path) override {
+    last_path = relative_path;
+  }
+  void remove_path(const std::filesystem::path& relative_path) override {
+    last_path = relative_path;
+  }
   void commit(const std::string& message) override { last_message = message; }
   void set_remote(const std::string& name, const std::string& url) override {
     last_name = name;
@@ -52,9 +56,11 @@ public:
     last_name = name;
     return probe_result;
   }
-  holder::git::PushResult push_branch(const std::string& name,
-                                      const std::string& branch,
-                                      bool set_upstream) override {
+  holder::git::PushResult push_branch(
+      const std::string& name,
+      const std::string& branch,
+      bool set_upstream
+  ) override {
     last_name = name;
     last_branch = branch;
     last_set_upstream = set_upstream;

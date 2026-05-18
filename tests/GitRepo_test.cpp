@@ -7,10 +7,10 @@
 #include "git/GitRepo.h"
 #include <git2.h>
 
-#include <filesystem>
-#include <fstream>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 
 namespace {
@@ -18,7 +18,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_git_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -42,8 +43,9 @@ void init_bare_repo(const std::filesystem::path& repo_path) {
 }
 
 class EnvGuard {
-public:
-  EnvGuard(const char* key, const std::string& value) : key_(key) {
+ public:
+  EnvGuard(const char* key, const std::string& value)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current != nullptr) {
       had_old_ = true;
@@ -60,7 +62,7 @@ public:
     }
   }
 
-private:
+ private:
   const char* key_;
   bool had_old_ = false;
   std::string old_;
@@ -83,7 +85,10 @@ void detach_head_to_current_commit(const std::filesystem::path& repo_path) {
   git_libgit2_shutdown();
 }
 
-void set_bare_head_contents(const std::filesystem::path& bare_repo_path, const std::string& contents) {
+void set_bare_head_contents(
+    const std::filesystem::path& bare_repo_path,
+    const std::string& contents
+) {
   std::ofstream head(bare_repo_path / "HEAD", std::ios::trunc);
   REQUIRE(head.is_open());
   head << contents;
@@ -97,7 +102,10 @@ std::string read_text_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
-void seed_bare_remote_branch(const std::filesystem::path& bare_remote_path, const std::string& branch_name) {
+void seed_bare_remote_branch(
+    const std::filesystem::path& bare_remote_path,
+    const std::string& branch_name
+) {
   const auto seed_dir = make_temp_dir() / "seed";
   holder::git::GitRepo seed;
   seed.open_or_init(seed_dir);
@@ -250,8 +258,10 @@ TEST_CASE("GitRepo probe_remote classifies invalid remote URL", "[git]") {
   repo.set_remote("origin", "not-a-valid://remote");
 
   const auto result = repo.probe_remote("origin");
-  REQUIRE((result.status == holder::git::RemoteProbeStatus::InvalidRemoteUrl ||
-           result.status == holder::git::RemoteProbeStatus::UnknownError));
+  REQUIRE(
+      (result.status == holder::git::RemoteProbeStatus::InvalidRemoteUrl ||
+       result.status == holder::git::RemoteProbeStatus::UnknownError)
+  );
   REQUIRE(result.remote_has_head == false);
   REQUIRE_FALSE(result.error_message.empty());
 }
@@ -305,7 +315,8 @@ TEST_CASE("GitRepo push_branch can set upstream on success", "[git]") {
   git_buf upstream = GIT_BUF_INIT;
   REQUIRE(git_branch_upstream_name(&upstream, raw, local_ref_name) == 0);
   const std::string expected_upstream =
-      "refs/remotes/origin/" + std::string(local_ref_name).substr(std::string("refs/heads/").size());
+      "refs/remotes/origin/" +
+      std::string(local_ref_name).substr(std::string("refs/heads/").size());
   REQUIRE(std::string(upstream.ptr) == expected_upstream);
 
   git_buf_dispose(&upstream);
@@ -341,7 +352,9 @@ TEST_CASE("GitRepo pull_remote_ff_only rejects non-fast-forward updates", "[git]
     local_repo.pull_remote_ff_only("origin");
     FAIL("Expected non-fast-forward pull to throw");
   } catch (const std::runtime_error& e) {
-    REQUIRE(std::string(e.what()).find("Non-fast-forward pull is not supported") != std::string::npos);
+    REQUIRE(
+        std::string(e.what()).find("Non-fast-forward pull is not supported") != std::string::npos
+    );
   }
 }
 
@@ -489,14 +502,18 @@ TEST_CASE("GitRepo probe_remote and push_branch handle non-repository remote pat
   repo.set_remote("origin", not_repo.string());
 
   const auto probe = repo.probe_remote("origin");
-  REQUIRE((probe.status == holder::git::RemoteProbeStatus::NotFound ||
-           probe.status == holder::git::RemoteProbeStatus::UnknownError));
+  REQUIRE(
+      (probe.status == holder::git::RemoteProbeStatus::NotFound ||
+       probe.status == holder::git::RemoteProbeStatus::UnknownError)
+  );
   REQUIRE(probe.remote_has_head == false);
   REQUIRE_FALSE(probe.error_message.empty());
 
   const auto push = repo.push_branch("origin", "cards", false);
-  REQUIRE((push.status == holder::git::PushStatus::NotFound ||
-           push.status == holder::git::PushStatus::UnknownError));
+  REQUIRE(
+      (push.status == holder::git::PushStatus::NotFound ||
+       push.status == holder::git::PushStatus::UnknownError)
+  );
   REQUIRE_FALSE(push.error_message.empty());
 }
 
@@ -584,8 +601,10 @@ TEST_CASE("GitRepo push_branch can classify non-fast-forward rejection", "[git]"
   REQUIRE(local_a.push_branch("origin", "cards", false).status == holder::git::PushStatus::Pushed);
 
   const auto res = local_b.push_branch("origin", "cards", false);
-  REQUIRE((res.status == holder::git::PushStatus::NonFastForward ||
-           res.status == holder::git::PushStatus::UnknownError));
+  REQUIRE(
+      (res.status == holder::git::PushStatus::NonFastForward ||
+       res.status == holder::git::PushStatus::UnknownError)
+  );
   REQUIRE_FALSE(res.error_message.empty());
 }
 
@@ -596,7 +615,10 @@ TEST_CASE("GitRepo credential callback returns passthrough for unsupported types
   REQUIRE(created == false);
 }
 
-TEST_CASE("GitRepo credential callback attempts SSH paths and can fallback to passthrough", "[git]") {
+TEST_CASE(
+    "GitRepo credential callback attempts SSH paths and can fallback to passthrough",
+    "[git]"
+) {
   const auto dir = make_temp_dir();
   const auto fake_home = dir / "home";
   std::filesystem::create_directories(fake_home / ".ssh");
@@ -608,7 +630,8 @@ TEST_CASE("GitRepo credential callback attempts SSH paths and can fallback to pa
   const int rc = holder::git::GitRepo::credential_callback_for_tests(
       GIT_CREDENTIAL_SSH_KEY | GIT_CREDENTIAL_SSH_MEMORY,
       "",
-      &created);
+      &created
+  );
 
   // Depending on libgit2 behaviour, this may either return passthrough or
   // construct an SSH key credential object from configured key paths.
@@ -639,10 +662,8 @@ TEST_CASE("GitRepo credential callback can create and free key credential", "[gi
   EnvGuard sock_guard("SSH_AUTH_SOCK", (dir / "missing-agent.sock").string());
 
   bool created = false;
-  const int rc = holder::git::GitRepo::credential_callback_for_tests(
-      GIT_CREDENTIAL_SSH_KEY,
-      "git",
-      &created);
+  const int rc =
+      holder::git::GitRepo::credential_callback_for_tests(GIT_CREDENTIAL_SSH_KEY, "git", &created);
 
   REQUIRE((rc == 0 || rc == GIT_PASSTHROUGH));
   if (rc == 0) {
@@ -654,21 +675,32 @@ TEST_CASE("GitRepo classify helpers map common remote and push errors", "[git]")
   using holder::git::PushStatus;
   using holder::git::RemoteProbeStatus;
 
-  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("Authentication failed") ==
-          RemoteProbeStatus::AuthFailed);
-  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("repository not found") ==
-          RemoteProbeStatus::NotFound);
-  REQUIRE(holder::git::GitRepo::classify_remote_probe_error_for_tests("connection refused") ==
-          RemoteProbeStatus::NetworkError);
+  REQUIRE(
+      holder::git::GitRepo::classify_remote_probe_error_for_tests("Authentication failed") ==
+      RemoteProbeStatus::AuthFailed
+  );
+  REQUIRE(
+      holder::git::GitRepo::classify_remote_probe_error_for_tests("repository not found") ==
+      RemoteProbeStatus::NotFound
+  );
+  REQUIRE(
+      holder::git::GitRepo::classify_remote_probe_error_for_tests("connection refused") ==
+      RemoteProbeStatus::NetworkError
+  );
 
-  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("publickey denied") ==
-          PushStatus::AuthFailed);
-  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("not found") ==
-          PushStatus::NotFound);
-  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("non-fast-forward update rejected") ==
-          PushStatus::NonFastForward);
-  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("timed out while pushing") ==
-          PushStatus::NetworkError);
+  REQUIRE(
+      holder::git::GitRepo::classify_push_error_for_tests("publickey denied") ==
+      PushStatus::AuthFailed
+  );
+  REQUIRE(holder::git::GitRepo::classify_push_error_for_tests("not found") == PushStatus::NotFound);
+  REQUIRE(
+      holder::git::GitRepo::classify_push_error_for_tests("non-fast-forward update rejected") ==
+      PushStatus::NonFastForward
+  );
+  REQUIRE(
+      holder::git::GitRepo::classify_push_error_for_tests("timed out while pushing") ==
+      PushStatus::NetworkError
+  );
 }
 
 TEST_CASE("GitRepo configured_default_branch_name reads git config when env missing", "[git]") {
@@ -692,7 +724,10 @@ TEST_CASE("GitRepo configured_default_branch_name reads git config when env miss
   REQUIRE((configured == "zebra" || configured.empty()));
 }
 
-TEST_CASE("GitRepo pull_remote_ff_only fallback branch selection covers configured/main/master and empty", "[git]") {
+TEST_CASE(
+    "GitRepo pull_remote_ff_only fallback branch selection covers configured/main/master and empty",
+    "[git]"
+) {
   SECTION("configured default branch is used when remote default is unavailable") {
     const auto dir = make_temp_dir();
     const auto remote_dir = dir / "remote-zebra";
@@ -768,10 +803,12 @@ TEST_CASE("GitRepo pull_remote_ff_only fallback branch selection covers configur
     } catch (const std::runtime_error& e) {
       const std::string msg = e.what();
       INFO("pull error: " << msg);
-      REQUIRE((msg.find("Unable to determine remote default branch") != std::string::npos ||
-               msg.find("git_reference_lookup failed") != std::string::npos ||
-               msg.find("failed for refs/remotes/") != std::string::npos ||
-               msg.find("git_remote_fetch failed") != std::string::npos));
+      REQUIRE(
+          (msg.find("Unable to determine remote default branch") != std::string::npos ||
+           msg.find("git_reference_lookup failed") != std::string::npos ||
+           msg.find("failed for refs/remotes/") != std::string::npos ||
+           msg.find("git_remote_fetch failed") != std::string::npos)
+      );
     }
   }
 }

@@ -1,9 +1,9 @@
 #include "api/routes/ai/status/AiCapabilitiesRoutes.h"
 
+#include "ai/AiLocalModelConfigRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/LocalModelRouting.h"
 #include "api/support/Time.h"
-#include "ai/AiLocalModelConfigRepo.h"
 #include "llm/LocalModelRunner.h"
 #include "llm/RunnerModelRef.h"
 
@@ -18,7 +18,10 @@ namespace {
 
 namespace http = boost::beast::http;
 
-nlohmann::json runtime_model_to_json(const holder::llm::LocalModel& model, const std::string& runner_id) {
+nlohmann::json runtime_model_to_json(
+    const holder::llm::LocalModel& model,
+    const std::string& runner_id
+) {
   return {
       {"runner_id", runner_id},
       {"name", model.name},
@@ -29,7 +32,10 @@ nlohmann::json runtime_model_to_json(const holder::llm::LocalModel& model, const
   };
 }
 
-nlohmann::json runtime_pull_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
+nlohmann::json runtime_pull_to_json(
+    const holder::llm::RunnerPullJob& job,
+    const std::string& runner_id
+) {
   return {
       {"job_id", job.job_id},
       {"runner_id", runner_id},
@@ -46,8 +52,10 @@ nlohmann::json runtime_pull_to_json(const holder::llm::RunnerPullJob& job, const
   };
 }
 
-nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
-                                      holder::llm::RunnerClient* client) {
+nlohmann::json runner_runtime_to_json(
+    const holder::model::AiRunner& runner,
+    holder::llm::RunnerClient* client
+) {
   nlohmann::json runtime;
   runtime["configured"] = client != nullptr;
   if (client == nullptr) {
@@ -65,7 +73,8 @@ nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
   runtime["available"] = status.available;
   runtime["spawn_attempted"] = status.spawn_attempted;
   runtime["last_checked"] = status.last_checked;
-  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.version);
+  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr)
+                                              : nlohmann::json(status.version);
   runtime["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
   runtime["models"] = nlohmann::json::array();
   for (const auto& model : status.models) {
@@ -78,37 +87,45 @@ nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
   return runtime;
 }
 
-nlohmann::json runner_to_json(const holder::model::AiRunner& runner,
-                              holder::llm::RunnerRegistry* runner_registry) {
+nlohmann::json runner_to_json(
+    const holder::model::AiRunner& runner,
+    holder::llm::RunnerRegistry* runner_registry
+) {
   return {
       {"runner_id", runner.runner_id},
       {"name", runner.name},
       {"kind", runner.kind},
-      {"base_url", runner.base_url.has_value() ? nlohmann::json(runner.base_url.value()) : nlohmann::json(nullptr)},
+      {"base_url",
+       runner.base_url.has_value() ? nlohmann::json(runner.base_url.value())
+                                   : nlohmann::json(nullptr)},
       {"source", runner.source},
       {"enabled", runner.enabled},
       {"created_at", runner.created_at},
       {"updated_at", runner.updated_at},
       {"runtime",
        runner_runtime_to_json(
-           runner, runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr)},
+           runner,
+           runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr
+       )},
   };
 }
 
 } // namespace
 
-bool handle_ai_capabilities_routes(const std::string& path,
-                                   const http::request<http::string_body>& req,
-                                   http::response<http::string_body>& res,
-                                   holder::platform::Db& db,
-                                   holder::llm::RunnerRegistry* runner_registry,
-                                   const std::function<std::string(const std::string&)>& param_get) {
+bool handle_ai_capabilities_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::llm::RunnerRegistry* runner_registry,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (path != "/ai/capabilities" || req.method() != http::verb::get) {
     return false;
   }
-  const auto runner_id =
-      param_get("runner_id").empty() ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
-                                     : param_get("runner_id");
+  const auto runner_id = param_get("runner_id").empty()
+                             ? std::string(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+                             : param_get("runner_id");
   auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
 
   nlohmann::json data;
@@ -120,17 +137,21 @@ bool handle_ai_capabilities_routes(const std::string& path,
     local_model_cfg.reset();
   }
   data["local_model_config"] = {
-      {"fast_model", local_model_cfg.has_value() && local_model_cfg->fast_model.has_value()
-                         ? nlohmann::json(local_model_cfg->fast_model.value())
-                         : nlohmann::json(nullptr)},
-      {"strong_model", local_model_cfg.has_value() && local_model_cfg->strong_model.has_value()
-                           ? nlohmann::json(local_model_cfg->strong_model.value())
-                           : nlohmann::json(nullptr)},
-      {"deep_model", local_model_cfg.has_value() && local_model_cfg->deep_model.has_value()
-                         ? nlohmann::json(local_model_cfg->deep_model.value())
-                         : nlohmann::json(nullptr)},
-      {"updated_at", local_model_cfg.has_value() ? nlohmann::json(local_model_cfg->updated_at)
-                                                 : nlohmann::json(nullptr)},
+      {"fast_model",
+       local_model_cfg.has_value() && local_model_cfg->fast_model.has_value()
+           ? nlohmann::json(local_model_cfg->fast_model.value())
+           : nlohmann::json(nullptr)},
+      {"strong_model",
+       local_model_cfg.has_value() && local_model_cfg->strong_model.has_value()
+           ? nlohmann::json(local_model_cfg->strong_model.value())
+           : nlohmann::json(nullptr)},
+      {"deep_model",
+       local_model_cfg.has_value() && local_model_cfg->deep_model.has_value()
+           ? nlohmann::json(local_model_cfg->deep_model.value())
+           : nlohmann::json(nullptr)},
+      {"updated_at",
+       local_model_cfg.has_value() ? nlohmann::json(local_model_cfg->updated_at)
+                                   : nlohmann::json(nullptr)},
   };
   const auto machine_caste = support::detect_machine_caste();
   const auto model_meta = support::load_local_model_meta();
@@ -138,7 +159,8 @@ bool handle_ai_capabilities_routes(const std::string& path,
     data["caste"] = {
         {"name", machine_caste->name},
         {"reason",
-         machine_caste->reason.empty() ? nlohmann::json(nullptr) : nlohmann::json(machine_caste->reason)},
+         machine_caste->reason.empty() ? nlohmann::json(nullptr)
+                                       : nlohmann::json(machine_caste->reason)},
     };
   } else {
     data["caste"] = nullptr; // LCOV_EXCL_LINE
@@ -152,7 +174,8 @@ bool handle_ai_capabilities_routes(const std::string& path,
   data["runners"] = runners;
   if (!runner) {
     if (machine_caste.has_value()) {
-      const auto recommendations = support::build_caste_recommendations({}, model_meta, machine_caste->name);
+      const auto recommendations =
+          support::build_caste_recommendations({}, model_meta, machine_caste->name);
       nlohmann::json all = nlohmann::json::array();
       for (const auto& item : recommendations) {
         all.push_back(item);

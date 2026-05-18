@@ -106,38 +106,43 @@ std::set<std::string> table_columns(sqlite3* db, const std::string& table_name) 
 
 } // namespace
 
-ProjectSyncRepo::ProjectSyncRepo(holder::platform::Db& db) : db_(db) { ensure_table(); }
+ProjectSyncRepo::ProjectSyncRepo(holder::platform::Db& db)
+    : db_(db) {
+  ensure_table();
+}
 
 void ProjectSyncRepo::ensure_table() {
-  db_.exec(
-      "CREATE TABLE IF NOT EXISTS project_sync_state ("
-      " project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,"
-      " last_commit_at INTEGER NULL,"
-      " last_push_at INTEGER NULL,"
-      " last_pull_at INTEGER NULL,"
-      " uncommitted_changes_count INTEGER NOT NULL DEFAULT 0,"
-      " unpushed_commits_count INTEGER NOT NULL DEFAULT 0,"
-      " last_push_status TEXT NULL,"
-      " last_pull_status TEXT NULL,"
-      " last_sync_error TEXT NULL,"
-      " last_sync_error_at INTEGER NULL,"
-      " retry_count INTEGER NOT NULL DEFAULT 0,"
-      " next_retry_at INTEGER NULL,"
-      " pull_retry_count INTEGER NOT NULL DEFAULT 0,"
-      " next_pull_retry_at INTEGER NULL,"
-      " updated_at INTEGER NOT NULL DEFAULT 0"
-      ");");
+  db_.exec("CREATE TABLE IF NOT EXISTS project_sync_state ("
+           " project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,"
+           " last_commit_at INTEGER NULL,"
+           " last_push_at INTEGER NULL,"
+           " last_pull_at INTEGER NULL,"
+           " uncommitted_changes_count INTEGER NOT NULL DEFAULT 0,"
+           " unpushed_commits_count INTEGER NOT NULL DEFAULT 0,"
+           " last_push_status TEXT NULL,"
+           " last_pull_status TEXT NULL,"
+           " last_sync_error TEXT NULL,"
+           " last_sync_error_at INTEGER NULL,"
+           " retry_count INTEGER NOT NULL DEFAULT 0,"
+           " next_retry_at INTEGER NULL,"
+           " pull_retry_count INTEGER NOT NULL DEFAULT 0,"
+           " next_pull_retry_at INTEGER NULL,"
+           " updated_at INTEGER NOT NULL DEFAULT 0"
+           ");");
 
   const auto cols = table_columns(db_.handle(), "project_sync_state");
   if (cols.find("pull_retry_count") == cols.end()) {
-    db_.exec("ALTER TABLE project_sync_state ADD COLUMN pull_retry_count INTEGER NOT NULL DEFAULT 0;");
+    db_.exec(
+        "ALTER TABLE project_sync_state ADD COLUMN pull_retry_count INTEGER NOT NULL DEFAULT 0;"
+    );
   }
   if (cols.find("next_pull_retry_at") == cols.end()) {
     db_.exec("ALTER TABLE project_sync_state ADD COLUMN next_pull_retry_at INTEGER NULL;");
   }
 }
 
-std::optional<holder::model::ProjectSyncState> ProjectSyncRepo::get(const std::string& project_id) const {
+std::optional<holder::model::ProjectSyncState> ProjectSyncRepo::get(const std::string& project_id
+) const {
   static constexpr const char* SQL =
       "SELECT project_id, last_commit_at, last_push_at, last_pull_at,"
       " uncommitted_changes_count, unpushed_commits_count,"
@@ -231,11 +236,14 @@ void ProjectSyncRepo::upsert(const holder::model::ProjectSyncState& state) {
   }
 }
 
-void ProjectSyncRepo::update_activity_counts(const std::string& project_id,
-                                             int uncommitted_changes_count,
-                                             int unpushed_commits_count,
-                                             long long now) {
-  holder::model::ProjectSyncState state = get(project_id).value_or(holder::model::ProjectSyncState{});
+void ProjectSyncRepo::update_activity_counts(
+    const std::string& project_id,
+    int uncommitted_changes_count,
+    int unpushed_commits_count,
+    long long now
+) {
+  holder::model::ProjectSyncState state =
+      get(project_id).value_or(holder::model::ProjectSyncState{});
   state.project_id = project_id;
   state.uncommitted_changes_count = uncommitted_changes_count;
   state.unpushed_commits_count = unpushed_commits_count;
@@ -243,12 +251,15 @@ void ProjectSyncRepo::update_activity_counts(const std::string& project_id,
   upsert(state);
 }
 
-void ProjectSyncRepo::record_push_result(const std::string& project_id,
-                                         const std::string& status,
-                                         bool success,
-                                         const std::optional<std::string>& error_message,
-                                         long long now) {
-  holder::model::ProjectSyncState state = get(project_id).value_or(holder::model::ProjectSyncState{});
+void ProjectSyncRepo::record_push_result(
+    const std::string& project_id,
+    const std::string& status,
+    bool success,
+    const std::optional<std::string>& error_message,
+    long long now
+) {
+  holder::model::ProjectSyncState state =
+      get(project_id).value_or(holder::model::ProjectSyncState{});
   state.project_id = project_id;
   state.last_push_status = status;
   state.updated_at = now;
@@ -269,12 +280,15 @@ void ProjectSyncRepo::record_push_result(const std::string& project_id,
   upsert(state);
 }
 
-void ProjectSyncRepo::record_pull_result(const std::string& project_id,
-                                         const std::string& status,
-                                         bool success,
-                                         const std::optional<std::string>& error_message,
-                                         long long now) {
-  holder::model::ProjectSyncState state = get(project_id).value_or(holder::model::ProjectSyncState{});
+void ProjectSyncRepo::record_pull_result(
+    const std::string& project_id,
+    const std::string& status,
+    bool success,
+    const std::optional<std::string>& error_message,
+    long long now
+) {
+  holder::model::ProjectSyncState state =
+      get(project_id).value_or(holder::model::ProjectSyncState{});
   state.project_id = project_id;
   state.last_pull_status = status;
   state.updated_at = now;

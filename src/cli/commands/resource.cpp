@@ -72,7 +72,10 @@ std::string uri_host(const std::string& uri) { // LCOV_EXCL_LINE
   }
   const auto host_start = scheme_pos + 3;
   const auto host_end = uri.find('/', host_start);
-  return uri.substr(host_start, host_end == std::string::npos ? std::string::npos : host_end - host_start);
+  return uri.substr(
+      host_start,
+      host_end == std::string::npos ? std::string::npos : host_end - host_start
+  );
   // LCOV_EXCL_STOP
 } // LCOV_EXCL_LINE
 
@@ -159,22 +162,32 @@ ResourceAddOptions parse_resource_add_options(int argc, char* argv[]) {
     if (arg == "--json") {
       options.json_output = true;
     } else if (arg == "--kind") {
-      options.kind = require_value("Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]");
+      options.kind = require_value(
+          "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
+      );
     } else if (arg == "--label") {
-      options.label = require_value("Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]");
+      options.label = require_value(
+          "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
+      );
     } else if (arg == "--desc") {
-      options.desc = require_value("Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]");
+      options.desc = require_value(
+          "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
+      );
     } else if (arg.rfind("--", 0) == 0) {
       throw std::runtime_error("Unknown resource add option: " + arg);
     } else if (options.uri.empty()) {
       options.uri = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]");
+      throw std::runtime_error(
+          "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
+      );
     }
   }
 
   if (options.uri.empty()) {
-    throw std::runtime_error("Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]");
+    throw std::runtime_error(
+        "Usage: holderctl resource add <uri> [--kind <kind>] [--label <label>] [--desc <text>] [--json]"
+    );
   }
   if (options.kind.empty()) {
     options.kind = infer_resource_kind(options.uri);
@@ -203,13 +216,21 @@ ResourceEditOptions parse_resource_edit_options(int argc, char* argv[]) {
     if (arg == "--json") {
       options.json_output = true;
     } else if (arg == "--kind") {
-      options.kind = require_value("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+      options.kind = require_value(
+          "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+      );
     } else if (arg == "--uri") {
-      options.uri = require_value("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+      options.uri = require_value(
+          "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+      );
     } else if (arg == "--label") {
-      options.label = require_value("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+      options.label = require_value(
+          "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+      );
     } else if (arg == "--desc") {
-      options.desc = require_value("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+      options.desc = require_value(
+          "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+      );
     } else if (arg == "--clear-desc") {
       options.clear_desc = true;
     } else if (arg.rfind("--", 0) == 0) {
@@ -217,12 +238,16 @@ ResourceEditOptions parse_resource_edit_options(int argc, char* argv[]) {
     } else if (options.resource_id.empty()) {
       options.resource_id = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+      throw std::runtime_error(
+          "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+      );
     }
   }
 
   if (options.resource_id.empty()) {
-    throw std::runtime_error("Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]");
+    throw std::runtime_error(
+        "Usage: holderctl resource edit <resource-id> [--kind <kind>] [--uri <uri>] [--label <label>] [--desc <text>|--clear-desc] [--json]"
+    );
   }
   if (options.desc.has_value() && options.clear_desc) {
     throw std::runtime_error("--desc and --clear-desc cannot be used together");
@@ -248,13 +273,17 @@ std::string parse_single_resource_id(int argc, char* argv[], const std::string& 
 nlohmann::json list_current_project_resources_payload(const holder::core::Paths& paths) {
   const auto project = require_current_project_payload(paths);
   const auto project_id = json_string(project, "project_id");
-  return card_api_request(paths,
-                          boost::beast::http::verb::get,
-                          "/resources?project_id=" + url_encode_component(project_id));
+  return card_api_request(
+      paths,
+      boost::beast::http::verb::get,
+      "/resources?project_id=" + url_encode_component(project_id)
+  );
 }
 
-nlohmann::json find_resource_in_payload(const nlohmann::json& resources,
-                                        const std::string& resource_id) {
+nlohmann::json find_resource_in_payload(
+    const nlohmann::json& resources,
+    const std::string& resource_id
+) {
   for (const auto& resource : resources) {
     if (json_string(resource, "resource_id") == resource_id) {
       return resource;
@@ -268,17 +297,14 @@ bool resource_matches_filter(const nlohmann::json& resource, const std::string& 
     return true; // LCOV_EXCL_LINE: callers only invoke this helper with non-empty filters.
   }
   const std::string haystack = json_string(resource, "label") + " " +
-                              json_string(resource, "kind") + " " +
-                              json_string(resource, "uri") + " " +
-                              json_string(resource, "desc");
+                               json_string(resource, "kind") + " " + json_string(resource, "uri") +
+                               " " + json_string(resource, "desc");
   return contains_case_insensitive(haystack, filter);
 }
 
 void print_resource_row(const nlohmann::json& resource) {
-  std::cout << json_string(resource, "resource_id") << "\t"
-            << json_string(resource, "kind") << "\t"
-            << json_string(resource, "label") << "\t"
-            << json_string(resource, "uri") << "\n";
+  std::cout << json_string(resource, "resource_id") << "\t" << json_string(resource, "kind") << "\t"
+            << json_string(resource, "label") << "\t" << json_string(resource, "uri") << "\n";
 }
 
 void open_resource_uri(const std::string& uri) {
@@ -361,17 +387,20 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
           {"kind", options.kind},
           {"uri", options.uri},
           {"label", options.label},
-          {"created_at", now_epoch_seconds()}, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
+          {"created_at", now_epoch_seconds()
+          }, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
           {"updated_at", now_epoch_seconds()}, // LCOV_EXCL_LINE
       };
       if (options.desc.has_value()) {
         body["desc"] = options.desc.value();
       }
-      const auto payload = card_api_request(paths,
-                                            boost::beast::http::verb::post,
-                                            "/resources",
-                                            body,
-                                            boost::beast::http::status::created);
+      const auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::post,
+          "/resources",
+          body,
+          boost::beast::http::status::created
+      );
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
@@ -427,10 +456,12 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         body["desc"] = options.desc.value();
       }
 
-      const auto payload = card_api_request(paths,
-                                            boost::beast::http::verb::patch,
-                                            "/resources/" + url_encode_component(options.resource_id),
-                                            body);
+      const auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::patch,
+          "/resources/" + url_encode_component(options.resource_id),
+          body
+      );
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
@@ -440,7 +471,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     if (subcommand == "open") {
-      const auto resource_id = parse_single_resource_id(argc, argv, "Usage: holderctl resource open <resource-id>");
+      const auto resource_id =
+          parse_single_resource_id(argc, argv, "Usage: holderctl resource open <resource-id>");
       const auto payload = list_current_project_resources_payload(paths);
       const auto resource = find_resource_in_payload(payload.at("data"), resource_id);
       const auto uri = json_string(resource, "uri");
@@ -452,12 +484,15 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     if (subcommand == "delete") {
-      const auto resource_id = parse_single_resource_id(argc, argv, "Usage: holderctl resource delete <resource-id>");
+      const auto resource_id =
+          parse_single_resource_id(argc, argv, "Usage: holderctl resource delete <resource-id>");
       const auto resources_payload = list_current_project_resources_payload(paths);
       (void)find_resource_in_payload(resources_payload.at("data"), resource_id);
-      (void)card_api_request(paths,
-                             boost::beast::http::verb::delete_,
-                             "/resources/" + url_encode_component(resource_id));
+      (void)card_api_request(
+          paths,
+          boost::beast::http::verb::delete_,
+          "/resources/" + url_encode_component(resource_id)
+      );
       std::cout << "Deleted resource: " << resource_id << "\n";
       return 0;
     }

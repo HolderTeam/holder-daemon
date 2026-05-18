@@ -11,8 +11,10 @@ constexpr const char* kAiProviderCredentialService = "holder.ai_provider_credent
 
 }
 
-void recover_ai_provider_credentials_from_secret_store(holder::platform::Db& db,
-                                                       holder::privacy::SecretStore& secret_store) {
+void recover_ai_provider_credentials_from_secret_store(
+    holder::platform::Db& db,
+    holder::privacy::SecretStore& secret_store
+) {
   AiProviderCredentialRepo repo(db);
   if (!repo.list().empty()) {
     return;

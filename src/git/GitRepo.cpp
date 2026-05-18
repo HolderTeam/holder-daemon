@@ -34,8 +34,12 @@ static std::string git_error_message_or_default(const std::string& fallback) {
 static bool contains_icase(const std::string& haystack, const std::string& needle) {
   std::string h = haystack;
   std::string n = needle;
-  std::transform(h.begin(), h.end(), h.begin(), [](unsigned char c) { return std::tolower(c); });
-  std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return std::tolower(c); });
+  std::transform(h.begin(), h.end(), h.begin(), [](unsigned char c) {
+    return std::tolower(c);
+  });
+  std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) {
+    return std::tolower(c);
+  });
   return h.find(n) != std::string::npos;
 }
 
@@ -47,14 +51,15 @@ static RemoteProbeStatus classify_remote_probe_error(const std::string& message)
   if (contains_icase(message, "repository not found") || contains_icase(message, "not found")) {
     return RemoteProbeStatus::NotFound;
   }
-  if (contains_icase(message, "unsupported url protocol") || contains_icase(message, "invalid url") ||
-      contains_icase(message, "malformed")) {
+  if (contains_icase(message, "unsupported url protocol") ||
+      contains_icase(message, "invalid url") || contains_icase(message, "malformed")) {
     return RemoteProbeStatus::InvalidRemoteUrl;
   }
   if (contains_icase(message, "could not resolve host") ||
       contains_icase(message, "failed to resolve address") ||
-      contains_icase(message, "connection refused") || contains_icase(message, "failed to connect") ||
-      contains_icase(message, "timed out") || contains_icase(message, "timeout")) {
+      contains_icase(message, "connection refused") ||
+      contains_icase(message, "failed to connect") || contains_icase(message, "timed out") ||
+      contains_icase(message, "timeout")) {
     return RemoteProbeStatus::NetworkError;
   }
   return RemoteProbeStatus::UnknownError;
@@ -74,8 +79,9 @@ static PushStatus classify_push_error(const std::string& message) {
   }
   if (contains_icase(message, "could not resolve host") ||
       contains_icase(message, "failed to resolve address") ||
-      contains_icase(message, "connection refused") || contains_icase(message, "failed to connect") ||
-      contains_icase(message, "timed out") || contains_icase(message, "timeout")) {
+      contains_icase(message, "connection refused") ||
+      contains_icase(message, "failed to connect") || contains_icase(message, "timed out") ||
+      contains_icase(message, "timeout")) {
     return PushStatus::NetworkError;
   }
   return PushStatus::UnknownError;
@@ -162,17 +168,20 @@ static std::string local_head_commit_or_empty(git_repository* repo) {
   return out;
 }
 
-static int git_credential_acquire_cb(git_credential** out,
-                                     const char* url,
-                                     const char* username_from_url,
-                                     unsigned int allowed_types,
-                                     void* payload) {
+static int git_credential_acquire_cb(
+    git_credential** out,
+    const char* url,
+    const char* username_from_url,
+    unsigned int allowed_types,
+    void* payload
+) {
   (void)payload;
   (void)url;
 
   if ((allowed_types & GIT_CREDENTIAL_SSH_KEY) != 0U ||
       (allowed_types & GIT_CREDENTIAL_SSH_MEMORY) != 0U) {
-    const char* user = username_from_url && username_from_url[0] != '\0' ? username_from_url : "git";
+    const char* user = username_from_url && username_from_url[0] != '\0' ? username_from_url
+                                                                         : "git";
     int rc = git_credential_ssh_key_from_agent(out, user);
     if (rc == 0) return 0;
 
@@ -183,11 +192,13 @@ static int git_credential_acquire_cb(git_credential** out,
           std::make_pair(home + "/.ssh/id_rsa.pub", home + "/.ssh/id_rsa"),
       };
       for (const auto& keypair : keypairs) {
-        rc = git_credential_ssh_key_new(out,
-                                        user,
-                                        keypair.first.c_str(),
-                                        keypair.second.c_str(),
-                                        "");
+        rc = git_credential_ssh_key_new(
+            out,
+            user,
+            keypair.first.c_str(),
+            keypair.second.c_str(),
+            ""
+        );
         if (rc == 0) return 0;
       }
     }
@@ -220,9 +231,11 @@ static bool reference_exists(git_repository* repo, const std::string& refname) {
   return false; // LCOV_EXCL_LINE
 }
 
-static git_oid remote_branch_target_oid_or_throw(git_repository* repo,
-                                                 const std::string& remote_name,
-                                                 const std::string& branch) {
+static git_oid remote_branch_target_oid_or_throw(
+    git_repository* repo,
+    const std::string& remote_name,
+    const std::string& branch
+) {
   const std::string refname = "refs/remotes/" + remote_name + "/" + branch;
   git_reference* ref = nullptr;
   const int rc = git_reference_lookup(&ref, repo, refname.c_str());
@@ -250,9 +263,7 @@ static void checkout_commit_oid(git_repository* repo, const git_oid& oid) {
   if (rc != 0) throw git_err("git_checkout_tree failed", rc);
 }
 
-GitRepo::GitRepo() {
-  git_libgit2_init();
-}
+GitRepo::GitRepo() { git_libgit2_init(); }
 
 GitRepo::~GitRepo() {
   if (repo_) {
@@ -275,7 +286,10 @@ void GitRepo::open_or_init(const fs::path& repo_dir) {
   repo_dir_ = repo_dir;
   std::error_code ec;
   fs::create_directories(repo_dir_, ec);
-  if (ec) throw std::runtime_error("Failed to create repo dir: " + repo_dir_.string() + " (" + ec.message() + ")");
+  if (ec)
+    throw std::runtime_error(
+        "Failed to create repo dir: " + repo_dir_.string() + " (" + ec.message() + ")"
+    );
 
   git_repository* r = nullptr;
 
@@ -310,7 +324,10 @@ void GitRepo::write_file(const fs::path& relative_path, const std::string& conte
 
   std::error_code ec;
   fs::create_directories(full.parent_path(), ec);
-  if (ec) throw std::runtime_error("Failed to create dirs: " + full.parent_path().string() + " (" + ec.message() + ")");
+  if (ec)
+    throw std::runtime_error(
+        "Failed to create dirs: " + full.parent_path().string() + " (" + ec.message() + ")"
+    );
 
   std::ofstream out(full, std::ios::binary);
   if (!out.is_open()) throw std::runtime_error("Failed to open for write: " + full.string());
@@ -416,15 +433,16 @@ void GitRepo::commit(const std::string& message) {
   // No commits yet (either HEAD missing or branch is unborn)
   if (rc == GIT_ENOTFOUND || rc == GIT_EUNBORNBRANCH) {
     rc = git_commit_create_v(
-      &commit_oid,
-      reinterpret_cast<git_repository*>(repo_),
-      "HEAD",
-      sig,
-      sig,
-      nullptr,
-      message.c_str(),
-      tree,
-      0);
+        &commit_oid,
+        reinterpret_cast<git_repository*>(repo_),
+        "HEAD",
+        sig,
+        sig,
+        nullptr,
+        message.c_str(),
+        tree,
+        0
+    );
 
     git_tree_free(tree);
     git_signature_free(sig);
@@ -469,7 +487,8 @@ void GitRepo::commit(const std::string& message) {
       message.c_str(),
       tree,
       1,
-      parent);
+      parent
+  );
 
   git_commit_free(parent);
   git_tree_free(tree);
@@ -484,10 +503,12 @@ void GitRepo::set_remote(const std::string& name, const std::string& url) {
   ensure_open();
 
   git_remote* remote = nullptr;
-  const int lookup = git_remote_lookup(&remote, reinterpret_cast<git_repository*>(repo_), name.c_str());
+  const int lookup =
+      git_remote_lookup(&remote, reinterpret_cast<git_repository*>(repo_), name.c_str());
   if (lookup == 0) {
     git_remote_free(remote);
-    const int rc = git_remote_set_url(reinterpret_cast<git_repository*>(repo_), name.c_str(), url.c_str());
+    const int rc =
+        git_remote_set_url(reinterpret_cast<git_repository*>(repo_), name.c_str(), url.c_str());
     if (rc != 0) throw git_err("git_remote_set_url failed", rc);
     spdlog::info("Updated git remote {} -> {}", name, url);
     return;
@@ -496,10 +517,12 @@ void GitRepo::set_remote(const std::string& name, const std::string& url) {
     throw git_err("git_remote_lookup failed", lookup); // LCOV_EXCL_LINE
   }
 
-  const int rc = git_remote_create(&remote,
-                                   reinterpret_cast<git_repository*>(repo_),
-                                   name.c_str(),
-                                   url.c_str());
+  const int rc = git_remote_create(
+      &remote,
+      reinterpret_cast<git_repository*>(repo_),
+      name.c_str(),
+      url.c_str()
+  );
   if (rc != 0) throw git_err("git_remote_create failed", rc);
   git_remote_free(remote);
   spdlog::info("Created git remote {} -> {}", name, url);
@@ -538,7 +561,8 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
   }
 
   auto callbacks = make_remote_callbacks();
-  const int connect_rc = git_remote_connect(remote, GIT_DIRECTION_FETCH, &callbacks, nullptr, nullptr);
+  const int connect_rc =
+      git_remote_connect(remote, GIT_DIRECTION_FETCH, &callbacks, nullptr, nullptr);
   if (connect_rc != 0) {
     const std::string error = git_error_message_or_default("git_remote_connect failed");
     const auto status = classify_remote_probe_error(error);
@@ -554,7 +578,8 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
   size_t heads_len = 0;
   const int ls_rc = git_remote_ls(&heads, &heads_len, remote);
   if (ls_rc != 0) {
-    const std::string error = git_error_message_or_default("git_remote_ls failed"); // LCOV_EXCL_LINE
+    const std::string error = git_error_message_or_default("git_remote_ls failed"
+    ); // LCOV_EXCL_LINE
     const auto status = classify_remote_probe_error(error); // LCOV_EXCL_LINE
     git_remote_disconnect(remote); // LCOV_EXCL_LINE
     git_remote_free(remote); // LCOV_EXCL_LINE
@@ -574,7 +599,11 @@ RemoteProbeResult GitRepo::probe_remote(const std::string& name) {
   };
 }
 
-PushResult GitRepo::push_branch(const std::string& name, const std::string& branch, bool set_upstream) {
+PushResult GitRepo::push_branch(
+    const std::string& name,
+    const std::string& branch,
+    bool set_upstream
+) {
   ensure_open();
   auto* repo = reinterpret_cast<git_repository*>(repo_);
   const auto local_head_commit = local_head_commit_or_empty(repo);
@@ -585,7 +614,8 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
         .ahead_count = 0,
         .behind_count = 0,
         .local_head_commit = local_head_commit,
-        .error_message = "No branch configured. Set GIT_DEFAULT_BRANCH or git config init.defaultBranch.", // LCOV_EXCL_LINE
+        .error_message =
+            "No branch configured. Set GIT_DEFAULT_BRANCH or git config init.defaultBranch.", // LCOV_EXCL_LINE
     }; // LCOV_EXCL_LINE
   }
 
@@ -623,7 +653,8 @@ PushResult GitRepo::push_branch(const std::string& name, const std::string& bran
     };
   }
   if (rc != 0) {
-    const std::string error = git_error_message_or_default("git_repository_head failed"); // LCOV_EXCL_LINE
+    const std::string error = git_error_message_or_default("git_repository_head failed"
+    ); // LCOV_EXCL_LINE
     git_remote_free(remote); // LCOV_EXCL_LINE
     return {
         .status = classify_push_error(error), // LCOV_EXCL_LINE
@@ -703,8 +734,7 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
 
   if (remote_branch.empty()) {
     const auto configured = configured_default_branch_name();
-    if (!configured.empty() &&
-        reference_exists(repo, "refs/remotes/" + name + "/" + configured)) {
+    if (!configured.empty() && reference_exists(repo, "refs/remotes/" + name + "/" + configured)) {
       remote_branch = configured; // LCOV_EXCL_LINE
     } else if (reference_exists(repo, "refs/remotes/" + name + "/cards")) {
       remote_branch = "cards";
@@ -713,7 +743,9 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
     } else if (reference_exists(repo, "refs/remotes/" + name + "/master")) { // LCOV_EXCL_LINE
       remote_branch = "master"; // LCOV_EXCL_LINE
     } else {
-      throw std::runtime_error("Unable to determine remote default branch for " + name); // LCOV_EXCL_LINE
+      throw std::runtime_error(
+          "Unable to determine remote default branch for " + name
+      ); // LCOV_EXCL_LINE
     }
   }
 
@@ -776,12 +808,19 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
   spdlog::info("Pulled {} (fast-forward)", name);
 }
 
-int GitRepo::credential_callback_for_tests(unsigned int allowed_types,
-                                           const char* username_from_url,
-                                           bool* out_credential_created) {
+int GitRepo::credential_callback_for_tests(
+    unsigned int allowed_types,
+    const char* username_from_url,
+    bool* out_credential_created
+) {
   git_credential* cred = nullptr;
-  const int rc =
-      git_credential_acquire_cb(&cred, "ssh://example.invalid/repo.git", username_from_url, allowed_types, nullptr);
+  const int rc = git_credential_acquire_cb(
+      &cred,
+      "ssh://example.invalid/repo.git",
+      username_from_url,
+      allowed_types,
+      nullptr
+  );
   if (out_credential_created) {
     *out_credential_created = (cred != nullptr);
   }

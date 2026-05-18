@@ -3,11 +3,11 @@
 #include "ai/NudgeService.h"
 #include "api/ConcurrencyProfile.h"
 #include "api/Router.h"
-#include "platform/Signal.h"
 #include "git/GitOps.h"
-#include "llm/RunnerRegistry.h"
 #include "index/FtsIndexer.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
+#include "platform/Signal.h"
 #include "privacy/SecretStore.h"
 
 #include <chrono>
@@ -23,28 +23,30 @@ namespace holder::api {
 class Listener;
 
 class HttpServer {
-public:
+ public:
   struct BoundInfo {
     std::string bind;
     unsigned short port = 0;
   };
 
-  HttpServer(std::string bind,
-             unsigned short port,
-             holder::platform::Db& db,
-             std::string auth_token,
-             holder::card::CardStore* card_store,
-             holder::index::FtsIndexer* fts,
-             holder::git::GitOps* git_ops = nullptr,
-             holder::llm::RunnerRegistry* runner_registry = nullptr,
-             holder::api::ConcurrencyProfile concurrency = {});
+  HttpServer(
+      std::string bind,
+      unsigned short port,
+      holder::platform::Db& db,
+      std::string auth_token,
+      holder::card::CardStore* card_store,
+      holder::index::FtsIndexer* fts,
+      holder::git::GitOps* git_ops = nullptr,
+      holder::llm::RunnerRegistry* runner_registry = nullptr,
+      holder::api::ConcurrencyProfile concurrency = {}
+  );
   ~HttpServer();
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
   void stop();
 
-private:
+ private:
   std::string bind_;
   unsigned short port_;
   holder::platform::Db& db_;

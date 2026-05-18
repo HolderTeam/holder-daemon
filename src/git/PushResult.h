@@ -25,23 +25,23 @@ struct PushResult {
 
 inline const char* push_status_name(PushStatus status) {
   switch (status) {
-    case PushStatus::Pushed:
-      return "pushed";
-    case PushStatus::UpToDate:
-      return "up_to_date";
-    case PushStatus::AuthFailed:
-      return "auth_failed";
-    case PushStatus::NotFound:
-      return "not_found";
-    case PushStatus::NetworkError:
-      return "network_error";
-    case PushStatus::NonFastForward:
-      return "non_fast_forward";
-    case PushStatus::RemoteUnset:
-      return "remote_unset";
-    case PushStatus::UnknownError:
-    default:
-      return "unknown_error";
+  case PushStatus::Pushed:
+    return "pushed";
+  case PushStatus::UpToDate:
+    return "up_to_date";
+  case PushStatus::AuthFailed:
+    return "auth_failed";
+  case PushStatus::NotFound:
+    return "not_found";
+  case PushStatus::NetworkError:
+    return "network_error";
+  case PushStatus::NonFastForward:
+    return "non_fast_forward";
+  case PushStatus::RemoteUnset:
+    return "remote_unset";
+  case PushStatus::UnknownError:
+  default:
+    return "unknown_error";
   }
 }
 

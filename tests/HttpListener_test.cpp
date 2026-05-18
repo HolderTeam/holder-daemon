@@ -1,10 +1,10 @@
 #include "http_test_helpers.h"
 
+#include "ai/NudgeService.h"
 #include "api/Listener.h"
 #include "api/Router.h"
-#include "ai/NudgeService.h"
-#include "index/FtsIndexer.h"
 #include "card/CardStore.h"
+#include "index/FtsIndexer.h"
 #include "llm/RunnerRegistry.h"
 #include "platform/Signal.h"
 
@@ -12,16 +12,18 @@
 #include <boost/asio.hpp>
 #include <future>
 
+using holder::test::create_project;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
-using holder::test::create_project;
 using holder::test::wait_for_http_listener;
 
 namespace {
 
-boost::asio::ip::tcp::socket connect_test_socket(boost::asio::io_context& ioc,
-                                                 const std::string& bind,
-                                                 unsigned short port) {
+boost::asio::ip::tcp::socket connect_test_socket(
+    boost::asio::io_context& ioc,
+    const std::string& bind,
+    unsigned short port
+) {
   using tcp = boost::asio::ip::tcp;
   tcp::resolver resolver(ioc);
   auto endpoints = resolver.resolve(bind, std::to_string(port));
@@ -74,33 +76,41 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
 
   holder::api::Router router;
   std::atomic<bool> slow_started{false};
-  router.add(http::verb::get, "/ai/slow",
-             [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               slow_started.store(true);
-               std::this_thread::sleep_for(std::chrono::milliseconds(250));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::get, "/foreground-fast",
-             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/ai/slow",
+      [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        slow_started.store(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::get,
+      "/foreground-fast",
+      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -109,11 +119,19 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
+    return holder::test::http_request_raw(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/slow"
+    );
   });
 
   for (int i = 0; i < 50 && !slow_started.load(); ++i) {
@@ -123,9 +141,15 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
 
   const auto fast_started = std::chrono::steady_clock::now();
   const auto fast = holder::test::http_request_raw(
-      bound.bind, bound.port, token, http::verb::get, "/foreground-fast");
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::get,
+      "/foreground-fast"
+  );
   const auto fast_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - fast_started)
+                                   std::chrono::steady_clock::now() - fast_started
+  )
                                    .count();
 
   REQUIRE(fast.status == http::status::ok);
@@ -147,33 +171,41 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
 
   holder::api::Router router;
   std::atomic<bool> slow_started{false};
-  router.add(http::verb::get, "/ai/slow",
-             [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               slow_started.store(true);
-               std::this_thread::sleep_for(std::chrono::milliseconds(250));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::patch, "/cards/save-test",
-             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/ai/slow",
+      [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        slow_started.store(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::patch,
+      "/cards/save-test",
+      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -182,11 +214,19 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
+    return holder::test::http_request_raw(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/slow"
+    );
   });
 
   for (int i = 0; i < 50 && !slow_started.load(); ++i) {
@@ -195,15 +235,18 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
   REQUIRE(slow_started.load());
 
   const auto save_started = std::chrono::steady_clock::now();
-  const auto saved = holder::test::http_json_request(bound.bind,
-                                                     bound.port,
-                                                     token,
-                                                     http::verb::patch,
-                                                     "/cards/save-test",
-                                                     nlohmann::json::object(),
-                                                     http::status::ok);
+  const auto saved = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::patch,
+      "/cards/save-test",
+      nlohmann::json::object(),
+      http::status::ok
+  );
   const auto save_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - save_started)
+                                   std::chrono::steady_clock::now() - save_started
+  )
                                    .count();
 
   REQUIRE(saved["ok"] == true);
@@ -229,18 +272,20 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 &card_store,
-                                 &fts,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 &runner_registry);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      &card_store,
+      &fts,
+      nullptr,
+      nullptr,
+      nullptr,
+      &runner_registry
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -249,7 +294,9 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   for (int i = 1; i <= 3; ++i) {
@@ -268,59 +315,70 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
             {"created_at", i},
             {"updated_at", i},
         },
-        http::status::created);
+        http::status::created
+    );
     REQUIRE(created["ok"] == true);
   }
 
   auto list_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           http::verb::get,
-                                           "/cards?project_id=proj-1",
-                                           nlohmann::json::object(),
-                                           http::status::ok);
+    return holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/cards?project_id=proj-1",
+        nlohmann::json::object(),
+        http::status::ok
+    );
   });
   auto project_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           http::verb::get,
-                                           "/projects",
-                                           nlohmann::json::object(),
-                                           http::status::ok);
+    return holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/projects",
+        nlohmann::json::object(),
+        http::status::ok
+    );
   });
   auto status_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           http::verb::get,
-                                           "/ai/status",
-                                           nlohmann::json::object(),
-                                           http::status::ok);
+    return holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/status",
+        nlohmann::json::object(),
+        http::status::ok
+    );
   });
   auto runner_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           http::verb::post,
-                                           "/ai/runners",
-                                           nlohmann::json{
-                                               {"name", "Concurrent Runner"},
-                                               {"kind", "ollama"},
-                                               {"base_url", "http://concurrent:11434"},
-                                           },
-                                           http::status::created);
+    return holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::post,
+        "/ai/runners",
+        nlohmann::json{
+            {"name", "Concurrent Runner"},
+            {"kind", "ollama"},
+            {"base_url", "http://concurrent:11434"},
+        },
+        http::status::created
+    );
   });
 
   auto card_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(bound.bind,
-                                           bound.port,
-                                           token,
-                                           http::verb::get,
-                                           "/cards/card-1",
-                                           nlohmann::json::object(),
-                                           http::status::ok);
+    return holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/cards/card-1",
+        nlohmann::json::object(),
+        http::status::ok
+    );
   });
 
   const auto listed = list_future.get();
@@ -355,15 +413,17 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -372,7 +432,9 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   boost::asio::io_context ioc;
@@ -381,9 +443,9 @@ TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "
   tcp::socket socket(ioc);
   boost::asio::connect(socket, endpoints);
 
-  const std::string partial_request =
-      "GET /health HTTP/1.1\r\n"
-      "Host: " + bound.bind + "\r\n";
+  const std::string partial_request = "GET /health HTTP/1.1\r\n"
+                                      "Host: " +
+                                      bound.bind + "\r\n";
   boost::asio::write(socket, boost::asio::buffer(partial_request));
 
   for (int i = 0; i < 50 && listener.active_read_socket_count() < 1; ++i) {
@@ -413,19 +475,21 @@ TEST_CASE("Listener stop closes queued ingress sockets and returns promptly", "[
   concurrency.general_workers = 1;
   concurrency.writer_workers = 1;
 
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -434,7 +498,9 @@ TEST_CASE("Listener stop closes queued ingress sockets and returns promptly", "[
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   boost::asio::io_context ioc;
@@ -443,9 +509,9 @@ TEST_CASE("Listener stop closes queued ingress sockets and returns promptly", "[
   tcp::socket queued_socket(ioc);
   boost::asio::connect(queued_socket, endpoints);
 
-  const std::string partial_request =
-      "GET /health HTTP/1.1\r\n"
-      "Host: " + bound.bind + "\r\n";
+  const std::string partial_request = "GET /health HTTP/1.1\r\n"
+                                      "Host: " +
+                                      bound.bind + "\r\n";
   boost::asio::write(queued_socket, boost::asio::buffer(partial_request));
 
   for (int i = 0; i < 50 && listener.pending_socket_count() < 1; ++i) {
@@ -473,19 +539,21 @@ TEST_CASE("Listener test hook can enqueue a pending socket", "[listener]") {
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -494,7 +562,9 @@ TEST_CASE("Listener test hook can enqueue a pending socket", "[listener]") {
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   listener.enqueue_pending_socket_for_test();
@@ -525,19 +595,21 @@ TEST_CASE("Listener drops accepted sockets when ingress queue is full", "[listen
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -546,7 +618,9 @@ TEST_CASE("Listener drops accepted sockets when ingress queue is full", "[listen
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   boost::asio::io_context ioc;
@@ -607,19 +681,21 @@ TEST_CASE("Listener rejects background requests when lane queue is full", "[list
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -628,18 +704,23 @@ TEST_CASE("Listener rejects background requests when lane queue is full", "[list
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   boost::asio::io_context ioc;
   std::vector<tcp::socket> sockets;
   sockets.reserve(64);
-  const std::string queued_request =
-      "GET /ai/queued HTTP/1.1\r\n"
-      "Host: " + bound.bind + "\r\n"
-      "Authorization: Bearer " + token + "\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string queued_request = "GET /ai/queued HTTP/1.1\r\n"
+                                     "Host: " +
+                                     bound.bind +
+                                     "\r\n"
+                                     "Authorization: Bearer " +
+                                     token +
+                                     "\r\n"
+                                     "Connection: close\r\n"
+                                     "\r\n";
   for (int i = 0; i < 64; ++i) {
     sockets.emplace_back(connect_test_socket(ioc, bound.bind, bound.port));
     write_raw_request(sockets.back(), queued_request);
@@ -651,7 +732,12 @@ TEST_CASE("Listener rejects background requests when lane queue is full", "[list
   REQUIRE(listener.background_queue_count() == 64);
 
   const auto overflow = holder::test::http_request_raw(
-      bound.bind, bound.port, token, http::verb::get, "/ai/overflow");
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::get,
+      "/ai/overflow"
+  );
   REQUIRE(overflow.status == http::status::service_unavailable);
   REQUIRE(overflow.body.find("server_busy") != std::string::npos);
 
@@ -676,28 +762,33 @@ TEST_CASE("Listener stop closes queued save requests and queued responses", "[li
     concurrency.writer_workers = 1;
 
     holder::api::Router router;
-    router.add(http::verb::patch, "/cards/save-test",
-               [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-                 res.result(http::status::ok);
-                 res.set(http::field::content_type, "application/json");
-                 res.body() = R"({"ok":true})";
-                 res.prepare_payload();
-               });
+    router.add(
+        http::verb::patch,
+        "/cards/save-test",
+        [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+          res.result(http::status::ok);
+          res.set(http::field::content_type, "application/json");
+          res.body() = R"({"ok":true})";
+          res.prepare_payload();
+        }
+    );
 
     const std::string token = "testtoken";
-    holder::api::Listener listener("127.0.0.1",
-                                   0,
-                                   db,
-                                   token,
-                                   router,
-                                   std::chrono::steady_clock::now(),
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   concurrency);
+    holder::api::Listener listener(
+        "127.0.0.1",
+        0,
+        db,
+        token,
+        router,
+        std::chrono::steady_clock::now(),
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        concurrency
+    );
     holder::api::Listener::BoundInfo bound;
     try {
       bound = listener.start();
@@ -706,20 +797,24 @@ TEST_CASE("Listener stop closes queued save requests and queued responses", "[li
     }
 
     holder::core::SignalHandler signals;
-    auto run_future =
-        std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+    auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+      listener.run(signals);
+    });
     REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
     boost::asio::io_context ioc;
     auto socket = connect_test_socket(ioc, bound.bind, bound.port);
-    const std::string save_request =
-        "PATCH /cards/save-test HTTP/1.1\r\n"
-        "Host: " + bound.bind + "\r\n"
-        "Authorization: Bearer " + token + "\r\n"
-        "Content-Type: application/json\r\n"
-        "Content-Length: 2\r\n"
-        "Connection: close\r\n"
-        "\r\n{}";
+    const std::string save_request = "PATCH /cards/save-test HTTP/1.1\r\n"
+                                     "Host: " +
+                                     bound.bind +
+                                     "\r\n"
+                                     "Authorization: Bearer " +
+                                     token +
+                                     "\r\n"
+                                     "Content-Type: application/json\r\n"
+                                     "Content-Length: 2\r\n"
+                                     "Connection: close\r\n"
+                                     "\r\n{}";
     write_raw_request(socket, save_request);
 
     for (int i = 0; i < 50 && listener.save_queue_count() < 1; ++i) {
@@ -741,28 +836,33 @@ TEST_CASE("Listener stop closes queued save requests and queued responses", "[li
     concurrency.writer_workers = 0;
 
     holder::api::Router router;
-    router.add(http::verb::get, "/queued-response",
-               [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-                 res.result(http::status::ok);
-                 res.set(http::field::content_type, "application/json");
-                 res.body() = R"({"ok":true})";
-                 res.prepare_payload();
-               });
+    router.add(
+        http::verb::get,
+        "/queued-response",
+        [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+          res.result(http::status::ok);
+          res.set(http::field::content_type, "application/json");
+          res.body() = R"({"ok":true})";
+          res.prepare_payload();
+        }
+    );
 
     const std::string token = "testtoken";
-    holder::api::Listener listener("127.0.0.1",
-                                   0,
-                                   db,
-                                   token,
-                                   router,
-                                   std::chrono::steady_clock::now(),
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   nullptr,
-                                   concurrency);
+    holder::api::Listener listener(
+        "127.0.0.1",
+        0,
+        db,
+        token,
+        router,
+        std::chrono::steady_clock::now(),
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        concurrency
+    );
     holder::api::Listener::BoundInfo bound;
     try {
       bound = listener.start();
@@ -771,18 +871,22 @@ TEST_CASE("Listener stop closes queued save requests and queued responses", "[li
     }
 
     holder::core::SignalHandler signals;
-    auto run_future =
-        std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+    auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+      listener.run(signals);
+    });
     REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
     boost::asio::io_context ioc;
     auto socket = connect_test_socket(ioc, bound.bind, bound.port);
-    const std::string request =
-        "GET /queued-response HTTP/1.1\r\n"
-        "Host: " + bound.bind + "\r\n"
-        "Authorization: Bearer " + token + "\r\n"
-        "Connection: close\r\n"
-        "\r\n";
+    const std::string request = "GET /queued-response HTTP/1.1\r\n"
+                                "Host: " +
+                                bound.bind +
+                                "\r\n"
+                                "Authorization: Bearer " +
+                                token +
+                                "\r\n"
+                                "Connection: close\r\n"
+                                "\r\n";
     write_raw_request(socket, request);
 
     for (int i = 0; i < 50 && listener.response_queue_count() < 1; ++i) {
@@ -807,25 +911,32 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
   holder::api::Router router;
   std::atomic<int> foreground_started{0};
   std::atomic<int> background_runs{0};
-  router.add(http::verb::get, "/foreground-slow",
-             [&foreground_started](const holder::api::Router::Request&,
-                                   holder::api::Router::Response& res) {
-               foreground_started.fetch_add(1);
-               std::this_thread::sleep_for(std::chrono::milliseconds(300));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::get, "/ai/queued-stop-test",
-             [&background_runs](const holder::api::Router::Request&,
-                                holder::api::Router::Response& res) {
-               background_runs.fetch_add(1);
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/foreground-slow",
+      [&foreground_started](
+          const holder::api::Router::Request&,
+          holder::api::Router::Response& res
+      ) {
+        foreground_started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::get,
+      "/ai/queued-stop-test",
+      [&background_runs](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        background_runs.fetch_add(1);
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
   holder::api::ConcurrencyProfile concurrency;
@@ -835,19 +946,21 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
   concurrency.general_workers = 1;
   concurrency.writer_workers = 1;
 
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -856,12 +969,19 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto foreground = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
 
   for (int i = 0; i < 50 && foreground_started.load() < 1; ++i) {
@@ -874,12 +994,15 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
   auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
   boost::asio::ip::tcp::socket background_socket(ioc);
   boost::asio::connect(background_socket, endpoints);
-  const std::string background_request =
-      "GET /ai/queued-stop-test HTTP/1.1\r\n"
-      "Host: " + bound.bind + "\r\n"
-      "Authorization: Bearer " + token + "\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string background_request = "GET /ai/queued-stop-test HTTP/1.1\r\n"
+                                         "Host: " +
+                                         bound.bind +
+                                         "\r\n"
+                                         "Authorization: Bearer " +
+                                         token +
+                                         "\r\n"
+                                         "Connection: close\r\n"
+                                         "\r\n";
   boost::asio::write(background_socket, boost::asio::buffer(background_request));
 
   for (int i = 0; i < 50 && listener.background_queue_count() < 1; ++i) {
@@ -909,14 +1032,17 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
 
   holder::api::Router router;
   std::atomic<int> route_started{0};
-  router.add(http::verb::get, "/large-response",
-             [&route_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               route_started.fetch_add(1);
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "text/plain");
-               res.body() = std::string(32 * 1024 * 1024, 'x');
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/large-response",
+      [&route_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        route_started.fetch_add(1);
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "text/plain");
+        res.body() = std::string(32 * 1024 * 1024, 'x');
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
   holder::api::ConcurrencyProfile concurrency;
@@ -926,19 +1052,21 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
   concurrency.general_workers = 1;
   concurrency.writer_workers = 1;
 
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 concurrency);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      concurrency
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -947,7 +1075,9 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
   }
 
   holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() { listener.run(signals); });
+  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
+    listener.run(signals);
+  });
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   boost::asio::io_context ioc;
@@ -955,12 +1085,15 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
   auto endpoints = resolver.resolve(bound.bind, std::to_string(bound.port));
   tcp::socket socket(ioc);
   boost::asio::connect(socket, endpoints);
-  const std::string request =
-      "GET /large-response HTTP/1.1\r\n"
-      "Host: " + bound.bind + "\r\n"
-      "Authorization: Bearer " + token + "\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string request = "GET /large-response HTTP/1.1\r\n"
+                              "Host: " +
+                              bound.bind +
+                              "\r\n"
+                              "Authorization: Bearer " +
+                              token +
+                              "\r\n"
+                              "Connection: close\r\n"
+                              "\r\n";
   boost::asio::write(socket, boost::asio::buffer(request));
 
   for (int i = 0; i < 50 && route_started.load() < 1; ++i) {
@@ -987,18 +1120,20 @@ TEST_CASE("Listener serves card nudge and ai status routes without regression", 
 
   holder::api::Router router;
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 &card_store,
-                                 &fts,
-                                 &nudge_service,
-                                 nullptr,
-                                 nullptr,
-                                 &runner_registry);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      &card_store,
+      &fts,
+      &nudge_service,
+      nullptr,
+      nullptr,
+      &runner_registry
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -1007,64 +1142,76 @@ TEST_CASE("Listener serves card nudge and ai status routes without regression", 
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto created = holder::test::http_json_request(bound.bind,
-                                                       bound.port,
-                                                       token,
-                                                       http::verb::post,
-                                                       "/cards",
-                                                       nlohmann::json{
-                                                           {"card_id", "card-1"},
-                                                           {"project_id", "proj-1"},
-                                                           {"title", "Frog"},
-                                                           {"content", ""},
-                                                           {"created_at", 1},
-                                                           {"updated_at", 1},
-                                                       },
-                                                       http::status::created);
+  const auto created = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::post,
+      "/cards",
+      nlohmann::json{
+          {"card_id", "card-1"},
+          {"project_id", "proj-1"},
+          {"title", "Frog"},
+          {"content", ""},
+          {"created_at", 1},
+          {"updated_at", 1},
+      },
+      http::status::created
+  );
   REQUIRE(created["ok"] == true);
 
-  const auto status = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      http::verb::get,
-                                                      "/ai/status",
-                                                      nlohmann::json::object(),
-                                                      http::status::ok);
+  const auto status = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::get,
+      "/ai/status",
+      nlohmann::json::object(),
+      http::status::ok
+  );
   REQUIRE(status["ok"] == true);
   REQUIRE(status["data"]["runners"].is_array());
 
-  const auto listed = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      http::verb::get,
-                                                      "/ai/nudges?project_id=proj-1&card_id=card-1",
-                                                      nlohmann::json::object(),
-                                                      http::status::ok);
+  const auto listed = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::get,
+      "/ai/nudges?project_id=proj-1&card_id=card-1",
+      nlohmann::json::object(),
+      http::status::ok
+  );
   REQUIRE(listed["ok"] == true);
   REQUIRE(listed["data"]["nudges"].is_array());
 
-  const auto patched = holder::test::http_json_request(bound.bind,
-                                                       bound.port,
-                                                       token,
-                                                       http::verb::patch,
-                                                       "/cards/card-1",
-                                                       nlohmann::json{
-                                                           {"title", "Frog Updated"},
-                                                           {"content", "Now has body"},
-                                                           {"updated_at", 2},
-                                                       },
-                                                       http::status::ok);
+  const auto patched = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::patch,
+      "/cards/card-1",
+      nlohmann::json{
+          {"title", "Frog Updated"},
+          {"content", "Now has body"},
+          {"updated_at", 2},
+      },
+      http::status::ok
+  );
   REQUIRE(patched["ok"] == true);
 
   listener.stop();
   listener_thread.join();
 }
 
-TEST_CASE("Multiple configured runners do not block card save path under background saturation",
-          "[listener]") {
+TEST_CASE(
+    "Multiple configured runners do not block card save path under background saturation",
+    "[listener]"
+) {
   namespace http = boost::beast::http;
 
   const auto dir = make_temp_dir();
@@ -1077,29 +1224,34 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
 
   holder::api::Router router;
   std::atomic<int> slow_started{0};
-  router.add(http::verb::get, "/ai/slow",
-             [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               slow_started.fetch_add(1);
-               std::this_thread::sleep_for(std::chrono::milliseconds(300));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/ai/slow",
+      [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        slow_started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 &card_store,
-                                 &fts,
-                                 nullptr,
-                                 nullptr,
-                                 nullptr,
-                                 &runner_registry);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      &card_store,
+      &fts,
+      nullptr,
+      nullptr,
+      nullptr,
+      &runner_registry
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -1108,23 +1260,27 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto created = holder::test::http_json_request(bound.bind,
-                                                       bound.port,
-                                                       token,
-                                                       http::verb::post,
-                                                       "/cards",
-                                                       nlohmann::json{
-                                                           {"card_id", "card-1"},
-                                                           {"project_id", "proj-1"},
-                                                           {"title", "Card"},
-                                                           {"content", "start"},
-                                                           {"created_at", 1},
-                                                           {"updated_at", 1},
-                                                       },
-                                                       http::status::created);
+  const auto created = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::post,
+      "/cards",
+      nlohmann::json{
+          {"card_id", "card-1"},
+          {"project_id", "proj-1"},
+          {"title", "Card"},
+          {"content", "start"},
+          {"created_at", 1},
+          {"updated_at", 1},
+      },
+      http::status::created
+  );
   REQUIRE(created["ok"] == true);
 
   for (int i = 0; i < 3; ++i) {
@@ -1139,18 +1295,37 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
             {"kind", "ollama"},
             {"base_url", "http://runner" + std::to_string(i + 1) + ":11434"},
         },
-        http::status::created);
+        http::status::created
+    );
     REQUIRE(created_runner["ok"] == true);
   }
 
   auto slow1 = std::async(std::launch::async, [&]() {
-    return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
+    return holder::test::http_request_raw(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/slow"
+    );
   });
   auto slow2 = std::async(std::launch::async, [&]() {
-    return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
+    return holder::test::http_request_raw(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/slow"
+    );
   });
   auto slow3 = std::async(std::launch::async, [&]() {
-    return holder::test::http_request_raw(bound.bind, bound.port, token, http::verb::get, "/ai/slow");
+    return holder::test::http_request_raw(
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/ai/slow"
+    );
   });
 
   for (int i = 0; i < 50 && slow_started.load() < 3; ++i) {
@@ -1159,19 +1334,22 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
   REQUIRE(slow_started.load() == 3);
 
   const auto save_started = std::chrono::steady_clock::now();
-  const auto patched = holder::test::http_json_request(bound.bind,
-                                                       bound.port,
-                                                       token,
-                                                       http::verb::patch,
-                                                       "/cards/card-1",
-                                                       nlohmann::json{
-                                                           {"title", "Saved While Busy"},
-                                                           {"content", "updated"},
-                                                           {"updated_at", 2},
-                                                       },
-                                                       http::status::ok);
+  const auto patched = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::patch,
+      "/cards/card-1",
+      nlohmann::json{
+          {"title", "Saved While Busy"},
+          {"content", "updated"},
+          {"updated_at", 2},
+      },
+      http::status::ok
+  );
   const auto save_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - save_started)
+                                   std::chrono::steady_clock::now() - save_started
+  )
                                    .count();
   REQUIRE(patched["ok"] == true);
   REQUIRE(save_elapsed_ms < 200);
@@ -1184,7 +1362,10 @@ TEST_CASE("Multiple configured runners do not block card save path under backgro
   listener_thread.join();
 }
 
-TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch time", "[listener]") {
+TEST_CASE(
+    "Queued save request jumps ahead of queued non-save work at dispatch time",
+    "[listener]"
+) {
   namespace http = boost::beast::http;
 
   const auto dir = make_temp_dir();
@@ -1193,41 +1374,54 @@ TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch t
 
   holder::api::Router router;
   std::atomic<int> slow_foreground_started{0};
-  router.add(http::verb::get, "/foreground-slow",
-             [&slow_foreground_started](const holder::api::Router::Request&,
-                                        holder::api::Router::Response& res) {
-               slow_foreground_started.fetch_add(1);
-               std::this_thread::sleep_for(std::chrono::milliseconds(300));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::get, "/foreground-fast",
-             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::patch, "/cards/save-priority",
-             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/foreground-slow",
+      [&slow_foreground_started](
+          const holder::api::Router::Request&,
+          holder::api::Router::Response& res
+      ) {
+        slow_foreground_started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::get,
+      "/foreground-fast",
+      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::patch,
+      "/cards/save-priority",
+      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -1236,20 +1430,37 @@ TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch t
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto slow1 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
   auto slow2 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
   auto slow3 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
 
   for (int i = 0; i < 50 && slow_foreground_started.load() < 3; ++i) {
@@ -1259,21 +1470,29 @@ TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch t
 
   auto queued_foreground = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-fast");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-fast"
+    );
   });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(30));
 
   const auto save_started = std::chrono::steady_clock::now();
-  const auto saved = holder::test::http_json_request(bound.bind,
-                                                     bound.port,
-                                                     token,
-                                                     http::verb::patch,
-                                                     "/cards/save-priority",
-                                                     nlohmann::json::object(),
-                                                     http::status::ok);
+  const auto saved = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::patch,
+      "/cards/save-priority",
+      nlohmann::json::object(),
+      http::status::ok
+  );
   const auto save_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - save_started)
+                                   std::chrono::steady_clock::now() - save_started
+  )
                                    .count();
 
   REQUIRE(saved["ok"] == true);
@@ -1289,8 +1508,10 @@ TEST_CASE("Queued save request jumps ahead of queued non-save work at dispatch t
   listener_thread.join();
 }
 
-TEST_CASE("Queued background request is dropped if client disconnects before execution",
-          "[listener]") {
+TEST_CASE(
+    "Queued background request is dropped if client disconnects before execution",
+    "[listener]"
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -1301,36 +1522,48 @@ TEST_CASE("Queued background request is dropped if client disconnects before exe
   holder::api::Router router;
   std::atomic<int> slow_foreground_started{0};
   std::atomic<int> canceled_background_runs{0};
-  router.add(http::verb::get, "/foreground-slow",
-             [&slow_foreground_started](const holder::api::Router::Request&,
-                                        holder::api::Router::Response& res) {
-               slow_foreground_started.fetch_add(1);
-               std::this_thread::sleep_for(std::chrono::milliseconds(300));
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
-  router.add(http::verb::get, "/ai/cancel-test",
-             [&canceled_background_runs](const holder::api::Router::Request&,
-                                         holder::api::Router::Response& res) {
-               canceled_background_runs.fetch_add(1);
-               res.result(http::status::ok);
-               res.set(http::field::content_type, "application/json");
-               res.body() = R"({"ok":true})";
-               res.prepare_payload();
-             });
+  router.add(
+      http::verb::get,
+      "/foreground-slow",
+      [&slow_foreground_started](
+          const holder::api::Router::Request&,
+          holder::api::Router::Response& res
+      ) {
+        slow_foreground_started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
+  router.add(
+      http::verb::get,
+      "/ai/cancel-test",
+      [&canceled_background_runs](
+          const holder::api::Router::Request&,
+          holder::api::Router::Response& res
+      ) {
+        canceled_background_runs.fetch_add(1);
+        res.result(http::status::ok);
+        res.set(http::field::content_type, "application/json");
+        res.body() = R"({"ok":true})";
+        res.prepare_payload();
+      }
+  );
 
   const std::string token = "testtoken";
-  holder::api::Listener listener("127.0.0.1",
-                                 0,
-                                 db,
-                                 token,
-                                 router,
-                                 std::chrono::steady_clock::now(),
-                                 nullptr,
-                                 nullptr,
-                                 nullptr);
+  holder::api::Listener listener(
+      "127.0.0.1",
+      0,
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr
+  );
   holder::api::Listener::BoundInfo bound;
   try {
     bound = listener.start();
@@ -1339,20 +1572,37 @@ TEST_CASE("Queued background request is dropped if client disconnects before exe
   }
 
   holder::core::SignalHandler signals;
-  std::thread listener_thread([&listener, &signals]() { listener.run(signals); });
+  std::thread listener_thread([&listener, &signals]() {
+    listener.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto slow1 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
   auto slow2 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
   auto slow3 = std::async(std::launch::async, [&]() {
     return holder::test::http_request_raw(
-        bound.bind, bound.port, token, http::verb::get, "/foreground-slow");
+        bound.bind,
+        bound.port,
+        token,
+        http::verb::get,
+        "/foreground-slow"
+    );
   });
 
   for (int i = 0; i < 50 && slow_foreground_started.load() < 3; ++i) {
@@ -1367,12 +1617,15 @@ TEST_CASE("Queued background request is dropped if client disconnects before exe
     tcp::socket socket(ioc);
     boost::asio::connect(socket, endpoints);
 
-    const std::string request =
-        "GET /ai/cancel-test HTTP/1.1\r\n"
-        "Host: " + bound.bind + "\r\n"
-        "Authorization: Bearer " + token + "\r\n"
-        "Connection: close\r\n"
-        "\r\n";
+    const std::string request = "GET /ai/cancel-test HTTP/1.1\r\n"
+                                "Host: " +
+                                bound.bind +
+                                "\r\n"
+                                "Authorization: Bearer " +
+                                token +
+                                "\r\n"
+                                "Connection: close\r\n"
+                                "\r\n";
     boost::asio::write(socket, boost::asio::buffer(request));
     socket.shutdown(tcp::socket::shutdown_both);
     socket.close();

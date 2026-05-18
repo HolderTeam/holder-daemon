@@ -27,10 +27,14 @@ TEST_CASE("AiThreadRoutes returns false when no thread sub-route matches", "[ai]
   auto req = make_request(http::verb::get, "/ai/threadz");
   http::response<http::string_body> res;
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
-  const bool handled = holder::api::routes::handle_ai_thread_routes(
-      "/ai/threadz", req, res, db, uuid_v4, param_get);
+  const bool handled =
+      holder::api::routes::handle_ai_thread_routes("/ai/threadz", req, res, db, uuid_v4, param_get);
   REQUIRE_FALSE(handled);
 }

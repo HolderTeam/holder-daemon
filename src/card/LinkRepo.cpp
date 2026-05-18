@@ -51,11 +51,14 @@ holder::model::CardLink read_link(sqlite3_stmt* stmt) {
 
 } // namespace
 
-LinkRepo::LinkRepo(holder::platform::Db& db) : db_(db) {}
+LinkRepo::LinkRepo(holder::platform::Db& db)
+    : db_(db) {}
 
-void LinkRepo::upsert_links(const std::string& project_id,
-                            const std::string& from_card_id,
-                            const std::vector<holder::model::CardLink>& links) {
+void LinkRepo::upsert_links(
+    const std::string& project_id,
+    const std::string& from_card_id,
+    const std::vector<holder::model::CardLink>& links
+) {
   static constexpr const char* SQL =
       "INSERT INTO card_links(project_id, from_card_id, to_card_id, to_type, kind, label, created_at) "
       "VALUES(?, ?, ?, ?, ?, ?, ?) "
@@ -97,7 +100,8 @@ void LinkRepo::upsert_links(const std::string& project_id,
 
 std::vector<holder::model::CardLink> LinkRepo::list_outgoing(
     const std::string& project_id,
-    const std::string& from_card_id) const {
+    const std::string& from_card_id
+) const {
   static constexpr const char* SQL =
       "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
       "FROM card_links WHERE project_id = ? AND from_card_id = ? "
@@ -129,7 +133,8 @@ std::vector<holder::model::CardLink> LinkRepo::list_outgoing(
 
 std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
     const std::string& project_id,
-    const std::string& to_card_id) const {
+    const std::string& to_card_id
+) const {
   static constexpr const char* SQL =
       "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
       "FROM card_links WHERE project_id = ? AND to_card_id = ? "
@@ -162,7 +167,8 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks(
 std::vector<holder::model::CardLink> LinkRepo::list_backlinks_typed(
     const std::string& project_id,
     const std::string& to_card_id,
-    const std::string& to_type) const {
+    const std::string& to_type
+) const {
   static constexpr const char* SQL =
       "SELECT project_id, from_card_id, to_card_id, to_type, kind, label, created_at "
       "FROM card_links WHERE project_id = ? AND to_card_id = ? AND to_type = ? "
@@ -193,17 +199,18 @@ std::vector<holder::model::CardLink> LinkRepo::list_backlinks_typed(
   return out;
 } // LCOV_EXCL_LINE
 
-void LinkRepo::delete_link(const std::string& project_id,
-                           const std::string& from_card_id,
-                           const std::string& to_card_id,
-                           const std::optional<std::string>& to_type,
-                           const std::optional<std::string>& kind) {
+void LinkRepo::delete_link(
+    const std::string& project_id,
+    const std::string& from_card_id,
+    const std::string& to_card_id,
+    const std::optional<std::string>& to_type,
+    const std::optional<std::string>& kind
+) {
   const char* sql_with_kind_type =
       "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
       "AND to_card_id = ? AND to_type = ? AND kind = ?;";
-  const char* sql_with_kind =
-      "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
-      "AND to_card_id = ? AND kind = ?;";
+  const char* sql_with_kind = "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
+                              "AND to_card_id = ? AND kind = ?;";
   const char* sql_without_kind_type =
       "DELETE FROM card_links WHERE project_id = ? AND from_card_id = ? "
       "AND to_card_id = ? AND to_type = ?;";
@@ -244,9 +251,11 @@ void LinkRepo::delete_link(const std::string& project_id,
   }
 }
 
-void LinkRepo::delete_links_to_typed(const std::string& project_id,
-                                     const std::string& to_card_id,
-                                     const std::string& to_type) {
+void LinkRepo::delete_links_to_typed(
+    const std::string& project_id,
+    const std::string& to_card_id,
+    const std::string& to_type
+) {
   static constexpr const char* SQL =
       "DELETE FROM card_links WHERE project_id = ? AND to_card_id = ? AND to_type = ?;";
 

@@ -15,7 +15,10 @@ namespace {
 
 namespace http = boost::beast::http;
 
-nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
+nlohmann::json pull_job_to_json(
+    const holder::llm::RunnerPullJob& job,
+    const std::string& runner_id
+) {
   nlohmann::json data;
   data["job_id"] = job.job_id;
   data["runner_id"] = runner_id;
@@ -33,8 +36,10 @@ nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std
   return data;
 }
 
-std::string requested_runner_id(const http::request<http::string_body>& req,
-                                const std::function<std::string(const std::string&)>& param_get) {
+std::string requested_runner_id(
+    const http::request<http::string_body>& req,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   const auto query_runner_id = param_get("runner_id");
   if (!query_runner_id.empty()) {
     return query_runner_id;
@@ -61,7 +66,8 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string(const std::string&)>& param_get) {
+    const std::function<std::string(const std::string&)>& param_get
+) {
   RunnerRouteDispatchResult out{};
   const std::string runner_id = requested_runner_id(req, param_get);
   auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
@@ -75,20 +81,25 @@ RunnerRouteDispatchResult handle_ai_runner_pull_routes(
     try {
       const auto runner_status = runner->status();
       if (!runner_status.available) {
-        res = support::error_response(http::status::service_unavailable,
-                                      "runner_unavailable",
-                                      "Local model runner unavailable.");
+        res = support::error_response(
+            http::status::service_unavailable,
+            "runner_unavailable",
+            "Local model runner unavailable."
+        );
       } else {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("model")) {
           res = support::error_response(http::status::bad_request, "bad_request", "Missing model.");
         } else {
-        const std::string model = body.at("model").get<std::string>();
+          const std::string model = body.at("model").get<std::string>();
           spdlog::info("AI runner pull requested runner_id=" + runner_id + " model=" + model);
           auto job = runner->start_pull(model);
           if (job.status == "failed") {
             res = support::error_response(
-                http::status::bad_request, "bad_request", job.error.empty() ? "Pull failed." : job.error);
+                http::status::bad_request,
+                "bad_request",
+                job.error.empty() ? "Pull failed." : job.error
+            );
           } else {
             nlohmann::json payload;
             payload["ok"] = true;

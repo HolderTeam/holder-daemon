@@ -21,7 +21,9 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 
@@ -55,7 +57,9 @@ TEST_CASE("HTTP /health reports db_ok false when DB is closed", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 

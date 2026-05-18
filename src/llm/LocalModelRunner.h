@@ -7,26 +7,19 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace holder::llm {
 
 class LocalModelRunner {
  public:
-  using StreamGenerateOverride =
-      std::function<bool(const std::string&,
-                         const std::string&,
-                         const std::string&,
-                         const std::function<void(const std::string&)>&,
-                         std::string*)>;
+  using StreamGenerateOverride = std::function<
+      bool(const std::string&, const std::string&, const std::string&, const std::function<void(const std::string&)>&, std::string*)>;
 
   LocalModelRunner();
-  LocalModelRunner(std::string host,
-                   std::string port,
-                   std::string exec_path,
-                   bool allow_spawn);
+  LocalModelRunner(std::string host, std::string port, std::string exec_path, bool allow_spawn);
   ~LocalModelRunner();
 
   void start_background_probe();
@@ -40,11 +33,13 @@ class LocalModelRunner {
   PullJob start_pull(const std::string& model);
   std::optional<PullJob> get_pull(const std::string& job_id) const;
   std::vector<PullJob> list_pulls() const;
-  bool stream_generate(const std::string& model,
-                       const std::string& prompt,
-                       const std::string& options_json,
-                       const std::function<void(const std::string&)>& on_chunk,
-                       std::string* error);
+  bool stream_generate(
+      const std::string& model,
+      const std::string& prompt,
+      const std::string& options_json,
+      const std::function<void(const std::string&)>& on_chunk,
+      std::string* error
+  );
   void set_fake_mode(bool enabled);
   void set_status_override_for_tests(const std::optional<RunnerStatus>& status);
   void set_stream_generate_override_for_tests(StreamGenerateOverride override_fn);

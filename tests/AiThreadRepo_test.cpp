@@ -4,9 +4,9 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "ai/AiThreadRepo.h"
 #include "model/AiThread.h"
 #include "model/Project.h"
-#include "ai/AiThreadRepo.h"
 #include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
@@ -34,7 +34,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_ai_thread_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -155,7 +156,14 @@ TEST_CASE("AiThreadRepo throws on get/list step error paths", "[aithreaddrepo]")
   thread.updated_at = 1;
   repo.create(thread);
 
-  sqlite3_progress_handler(db.handle(), 1, [](void*) -> int { return 1; }, nullptr);
+  sqlite3_progress_handler(
+      db.handle(),
+      1,
+      [](void*) -> int {
+        return 1;
+      },
+      nullptr
+  );
 
   REQUIRE_THROWS(repo.get("thread-int"));
   REQUIRE_THROWS(repo.list("proj-1"));
@@ -227,13 +235,15 @@ TEST_CASE("AiThreadRepo list throws when interrupted during large scan", "[aithr
 
   int callback_count = 0;
   sqlite3_progress_handler(
-      db.handle(), 1,
+      db.handle(),
+      1,
       [](void* ctx) -> int {
         auto* count = static_cast<int*>(ctx);
         ++(*count);
         return (*count > 2000) ? 1 : 0;
       },
-      &callback_count);
+      &callback_count
+  );
   REQUIRE_THROWS(repo.list("proj-1"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }

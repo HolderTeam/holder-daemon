@@ -7,7 +7,7 @@
 namespace holder::platform {
 
 class Db {
-public:
+ public:
   Db() = default;
   ~Db();
 
@@ -32,7 +32,7 @@ public:
   // Expose raw handle when needed.
   sqlite3* handle() const { return db_; }
 
-private:
+ private:
   static void throw_sqlite(const std::string& what, int rc, sqlite3* db);
 
   sqlite3* db_ = nullptr;
@@ -40,4 +40,3 @@ private:
 };
 
 } // namespace holder::platform
-

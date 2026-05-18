@@ -19,10 +19,13 @@ int command_reindex(const holder::core::Paths& paths, int argc) {
   try {
     const auto connection = read_secure_daemon_connection(paths);
     const auto response = http_json_request(
-        connection, boost::beast::http::verb::post, "/reindex", std::chrono::seconds(30));
+        connection,
+        boost::beast::http::verb::post,
+        "/reindex",
+        std::chrono::seconds(30)
+    );
 
-    if (response.status != boost::beast::http::status::ok ||
-        !response.payload.value("ok", false)) {
+    if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
       const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
       throw std::runtime_error("Reindex failed: " + api_error_message(response, fallback));
     }

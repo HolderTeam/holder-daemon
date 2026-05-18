@@ -53,7 +53,8 @@ Nudge row_to_nudge(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiNudgeRepo::AiNudgeRepo(holder::platform::Db& db) : db_(db) {}
+AiNudgeRepo::AiNudgeRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 void AiNudgeRepo::create(const Nudge& nudge) {
   static constexpr const char* SQL =
@@ -114,7 +115,8 @@ Nudge AiNudgeRepo::create_or_get(const Nudge& nudge) {
 
   auto stored = find_by_id(nudge.nudge_id);
   if (!stored.has_value()) {
-    throw std::runtime_error("insert ai_nudge failed: row not found after insert"); // LCOV_EXCL_LINE
+    throw std::runtime_error("insert ai_nudge failed: row not found after insert"
+    ); // LCOV_EXCL_LINE
   }
   return stored.value();
 }
@@ -149,7 +151,8 @@ std::optional<Nudge> AiNudgeRepo::find_active_exact_match(
     const std::string& project_id,
     const std::optional<std::string>& card_id,
     const std::optional<std::string>& basis_fingerprint,
-    const std::optional<std::string>& basis_commit) const {
+    const std::optional<std::string>& basis_commit
+) const {
   static constexpr const char* SQL =
       "SELECT nudge_id, kind, project_id, card_id, title, body, meta_json, basis_fingerprint, basis_commit, created_at, dismissed_at "
       "FROM ai_nudges WHERE kind = ? AND project_id = ? "
@@ -185,8 +188,10 @@ std::optional<Nudge> AiNudgeRepo::find_active_exact_match(
   return std::nullopt; // LCOV_EXCL_LINE
 }
 
-std::vector<Nudge> AiNudgeRepo::list_active(const std::string& project_id,
-                                            const std::optional<std::string>& card_id) const {
+std::vector<Nudge> AiNudgeRepo::list_active(
+    const std::string& project_id,
+    const std::optional<std::string>& card_id
+) const {
   static constexpr const char* SQL_FOR_PROJECT =
       "SELECT nudge_id, kind, project_id, card_id, title, body, meta_json, basis_fingerprint, basis_commit, created_at, dismissed_at "
       "FROM ai_nudges WHERE project_id = ? AND card_id IS NULL AND dismissed_at IS NULL "
@@ -197,11 +202,13 @@ std::vector<Nudge> AiNudgeRepo::list_active(const std::string& project_id,
       "ORDER BY created_at DESC;";
 
   sqlite3_stmt* stmt = nullptr;
-  if (sqlite3_prepare_v2(db_.handle(),
-                         card_id.has_value() ? SQL_FOR_CARD : SQL_FOR_PROJECT,
-                         -1,
-                         &stmt,
-                         nullptr) != SQLITE_OK) {
+  if (sqlite3_prepare_v2(
+          db_.handle(),
+          card_id.has_value() ? SQL_FOR_CARD : SQL_FOR_PROJECT,
+          -1,
+          &stmt,
+          nullptr
+      ) != SQLITE_OK) {
     throw_sqlite(db_.handle(), "prepare ai_nudges list failed"); // LCOV_EXCL_LINE
   }
   sqlite3_bind_text(stmt, 1, project_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -217,11 +224,13 @@ std::vector<Nudge> AiNudgeRepo::list_active(const std::string& project_id,
   return out;
 } // LCOV_EXCL_LINE
 
-void AiNudgeRepo::dismiss_stale_variants(const std::string& kind,
-                                         const std::string& project_id,
-                                         const std::optional<std::string>& card_id,
-                                         const std::optional<std::string>& basis_fingerprint,
-                                         const std::optional<std::string>& basis_commit) {
+void AiNudgeRepo::dismiss_stale_variants(
+    const std::string& kind,
+    const std::string& project_id,
+    const std::optional<std::string>& card_id,
+    const std::optional<std::string>& basis_fingerprint,
+    const std::optional<std::string>& basis_commit
+) {
   static constexpr const char* SQL =
       "UPDATE ai_nudges "
       "SET dismissed_at = CAST(strftime('%s','now') AS INTEGER) "
@@ -252,10 +261,9 @@ void AiNudgeRepo::dismiss_stale_variants(const std::string& kind,
 }
 
 bool AiNudgeRepo::dismiss(const std::string& nudge_id) {
-  static constexpr const char* SQL =
-      "UPDATE ai_nudges "
-      "SET dismissed_at = CAST(strftime('%s','now') AS INTEGER) "
-      "WHERE nudge_id = ? AND dismissed_at IS NULL;";
+  static constexpr const char* SQL = "UPDATE ai_nudges "
+                                     "SET dismissed_at = CAST(strftime('%s','now') AS INTEGER) "
+                                     "WHERE nudge_id = ? AND dismissed_at IS NULL;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

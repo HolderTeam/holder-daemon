@@ -8,7 +8,8 @@ namespace holder::api::support {
 
 inline bool is_authorized_bearer(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
-    const std::string& token) {
+    const std::string& token
+) {
   namespace http = boost::beast::http;
   const auto it = req.find(http::field::authorization);
   if (it == req.end()) return false;

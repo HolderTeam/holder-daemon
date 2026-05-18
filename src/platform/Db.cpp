@@ -21,12 +21,14 @@ void exec_open_pragma(sqlite3* db, const std::string& sql) {
     std::string msg = err ? err : "unknown sqlite error"; // LCOV_EXCL_LINE
     sqlite3_free(err); // LCOV_EXCL_LINE
 
-    if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt + 1 < kMaxAttempts) { // LCOV_EXCL_LINE
+    if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) &&
+        attempt + 1 < kMaxAttempts) { // LCOV_EXCL_LINE
       std::this_thread::sleep_for(kRetryDelay); // LCOV_EXCL_LINE
       continue; // LCOV_EXCL_LINE
     }
 
-    std::string full = "sqlite exec failed: " + msg + " (rc=" + std::to_string(rc) + ")"; // LCOV_EXCL_LINE
+    std::string full = "sqlite exec failed: " + msg + " (rc=" + std::to_string(rc) +
+                       ")"; // LCOV_EXCL_LINE
     if (db) { // LCOV_EXCL_LINE
       full += ": "; // LCOV_EXCL_LINE
       full += sqlite3_errmsg(db); // LCOV_EXCL_LINE
@@ -72,7 +74,8 @@ void Db::open(const std::filesystem::path& path) {
       path.string().c_str(),
       &db_,
       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-      nullptr);
+      nullptr
+  );
 
   if (rc != SQLITE_OK) {
     // db_ may be non-null even on failure

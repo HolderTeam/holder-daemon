@@ -2,17 +2,17 @@
 
 #include "ai/AiMessageFrontMatter.h"
 #include "ai/AiMessagePaths.h"
+#include "ai/AiThreadRepo.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
-#include "platform/Fs.h"
-#include "ai/AiThreadRepo.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
+#include "platform/Fs.h"
 #include "platform/Tx.h"
 #include "privacy/ProjectPrivacy.h"
 
-#include <sqlite3.h>
 #include <spdlog/spdlog.h>
+#include <sqlite3.h>
 
 #include <filesystem>
 #include <optional>
@@ -35,8 +35,10 @@ long long file_mtime_seconds(holder::core::Fs& fs, const std::filesystem::path& 
   return fs.last_write_time_seconds(path);
 }
 
-std::string relative_path_string(const std::filesystem::path& root,
-                                 const std::filesystem::path& path) {
+std::string relative_path_string(
+    const std::filesystem::path& root,
+    const std::filesystem::path& path
+) {
   std::error_code ec;
   const auto rel = std::filesystem::relative(path, root, ec);
   if (ec) {
@@ -109,7 +111,8 @@ std::string decode_blob_for_project(const holder::model::Project& project, const
   return holder::privacy::decrypt_project_blob(
       project.project_id,
       project.project_key_id.value(),
-      raw);
+      raw
+  );
 }
 
 struct MessageRecord {
@@ -126,10 +129,12 @@ struct CardRecord {
 
 } // namespace
 
-Rebuilder::Rebuilder(holder::platform::Db& db,
-                     holder::index::FtsIndexer* fts,
-                     holder::core::Fs* fs,
-                     bool tolerate_invalid_ai_messages)
+Rebuilder::Rebuilder(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    holder::core::Fs* fs,
+    bool tolerate_invalid_ai_messages
+)
     : db_(db),
       fts_(fts),
       fs_(&resolve_fs(fs)),
@@ -145,25 +150,29 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
 
   holder::platform::Tx tx(db_);
 
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM card_links WHERE project_id = ?;",
-                      project.project_id);
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM cards WHERE project_id = ?;",
-                      project.project_id);
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM ai_messages WHERE thread_id IN "
-                      "(SELECT thread_id FROM ai_threads WHERE project_id = ?);",
-                      project.project_id);
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM ai_threads WHERE project_id = ?;",
-                      project.project_id);
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM cards_fts WHERE project_id = ?;",
-                      project.project_id);
-  exec_delete_project(db_.handle(),
-                      "DELETE FROM ai_fts WHERE project_id = ?;",
-                      project.project_id);
+  exec_delete_project(
+      db_.handle(),
+      "DELETE FROM card_links WHERE project_id = ?;",
+      project.project_id
+  );
+  exec_delete_project(db_.handle(), "DELETE FROM cards WHERE project_id = ?;", project.project_id);
+  exec_delete_project(
+      db_.handle(),
+      "DELETE FROM ai_messages WHERE thread_id IN "
+      "(SELECT thread_id FROM ai_threads WHERE project_id = ?);",
+      project.project_id
+  );
+  exec_delete_project(
+      db_.handle(),
+      "DELETE FROM ai_threads WHERE project_id = ?;",
+      project.project_id
+  );
+  exec_delete_project(
+      db_.handle(),
+      "DELETE FROM cards_fts WHERE project_id = ?;",
+      project.project_id
+  );
+  exec_delete_project(db_.handle(), "DELETE FROM ai_fts WHERE project_id = ?;", project.project_id);
 
   holder::card::CardRepo card_repo(db_);
   holder::card::LinkRepo link_repo(db_);
@@ -203,9 +212,8 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
       throw std::runtime_error("invalid card_id in file");
     }
 
-    const std::string expected_rel =
-        is_trash ? holder::core::card_trash_rel_path(card.card_id)
-                 : holder::core::card_rel_path(card.card_id);
+    const std::string expected_rel = is_trash ? holder::core::card_trash_rel_path(card.card_id)
+                                              : holder::core::card_rel_path(card.card_id);
     const std::string actual_rel = relative_path_string(root, path);
     if (actual_rel != expected_rel) {
       throw std::runtime_error("card path does not match card_id");
@@ -270,7 +278,12 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
 
       card_repo.create(record.card);
       if (fts_ && !record.card.deleted_at.has_value()) {
-        fts_->upsert_card(record.card.card_id, record.card.project_id, record.card.title, record.body);
+        fts_->upsert_card(
+            record.card.card_id,
+            record.card.project_id,
+            record.card.title,
+            record.body
+        );
       }
       inserted_cards.insert(record.card.card_id);
       inserted[i] = true;
@@ -441,7 +454,12 @@ Rebuilder::RebuildStats Rebuilder::rebuild_project(const holder::model::Project&
       stats.links += record.links.size();
     }
     if (fts_ && !message.deleted_at.has_value()) {
-      fts_->upsert_message(message.message_id, message.thread_id, record.project_id, message.content);
+      fts_->upsert_message(
+          message.message_id,
+          message.thread_id,
+          record.project_id,
+          message.content
+      );
     }
     stats.ai_messages += 1;
   }

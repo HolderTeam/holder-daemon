@@ -17,13 +17,14 @@ namespace {
 namespace http = boost::beast::http;
 
 class CwdGuard {
-public:
-  explicit CwdGuard(const std::filesystem::path& next) : prev_(std::filesystem::current_path()) {
+ public:
+  explicit CwdGuard(const std::filesystem::path& next)
+      : prev_(std::filesystem::current_path()) {
     std::filesystem::current_path(next);
   }
   ~CwdGuard() { std::filesystem::current_path(prev_); }
 
-private:
+ private:
   std::filesystem::path prev_;
 };
 
@@ -46,7 +47,10 @@ TEST_CASE("StaticRoutes openapi not-found variants", "[static-routes]") {
   const auto dir = holder::test::make_temp_dir();
   CwdGuard cwd(dir);
 
-  holder::test::EnvGuard openapi_env("HOLDER_OPENAPI_PATH", (dir / "missing-openapi.yaml").string());
+  holder::test::EnvGuard openapi_env(
+      "HOLDER_OPENAPI_PATH",
+      (dir / "missing-openapi.yaml").string()
+  );
   auto req = make_request(http::verb::get, "/openapi.yaml");
   http::response<http::string_body> res;
   REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", req, res));
@@ -58,9 +62,11 @@ TEST_CASE("StaticRoutes openapi not-found variants", "[static-routes]") {
     REQUIRE(out.is_open());
     out << "openapi: 3.0.0\n";
   }
-  std::filesystem::permissions(unreadable_openapi,
-                               std::filesystem::perms::none,
-                               std::filesystem::perm_options::replace);
+  std::filesystem::permissions(
+      unreadable_openapi,
+      std::filesystem::perms::none,
+      std::filesystem::perm_options::replace
+  );
   holder::test::EnvGuard openapi_env_dir("HOLDER_OPENAPI_PATH", unreadable_openapi.string());
   http::response<http::string_body> res2;
   REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", req, res2));
@@ -100,8 +106,10 @@ TEST_CASE("StaticRoutes serves docs and openapi success cases", "[static-routes]
   http::response<http::string_body> openapi_res;
   REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", openapi_req, openapi_res));
   REQUIRE(openapi_res.result() == http::status::ok);
-  REQUIRE(std::string(openapi_res[http::field::content_type]).find("application/yaml") !=
-          std::string::npos);
+  REQUIRE(
+      std::string(openapi_res[http::field::content_type]).find("application/yaml") !=
+      std::string::npos
+  );
   REQUIRE(openapi_res.body().find("openapi:") != std::string::npos);
 }
 
@@ -122,9 +130,11 @@ TEST_CASE("StaticRoutes ai_catalog json handles not-found and parse errors", "[s
     REQUIRE(out.is_open());
     out << "x: 1\n";
   }
-  std::filesystem::permissions(ai_unreadable,
-                               std::filesystem::perms::none,
-                               std::filesystem::perm_options::replace);
+  std::filesystem::permissions(
+      ai_unreadable,
+      std::filesystem::perms::none,
+      std::filesystem::perm_options::replace
+  );
   holder::test::EnvGuard unreadable_env("HOLDER_AI_CATALOG_PATH", ai_unreadable.string());
   http::response<http::string_body> unreadable_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", req, unreadable_res));
@@ -174,16 +184,18 @@ TEST_CASE("StaticRoutes ai_catalog success cases", "[static-routes]") {
   http::response<http::string_body> yaml_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", yaml_req, yaml_res));
   REQUIRE(yaml_res.result() == http::status::ok);
-  REQUIRE(std::string(yaml_res[http::field::content_type]).find("application/yaml") !=
-          std::string::npos);
+  REQUIRE(
+      std::string(yaml_res[http::field::content_type]).find("application/yaml") != std::string::npos
+  );
   REQUIRE(yaml_res.body().find("models:") != std::string::npos);
 
   auto json_req = make_request(http::verb::get, "/ai_catalog.json");
   http::response<http::string_body> json_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", json_req, json_res));
   REQUIRE(json_res.result() == http::status::ok);
-  REQUIRE(std::string(json_res[http::field::content_type]).find("application/json") !=
-          std::string::npos);
+  REQUIRE(
+      std::string(json_res[http::field::content_type]).find("application/json") != std::string::npos
+  );
   const auto parsed = nlohmann::json::parse(json_res.body());
   REQUIRE(parsed.contains("models"));
   REQUIRE(parsed["models"].contains("Models"));
@@ -197,12 +209,17 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
   auto yaml_req = make_request(http::verb::get, "/git_providers.yaml");
   auto json_req = make_request(http::verb::get, "/git_providers.json");
 
-  holder::test::EnvGuard missing_env("HOLDER_GIT_PROVIDERS_PATH", (dir / "missing-git.yaml").string());
+  holder::test::EnvGuard missing_env(
+      "HOLDER_GIT_PROVIDERS_PATH",
+      (dir / "missing-git.yaml").string()
+  );
   http::response<http::string_body> miss_yaml_res;
-  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, miss_yaml_res));
+  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, miss_yaml_res)
+  );
   REQUIRE(miss_yaml_res.result() == http::status::not_found);
   http::response<http::string_body> miss_json_res;
-  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_res));
+  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_res)
+  );
   REQUIRE(miss_json_res.result() == http::status::not_found);
 
   const auto git_unreadable = dir / "git-unreadable.yaml";
@@ -211,15 +228,21 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
     REQUIRE(out.is_open());
     out << "providers: []\n";
   }
-  std::filesystem::permissions(git_unreadable,
-                               std::filesystem::perms::none,
-                               std::filesystem::perm_options::replace);
+  std::filesystem::permissions(
+      git_unreadable,
+      std::filesystem::perms::none,
+      std::filesystem::perm_options::replace
+  );
   holder::test::EnvGuard unreadable_env("HOLDER_GIT_PROVIDERS_PATH", git_unreadable.string());
   http::response<http::string_body> miss_yaml_read_res;
-  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, miss_yaml_read_res));
+  REQUIRE(
+      holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, miss_yaml_read_res)
+  );
   REQUIRE(miss_yaml_read_res.result() == http::status::not_found);
   http::response<http::string_body> miss_json_read_res;
-  REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_read_res));
+  REQUIRE(
+      holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_read_res)
+  );
   REQUIRE(miss_json_read_res.result() == http::status::not_found);
 
   const auto bad_yaml = dir / "bad-git.yaml";
@@ -247,22 +270,27 @@ TEST_CASE("StaticRoutes git_providers success cases", "[static-routes]") {
            "    name: GitHub\n";
   }
 
-  holder::test::EnvGuard git_providers_env("HOLDER_GIT_PROVIDERS_PATH", git_providers_path.string());
+  holder::test::EnvGuard git_providers_env(
+      "HOLDER_GIT_PROVIDERS_PATH",
+      git_providers_path.string()
+  );
 
   auto yaml_req = make_request(http::verb::get, "/git_providers.yaml");
   http::response<http::string_body> yaml_res;
   REQUIRE(holder::api::routes::handle_static_routes("/git_providers.yaml", yaml_req, yaml_res));
   REQUIRE(yaml_res.result() == http::status::ok);
-  REQUIRE(std::string(yaml_res[http::field::content_type]).find("application/yaml") !=
-          std::string::npos);
+  REQUIRE(
+      std::string(yaml_res[http::field::content_type]).find("application/yaml") != std::string::npos
+  );
   REQUIRE(yaml_res.body().find("providers:") != std::string::npos);
 
   auto json_req = make_request(http::verb::get, "/git_providers.json");
   http::response<http::string_body> json_res;
   REQUIRE(holder::api::routes::handle_static_routes("/git_providers.json", json_req, json_res));
   REQUIRE(json_res.result() == http::status::ok);
-  REQUIRE(std::string(json_res[http::field::content_type]).find("application/json") !=
-          std::string::npos);
+  REQUIRE(
+      std::string(json_res[http::field::content_type]).find("application/json") != std::string::npos
+  );
   const auto parsed = nlohmann::json::parse(json_res.body());
   REQUIRE(parsed.contains("providers"));
   REQUIRE(parsed["providers"].is_array());
@@ -273,7 +301,10 @@ TEST_CASE("StaticRoutes ai_catalog yaml handles missing and unreadable path", "[
   CwdGuard cwd(dir);
   auto req = make_request(http::verb::get, "/ai_catalog.yaml");
 
-  holder::test::EnvGuard missing_env("HOLDER_AI_CATALOG_PATH", (dir / "missing-ai-yaml.yaml").string());
+  holder::test::EnvGuard missing_env(
+      "HOLDER_AI_CATALOG_PATH",
+      (dir / "missing-ai-yaml.yaml").string()
+  );
   http::response<http::string_body> missing_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, missing_res));
   REQUIRE(missing_res.result() == http::status::not_found);
@@ -284,16 +315,21 @@ TEST_CASE("StaticRoutes ai_catalog yaml handles missing and unreadable path", "[
     REQUIRE(out.is_open());
     out << "x: 1\n";
   }
-  std::filesystem::permissions(ai_unreadable,
-                               std::filesystem::perms::none,
-                               std::filesystem::perm_options::replace);
+  std::filesystem::permissions(
+      ai_unreadable,
+      std::filesystem::perms::none,
+      std::filesystem::perm_options::replace
+  );
   holder::test::EnvGuard unreadable_env("HOLDER_AI_CATALOG_PATH", ai_unreadable.string());
   http::response<http::string_body> unreadable_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, unreadable_res));
   REQUIRE(unreadable_res.result() == http::status::not_found);
 }
 
-TEST_CASE("StaticRoutes docs paths handle missing root, unsafe relpath and missing files", "[static-routes]") {
+TEST_CASE(
+    "StaticRoutes docs paths handle missing root, unsafe relpath and missing files",
+    "[static-routes]"
+) {
   const auto dir = holder::test::make_temp_dir();
   CwdGuard cwd(dir);
 

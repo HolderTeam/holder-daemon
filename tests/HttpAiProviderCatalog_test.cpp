@@ -1,5 +1,5 @@
-#include "http_test_helpers.h"
 #include "api/routes/ai/providers/AiProviderCatalogRoutes.h"
+#include "http_test_helpers.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -18,13 +18,14 @@ http::request<http::string_body> make_req(http::verb method, const std::string& 
 }
 
 class CwdGuard {
-public:
-  explicit CwdGuard(const std::filesystem::path& next) : prev_(std::filesystem::current_path()) {
+ public:
+  explicit CwdGuard(const std::filesystem::path& next)
+      : prev_(std::filesystem::current_path()) {
     std::filesystem::current_path(next);
   }
   ~CwdGuard() { std::filesystem::current_path(prev_); }
 
-private:
+ private:
   std::filesystem::path prev_;
 };
 } // namespace
@@ -34,8 +35,9 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  const auto cloudproviders_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /
-                                   "config" / "ai_catalog.yaml";
+  const auto cloudproviders_path =
+      std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() / "config" /
+      "ai_catalog.yaml";
   holder::test::EnvGuard cloudproviders_env("HOLDER_AI_CATALOG_PATH", cloudproviders_path.string());
 
   const std::string token = "testtoken";
@@ -48,16 +50,20 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto before = http_json_request(bound.bind,
-                                        bound.port,
-                                        token,
-                                        boost::beast::http::verb::get,
-                                        "/ai/providers/catalog",
-                                        nlohmann::json{},
-                                        boost::beast::http::status::ok);
+  const auto before = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/providers/catalog",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(before["ok"] == true);
   REQUIRE(before["data"]["providers"].is_array());
 
@@ -73,23 +79,26 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   }
   REQUIRE(found_chocolatefactory);
 
-  const auto put = http_json_request(bound.bind,
-                                     bound.port,
-                                     token,
-                                     boost::beast::http::verb::put,
-                                     "/ai/providers/credentials",
-                                     nlohmann::json{{"provider", "chocolatefactory"},
-                                                    {"api_key", "cf_test_key_abc"}},
-                                     boost::beast::http::status::ok);
+  const auto put = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::put,
+      "/ai/providers/credentials",
+      nlohmann::json{{"provider", "chocolatefactory"}, {"api_key", "cf_test_key_abc"}},
+      boost::beast::http::status::ok
+  );
   REQUIRE(put["ok"] == true);
 
-  const auto after = http_json_request(bound.bind,
-                                       bound.port,
-                                       token,
-                                       boost::beast::http::verb::get,
-                                       "/ai/providers/catalog",
-                                       nlohmann::json{},
-                                       boost::beast::http::status::ok);
+  const auto after = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/providers/catalog",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(after["ok"] == true);
   bool configured_chocolatefactory = false;
   for (const auto& provider : after["data"]["providers"]) {
@@ -109,23 +118,26 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   }
   REQUIRE(switchyard_enabled_before == false);
 
-  const auto put_switchyard = http_json_request(bound.bind,
-                                                bound.port,
-                                                token,
-                                                boost::beast::http::verb::put,
-                                                "/ai/providers/credentials",
-                                                nlohmann::json{{"provider", "switchyard"},
-                                                               {"api_key", "sw_test_key_abc"}},
-                                                boost::beast::http::status::ok);
+  const auto put_switchyard = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::put,
+      "/ai/providers/credentials",
+      nlohmann::json{{"provider", "switchyard"}, {"api_key", "sw_test_key_abc"}},
+      boost::beast::http::status::ok
+  );
   REQUIRE(put_switchyard["ok"] == true);
 
-  const auto after_switchyard = http_json_request(bound.bind,
-                                                  bound.port,
-                                                  token,
-                                                  boost::beast::http::verb::get,
-                                                  "/ai/providers/catalog",
-                                                  nlohmann::json{},
-                                                  boost::beast::http::status::ok);
+  const auto after_switchyard = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/providers/catalog",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   bool switchyard_configured = false;
   bool switchyard_enabled = false;
   for (const auto& provider : after_switchyard["data"]["providers"]) {
@@ -148,23 +160,35 @@ TEST_CASE("AiProviderCatalogRoutes direct handles missing catalog and db failure
 
   SECTION("missing catalog path returns bad_request") {
     CwdGuard cwd(dir);
-    holder::test::EnvGuard missing_catalog("HOLDER_AI_CATALOG_PATH", (dir / "does-not-exist.yaml").string());
+    holder::test::EnvGuard missing_catalog(
+        "HOLDER_AI_CATALOG_PATH",
+        (dir / "does-not-exist.yaml").string()
+    );
     auto req = make_req(http::verb::get, "/ai/providers/catalog");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_catalog_routes(
-        "/ai/providers/catalog", req, res, db));
+        "/ai/providers/catalog",
+        req,
+        res,
+        db
+    ));
     REQUIRE(res.result() == http::status::bad_request);
     const auto payload = nlohmann::json::parse(res.body());
     REQUIRE(payload["error"]["message"] == "ai_catalog.yaml models runtime/catalog not found.");
   }
 
   SECTION("db failure on repo list is caught") {
-    const auto ai_catalog_path = std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() /
-                                 "config" / "ai_catalog.yaml";
+    const auto ai_catalog_path =
+        std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() / "config" /
+        "ai_catalog.yaml";
     holder::test::EnvGuard catalog_env("HOLDER_AI_CATALOG_PATH", ai_catalog_path.string());
     holder::platform::Db unopened_db;
     auto req = make_req(http::verb::get, "/ai/providers/catalog");
     REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_catalog_routes(
-        "/ai/providers/catalog", req, res, unopened_db));
+        "/ai/providers/catalog",
+        req,
+        res,
+        unopened_db
+    ));
     REQUIRE(res.result() == http::status::bad_request);
   }
 }
@@ -191,7 +215,11 @@ TEST_CASE("AiProviderCatalogRoutes direct supports minimal provider fields", "[h
   http::response<http::string_body> res;
   auto req = make_req(http::verb::get, "/ai/providers/catalog");
   REQUIRE(holder::api::routes::ai::providers::handle_ai_provider_catalog_routes(
-      "/ai/providers/catalog", req, res, db));
+      "/ai/providers/catalog",
+      req,
+      res,
+      db
+  ));
   REQUIRE(res.result() == http::status::ok);
   const auto payload = nlohmann::json::parse(res.body());
   REQUIRE(payload["ok"] == true);

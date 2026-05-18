@@ -7,11 +7,11 @@ namespace holder::core {
 SerialExecutor::SerialExecutor(std::string name, std::size_t max_pending_tasks)
     : name_(std::move(name)),
       max_pending_tasks_(max_pending_tasks),
-      worker_([this]() { run(); }) {}
+      worker_([this]() {
+        run();
+      }) {}
 
-SerialExecutor::~SerialExecutor() {
-  stop();
-}
+SerialExecutor::~SerialExecutor() { stop(); }
 
 void SerialExecutor::stop() {
   bool already_stopped = false;
@@ -50,7 +50,9 @@ void SerialExecutor::run() {
     std::function<void()> task;
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      cv_.wait(lock, [this]() { return stop_requested_ || !tasks_.empty(); });
+      cv_.wait(lock, [this]() {
+        return stop_requested_ || !tasks_.empty();
+      });
       if (stop_requested_ && tasks_.empty()) {
         return;
       }

@@ -22,21 +22,21 @@ struct RemoteProbeResult {
 
 inline const char* remote_probe_status_name(RemoteProbeStatus status) {
   switch (status) {
-    case RemoteProbeStatus::Reachable:
-      return "reachable";
-    case RemoteProbeStatus::AuthFailed:
-      return "auth_failed";
-    case RemoteProbeStatus::NotFound:
-      return "not_found";
-    case RemoteProbeStatus::NetworkError:
-      return "network_error";
-    case RemoteProbeStatus::InvalidRemoteUrl:
-      return "invalid_remote_url";
-    case RemoteProbeStatus::RemoteUnset:
-      return "remote_unset";
-    case RemoteProbeStatus::UnknownError:
-    default:
-      return "unknown_error";
+  case RemoteProbeStatus::Reachable:
+    return "reachable";
+  case RemoteProbeStatus::AuthFailed:
+    return "auth_failed";
+  case RemoteProbeStatus::NotFound:
+    return "not_found";
+  case RemoteProbeStatus::NetworkError:
+    return "network_error";
+  case RemoteProbeStatus::InvalidRemoteUrl:
+    return "invalid_remote_url";
+  case RemoteProbeStatus::RemoteUnset:
+    return "remote_unset";
+  case RemoteProbeStatus::UnknownError:
+  default:
+    return "unknown_error";
   }
 }
 

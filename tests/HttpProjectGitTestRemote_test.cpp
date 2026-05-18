@@ -10,7 +10,7 @@
 namespace {
 
 class ProbeGitOps final : public holder::git::GitOps {
-public:
+ public:
   std::filesystem::path repo_dir_;
   std::string last_remote_url;
   holder::git::RemoteProbeResult probe_result{
@@ -32,7 +32,12 @@ public:
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
-    return {.status = holder::git::PushStatus::Pushed, .ahead_count = 0, .behind_count = 0, .error_message = {}};
+    return {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = {}
+    };
   }
   std::filesystem::path repo_dir() const override { return repo_dir_; }
 };
@@ -64,16 +69,20 @@ TEST_CASE("Project git test-remote returns remote_unset when no remote configure
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto tested = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      boost::beast::http::verb::post,
-                                                      "/projects/proj-1/git/test-remote",
-                                                      nlohmann::json::object(),
-                                                      boost::beast::http::status::ok);
+  const auto tested = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects/proj-1/git/test-remote",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(tested["ok"] == true);
   REQUIRE(tested["data"]["status"] == "remote_unset");
   REQUIRE(tested["data"]["remote_url"].is_null());
@@ -85,7 +94,10 @@ TEST_CASE("Project git test-remote returns remote_unset when no remote configure
   server_thread.join();
 }
 
-TEST_CASE("Project git test-remote uses override remote and persists project remote", "[git][http]") {
+TEST_CASE(
+    "Project git test-remote uses override remote and persists project remote",
+    "[git][http]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
@@ -116,17 +128,21 @@ TEST_CASE("Project git test-remote uses override remote and persists project rem
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const std::string remote_url = "git@github.com:owner/repo.git";
-  const auto tested = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      boost::beast::http::verb::post,
-                                                      "/projects/proj-1/git/test-remote",
-                                                      {{"remote_url", remote_url}, {"branch", "main"}},
-                                                      boost::beast::http::status::ok);
+  const auto tested = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects/proj-1/git/test-remote",
+      {{"remote_url", remote_url}, {"branch", "main"}},
+      boost::beast::http::status::ok
+  );
   REQUIRE(tested["ok"] == true);
   REQUIRE(tested["data"]["status"] == "not_found");
   REQUIRE(tested["data"]["project_id"] == "proj-1");

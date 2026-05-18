@@ -27,9 +27,14 @@ struct SocketPair {
   tcp::socket server;
   std::thread io_thread;
 
-  SocketPair() : work_guard(boost::asio::make_work_guard(ioc)), client(ioc), server(ioc) {
+  SocketPair()
+      : work_guard(boost::asio::make_work_guard(ioc)),
+        client(ioc),
+        server(ioc) {
     tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), 0));
-    io_thread = std::thread([this]() { ioc.run(); });
+    io_thread = std::thread([this]() {
+      ioc.run();
+    });
     client.connect(acceptor.local_endpoint());
     server = acceptor.accept();
   }
@@ -53,15 +58,17 @@ TEST_CASE("Session handles end_of_stream read and returns", "[session]") {
 
   pair.client.shutdown(tcp::socket::shutdown_send);
 
-  holder::api::Session session(std::move(pair.server),
-                               db,
-                               token,
-                               router,
-                               std::chrono::steady_clock::now(),
-                               nullptr,
-                               nullptr,
-                               nullptr,
-                               nullptr);
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
   REQUIRE_NOTHROW(session.run());
 }
 
@@ -72,19 +79,21 @@ TEST_CASE("Session handles generic read error and returns", "[session]") {
   const std::string token = "testtoken";
 
   // Send invalid HTTP bytes so beast reports a read error that is not end_of_stream.
-  const std::array<char, 12> bad = {'n','o','t','-','h','t','t','p','\r','\n','\r','\n'};
+  const std::array<char, 12> bad = {'n', 'o', 't', '-', 'h', 't', 't', 'p', '\r', '\n', '\r', '\n'};
   boost::asio::write(pair.client, boost::asio::buffer(bad));
   pair.client.shutdown(tcp::socket::shutdown_send);
 
-  holder::api::Session session(std::move(pair.server),
-                               db,
-                               token,
-                               router,
-                               std::chrono::steady_clock::now(),
-                               nullptr,
-                               nullptr,
-                               nullptr,
-                               nullptr);
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
   REQUIRE_NOTHROW(session.run());
 }
 
@@ -95,25 +104,26 @@ TEST_CASE("Session handles write error and returns", "[session]") {
   const std::string token = "testtoken";
 
   // Send a valid request, then force client-side RST so server write fails.
-  const std::string req =
-      "GET /health HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Authorization: Bearer testtoken\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string req = "GET /health HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Authorization: Bearer testtoken\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
   boost::asio::write(pair.client, boost::asio::buffer(req));
   pair.client.set_option(boost::asio::socket_base::linger(true, 0));
   pair.client.close();
 
-  holder::api::Session session(std::move(pair.server),
-                               db,
-                               token,
-                               router,
-                               std::chrono::steady_clock::now(),
-                               nullptr,
-                               nullptr,
-                               nullptr,
-                               nullptr);
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
   REQUIRE_NOTHROW(session.run());
 }
 
@@ -124,22 +134,23 @@ TEST_CASE("Session handles normal request/response path", "[session]") {
   const std::string token = "testtoken";
 
   // No auth header: should produce a normal 401 response and hit final request log path.
-  const std::string req =
-      "GET /health HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string req = "GET /health HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
   boost::asio::write(pair.client, boost::asio::buffer(req));
 
-  holder::api::Session session(std::move(pair.server),
-                               db,
-                               token,
-                               router,
-                               std::chrono::steady_clock::now(),
-                               nullptr,
-                               nullptr,
-                               nullptr,
-                               nullptr);
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
   REQUIRE_NOTHROW(session.run());
 
   boost::system::error_code ec;
@@ -204,14 +215,15 @@ TEST_CASE("Session write_prepared_response cancel hook terminates in-flight writ
             done = true;
           }
           cv.notify_one();
-        });
+        }
+    );
   });
 
   {
     std::unique_lock<std::mutex> lock(mutex);
-    REQUIRE(cv.wait_for(lock,
-                        std::chrono::seconds(1),
-                        [&]() { return static_cast<bool>(active); }));
+    REQUIRE(cv.wait_for(lock, std::chrono::seconds(1), [&]() {
+      return static_cast<bool>(active);
+    }));
   }
 
   active->cancel();
@@ -220,20 +232,21 @@ TEST_CASE("Session write_prepared_response cancel hook terminates in-flight writ
 
   {
     std::unique_lock<std::mutex> lock(mutex);
-    REQUIRE(cv.wait_for(lock, std::chrono::seconds(1), [&]() { return done; }));
+    REQUIRE(cv.wait_for(lock, std::chrono::seconds(1), [&]() {
+      return done;
+    }));
   }
 }
 
 TEST_CASE("Session prepare_request classifies card patch as save lane", "[session]") {
   SocketPair pair;
 
-  const std::string req =
-      "PATCH /cards/card-123 HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Content-Length: 2\r\n"
-      "Connection: close\r\n"
-      "\r\n"
-      "{}";
+  const std::string req = "PATCH /cards/card-123 HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Content-Length: 2\r\n"
+                          "Connection: close\r\n"
+                          "\r\n"
+                          "{}";
   boost::asio::write(pair.client, boost::asio::buffer(req));
 
   auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
@@ -245,11 +258,10 @@ TEST_CASE("Session prepare_request classifies card patch as save lane", "[sessio
 TEST_CASE("Session prepare_request classifies links reads as background lane", "[session]") {
   SocketPair pair;
 
-  const std::string req =
-      "GET /cards/card-123/links HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string req = "GET /cards/card-123/links HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
   boost::asio::write(pair.client, boost::asio::buffer(req));
 
   auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
@@ -261,11 +273,10 @@ TEST_CASE("Session prepare_request classifies links reads as background lane", "
 TEST_CASE("Session prepare_request classifies project reads as foreground lane", "[session]") {
   SocketPair pair;
 
-  const std::string req =
-      "GET /projects HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string req = "GET /projects HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
   boost::asio::write(pair.client, boost::asio::buffer(req));
 
   auto prepared = holder::api::Session::prepare_request(std::move(pair.server));

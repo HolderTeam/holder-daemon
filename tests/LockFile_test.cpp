@@ -29,15 +29,18 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_lock_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
 }
 
-int run_helper(const std::filesystem::path& helper,
-               const std::filesystem::path& lock_path,
-               unsigned long hold_ms = 0) {
+int run_helper(
+    const std::filesystem::path& helper,
+    const std::filesystem::path& lock_path,
+    unsigned long hold_ms = 0
+) {
   std::string cmd;
   cmd.reserve(helper.string().size() + lock_path.string().size() + 16);
   cmd += "\"";
@@ -201,7 +204,7 @@ TEST_CASE("LockFile wraps try_lock exceptions in try_acquire", "[lock]") {
 
   bool threw = false;
   try {
-    (void) lock.try_acquire();
+    (void)lock.try_acquire();
   } catch (const std::runtime_error& e) {
     threw = true;
     REQUIRE(std::string(e.what()).find("Failed to acquire lock: ") == 0);
@@ -228,9 +231,7 @@ TEST_CASE("LockFile destructor swallows release exceptions", "[lock]") {
   const auto lock_path = dir / "holder.lock";
 
   holder::core::lockfile_set_force_release_throw_for_tests(true);
-  {
-    holder::core::LockFile lock(lock_path);
-  }
+  { holder::core::LockFile lock(lock_path); }
 
   SUCCEED();
 }

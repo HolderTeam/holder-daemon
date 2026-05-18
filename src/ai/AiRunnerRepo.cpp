@@ -50,7 +50,8 @@ holder::model::AiRunner read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiRunnerRepo::AiRunnerRepo(holder::platform::Db& db) : db_(db) {}
+AiRunnerRepo::AiRunnerRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 std::vector<holder::model::AiRunner> AiRunnerRepo::list() const {
   static constexpr const char* SQL =

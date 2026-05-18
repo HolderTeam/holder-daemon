@@ -13,10 +13,12 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-bool handle_reindex_routes(const std::string& path,
-                           const http::request<http::string_body>& req,
-                           http::response<http::string_body>& res,
-                           holder::platform::Db& db) {
+bool handle_reindex_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db
+) {
   if (path != "/reindex" || req.method() != http::verb::post) {
     return false;
   }

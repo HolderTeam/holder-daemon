@@ -57,15 +57,18 @@ struct AsyncWriteResult {
   Session::tcp::socket socket;
 };
 
-AsyncReadResult async_read_request(Session::tcp::socket socket,
-                                   const Session::SocketHook& on_io_start,
-                                   const Session::SocketHook& on_io_done) {
+AsyncReadResult async_read_request(
+    Session::tcp::socket socket,
+    const Session::SocketHook& on_io_start,
+    const Session::SocketHook& on_io_done
+) {
   namespace beast = boost::beast;
   auto promise = std::make_shared<std::promise<AsyncReadResult>>();
   auto future = promise->get_future();
 
   struct State {
-    explicit State(Session::tcp::socket s) : socket(std::move(s)) {}
+    explicit State(Session::tcp::socket s)
+        : socket(std::move(s)) {}
     Session::tcp::socket socket;
     beast::flat_buffer buffer;
     Session::Request req;
@@ -84,22 +87,25 @@ AsyncReadResult async_read_request(Session::tcp::socket socket,
   if (on_io_start) {
     on_io_start(io_handle);
   }
-  http::async_read(state->socket,
-                   state->buffer,
-                   state->req,
-                   [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
-                     if (on_io_done) {
-                       on_io_done(io_handle);
-                     }
-                     promise->set_value(
-                         AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
-                   });
+  http::async_read(
+      state->socket,
+      state->buffer,
+      state->req,
+      [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
+        if (on_io_done) {
+          on_io_done(io_handle);
+        }
+        promise->set_value(AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
+      }
+  );
   return future.get();
 }
 
-AsyncWriteResult async_write_response(Session::PreparedResponse prepared,
-                                      const Session::SocketHook& on_io_start,
-                                      const Session::SocketHook& on_io_done) {
+AsyncWriteResult async_write_response(
+    Session::PreparedResponse prepared,
+    const Session::SocketHook& on_io_start,
+    const Session::SocketHook& on_io_done
+) {
   auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
   auto future = promise->get_future();
   auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
@@ -116,30 +122,34 @@ AsyncWriteResult async_write_response(Session::PreparedResponse prepared,
   if (on_io_start) {
     on_io_start(io_handle);
   }
-  http::async_write(state->socket,
-                    state->res,
-                    [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
-                      if (on_io_done) {
-                        on_io_done(io_handle);
-                      }
-                      promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
-                    });
+  http::async_write(
+      state->socket,
+      state->res,
+      [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
+        if (on_io_done) {
+          on_io_done(io_handle);
+        }
+        promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
+      }
+  );
   return future.get();
 }
 
 } // namespace
 
-Session::Session(tcp::socket socket,
-                 holder::platform::Db& db,
-                 const std::string& auth_token,
-                 const Router& router,
-                 std::chrono::steady_clock::time_point started_at,
-                 holder::card::CardStore* card_store,
-                 holder::index::FtsIndexer* fts,
-                 holder::ai::NudgeService* nudge_service,
-                 holder::privacy::SecretStore* secret_store,
-                 holder::git::GitOps* git_ops,
-                 holder::llm::RunnerRegistry* runner_registry)
+Session::Session(
+    tcp::socket socket,
+    holder::platform::Db& db,
+    const std::string& auth_token,
+    const Router& router,
+    std::chrono::steady_clock::time_point started_at,
+    holder::card::CardStore* card_store,
+    holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
+    holder::git::GitOps* git_ops,
+    holder::llm::RunnerRegistry* runner_registry
+)
     : socket_(std::move(socket)),
       db_(db),
       auth_token_(auth_token),
@@ -152,17 +162,19 @@ Session::Session(tcp::socket socket,
       git_ops_(git_ops),
       runner_registry_(runner_registry) {}
 
-Session::Session(PreparedRequest prepared,
-                 holder::platform::Db& db,
-                 const std::string& auth_token,
-                 const Router& router,
-                 std::chrono::steady_clock::time_point started_at,
-                 holder::card::CardStore* card_store,
-                 holder::index::FtsIndexer* fts,
-                 holder::ai::NudgeService* nudge_service,
-                 holder::privacy::SecretStore* secret_store,
-                 holder::git::GitOps* git_ops,
-                 holder::llm::RunnerRegistry* runner_registry)
+Session::Session(
+    PreparedRequest prepared,
+    holder::platform::Db& db,
+    const std::string& auth_token,
+    const Router& router,
+    std::chrono::steady_clock::time_point started_at,
+    holder::card::CardStore* card_store,
+    holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
+    holder::git::GitOps* git_ops,
+    holder::llm::RunnerRegistry* runner_registry
+)
     : socket_(std::move(prepared.socket)),
       db_(db),
       auth_token_(auth_token),
@@ -180,9 +192,11 @@ Session::Session(PreparedRequest prepared,
       query_string_(std::move(prepared.query_string)),
       has_loaded_request_(true) {}
 
-std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket socket,
-                                                                 SocketHook on_io_start,
-                                                                 SocketHook on_io_done) {
+std::optional<Session::PreparedRequest> Session::prepare_request(
+    tcp::socket socket,
+    SocketHook on_io_start,
+    SocketHook on_io_done
+) {
   const auto request_started = std::chrono::steady_clock::now();
   auto read_result = async_read_request(std::move(socket), on_io_start, on_io_done);
   auto& ec = read_result.ec;
@@ -199,11 +213,11 @@ std::optional<Session::PreparedRequest> Session::prepare_request(tcp::socket soc
   const auto target = read_result.req.target();
   const std::string target_str(target.data(), target.size());
   const auto query_pos = target_str.find('?');
-  const std::string path = (query_pos == std::string::npos)
-                               ? target_str
-                               : target_str.substr(0, query_pos);
-  const std::string query_string =
-      (query_pos == std::string::npos) ? "" : target_str.substr(query_pos + 1);
+  const std::string path = (query_pos == std::string::npos) ? target_str
+                                                            : target_str.substr(0, query_pos);
+  const std::string query_string = (query_pos == std::string::npos)
+                                       ? ""
+                                       : target_str.substr(query_pos + 1);
 
   const auto lane = classify_request_lane(read_result.req, path);
   PreparedRequest prepared{
@@ -253,26 +267,31 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   if (routes::handle_static_routes(path_, req_, res)) {
     // handled
   } else if (!support::is_authorized_bearer(req_, auth_token_)) {
-    res = support::error_response(http::status::unauthorized,
-                                  "unauthorized",
-                                  "Missing or invalid token.");
+    res = support::error_response(
+        http::status::unauthorized,
+        "unauthorized",
+        "Missing or invalid token."
+    );
   } else if (router_.dispatch(req_, res)) {
     // handled
   } else {
-    const auto route_result =
-        routes::dispatch_authenticated_routes(path_,
-                                              query_string_,
-                                              req_,
-                                              res,
-                                              socket_,
-                                              db_,
-                                              card_store_,
-                                              fts_,
-                                              nudge_service_,
-                                              secret_store_,
-                                              git_ops_,
-                                              runner_registry_,
-                                              [&]() { return generate_uuid_v4(); });
+    const auto route_result = routes::dispatch_authenticated_routes(
+        path_,
+        query_string_,
+        req_,
+        res,
+        socket_,
+        db_,
+        card_store_,
+        fts_,
+        nudge_service_,
+        secret_store_,
+        git_ops_,
+        runner_registry_,
+        [&]() {
+          return generate_uuid_v4();
+        }
+    );
     if (route_result.streamed) return std::nullopt;
   }
 
@@ -286,42 +305,47 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   return prepared;
 }
 
-void Session::write_prepared_response(PreparedResponse prepared,
-                                      SocketHook on_io_start,
-                                      SocketHook on_io_done) {
+void Session::write_prepared_response(
+    PreparedResponse prepared,
+    SocketHook on_io_start,
+    SocketHook on_io_done
+) {
   const auto method = std::string(prepared.req.method_string());
   const auto target = std::string(prepared.req.target());
   const auto status = prepared.res.result_int();
   const auto lane = prepared.lane;
   const auto request_started = prepared.request_started;
 
-  auto write_result =
-      async_write_response(std::move(prepared), on_io_start, on_io_done);
+  auto write_result = async_write_response(std::move(prepared), on_io_start, on_io_done);
   auto& ec = write_result.ec;
   if (ec) {
     spdlog::warn("write failed: {}", ec.message());
   }
 
   const auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                               std::chrono::steady_clock::now() - request_started)
+                               std::chrono::steady_clock::now() - request_started
+  )
                                .count();
-  spdlog::info("HTTP {} {} -> {} ({}ms)",
-               method,
-               target, // LCOV_EXCL_LINE
-               status,
-               duration_ms);
-  spdlog::debug("HTTP lane={} method={} target={} status={} duration_ms={}",
-                lane_name(lane),
-                method,
-                target, // LCOV_EXCL_LINE
-                status,
-                duration_ms);
+  spdlog::info(
+      "HTTP {} {} -> {} ({}ms)",
+      method,
+      target, // LCOV_EXCL_LINE
+      status,
+      duration_ms
+  );
+  spdlog::debug(
+      "HTTP lane={} method={} target={} status={} duration_ms={}",
+      lane_name(lane),
+      method,
+      target, // LCOV_EXCL_LINE
+      status,
+      duration_ms
+  );
 
   write_result.socket.shutdown(tcp::socket::shutdown_send, ec);
 }
 
-Session::RequestLane Session::classify_request_lane(const Request& req,
-                                                    const std::string& path) {
+Session::RequestLane Session::classify_request_lane(const Request& req, const std::string& path) {
   // Initial route-to-lane mapping:
   // - save: card writes except link graph mutations
   // - background: AI routes and links/backlinks refresh work
@@ -330,8 +354,8 @@ Session::RequestLane Session::classify_request_lane(const Request& req,
   const bool is_get_like = method == http::verb::get || method == http::verb::head;
   const bool is_card_route = path == "/cards" || path.rfind("/cards/", 0) == 0;
   const bool is_ai_route = path == "/ai" || path.rfind("/ai/", 0) == 0;
-  const bool is_link_route =
-      path.find("/links") != std::string::npos || path.find("/backlinks") != std::string::npos;
+  const bool is_link_route = path.find("/links") != std::string::npos ||
+                             path.find("/backlinks") != std::string::npos;
 
   if (is_card_route && !is_get_like && !is_link_route) {
     return RequestLane::Save;
@@ -344,12 +368,12 @@ Session::RequestLane Session::classify_request_lane(const Request& req,
 
 const char* Session::lane_name(RequestLane lane) {
   switch (lane) {
-    case RequestLane::Save:
-      return "save";
-    case RequestLane::Foreground:
-      return "foreground";
-    case RequestLane::Background:
-      return "background";
+  case RequestLane::Save:
+    return "save";
+  case RequestLane::Foreground:
+    return "foreground";
+  case RequestLane::Background:
+    return "background";
   }
   return "unknown"; // LCOV_EXCL_LINE
 }

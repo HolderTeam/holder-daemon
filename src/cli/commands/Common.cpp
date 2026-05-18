@@ -73,7 +73,9 @@ void require_secure_file(const std::filesystem::path& path) {
     throw std::runtime_error("Token file is not a regular file: " + path.string());
   }
   if (file_stat.st_uid != ::geteuid()) { // LCOV_EXCL_LINE: requires a file owned by another user.
-    throw std::runtime_error("Token file is not owned by the current user: " + path.string()); // LCOV_EXCL_LINE
+    throw std::runtime_error(
+        "Token file is not owned by the current user: " + path.string()
+    ); // LCOV_EXCL_LINE
   }
   if ((file_stat.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
     throw std::runtime_error("Token file must be readable only by its owner: " + path.string());
@@ -81,14 +83,22 @@ void require_secure_file(const std::filesystem::path& path) {
 
   const auto parent = path.parent_path();
   struct stat dir_stat {};
-  if (::stat(parent.c_str(), &dir_stat) != 0 || !S_ISDIR(dir_stat.st_mode)) { // LCOV_EXCL_LINE: parent exists for a normal info path.
-    throw std::runtime_error("Cannot inspect token directory: " + parent.string()); // LCOV_EXCL_LINE
+  if (::stat(parent.c_str(), &dir_stat) != 0 ||
+      !S_ISDIR(dir_stat.st_mode)) { // LCOV_EXCL_LINE: parent exists for a normal info path.
+    throw std::runtime_error(
+        "Cannot inspect token directory: " + parent.string()
+    ); // LCOV_EXCL_LINE
   }
-  if (dir_stat.st_uid != ::geteuid()) { // LCOV_EXCL_LINE: requires a directory owned by another user.
-    throw std::runtime_error("Token directory is not owned by the current user: " + parent.string()); // LCOV_EXCL_LINE
+  if (dir_stat.st_uid !=
+      ::geteuid()) { // LCOV_EXCL_LINE: requires a directory owned by another user.
+    throw std::runtime_error(
+        "Token directory is not owned by the current user: " + parent.string()
+    ); // LCOV_EXCL_LINE
   }
   if ((dir_stat.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
-    throw std::runtime_error("Token directory must be accessible only by its owner: " + parent.string());
+    throw std::runtime_error(
+        "Token directory must be accessible only by its owner: " + parent.string()
+    );
   }
 }
 #else
@@ -104,9 +114,7 @@ ServerInfoFile read_server_info(const holder::core::Paths& paths) {
   return {.path = info_path, .json = nlohmann::json::parse(in)};
 }
 
-std::string json_string(const nlohmann::json& json,
-                        const char* key,
-                        const std::string& fallback) {
+std::string json_string(const nlohmann::json& json, const char* key, const std::string& fallback) {
   if (!json.contains(key) || json.at(key).is_null()) return fallback;
   return json.at(key).get<std::string>();
 }
@@ -130,11 +138,13 @@ DaemonConnection read_secure_daemon_connection(const holder::core::Paths& paths)
   return connection;
 }
 
-HttpJsonResponse http_json_request(const DaemonConnection& connection,
-                                   boost::beast::http::verb method,
-                                   const std::string& target,
-                                   std::chrono::seconds timeout,
-                                   const std::optional<nlohmann::json>& body) {
+HttpJsonResponse http_json_request(
+    const DaemonConnection& connection,
+    boost::beast::http::verb method,
+    const std::string& target,
+    std::chrono::seconds timeout,
+    const std::optional<nlohmann::json>& body
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 

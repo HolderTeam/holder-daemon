@@ -2,19 +2,21 @@
 
 #include "index/FtsIndexer.h"
 #include "model/Project.h"
-#include "platform/Fs.h"
 #include "platform/Db.h"
+#include "platform/Fs.h"
 
 #include <cstddef>
 
 namespace holder::store {
 
 class Rebuilder {
-public:
-  Rebuilder(holder::platform::Db& db,
-            holder::index::FtsIndexer* fts,
-            holder::core::Fs* fs = nullptr,
-            bool tolerate_invalid_ai_messages = false);
+ public:
+  Rebuilder(
+      holder::platform::Db& db,
+      holder::index::FtsIndexer* fts,
+      holder::core::Fs* fs = nullptr,
+      bool tolerate_invalid_ai_messages = false
+  );
 
   struct RebuildStats {
     std::size_t cards = 0;
@@ -25,7 +27,7 @@ public:
 
   RebuildStats rebuild_project(const holder::model::Project& project);
 
-private:
+ private:
   holder::platform::Db& db_;
   holder::index::FtsIndexer* fts_ = nullptr;
   holder::core::Fs* fs_ = nullptr;

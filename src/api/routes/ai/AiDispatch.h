@@ -31,6 +31,7 @@ DispatchResult dispatch_ai_routes(
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param);
+    const std::function<std::string(const std::string&)>& param
+);
 
 } // namespace holder::api::routes::ai

@@ -1,13 +1,13 @@
 #include "ai/NudgeService.h"
 
 #include "ai/AiLocalModelConfigRepo.h"
-#include "llm/LocalModelRunner.h"
-#include "llm/RunnerModelRef.h"
-#include "ai/AiNudgeRepo.h"
 #include "ai/AiMessageRepo.h"
+#include "ai/AiNudgeRepo.h"
 #include "ai/AiThreadRepo.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardRepo.h"
+#include "llm/LocalModelRunner.h"
+#include "llm/RunnerModelRef.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 
@@ -78,9 +78,8 @@ std::string join_titles(const std::vector<std::string>& titles) {
 
 std::string strip_wrapping_quotes(std::string value) {
   value = trim_copy(value);
-  if (value.size() >= 2 &&
-      ((value.front() == '"' && value.back() == '"') ||
-       (value.front() == '\'' && value.back() == '\''))) {
+  if (value.size() >= 2 && ((value.front() == '"' && value.back() == '"') ||
+                            (value.front() == '\'' && value.back() == '\''))) {
     return trim_copy(value.substr(1, value.size() - 2));
   }
   return value;
@@ -169,7 +168,8 @@ std::vector<std::string> parse_title_suggestions(const std::string& generated) {
 
   const auto array_start = generated.find('[');
   const auto array_end = generated.rfind(']');
-  if (array_start != std::string::npos && array_end != std::string::npos && array_end > array_start) {
+  if (array_start != std::string::npos && array_end != std::string::npos &&
+      array_end > array_start) {
     parse_json_array(generated.substr(array_start, array_end - array_start + 1));
     if (!out.empty()) {
       return out;
@@ -244,9 +244,11 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
   return buffer.str();
 }
 
-std::optional<std::string> load_card_body(holder::platform::Db& db,
-                                          const std::string& project_id,
-                                          const std::string& card_id) {
+std::optional<std::string> load_card_body(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   holder::project::ProjectRepo project_repo(db);
   holder::card::CardRepo card_repo(db);
   const auto project = project_repo.get(project_id);
@@ -267,7 +269,10 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
     }
     try {
       plain = holder::privacy::decrypt_project_blob(
-          project->project_id, project->project_key_id.value(), plain);
+          project->project_id,
+          project->project_key_id.value(),
+          plain
+      );
     } catch (...) {
       return std::nullopt;
     }
@@ -276,9 +281,11 @@ std::optional<std::string> load_card_body(holder::platform::Db& db,
   return holder::core::parse_card_file(plain).body;
 }
 
-std::vector<std::string> sibling_card_titles(holder::platform::Db& db,
-                                             const std::string& project_id,
-                                             const std::string& card_id) {
+std::vector<std::string> sibling_card_titles(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   holder::card::CardRepo card_repo(db);
   const auto card = card_repo.get(card_id);
   if (!card.has_value()) {
@@ -308,8 +315,10 @@ std::vector<std::string> sibling_card_titles(holder::platform::Db& db,
   return titles;
 }
 
-std::optional<holder::model::Card> parent_card(holder::platform::Db& db,
-                                               const std::string& card_id) {
+std::optional<holder::model::Card> parent_card(
+    holder::platform::Db& db,
+    const std::string& card_id
+) {
   holder::card::CardRepo card_repo(db);
   const auto card = card_repo.get(card_id);
   if (!card.has_value() || !card->parent_card_id.has_value()) {
@@ -318,9 +327,11 @@ std::optional<holder::model::Card> parent_card(holder::platform::Db& db,
   return card_repo.get(card->parent_card_id.value());
 }
 
-std::vector<holder::model::Card> sibling_cards(holder::platform::Db& db,
-                                               const std::string& project_id,
-                                               const std::string& card_id) {
+std::vector<holder::model::Card> sibling_cards(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   holder::card::CardRepo card_repo(db);
   const auto card = card_repo.get(card_id);
   if (!card.has_value()) {
@@ -338,14 +349,20 @@ std::vector<holder::model::Card> sibling_cards(holder::platform::Db& db,
       std::remove_if(
           siblings.begin(),
           siblings.end(),
-          [&](const holder::model::Card& sibling) { return sibling.card_id == card_id; }),
-      siblings.end());
+          [&](const holder::model::Card& sibling) {
+            return sibling.card_id == card_id;
+          }
+      ),
+      siblings.end()
+  );
   return siblings;
 }
 
-std::string card_excerpt_line(holder::platform::Db& db,
-                              const std::string& project_id,
-                              const holder::model::Card& card) {
+std::string card_excerpt_line(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const holder::model::Card& card
+) {
   const auto body = load_card_body(db, project_id, card.card_id);
   if (!body.has_value()) {
     return "";
@@ -359,10 +376,12 @@ std::string card_excerpt_line(holder::platform::Db& db,
   return out.str();
 }
 
-std::vector<std::string> sibling_card_excerpts(holder::platform::Db& db,
-                                               const std::string& project_id,
-                                               const std::string& card_id,
-                                               std::size_t limit) {
+std::vector<std::string> sibling_card_excerpts(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id,
+    std::size_t limit
+) {
   const auto siblings = sibling_cards(db, project_id, card_id);
   std::vector<std::string> excerpts;
   for (const auto& sibling : siblings) {
@@ -378,15 +397,21 @@ std::vector<std::string> sibling_card_excerpts(holder::platform::Db& db,
   return excerpts;
 }
 
-std::vector<std::string> recent_project_card_excerpts(holder::platform::Db& db,
-                                                      const std::string& project_id,
-                                                      const std::optional<std::string>& exclude_card_id,
-                                                      std::size_t limit) {
+std::vector<std::string> recent_project_card_excerpts(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::optional<std::string>& exclude_card_id,
+    std::size_t limit
+) {
   holder::card::CardRepo card_repo(db);
   auto cards = card_repo.list_all(project_id);
-  std::sort(cards.begin(), cards.end(), [](const holder::model::Card& a, const holder::model::Card& b) {
-    return a.updated_at > b.updated_at;
-  });
+  std::sort(
+      cards.begin(),
+      cards.end(),
+      [](const holder::model::Card& a, const holder::model::Card& b) {
+        return a.updated_at > b.updated_at;
+      }
+  );
 
   std::vector<std::string> excerpts;
   for (const auto& card : cards) {
@@ -405,9 +430,11 @@ std::vector<std::string> recent_project_card_excerpts(holder::platform::Db& db,
   return excerpts;
 }
 
-std::optional<std::string> latest_ai_thread_excerpt(holder::platform::Db& db,
-                                                    const std::string& project_id,
-                                                    const std::optional<std::string>& card_id) {
+std::optional<std::string> latest_ai_thread_excerpt(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::optional<std::string>& card_id
+) {
   holder::ai::AiThreadRepo thread_repo(db);
   const auto threads = thread_repo.list(project_id);
   std::optional<holder::model::AiThread> selected_thread;
@@ -442,8 +469,10 @@ std::optional<std::string> latest_ai_thread_excerpt(holder::platform::Db& db,
   return trim_copy(out.str());
 }
 
-std::string build_nudge_context_summary(holder::platform::Db& db,
-                                        const holder::ai::NudgeCandidateInput& input) {
+std::string build_nudge_context_summary(
+    holder::platform::Db& db,
+    const holder::ai::NudgeCandidateInput& input
+) {
   std::ostringstream out;
   const bool title_only_candidate = input.kind == "card.title_only";
   if (input.card_id.has_value()) {
@@ -471,8 +500,7 @@ std::string build_nudge_context_summary(holder::platform::Db& db,
         if (parent_body.has_value()) {
           const auto trimmed_parent_body = trim_copy(parent_body.value());
           if (!trimmed_parent_body.empty()) {
-            out << "Parent card excerpt: "
-                << truncate_for_prompt(trimmed_parent_body, 220) << "\n";
+            out << "Parent card excerpt: " << truncate_for_prompt(trimmed_parent_body, 220) << "\n";
           }
         }
       }
@@ -506,9 +534,9 @@ std::string build_nudge_context_summary(holder::platform::Db& db,
 
 } // namespace
 
-NudgeService::NudgeService(holder::platform::Db& db,
-                           holder::llm::RunnerRegistry* runner_registry)
-    : db_(db), runner_registry_(runner_registry) {}
+NudgeService::NudgeService(holder::platform::Db& db, holder::llm::RunnerRegistry* runner_registry)
+    : db_(db),
+      runner_registry_(runner_registry) {}
 
 bool NudgeService::is_placeholder_title(const std::string& title) {
   return lower_copy(title).rfind("untitled", 0) == 0;
@@ -523,49 +551,58 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     const auto title = input.facts.value("title", "");
     const auto body_empty = input.facts.value("body_empty", false);
     const auto doc_chars = input.facts.value("doc_chars", 0);
-    const auto should_nudge =
-        body_empty && !title.empty() && !is_placeholder_title(title) && doc_chars <= 160;
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
-            .nudge = std::nullopt};
+    const auto should_nudge = body_empty && !title.empty() && !is_placeholder_title(title) &&
+                              doc_chars <= 160;
+    return {
+        .accepted = true,
+        .should_nudge = should_nudge,
+        .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
+        .nudge = std::nullopt
+    };
   } // LCOV_EXCL_LINE
   if (input.kind == "card.stuck_drafting") {
     const auto autosave_count = input.facts.value("autosave_count", 0);
     const auto body_chars = input.facts.value("body_chars", 0);
     const auto should_nudge = autosave_count >= 3 && body_chars > 0 && body_chars <= 160;
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "stuck_drafting_candidate_ready"
-                                   : "stuck_drafting_not_actionable",
-            .nudge = std::nullopt};
+    return {
+        .accepted = true,
+        .should_nudge = should_nudge,
+        .reason = should_nudge ? "stuck_drafting_candidate_ready" : "stuck_drafting_not_actionable",
+        .nudge = std::nullopt
+    };
   }
   if (input.kind == "git.push_failed_repeated") {
     const auto failure_count = input.facts.value("failure_count", 0);
     const auto latest_status = input.facts.value("latest_status", "");
     const auto should_nudge = failure_count >= 2 && !is_successful_push_status(latest_status);
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "git_push_failure_candidate_ready"
-                                   : "git_push_failure_not_actionable",
-            .nudge = std::nullopt};
+    return {
+        .accepted = true,
+        .should_nudge = should_nudge,
+        .reason = should_nudge ? "git_push_failure_candidate_ready"
+                               : "git_push_failure_not_actionable",
+        .nudge = std::nullopt
+    };
   } // LCOV_EXCL_LINE
   if (input.kind == "card.title_suggestion") {
     const auto title = input.facts.value("title", "");
     const auto body_empty = input.facts.value("body_empty", true);
     const auto body_chars = input.facts.value("body_chars", 0);
-    const auto should_nudge =
-        input.card_id.has_value() && is_placeholder_title(title) && !body_empty && body_chars >= 40;
-    return {.accepted = true,
-            .should_nudge = should_nudge,
-            .reason = should_nudge ? "title_suggestion_candidate_ready"
-                                   : "title_suggestion_not_actionable",
-            .nudge = std::nullopt};
+    const auto should_nudge = input.card_id.has_value() && is_placeholder_title(title) &&
+                              !body_empty && body_chars >= 40;
+    return {
+        .accepted = true,
+        .should_nudge = should_nudge,
+        .reason = should_nudge ? "title_suggestion_candidate_ready"
+                               : "title_suggestion_not_actionable",
+        .nudge = std::nullopt
+    };
   } // LCOV_EXCL_LINE
-  return {.accepted = false,
-          .should_nudge = false,
-          .reason = "unknown_candidate_kind",
-          .nudge = std::nullopt};
+  return {
+      .accepted = false,
+      .should_nudge = false,
+      .reason = "unknown_candidate_kind",
+      .nudge = std::nullopt
+  };
 }
 
 std::string NudgeService::build_nudge_title(const NudgeCandidateInput& input) {
@@ -604,9 +641,11 @@ std::string NudgeService::build_nudge_body(const NudgeCandidateInput& input) {
   return "No suggestion available.";
 }
 
-std::string NudgeService::build_nudge_prompt(const NudgeCandidateInput& input,
-                                             const std::string& deterministic_body,
-                                             const std::string& context_summary) {
+std::string NudgeService::build_nudge_prompt(
+    const NudgeCandidateInput& input,
+    const std::string& deterministic_body,
+    const std::string& context_summary
+) {
   std::ostringstream prompt;
   prompt << "Rewrite this app nudge for a local personal knowledge tool.\n";
   prompt << "Constraints:\n";
@@ -630,15 +669,19 @@ std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_f
     try {
       holder::ai::AiLocalModelConfigRepo repo(db_);
       const auto cfg = repo.get();
-      const auto configured =
-          holder::llm::resolve_configured_runner_model(cfg.has_value() ? cfg->fast_model : std::nullopt,
-                                                       runner_registry_);
+      const auto configured = holder::llm::resolve_configured_runner_model(
+          cfg.has_value() ? cfg->fast_model : std::nullopt,
+          runner_registry_
+      );
       if (configured.has_value() && configured->runner != nullptr) {
         const auto configured_status = configured->runner->status();
         const auto it = std::find_if(
             configured_status.models.begin(),
             configured_status.models.end(),
-            [&](const holder::llm::LocalModel& model) { return model.name == configured->model_name; });
+            [&](const holder::llm::LocalModel& model) {
+              return model.name == configured->model_name;
+            }
+        );
         if (configured_status.available && it != configured_status.models.end()) {
           return configured;
         }
@@ -698,8 +741,11 @@ nlohmann::json NudgeService::build_nudge_meta_json(const NudgeCandidateInput& in
         target->model_name,
         prompt.str(),
         "{}",
-        [&](const std::string& chunk) { generated += chunk; },
-        &error);
+        [&](const std::string& chunk) {
+          generated += chunk;
+        },
+        &error
+    );
     if (ok) {
       auto parsed = parse_title_suggestions(generated);
       for (const auto& fallback : suggestions) {
@@ -730,8 +776,11 @@ std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput
       target->model_name,
       prompt,
       "{}",
-      [&](const std::string& chunk) { generated += chunk; },
-      &error);
+      [&](const std::string& chunk) {
+        generated += chunk;
+      },
+      &error
+  );
   if (!ok) return deterministic;
 
   auto trimmed = trim_copy(generated);
@@ -746,8 +795,7 @@ std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput
       lowered.find("parent card") != std::string::npos ||
       lowered.find("fallback wording") != std::string::npos ||
       lowered.find("candidate kind") != std::string::npos ||
-      lowered.find("facts:") != std::string::npos ||
-      lowered.find('\n') != std::string::npos ||
+      lowered.find("facts:") != std::string::npos || lowered.find('\n') != std::string::npos ||
       lowered.find('#') != std::string::npos) {
     return deterministic;
   }
@@ -771,9 +819,7 @@ std::string NudgeService::build_nudge_id(const NudgeCandidateInput& input) {
 
 std::string NudgeService::short_content_fingerprint(const std::string& content) {
   unsigned char digest[SHA256_DIGEST_LENGTH];
-  SHA256(reinterpret_cast<const unsigned char*>(content.data()),
-         content.size(),
-         digest);
+  SHA256(reinterpret_cast<const unsigned char*>(content.data()), content.size(), digest);
   std::ostringstream out;
   out << std::hex << std::setfill('0');
   for (int i = 0; i < 6; ++i) {
@@ -782,27 +828,35 @@ std::string NudgeService::short_content_fingerprint(const std::string& content) 
   return out.str();
 }
 
-std::optional<std::string> NudgeService::access_load_card_body(holder::platform::Db& db,
-                                                               const std::string& project_id,
-                                                               const std::string& card_id) {
+std::optional<std::string> NudgeService::access_load_card_body(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   return load_card_body(db, project_id, card_id);
 }
 
-std::vector<std::string> NudgeService::access_sibling_card_titles(holder::platform::Db& db,
-                                                                  const std::string& project_id,
-                                                                  const std::string& card_id) {
+std::vector<std::string> NudgeService::access_sibling_card_titles(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   return sibling_card_titles(db, project_id, card_id);
 }
 
-std::vector<holder::model::Card> NudgeService::access_sibling_cards(holder::platform::Db& db,
-                                                                    const std::string& project_id,
-                                                                    const std::string& card_id) {
+std::vector<holder::model::Card> NudgeService::access_sibling_cards(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   return sibling_cards(db, project_id, card_id);
 }
 
-std::string NudgeService::access_card_excerpt_line(holder::platform::Db& db,
-                                                   const std::string& project_id,
-                                                   const holder::model::Card& card) {
+std::string NudgeService::access_card_excerpt_line(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const holder::model::Card& card
+) {
   return card_excerpt_line(db, project_id, card);
 }
 
@@ -810,13 +864,16 @@ std::vector<std::string> NudgeService::access_recent_project_card_excerpts(
     holder::platform::Db& db,
     const std::string& project_id,
     const std::optional<std::string>& exclude_card_id,
-    std::size_t limit) {
+    std::size_t limit
+) {
   return recent_project_card_excerpts(db, project_id, exclude_card_id, limit);
 }
 
-std::optional<std::string> NudgeService::current_card_fingerprint(holder::platform::Db& db,
-                                                                  const std::string& project_id,
-                                                                  const std::string& card_id) {
+std::optional<std::string> NudgeService::current_card_fingerprint(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   holder::project::ProjectRepo project_repo(db);
   holder::card::CardRepo card_repo(db);
   const auto project = project_repo.get(project_id);
@@ -837,7 +894,10 @@ std::optional<std::string> NudgeService::current_card_fingerprint(holder::platfo
     }
     try {
       plain = holder::privacy::decrypt_project_blob(
-          project->project_id, project->project_key_id.value(), plain);
+          project->project_id,
+          project->project_key_id.value(),
+          plain
+      );
     } catch (...) {
       return std::nullopt;
     }
@@ -848,7 +908,8 @@ std::optional<std::string> NudgeService::current_card_fingerprint(holder::platfo
 
 std::optional<std::string> NudgeService::current_project_head_commit(
     holder::platform::Db& db,
-    const std::string& project_id) {
+    const std::string& project_id
+) {
   holder::project::ProjectRepo project_repo(db);
   const auto project = project_repo.get(project_id);
   if (!project.has_value()) {
@@ -883,8 +944,7 @@ std::optional<std::string> NudgeService::current_project_head_commit(
 bool NudgeService::is_stale(holder::platform::Db& db, const Nudge& nudge) {
   if (nudge.basis_fingerprint.has_value()) {
     if (!nudge.card_id.has_value()) return false;
-    const auto current =
-        current_card_fingerprint(db, nudge.project_id, nudge.card_id.value());
+    const auto current = current_card_fingerprint(db, nudge.project_id, nudge.card_id.value());
     if (current.has_value() && current.value() != nudge.basis_fingerprint.value()) {
       return true;
     }
@@ -907,19 +967,25 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
   }
 
   AiNudgeRepo repo(db_);
-  if (const auto existing =
-          repo.find_active_exact_match(input.kind,
-                                       input.project_id,
-                                       input.card_id,
-                                       input.basis_fingerprint,
-                                       input.basis_commit);
+  if (const auto existing = repo.find_active_exact_match(
+          input.kind,
+          input.project_id,
+          input.card_id,
+          input.basis_fingerprint,
+          input.basis_commit
+      );
       existing.has_value()) {
     decision.nudge = existing;
     return decision;
   }
 
   repo.dismiss_stale_variants(
-      input.kind, input.project_id, input.card_id, input.basis_fingerprint, input.basis_commit);
+      input.kind,
+      input.project_id,
+      input.card_id,
+      input.basis_fingerprint,
+      input.basis_commit
+  );
 
   Nudge nudge{
       .nudge_id = build_nudge_id(input),
@@ -945,8 +1011,10 @@ NudgeDecision NudgeService::evaluate_and_record(const NudgeCandidateInput& input
   return decision;
 }
 
-std::vector<Nudge> NudgeService::list(const std::string& project_id,
-                                      const std::optional<std::string>& card_id) {
+std::vector<Nudge> NudgeService::list(
+    const std::string& project_id,
+    const std::optional<std::string>& card_id
+) {
   AiNudgeRepo repo(db_);
   const auto active = repo.list_active(project_id, card_id);
   std::vector<Nudge> out;

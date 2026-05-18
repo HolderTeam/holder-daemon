@@ -20,9 +20,18 @@ TEST_CASE("TrashRoutes returns false for unmatched path", "[trash-routes]") {
   http::request<http::string_body> req{http::verb::get, "/not-trash", 11};
   req.set(http::field::host, "127.0.0.1");
   http::response<http::string_body> res;
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
-  const bool handled =
-      holder::api::routes::handle_trash_routes("/not-trash", req, res, db, nullptr, nullptr, param_get);
+  const bool handled = holder::api::routes::handle_trash_routes(
+      "/not-trash",
+      req,
+      res,
+      db,
+      nullptr,
+      nullptr,
+      param_get
+  );
   REQUIRE_FALSE(handled);
 }

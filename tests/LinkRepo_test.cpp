@@ -4,12 +4,12 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
 #include "model/Card.h"
 #include "model/CardLink.h"
 #include "model/Project.h"
-#include "card/CardRepo.h"
 #include "platform/Db.h"
-#include "card/LinkRepo.h"
 #include "project/ProjectRepo.h"
 
 #include <sqlite3.h>
@@ -37,7 +37,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_link_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -62,9 +63,11 @@ void create_project(holder::platform::Db& db, const std::string& project_id) {
   repo.create(project);
 }
 
-void create_card(holder::platform::Db& db,
-                 const std::string& card_id,
-                 const std::string& project_id) {
+void create_card(
+    holder::platform::Db& db,
+    const std::string& card_id,
+    const std::string& project_id
+) {
   holder::card::CardRepo repo(db);
   holder::model::Card card;
   card.card_id = card_id;
@@ -198,7 +201,13 @@ TEST_CASE("LinkRepo delete_link supports type-only and type+kind filters", "[lin
   REQUIRE(repo.list_outgoing("proj-1", "card-a").size() == 3);
 
   // has_type only branch
-  repo.delete_link("proj-1", "card-a", "card-b", std::optional<std::string>("resource"), std::nullopt);
+  repo.delete_link(
+      "proj-1",
+      "card-a",
+      "card-b",
+      std::optional<std::string>("resource"),
+      std::nullopt
+  );
   auto outgoing = repo.list_outgoing("proj-1", "card-a");
   REQUIRE(outgoing.size() == 1);
   REQUIRE(outgoing[0].to_type == "card");
@@ -206,11 +215,13 @@ TEST_CASE("LinkRepo delete_link supports type-only and type+kind filters", "[lin
   // Reinsert resource links and delete exact type+kind
   repo.upsert_links("proj-1", "card-a", {l2, l3});
   REQUIRE(repo.list_outgoing("proj-1", "card-a").size() == 3);
-  repo.delete_link("proj-1",
-                   "card-a",
-                   "card-b",
-                   std::optional<std::string>("resource"),
-                   std::optional<std::string>("embed"));
+  repo.delete_link(
+      "proj-1",
+      "card-a",
+      "card-b",
+      std::optional<std::string>("resource"),
+      std::optional<std::string>("embed")
+  );
   outgoing = repo.list_outgoing("proj-1", "card-a");
   REQUIRE(outgoing.size() == 2);
 
@@ -262,10 +273,9 @@ TEST_CASE("LinkRepo upsert throws when sqlite step fails", "[linkrepo]") {
   create_card(db, "card-b", "proj-1");
 
   // Force INSERT/UPSERT step failure while still allowing statement prepare.
-  db.exec(
-      "CREATE TRIGGER block_link_insert "
-      "BEFORE INSERT ON card_links "
-      "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
+  db.exec("CREATE TRIGGER block_link_insert "
+          "BEFORE INSERT ON card_links "
+          "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
 
   holder::card::LinkRepo repo(db);
   holder::model::CardLink link;
@@ -333,13 +343,17 @@ TEST_CASE("LinkRepo delete methods throw when sqlite delete step fails", "[linkr
   repo.upsert_links("proj-1", "card-a", {link});
 
   // Force DELETE step failure while still allowing prepare/bind.
-  db.exec(
-      "CREATE TRIGGER block_link_delete "
-      "BEFORE DELETE ON card_links "
-      "BEGIN SELECT RAISE(ABORT, 'blocked delete'); END;");
+  db.exec("CREATE TRIGGER block_link_delete "
+          "BEFORE DELETE ON card_links "
+          "BEGIN SELECT RAISE(ABORT, 'blocked delete'); END;");
 
-  REQUIRE_THROWS(
-      repo.delete_link("proj-1", "card-a", "card-b", std::optional<std::string>("card"), std::nullopt));
+  REQUIRE_THROWS(repo.delete_link(
+      "proj-1",
+      "card-a",
+      "card-b",
+      std::optional<std::string>("card"),
+      std::nullopt
+  ));
   REQUIRE_THROWS(repo.delete_links_to_typed("proj-1", "card-b", "card"));
   REQUIRE_THROWS(repo.delete_links_from("proj-1", "card-a"));
 }

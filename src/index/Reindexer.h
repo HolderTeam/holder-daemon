@@ -6,13 +6,13 @@
 namespace holder::index {
 
 class Reindexer {
-public:
+ public:
   explicit Reindexer(holder::platform::Db& db);
 
   // Full reindex from DB into FTS tables.
   void run();
 
-private:
+ private:
   holder::platform::Db& db_;
 };
 
