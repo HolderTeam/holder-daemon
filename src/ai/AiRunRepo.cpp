@@ -45,7 +45,8 @@ void throw_sqlite(sqlite3* db, const std::string& msg) {
 
 } // namespace
 
-AiRunRepo::AiRunRepo(holder::platform::Db& db) : db_(db) {}
+AiRunRepo::AiRunRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 void AiRunRepo::create(const model::AiRun& run) {
   static constexpr const char* SQL =
@@ -184,14 +185,16 @@ std::vector<model::AiRun> AiRunRepo::list_by_project(const std::string& project_
   return runs;
 } // LCOV_EXCL_LINE
 
-void AiRunRepo::update_status(const std::string& run_id,
-                              const std::string& status,
-                              const std::optional<std::string>& error,
-                              const std::optional<std::string>& message_id,
-                              const std::optional<std::string>& chosen_model,
-                              const std::optional<std::string>& ranked_json,
-                              const std::optional<std::string>& policy_trace_json,
-                              long long updated_at) {
+void AiRunRepo::update_status(
+    const std::string& run_id,
+    const std::string& status,
+    const std::optional<std::string>& error,
+    const std::optional<std::string>& message_id,
+    const std::optional<std::string>& chosen_model,
+    const std::optional<std::string>& ranked_json,
+    const std::optional<std::string>& policy_trace_json,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE ai_runs SET status = ?, error = ?, message_id = ?, chosen_model = ?, ranked_json = ?, "
       "policy_trace_json = ?, updated_at = ? WHERE run_id = ?;";

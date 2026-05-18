@@ -16,7 +16,7 @@ namespace {
 namespace http = boost::beast::http;
 
 class FakeRunnerClient final : public holder::llm::RunnerClient {
-public:
+ public:
   void start_background_probe() override {}
 
   holder::llm::RunnerStatus status() const override {
@@ -44,11 +44,9 @@ public:
 
   std::vector<holder::llm::RunnerPullJob> list_pulls() const override { return pulls_result; }
 
-  bool stream_generate(const std::string&,
-                       const std::string&,
-                       const std::string&,
-                       const std::function<void(const std::string&)>&,
-                       std::string*) override {
+  bool
+  stream_generate(const std::string&, const std::string&, const std::string&, const std::function<void(const std::string&)>&, std::string*)
+      override {
     return true;
   }
 
@@ -84,8 +82,13 @@ TEST_CASE("AiRunnerRoutes returns pull-event dispatch result when handled", "[ai
       socket,
       db,
       static_cast<holder::llm::RunnerRegistry*>(nullptr),
-      []() { return std::string("generated-id"); },
-      [](const std::string&) -> std::string { return {}; });
+      []() {
+        return std::string("generated-id");
+      },
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE_FALSE(out.streamed);
@@ -110,8 +113,13 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -134,8 +142,13 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
         socket,
         db,
         &runner_registry,
-        []() { return std::string("runner-123"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("runner-123");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(created.handled);
     REQUIRE(res.result() == http::status::created);
@@ -153,8 +166,13 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(got.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -173,8 +191,13 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(patched.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -192,8 +215,13 @@ TEST_CASE("AiRunnerRoutes supports list create patch and delete", "[ai][runner]"
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(removed.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -224,8 +252,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -245,8 +278,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -266,8 +304,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -287,8 +330,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -308,8 +356,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -329,12 +382,20 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
-    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+    REQUIRE(
+        nlohmann::json::parse(res.body())["error"]["message"] ==
+        "base_url must use http://host:port format."
+    );
   }
 
   SECTION("POST rejects malformed host_port base_url") {
@@ -350,12 +411,20 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
-    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+    REQUIRE(
+        nlohmann::json::parse(res.body())["error"]["message"] ==
+        "base_url must use http://host:port format."
+    );
   }
 
   SECTION("GET runner returns not found when registry missing") {
@@ -368,8 +437,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         nullptr,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -386,8 +460,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -407,12 +486,20 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
-    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "auto-local runner is not editable.");
+    REQUIRE(
+        nlohmann::json::parse(res.body())["error"]["message"] ==
+        "auto-local runner is not editable."
+    );
   }
 
   SECTION("PATCH returns not found when runner missing") {
@@ -428,8 +515,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -460,8 +552,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -480,12 +577,20 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
-    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "base_url must use http://host:port format.");
+    REQUIRE(
+        nlohmann::json::parse(res.body())["error"]["message"] ==
+        "base_url must use http://host:port format."
+    );
 
     auto clear_url = make_request(http::verb::patch, "/ai/runners/manual-patch");
     clear_url.set(http::field::content_type, "application/json");
@@ -500,8 +605,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -518,12 +628,20 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
-    REQUIRE(nlohmann::json::parse(res.body())["error"]["message"] == "auto-local runner is not deletable.");
+    REQUIRE(
+        nlohmann::json::parse(res.body())["error"]["message"] ==
+        "auto-local runner is not deletable."
+    );
 
     auto missing_req = make_request(http::verb::delete_, "/ai/runners/manual-missing");
     res = {};
@@ -535,8 +653,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -553,8 +676,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
     REQUIRE_FALSE(out.handled);
 
     req = make_request(http::verb::get, "/ai/runners/manual-a/unknown");
@@ -565,8 +693,13 @@ TEST_CASE("AiRunnerRoutes validates runner CRUD inputs and route guards", "[ai][
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
     REQUIRE_FALSE(out.handled);
   }
 }
@@ -599,8 +732,13 @@ TEST_CASE("AiRunnerRoutes supports runner retry by runner id", "[ai][runner]") {
       socket,
       db,
       &runner_registry,
-      []() { return std::string("ignored"); },
-      [](const std::string&) -> std::string { return {}; });
+      []() {
+        return std::string("ignored");
+      },
+      [](const std::string&) -> std::string {
+        return {};
+      }
+  );
 
   REQUIRE(out.handled);
   REQUIRE(res.result() == http::status::ok);
@@ -629,8 +767,13 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
         socket,
         db,
         nullptr,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -648,8 +791,13 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::not_found);
@@ -662,8 +810,12 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
     auto_local.status_result.spawn_attempted = true;
     auto_local.status_result.last_checked = 123;
     auto_local.status_result.version = "fake";
-    auto_local.status_result.models.push_back(
-        holder::llm::LocalModel{.name = "qwen3:4b", .digest = "sha256:abc", .size = 42, .modified_at = "now"});
+    auto_local.status_result.models.push_back(holder::llm::LocalModel{
+        .name = "qwen3:4b",
+        .digest = "sha256:abc",
+        .size = 42,
+        .modified_at = "now"
+    });
     auto_local.pulls_result.push_back(holder::llm::RunnerPullJob{
         .job_id = "job-1",
         .model = "qwen3:8b",
@@ -683,8 +835,13 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::ok);
@@ -692,7 +849,9 @@ TEST_CASE("AiRunnerRoutes covers retry guards and runtime pull serialization", "
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"].size() == 1);
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["job_id"] == "job-1");
     REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["runner_id"] == "auto-local");
-    REQUIRE(body["data"]["runners"][0]["runtime"]["pulls"][0]["progress"]["stage"] == "downloading");
+    REQUIRE(
+        body["data"]["runners"][0]["runtime"]["pulls"][0]["progress"]["stage"] == "downloading"
+    );
   }
 }
 
@@ -716,8 +875,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -738,8 +902,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -759,8 +928,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -780,8 +954,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -813,8 +992,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -843,8 +1027,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         &runner_registry,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE(out.handled);
     REQUIRE(res.result() == http::status::bad_request);
@@ -861,8 +1050,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         nullptr,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE_FALSE(out.handled);
   }
@@ -877,8 +1071,13 @@ TEST_CASE("AiRunnerRoutes catches route exceptions and preserves fallthroughs", 
         socket,
         db,
         nullptr,
-        []() { return std::string("ignored"); },
-        [](const std::string&) -> std::string { return {}; });
+        []() {
+          return std::string("ignored");
+        },
+        [](const std::string&) -> std::string {
+          return {};
+        }
+    );
 
     REQUIRE_FALSE(out.handled);
   }

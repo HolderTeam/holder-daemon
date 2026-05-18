@@ -4,10 +4,12 @@
 
 namespace holder::llm {
 
-LocalRunnerClient::LocalRunnerClient(LocalModelRunner* runner) : runner_(runner) {}
+LocalRunnerClient::LocalRunnerClient(LocalModelRunner* runner)
+    : runner_(runner) {}
 
 LocalRunnerClient::LocalRunnerClient(std::unique_ptr<LocalModelRunner> runner)
-    : owned_runner_(std::move(runner)), runner_(owned_runner_.get()) {}
+    : owned_runner_(std::move(runner)),
+      runner_(owned_runner_.get()) {}
 
 LocalRunnerClient::~LocalRunnerClient() = default;
 
@@ -37,11 +39,13 @@ std::vector<RunnerPullJob> LocalRunnerClient::list_pulls() const {
   return runner_ != nullptr ? runner_->list_pulls() : std::vector<RunnerPullJob>{};
 }
 
-bool LocalRunnerClient::stream_generate(const std::string& model,
-                                        const std::string& prompt,
-                                        const std::string& options_json,
-                                        const std::function<void(const std::string&)>& on_chunk,
-                                        std::string* error) {
+bool LocalRunnerClient::stream_generate(
+    const std::string& model,
+    const std::string& prompt,
+    const std::string& options_json,
+    const std::function<void(const std::string&)>& on_chunk,
+    std::string* error
+) {
   return runner_ != nullptr &&
          runner_->stream_generate(model, prompt, options_json, on_chunk, error);
 }

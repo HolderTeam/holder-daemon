@@ -22,7 +22,8 @@ namespace {
 std::filesystem::path make_temp_dir(const std::string& prefix) {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / (prefix + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -30,7 +31,8 @@ std::filesystem::path make_temp_dir(const std::string& prefix) {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value) : key_(key) {
+  EnvGuard(const char* key, std::string value)
+      : key_(key) {
     if (const char* current = std::getenv(key_)) {
       old_ = current;
     }

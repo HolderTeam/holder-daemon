@@ -74,17 +74,38 @@ TEST_CASE("CloudQuota cooldown supports configurable base/cap", "[cloud_quota]")
   const std::string model = "gemma-3-1b-it";
 
   const auto first = holder::api::support::record_cloud_model_failure(
-      db, provider, model, "timeout", 1000, 10, 40);
+      db,
+      provider,
+      model,
+      "timeout",
+      1000,
+      10,
+      40
+  );
   REQUIRE(first.failure_count == 1);
   REQUIRE(first.cooldown_until == 1010);
 
   const auto second = holder::api::support::record_cloud_model_failure(
-      db, provider, model, "timeout", 1010, 10, 40);
+      db,
+      provider,
+      model,
+      "timeout",
+      1010,
+      10,
+      40
+  );
   REQUIRE(second.failure_count == 2);
   REQUIRE(second.cooldown_until == 1030);
 
   const auto third = holder::api::support::record_cloud_model_failure(
-      db, provider, model, "timeout", 1020, 10, 40);
+      db,
+      provider,
+      model,
+      "timeout",
+      1020,
+      10,
+      40
+  );
   REQUIRE(third.failure_count == 3);
   REQUIRE(third.cooldown_until == 1060); // 40s cap
 }
@@ -100,12 +121,18 @@ TEST_CASE("CloudQuota prepare-query errors are surfaced", "[cloud_quota]") {
   apply_schema(db);
   db.close();
 
-  REQUIRE_THROWS_WITH(holder::api::support::load_cloud_window_usage(db, "p", "m", 0),
-                      Catch::Matchers::ContainsSubstring("prepare cloud usage query failed"));
-  REQUIRE_THROWS_WITH(holder::api::support::record_cloud_usage_event(db, "p", "m", 1, 2, 3, "seed"),
-                      Catch::Matchers::ContainsSubstring("prepare cloud usage insert failed"));
-  REQUIRE_THROWS_WITH(holder::api::support::load_cloud_model_cooldown(db, "p", "m"),
-                      Catch::Matchers::ContainsSubstring("prepare cloud cooldown query failed"));
+  REQUIRE_THROWS_WITH(
+      holder::api::support::load_cloud_window_usage(db, "p", "m", 0),
+      Catch::Matchers::ContainsSubstring("prepare cloud usage query failed")
+  );
+  REQUIRE_THROWS_WITH(
+      holder::api::support::record_cloud_usage_event(db, "p", "m", 1, 2, 3, "seed"),
+      Catch::Matchers::ContainsSubstring("prepare cloud usage insert failed")
+  );
+  REQUIRE_THROWS_WITH(
+      holder::api::support::load_cloud_model_cooldown(db, "p", "m"),
+      Catch::Matchers::ContainsSubstring("prepare cloud cooldown query failed")
+  );
 }
 
 TEST_CASE("CloudQuota insert/upsert/clear step failures are surfaced", "[cloud_quota]") {
@@ -118,27 +145,28 @@ TEST_CASE("CloudQuota insert/upsert/clear step failures are surfaced", "[cloud_q
   db.open(db_path);
   apply_schema(db);
 
-  db.exec(
-      "CREATE TRIGGER fail_cloud_usage_insert "
-      "BEFORE INSERT ON ai_cloud_usage_events "
-      "BEGIN "
-      "  SELECT RAISE(ABORT, 'fail usage insert'); "
-      "END;");
+  db.exec("CREATE TRIGGER fail_cloud_usage_insert "
+          "BEFORE INSERT ON ai_cloud_usage_events "
+          "BEGIN "
+          "  SELECT RAISE(ABORT, 'fail usage insert'); "
+          "END;");
   REQUIRE_THROWS_WITH(
       holder::api::support::record_cloud_usage_event(db, "p", "m", 1, 2, 3, "seed"),
-      Catch::Matchers::ContainsSubstring("insert cloud usage event failed"));
+      Catch::Matchers::ContainsSubstring("insert cloud usage event failed")
+  );
   db.exec("DROP TRIGGER fail_cloud_usage_insert;");
 
-  db.exec(
-      "CREATE TRIGGER fail_cloud_cooldown_insert "
-      "BEFORE INSERT ON ai_cloud_model_cooldowns "
-      "BEGIN "
-      "  SELECT RAISE(ABORT, 'fail cooldown upsert'); "
-      "END;");
+  db.exec("CREATE TRIGGER fail_cloud_cooldown_insert "
+          "BEFORE INSERT ON ai_cloud_model_cooldowns "
+          "BEGIN "
+          "  SELECT RAISE(ABORT, 'fail cooldown upsert'); "
+          "END;");
   REQUIRE_THROWS_WITH(
       holder::api::support::record_cloud_model_failure(db, "p", "m", "oops", 1000),
-      Catch::Matchers::ContainsSubstring("upsert cloud cooldown failed"));
+      Catch::Matchers::ContainsSubstring("upsert cloud cooldown failed")
+  );
   REQUIRE_THROWS_WITH(
       holder::api::support::clear_cloud_model_cooldown(db, "p", "m", 1100),
-      Catch::Matchers::ContainsSubstring("clear cloud cooldown failed"));
+      Catch::Matchers::ContainsSubstring("clear cloud cooldown failed")
+  );
 }

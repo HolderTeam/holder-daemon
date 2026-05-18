@@ -2,10 +2,10 @@
 
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
-#include "platform/Fs.h"
-#include "git/GitOps.h"
-#include "privacy/ProjectPrivacy.h"
 #include "card/LinkRepo.h"
+#include "git/GitOps.h"
+#include "platform/Fs.h"
+#include "privacy/ProjectPrivacy.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -24,28 +24,32 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
   return git ? *git : real_git;
 }
 
-void write_card_file(holder::git::GitOps& repo,
-                     const holder::model::Project& project,
-                     const holder::model::Card& card,
-                     const std::vector<holder::model::CardLink>& links,
-                     const std::string& content) {
+void write_card_file(
+    holder::git::GitOps& repo,
+    const holder::model::Project& project,
+    const holder::model::Card& card,
+    const std::vector<holder::model::CardLink>& links,
+    const std::string& content
+) {
   const auto plain = holder::core::render_card_front_matter(card, links) + content;
   if (project.privacy_mode == "encrypted_git") {
     if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
       throw std::runtime_error("encrypted project missing project_key_id");
     }
-    repo.write_file(card.rel_path,
-                    holder::privacy::encrypt_project_blob(
-                        project.project_id,
-                        project.project_key_id.value(),
-                        plain));
+    repo.write_file(
+        card.rel_path,
+        holder::privacy::encrypt_project_blob(
+            project.project_id,
+            project.project_key_id.value(),
+            plain
+        )
+    );
     return;
   }
   repo.write_file(card.rel_path, plain);
 }
 
-std::string decode_card_blob(const holder::model::Project& project,
-                             const std::string& blob) {
+std::string decode_card_blob(const holder::model::Project& project, const std::string& blob) {
   if (project.privacy_mode != "encrypted_git") {
     return blob;
   }
@@ -55,11 +59,14 @@ std::string decode_card_blob(const holder::model::Project& project,
   return holder::privacy::decrypt_project_blob(
       project.project_id,
       project.project_key_id.value(),
-      blob);
+      blob
+  );
 }
 
-void assert_project_staged_blobs_safe(const holder::model::Project& project,
-                                      const std::vector<std::string>& relative_paths) {
+void assert_project_staged_blobs_safe(
+    const holder::model::Project& project,
+    const std::vector<std::string>& relative_paths
+) {
   if (project.privacy_mode != "encrypted_git") {
     return;
   }
@@ -68,10 +75,12 @@ void assert_project_staged_blobs_safe(const holder::model::Project& project,
 
 } // namespace
 
-CardStore::CardStore(holder::platform::Db& db,
-                     holder::index::FtsIndexer* fts,
-                     holder::core::Fs* fs,
-                     holder::git::GitOps* git)
+CardStore::CardStore(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    holder::core::Fs* fs,
+    holder::git::GitOps* git
+)
     : db_(db),
       fs_(&resolve_fs(fs)),
       git_(&resolve_git(git)),
@@ -92,9 +101,11 @@ holder::model::Project CardStore::require_project(const std::string& project_id)
   return project_opt.value();
 }
 
-void CardStore::create(holder::model::Card card,
-                       const std::string& content,
-                       const std::optional<double>& explicit_sort_key) {
+void CardStore::create(
+    holder::model::Card card,
+    const std::string& content,
+    const std::optional<double>& explicit_sort_key
+) {
   const auto project = require_project(card.project_id);
   if (explicit_sort_key.has_value()) {
     card.sort_key = explicit_sort_key.value();
@@ -138,10 +149,12 @@ void CardStore::create(holder::model::Card card,
   git_->commit("Add card " + card.title);
 }
 
-void CardStore::update_content(const std::string& card_id,
-                               const std::string& content,
-                               const std::optional<std::string>& title,
-                               long long updated_at) {
+void CardStore::update_content(
+    const std::string& card_id,
+    const std::string& content,
+    const std::optional<std::string>& title,
+    long long updated_at
+) {
   const auto card_opt = card_repo_.get(card_id);
   if (!card_opt.has_value()) {
     throw std::runtime_error("card not found: " + card_id);
@@ -164,11 +177,11 @@ void CardStore::update_content(const std::string& card_id,
   if (!unchanged) {
     auto updated_card = card;
     if (title.has_value()) {
-    updated_card.title = title.value();
-  }
-  updated_card.updated_at = updated_at;
-  const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
-  write_card_file(*git_, project, updated_card, links, content);
+      updated_card.title = title.value();
+    }
+    updated_card.updated_at = updated_at;
+    const auto links = link_repo_.list_outgoing(card.project_id, card.card_id);
+    write_card_file(*git_, project, updated_card, links, content);
   }
 
   if (!unchanged) {
@@ -193,11 +206,13 @@ void CardStore::update_content(const std::string& card_id,
   }
 }
 
-void CardStore::move(const std::string& card_id,
-                     bool has_parent_card_id,
-                     const std::optional<std::string>& parent_card_id,
-                     const std::optional<double>& sort_key,
-                     long long updated_at) {
+void CardStore::move(
+    const std::string& card_id,
+    bool has_parent_card_id,
+    const std::optional<std::string>& parent_card_id,
+    const std::optional<double>& sort_key,
+    long long updated_at
+) {
   const auto card_opt = card_repo_.get(card_id);
   if (!card_opt.has_value()) {
     throw std::runtime_error("card not found: " + card_id);
@@ -210,7 +225,8 @@ void CardStore::move(const std::string& card_id,
     throw std::runtime_error("card rel_path does not match card_id");
   }
 
-  const std::optional<std::string> next_parent = has_parent_card_id ? parent_card_id : card.parent_card_id;
+  const std::optional<std::string> next_parent = has_parent_card_id ? parent_card_id
+                                                                    : card.parent_card_id;
   double next_sort = card.sort_key;
   if (sort_key.has_value()) {
     next_sort = sort_key.value();
@@ -238,9 +254,11 @@ void CardStore::move(const std::string& card_id,
   card.updated_at = updated_at;
   const auto updated_plain = holder::core::render_card_front_matter(card, links) + parsed.body;
   const auto updated_raw = (project.privacy_mode == "encrypted_git")
-                               ? holder::privacy::encrypt_project_blob(project.project_id,
-                                                                        project.project_key_id.value(),
-                                                                        updated_plain)
+                               ? holder::privacy::encrypt_project_blob(
+                                     project.project_id,
+                                     project.project_key_id.value(),
+                                     updated_plain
+                                 )
                                : updated_plain;
 
   if (updated_raw == raw) {
@@ -283,9 +301,11 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   card.updated_at = updated_at;
   const auto updated_plain = holder::core::render_card_front_matter(card, links) + parsed.body;
   const auto updated_raw = (project.privacy_mode == "encrypted_git")
-                               ? holder::privacy::encrypt_project_blob(project.project_id,
-                                                                        project.project_key_id.value(),
-                                                                        updated_plain)
+                               ? holder::privacy::encrypt_project_blob(
+                                     project.project_id,
+                                     project.project_key_id.value(),
+                                     updated_plain
+                                 )
                                : updated_plain;
 
   if (updated_raw == raw) {

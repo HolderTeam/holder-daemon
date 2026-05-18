@@ -14,6 +14,7 @@ bool handle_rebuild_routes(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
     holder::platform::Db& db,
-    holder::index::FtsIndexer* fts);
+    holder::index::FtsIndexer* fts
+);
 
 } // namespace holder::api::routes

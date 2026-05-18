@@ -1,9 +1,9 @@
 #include "api/routes/ai/messages/AiMessageCaptureRoutes.h"
 
-#include "api/support/HttpResponses.h"
-#include "api/support/Time.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 #include "project/ProjectRepo.h"
 
 #include <boost/beast/http.hpp>
@@ -19,12 +19,14 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-bool handle_ai_message_capture_routes(const std::string& path,
-                                      const http::request<http::string_body>& req,
-                                      http::response<http::string_body>& res,
-                                      holder::platform::Db& db,
-                                      holder::index::FtsIndexer* fts,
-                                      const std::function<std::string()>& uuid_v4) {
+bool handle_ai_message_capture_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    const std::function<std::string()>& uuid_v4
+) {
   if (path != "/ai/messages/capture" || req.method() != http::verb::post) {
     return false;
   }
@@ -32,7 +34,11 @@ bool handle_ai_message_capture_routes(const std::string& path,
   try {
     const auto body = nlohmann::json::parse(req.body());
     if (!body.contains("project_id") || !body.contains("prompt") || !body.contains("response")) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "Missing required fields."
+      );
       return true;
     }
 
@@ -74,9 +80,11 @@ bool handle_ai_message_capture_routes(const std::string& path,
         return true;
       }
       if (existing->project_id != project_id) {
-        res = support::error_response(http::status::bad_request,
-                                      "bad_request",
-                                      "Thread belongs to a different project.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Thread belongs to a different project."
+        );
         return true;
       }
     } else {

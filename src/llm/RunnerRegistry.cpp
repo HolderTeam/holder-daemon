@@ -1,5 +1,5 @@
-#include "llm/ExecutorRunnerClient.h"
 #include "llm/RunnerRegistry.h"
+#include "llm/ExecutorRunnerClient.h"
 
 #include "ai/AiRunnerRepo.h"
 #include "llm/LocalModelRunner.h"
@@ -70,10 +70,14 @@ std::optional<ParsedBaseUrl> parse_http_base_url(const std::optional<std::string
 
 } // namespace
 
-RunnerRegistry::RunnerRegistry(holder::platform::Db* db,
-                               RunnerClient* auto_local_client,
-                               const holder::core::SerialExecutor* executor)
-    : db_(db), auto_local_client_(auto_local_client), executor_(executor) {
+RunnerRegistry::RunnerRegistry(
+    holder::platform::Db* db,
+    RunnerClient* auto_local_client,
+    const holder::core::SerialExecutor* executor
+)
+    : db_(db),
+      auto_local_client_(auto_local_client),
+      executor_(executor) {
   if (auto_local_client_ != nullptr && executor_ != nullptr) {
     auto_local_wrapped_client_ =
         std::make_unique<ExecutorRunnerClient>(*auto_local_client_, *executor_);
@@ -81,9 +85,7 @@ RunnerRegistry::RunnerRegistry(holder::platform::Db* db,
   load_manual_clients();
 } // LCOV_EXCL_LINE
 
-void RunnerRegistry::refresh() {
-  load_manual_clients();
-}
+void RunnerRegistry::refresh() { load_manual_clients(); }
 
 std::vector<holder::model::AiRunner> RunnerRegistry::list_runners() const {
   std::vector<holder::model::AiRunner> out;
@@ -96,7 +98,8 @@ std::vector<holder::model::AiRunner> RunnerRegistry::list_runners() const {
   return out;
 } // LCOV_EXCL_LINE
 
-std::optional<holder::model::AiRunner> RunnerRegistry::get_runner(const std::string& runner_id) const {
+std::optional<holder::model::AiRunner> RunnerRegistry::get_runner(const std::string& runner_id
+) const {
   if (runner_id == kAutoLocalRunnerId) {
     return auto_local_runner_record();
   }
@@ -132,10 +135,11 @@ void RunnerRegistry::load_manual_clients() {
       continue;
     }
 
-    auto manual_runner = std::make_unique<LocalModelRunner>(
-        parsed->host, parsed->port, std::string(), false);
-    std::unique_ptr<RunnerClient> client =
-        std::make_unique<LocalRunnerClient>(std::move(manual_runner));
+    auto manual_runner =
+        std::make_unique<LocalModelRunner>(parsed->host, parsed->port, std::string(), false);
+    std::unique_ptr<RunnerClient> client = std::make_unique<LocalRunnerClient>(
+        std::move(manual_runner)
+    );
     if (executor_ != nullptr) {
       client = std::make_unique<ExecutorRunnerClient>(std::move(client), *executor_);
     }

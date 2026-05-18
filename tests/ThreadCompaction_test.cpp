@@ -1,8 +1,8 @@
 #include "api/support/ThreadCompaction.h"
 #include "platform/Db.h"
 
-#include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -44,7 +44,13 @@ TEST_CASE("ThreadCompaction state round-trip and build context", "[thread_compac
   int pinned_count = 0;
   const std::string context = std::string(8000, 'x');
   const std::string built = holder::api::support::build_compacted_context(
-      context, 500, loaded, &compacted, &used_summary, &pinned_count);
+      context,
+      500,
+      loaded,
+      &compacted,
+      &used_summary,
+      &pinned_count
+  );
   REQUIRE_FALSE(built.empty());
   REQUIRE(compacted);
   REQUIRE(used_summary);
@@ -52,7 +58,11 @@ TEST_CASE("ThreadCompaction state round-trip and build context", "[thread_compac
   REQUIRE_FALSE(built.empty());
 
   holder::api::support::roll_thread_compaction_state(
-      db, "thread-1", R"({"pinned_facts":["Keep responses concise"],"blob":"abc"})", 200);
+      db,
+      "thread-1",
+      R"({"pinned_facts":["Keep responses concise"],"blob":"abc"})",
+      200
+  );
   const auto rolled = holder::api::support::load_thread_compaction_state(db, "thread-1");
   REQUIRE(rolled.has_value());
   REQUIRE(rolled->updated_at == 200);
@@ -62,19 +72,21 @@ TEST_CASE("ThreadCompaction state round-trip and build context", "[thread_compac
   REQUIRE(rolled->pinned_facts_json->find("Keep responses concise") != std::string::npos);
 }
 
-TEST_CASE("ThreadCompaction normalizes structured summary and accepts quality", "[thread_compaction]") {
-  const std::string candidate =
-      "## Decisions\n"
-      "- Keep cloud-first fallback for low-end devices\n"
-      "## Constraints\n"
-      "- Avoid user editing yaml files\n"
-      "## Open Questions\n"
-      "- Should provider order be user-customizable?\n"
-      "## Next Actions\n"
-      "- Add client-facing bootstrap endpoint\n";
+TEST_CASE(
+    "ThreadCompaction normalizes structured summary and accepts quality",
+    "[thread_compaction]"
+) {
+  const std::string candidate = "## Decisions\n"
+                                "- Keep cloud-first fallback for low-end devices\n"
+                                "## Constraints\n"
+                                "- Avoid user editing yaml files\n"
+                                "## Open Questions\n"
+                                "- Should provider order be user-customizable?\n"
+                                "## Next Actions\n"
+                                "- Add client-facing bootstrap endpoint\n";
 
-  const auto out = holder::api::support::normalize_and_validate_rolling_summary(
-      candidate, std::nullopt, 2000);
+  const auto out =
+      holder::api::support::normalize_and_validate_rolling_summary(candidate, std::nullopt, 2000);
   REQUIRE(out.accepted);
   REQUIRE(out.summary.find("## Decisions") != std::string::npos);
   REQUIRE(out.summary.find("## Constraints") != std::string::npos);
@@ -84,27 +96,33 @@ TEST_CASE("ThreadCompaction normalizes structured summary and accepts quality", 
 
 TEST_CASE("ThreadCompaction quality guard rejects low-signal summary", "[thread_compaction]") {
   const auto out = holder::api::support::normalize_and_validate_rolling_summary(
-      "ok", std::optional<std::string>("previous summary with substantial details"), 2000);
+      "ok",
+      std::optional<std::string>("previous summary with substantial details"),
+      2000
+  );
   REQUIRE_FALSE(out.accepted);
   REQUIRE_FALSE(out.reason.empty());
 }
 
 TEST_CASE("ThreadCompaction can fallback-section unstructured summary", "[thread_compaction]") {
-  const std::string candidate =
-      "Keep cloud-first fallback.\n"
-      "Do not require yaml edits by users.\n"
-      "Track quota_exceeded separately from rate_limited.\n"
-      "Add clearer setup status in clients.\n";
+  const std::string candidate = "Keep cloud-first fallback.\n"
+                                "Do not require yaml edits by users.\n"
+                                "Track quota_exceeded separately from rate_limited.\n"
+                                "Add clearer setup status in clients.\n";
 
-  const auto out = holder::api::support::normalize_and_validate_rolling_summary(
-      candidate, std::nullopt, 2000);
+  const auto out =
+      holder::api::support::normalize_and_validate_rolling_summary(candidate, std::nullopt, 2000);
   REQUIRE(out.accepted);
   REQUIRE(out.used_fallback_sections);
   REQUIRE(out.summary.find("## Decisions") != std::string::npos);
 }
 
-TEST_CASE("ThreadCompaction upsert throws sqlite error when table is missing", "[thread_compaction]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_thread_compaction_missing_table";
+TEST_CASE(
+    "ThreadCompaction upsert throws sqlite error when table is missing",
+    "[thread_compaction]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_thread_compaction_missing_table";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -117,12 +135,18 @@ TEST_CASE("ThreadCompaction upsert throws sqlite error when table is missing", "
   state.rolling_summary = "Summary";
   state.updated_at = 1;
 
-  REQUIRE_THROWS_WITH(holder::api::support::upsert_thread_compaction_state(db, state),
-                      Catch::Matchers::ContainsSubstring("prepare thread compaction upsert failed"));
+  REQUIRE_THROWS_WITH(
+      holder::api::support::upsert_thread_compaction_state(db, state),
+      Catch::Matchers::ContainsSubstring("prepare thread compaction upsert failed")
+  );
 }
 
-TEST_CASE("ThreadCompaction load throws sqlite error when table is missing", "[thread_compaction]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_thread_compaction_load_missing_table";
+TEST_CASE(
+    "ThreadCompaction load throws sqlite error when table is missing",
+    "[thread_compaction]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_thread_compaction_load_missing_table";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -130,13 +154,18 @@ TEST_CASE("ThreadCompaction load throws sqlite error when table is missing", "[t
   holder::platform::Db db;
   db.open(db_path);
 
-  REQUIRE_THROWS_WITH(holder::api::support::load_thread_compaction_state(db, "thread-missing"),
-                      Catch::Matchers::ContainsSubstring("prepare thread compaction get failed"));
+  REQUIRE_THROWS_WITH(
+      holder::api::support::load_thread_compaction_state(db, "thread-missing"),
+      Catch::Matchers::ContainsSubstring("prepare thread compaction get failed")
+  );
 }
 
-TEST_CASE("ThreadCompaction upsert binds nullable fields and reads optional last_compacted_message_id",
-          "[thread_compaction]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_thread_compaction_nullable_fields";
+TEST_CASE(
+    "ThreadCompaction upsert binds nullable fields and reads optional last_compacted_message_id",
+    "[thread_compaction]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_thread_compaction_nullable_fields";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -196,18 +225,28 @@ TEST_CASE("ThreadCompaction upsert throws when sqlite step fails", "[thread_comp
   state.rolling_summary = "Summary";
   state.updated_at = 100;
 
-  REQUIRE_THROWS_WITH(holder::api::support::upsert_thread_compaction_state(db, state),
-                      Catch::Matchers::ContainsSubstring("upsert thread compaction failed"));
+  REQUIRE_THROWS_WITH(
+      holder::api::support::upsert_thread_compaction_state(db, state),
+      Catch::Matchers::ContainsSubstring("upsert thread compaction failed")
+  );
 }
 
-TEST_CASE("ThreadCompaction handles zero token budget and oversize prefix truncation", "[thread_compaction]") {
+TEST_CASE(
+    "ThreadCompaction handles zero token budget and oversize prefix truncation",
+    "[thread_compaction]"
+) {
   bool compacted = false;
   bool used_summary = false;
   int pinned_count = 0;
 
-  const std::string zero_budget =
-      holder::api::support::build_compacted_context("non-empty", 0, std::nullopt, &compacted, &used_summary,
-                                                    &pinned_count);
+  const std::string zero_budget = holder::api::support::build_compacted_context(
+      "non-empty",
+      0,
+      std::nullopt,
+      &compacted,
+      &used_summary,
+      &pinned_count
+  );
   REQUIRE(zero_budget.empty());
   REQUIRE(compacted);
   REQUIRE_FALSE(used_summary);
@@ -216,8 +255,14 @@ TEST_CASE("ThreadCompaction handles zero token budget and oversize prefix trunca
   holder::api::support::ThreadCompactionState state;
   state.thread_id = "thread-oversize";
   state.rolling_summary = std::string(200, 'S');
-  const std::string out =
-      holder::api::support::build_compacted_context("tail", 10, state, &compacted, &used_summary, &pinned_count);
+  const std::string out = holder::api::support::build_compacted_context(
+      "tail",
+      10,
+      state,
+      &compacted,
+      &used_summary,
+      &pinned_count
+  );
   REQUIRE(out.size() <= 40);
   REQUIRE(compacted);
   REQUIRE(used_summary);
@@ -230,14 +275,23 @@ TEST_CASE("ThreadCompaction handles zero token budget and oversize prefix trunca
   state_with_facts.pinned_facts_json =
       R"(["Fact 1 that is intentionally long to consume bytes","Fact 2 that is intentionally long to consume bytes","Fact 3 that is intentionally long to consume bytes"])";
   const std::string out_with_facts = holder::api::support::build_compacted_context(
-      "tail", 10, state_with_facts, &compacted, &used_summary, &pinned_count);
+      "tail",
+      10,
+      state_with_facts,
+      &compacted,
+      &used_summary,
+      &pinned_count
+  );
   REQUIRE(out_with_facts.size() == 40);
   REQUIRE(compacted);
   REQUIRE(used_summary);
   REQUIRE(pinned_count >= 1);
 }
 
-TEST_CASE("ThreadCompaction robustly handles malformed pinned facts inputs", "[thread_compaction]") {
+TEST_CASE(
+    "ThreadCompaction robustly handles malformed pinned facts inputs",
+    "[thread_compaction]"
+) {
   holder::api::support::ThreadCompactionState state;
   state.thread_id = "thread-malformed";
   state.pinned_facts_json = "{ not json";
@@ -246,11 +300,18 @@ TEST_CASE("ThreadCompaction robustly handles malformed pinned facts inputs", "[t
   bool used_summary = false;
   int pinned_count = 0;
   const std::string built = holder::api::support::build_compacted_context(
-      R"({"still":"ok"})", 128, state, &compacted, &used_summary, &pinned_count);
+      R"({"still":"ok"})",
+      128,
+      state,
+      &compacted,
+      &used_summary,
+      &pinned_count
+  );
   REQUIRE_FALSE(built.empty());
   REQUIRE(pinned_count == 0);
 
-  const auto dir = std::filesystem::temp_directory_path() / "holder_thread_compaction_invalid_context_json";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_thread_compaction_invalid_context_json";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -271,35 +332,44 @@ TEST_CASE("ThreadCompaction robustly handles malformed pinned facts inputs", "[t
   REQUIRE(loaded.has_value());
 }
 
-TEST_CASE("ThreadCompaction validates low-signal, numbered bullets, and regressive shrink",
-          "[thread_compaction]") {
+TEST_CASE(
+    "ThreadCompaction validates low-signal, numbered bullets, and regressive shrink",
+    "[thread_compaction]"
+) {
   const auto low_signal = holder::api::support::normalize_and_validate_rolling_summary(
-      "This is one long line but it still has only one content item and no sections.", std::nullopt, 2000);
+      "This is one long line but it still has only one content item and no sections.",
+      std::nullopt,
+      2000
+  );
   REQUIRE_FALSE(low_signal.accepted);
   REQUIRE(low_signal.reason == "low_signal");
 
-  const std::string numbered_candidate =
-      "1. Keep retries bounded\n"
-      "2. Prefer explicit provider selection\n"
-      "3. Surface actionable errors to clients\n";
-  const auto numbered =
-      holder::api::support::normalize_and_validate_rolling_summary(numbered_candidate, std::nullopt, 2000);
+  const std::string numbered_candidate = "1. Keep retries bounded\n"
+                                         "2. Prefer explicit provider selection\n"
+                                         "3. Surface actionable errors to clients\n";
+  const auto numbered = holder::api::support::normalize_and_validate_rolling_summary(
+      numbered_candidate,
+      std::nullopt,
+      2000
+  );
   REQUIRE(numbered.accepted);
   REQUIRE(numbered.used_fallback_sections);
   REQUIRE(numbered.summary.find("- Keep retries bounded") != std::string::npos);
 
-  const std::string structured =
-      "## Decisions\n"
-      "- Keep cloud fallback\n"
-      "## Constraints\n"
-      "- No yaml edits\n"
-      "## Open Questions\n"
-      "- How to expose retries?\n"
-      "## Next Actions\n"
-      "- Add endpoint docs\n";
+  const std::string structured = "## Decisions\n"
+                                 "- Keep cloud fallback\n"
+                                 "## Constraints\n"
+                                 "- No yaml edits\n"
+                                 "## Open Questions\n"
+                                 "- How to expose retries?\n"
+                                 "## Next Actions\n"
+                                 "- Add endpoint docs\n";
   const std::string previous(500, 'P');
   const auto shrink = holder::api::support::normalize_and_validate_rolling_summary(
-      structured, std::optional<std::string>(previous), 50);
+      structured,
+      std::optional<std::string>(previous),
+      50
+  );
   REQUIRE_FALSE(shrink.accepted);
   REQUIRE(shrink.reason == "regressive_shrink");
 }

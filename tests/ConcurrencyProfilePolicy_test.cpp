@@ -6,7 +6,10 @@
 
 #include "core/ConcurrencyProfilePolicy.h"
 
-TEST_CASE("concurrency_profile_for_caste maps machine tiers to expected thread counts", "[startup]") {
+TEST_CASE(
+    "concurrency_profile_for_caste maps machine tiers to expected thread counts",
+    "[startup]"
+) {
   SECTION("mini uses smallest profile") {
     const auto profile = holder::core::concurrency_profile_for_caste(Caste::Mini);
     REQUIRE(profile.io_threads == 1);

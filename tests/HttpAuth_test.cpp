@@ -1,9 +1,9 @@
 #include "http_test_helpers.h"
 
 using holder::test::EnvGuard;
+using holder::test::http_request_raw;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
-using holder::test::http_request_raw;
 
 TEST_CASE("HTTP endpoints require auth token", "[http]") {
   const auto dir = make_temp_dir();
@@ -31,29 +31,22 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto health = http_request_raw(bound.bind,
-                                       bound.port,
-                                       "",
-                                       boost::beast::http::verb::get,
-                                       "/health");
+  const auto health =
+      http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/health");
   REQUIRE(health.status == boost::beast::http::status::unauthorized);
 
-  const auto projects = http_request_raw(bound.bind,
-                                         bound.port,
-                                         "",
-                                         boost::beast::http::verb::get,
-                                         "/projects");
+  const auto projects =
+      http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/projects");
   REQUIRE(projects.status == boost::beast::http::status::unauthorized);
 
-  const auto docs = http_request_raw(bound.bind,
-                                     bound.port,
-                                     "",
-                                     boost::beast::http::verb::get,
-                                     "/docs");
+  const auto docs =
+      http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/docs");
   REQUIRE(docs.status == boost::beast::http::status::ok);
 
   auto raw_with_auth = [&](const std::string& auth_value) {

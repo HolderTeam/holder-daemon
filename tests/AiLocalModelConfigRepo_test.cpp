@@ -9,7 +9,7 @@
 
 namespace {
 int sqlite_interrupt_cb(void*) { return 1; }
-}
+} // namespace
 
 TEST_CASE("AiLocalModelConfigRepo stores and clears config", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_local_model_config";
@@ -50,7 +50,8 @@ TEST_CASE("AiLocalModelConfigRepo stores and clears config", "[db]") {
 }
 
 TEST_CASE("AiLocalModelConfigRepo clears when all models are empty", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_local_model_config_clear_empty";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_local_model_config_clear_empty";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -72,7 +73,8 @@ TEST_CASE("AiLocalModelConfigRepo clears when all models are empty", "[db]") {
 }
 
 TEST_CASE("AiLocalModelConfigRepo throws when get prepare fails", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_local_model_config_get_prepare_fail";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_local_model_config_get_prepare_fail";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -104,8 +106,10 @@ TEST_CASE("AiLocalModelConfigRepo normalizes legacy bare model refs on read", "[
   std::string sql((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
   db.exec(sql);
 
-  db.exec("INSERT INTO ai_local_model_config(key, fast_model, strong_model, deep_model, updated_at) "
-          "VALUES('global', 'legacy-fast', 'legacy-strong', NULL, 7);");
+  db.exec(
+      "INSERT INTO ai_local_model_config(key, fast_model, strong_model, deep_model, updated_at) "
+      "VALUES('global', 'legacy-fast', 'legacy-strong', NULL, 7);"
+  );
 
   holder::ai::AiLocalModelConfigRepo repo(db);
   const auto cfg = repo.get();
@@ -116,7 +120,8 @@ TEST_CASE("AiLocalModelConfigRepo normalizes legacy bare model refs on read", "[
 }
 
 TEST_CASE("AiLocalModelConfigRepo throws when get step is interrupted", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_local_model_config_get_interrupt";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_local_model_config_get_interrupt";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";

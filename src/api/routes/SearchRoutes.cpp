@@ -13,16 +13,20 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-bool handle_search_routes(const std::string& path,
-                          const http::request<http::string_body>& req,
-                          http::response<http::string_body>& res,
-                          holder::index::FtsIndexer* fts,
-                          const std::function<std::string(const std::string&)>& param_get) {
+bool handle_search_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::index::FtsIndexer* fts,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (path == "/search/cards" && req.method() == http::verb::get) {
     if (!fts) {
-      res = support::error_response(http::status::not_implemented,
-                                    "not_implemented",
-                                    "Search unavailable.");
+      res = support::error_response(
+          http::status::not_implemented,
+          "not_implemented",
+          "Search unavailable."
+      );
       return true;
     }
 
@@ -35,17 +39,21 @@ bool handle_search_routes(const std::string& path,
       if (!param_get("limit").empty()) limit = std::stoi(param_get("limit"));
       if (!param_get("offset").empty()) offset = std::stoi(param_get("offset"));
     } catch (const std::exception&) {
-      res = support::error_response(http::status::bad_request,
-                                    "bad_request",
-                                    "Invalid limit/offset.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "Invalid limit/offset."
+      );
       bad_params = true;
     }
 
     if (!bad_params) {
       if (project_id.empty() || q.empty()) {
-        res = support::error_response(http::status::bad_request,
-                                      "bad_request",
-                                      "Missing project_id or q.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing project_id or q."
+        );
       } else {
         try {
           const auto rows = fts->search_cards(project_id, q, limit, offset);
@@ -74,9 +82,11 @@ bool handle_search_routes(const std::string& path,
 
   if (path == "/search/ai" && req.method() == http::verb::get) {
     if (!fts) {
-      res = support::error_response(http::status::not_implemented,
-                                    "not_implemented",
-                                    "Search unavailable.");
+      res = support::error_response(
+          http::status::not_implemented,
+          "not_implemented",
+          "Search unavailable."
+      );
       return true;
     }
 
@@ -89,17 +99,21 @@ bool handle_search_routes(const std::string& path,
       if (!param_get("limit").empty()) limit = std::stoi(param_get("limit"));
       if (!param_get("offset").empty()) offset = std::stoi(param_get("offset"));
     } catch (const std::exception&) {
-      res = support::error_response(http::status::bad_request,
-                                    "bad_request",
-                                    "Invalid limit/offset.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "Invalid limit/offset."
+      );
       bad_params = true;
     }
 
     if (!bad_params) {
       if (project_id.empty() || q.empty()) {
-        res = support::error_response(http::status::bad_request,
-                                      "bad_request",
-                                      "Missing project_id or q.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing project_id or q."
+        );
       } else {
         try {
           const auto rows = fts->search_messages(project_id, q, limit, offset);

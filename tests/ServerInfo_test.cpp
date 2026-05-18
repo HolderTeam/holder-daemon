@@ -22,7 +22,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_serverinfo_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -129,7 +130,10 @@ TEST_CASE("write_server_info throws when temp file cannot be opened", "[serverin
   REQUIRE_THROWS(holder::core::write_server_info(info_path, info));
 }
 
-TEST_CASE("write_server_info fallback removes existing directory target then renames", "[serverinfo]") {
+TEST_CASE(
+    "write_server_info fallback removes existing directory target then renames",
+    "[serverinfo]"
+) {
   const auto dir = make_temp_dir();
   const auto info_path = dir / "holder.json";
   std::filesystem::create_directory(info_path);

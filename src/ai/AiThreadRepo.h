@@ -10,7 +10,7 @@
 namespace holder::ai {
 
 class AiThreadRepo {
-public:
+ public:
   explicit AiThreadRepo(holder::platform::Db& db);
 
   void create(const holder::model::AiThread& thread);
@@ -22,7 +22,7 @@ public:
   void touch_updated(const std::string& thread_id, long long updated_at);
   void remove(const std::string& thread_id);
 
-private:
+ private:
   holder::platform::Db& db_;
 };
 

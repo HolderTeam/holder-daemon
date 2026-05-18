@@ -35,7 +35,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_project_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -59,12 +60,7 @@ holder::model::Project make_project(const std::string& id, long long ts = 10) {
   return project;
 }
 
-int deny_project_mutations(void*,
-                           int action,
-                           const char* detail1,
-                           const char*,
-                           const char*,
-                           const char*) {
+int deny_project_mutations(void*, int action, const char* detail1, const char*, const char*, const char*) {
   if ((action == SQLITE_INSERT || action == SQLITE_UPDATE || action == SQLITE_DELETE) &&
       detail1 != nullptr && std::string(detail1) == "projects") {
     return SQLITE_DENY;
@@ -72,9 +68,7 @@ int deny_project_mutations(void*,
   return SQLITE_OK;
 }
 
-int always_interrupt(void*) {
-  return 1;
-}
+int always_interrupt(void*) { return 1; }
 
 } // namespace
 
@@ -165,33 +159,50 @@ TEST_CASE("ProjectRepo throws prepare failures when DB handle is missing", "[pro
   holder::project::ProjectRepo repo(db);
   const auto project = make_project("missing-db");
 
-  REQUIRE_THROWS_WITH(repo.create(project), Catch::Matchers::ContainsSubstring("prepare insert project failed"));
-  REQUIRE_THROWS_WITH(repo.get("p1"), Catch::Matchers::ContainsSubstring("prepare get project failed"));
-  REQUIRE_THROWS_WITH(repo.list(), Catch::Matchers::ContainsSubstring("prepare list projects failed"));
+  REQUIRE_THROWS_WITH(
+      repo.create(project),
+      Catch::Matchers::ContainsSubstring("prepare insert project failed")
+  );
+  REQUIRE_THROWS_WITH(
+      repo.get("p1"),
+      Catch::Matchers::ContainsSubstring("prepare get project failed")
+  );
+  REQUIRE_THROWS_WITH(
+      repo.list(),
+      Catch::Matchers::ContainsSubstring("prepare list projects failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_name("p1", "n", 1),
-      Catch::Matchers::ContainsSubstring("prepare update project name failed"));
+      Catch::Matchers::ContainsSubstring("prepare update project name failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_root_path("p1", "/tmp/x", 1),
-      Catch::Matchers::ContainsSubstring("prepare update project root failed"));
+      Catch::Matchers::ContainsSubstring("prepare update project root failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_git_remote("p1", std::optional<std::string>("x"), 1),
-      Catch::Matchers::ContainsSubstring("prepare update git remote failed"));
+      Catch::Matchers::ContainsSubstring("prepare update git remote failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_git_provider("p1", std::optional<std::string>("x"), 1),
-      Catch::Matchers::ContainsSubstring("prepare update git provider failed"));
+      Catch::Matchers::ContainsSubstring("prepare update git provider failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_privacy_mode("p1", "plain", 1),
-      Catch::Matchers::ContainsSubstring("prepare update privacy mode failed"));
+      Catch::Matchers::ContainsSubstring("prepare update privacy mode failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_project_key_id("p1", std::optional<std::string>("k"), 1),
-      Catch::Matchers::ContainsSubstring("prepare update project key id failed"));
+      Catch::Matchers::ContainsSubstring("prepare update project key id failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.touch_updated("p1", 1),
-      Catch::Matchers::ContainsSubstring("prepare touch project failed"));
+      Catch::Matchers::ContainsSubstring("prepare touch project failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.remove("p1"),
-      Catch::Matchers::ContainsSubstring("prepare delete project failed"));
+      Catch::Matchers::ContainsSubstring("prepare delete project failed")
+  );
 }
 
 TEST_CASE("ProjectRepo throws when sqlite step fails", "[projectrepo]") {
@@ -210,31 +221,40 @@ TEST_CASE("ProjectRepo throws when sqlite step fails", "[projectrepo]") {
   REQUIRE(sqlite3_set_authorizer(raw, deny_project_mutations, nullptr) == SQLITE_OK);
   REQUIRE_THROWS_WITH(
       repo.create(make_project("p2", 2)),
-      Catch::Matchers::ContainsSubstring("insert project failed"));
+      Catch::Matchers::ContainsSubstring("insert project failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_name("p1", "Blocked", 3),
-      Catch::Matchers::ContainsSubstring("update project name failed"));
+      Catch::Matchers::ContainsSubstring("update project name failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_root_path("p1", "/tmp/blocked", 3),
-      Catch::Matchers::ContainsSubstring("update project root failed"));
+      Catch::Matchers::ContainsSubstring("update project root failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_git_remote("p1", std::optional<std::string>("git@x:y/z"), 3),
-      Catch::Matchers::ContainsSubstring("update git remote failed"));
+      Catch::Matchers::ContainsSubstring("update git remote failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_git_provider("p1", std::optional<std::string>("github"), 3),
-      Catch::Matchers::ContainsSubstring("update git provider failed"));
+      Catch::Matchers::ContainsSubstring("update git provider failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_privacy_mode("p1", "plain", 3),
-      Catch::Matchers::ContainsSubstring("update privacy mode failed"));
+      Catch::Matchers::ContainsSubstring("update privacy mode failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.update_project_key_id("p1", std::optional<std::string>("kid"), 3),
-      Catch::Matchers::ContainsSubstring("update project key id failed"));
+      Catch::Matchers::ContainsSubstring("update project key id failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.touch_updated("p1", 3),
-      Catch::Matchers::ContainsSubstring("touch project failed"));
+      Catch::Matchers::ContainsSubstring("touch project failed")
+  );
   REQUIRE_THROWS_WITH(
       repo.remove("p1"),
-      Catch::Matchers::ContainsSubstring("delete project failed"));
+      Catch::Matchers::ContainsSubstring("delete project failed")
+  );
   REQUIRE(sqlite3_set_authorizer(raw, nullptr, nullptr) == SQLITE_OK);
 
   sqlite3_progress_handler(raw, 1, always_interrupt, nullptr);

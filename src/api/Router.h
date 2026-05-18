@@ -9,7 +9,7 @@
 namespace holder::api {
 
 class Router {
-public:
+ public:
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
   using Response = boost::beast::http::response<boost::beast::http::string_body>;
   using Handler = std::function<void(const Request&, Response&)>;
@@ -17,7 +17,7 @@ public:
   void add(boost::beast::http::verb method, std::string target, Handler handler);
   bool dispatch(const Request& req, Response& res) const;
 
-private:
+ private:
   struct Key {
     boost::beast::http::verb method{};
     std::string target;

@@ -11,8 +11,10 @@ constexpr std::string_view kDelimiter = "---\n";
 
 } // namespace
 
-std::string render_card_front_matter(const holder::model::Card& card,
-                                     const std::vector<holder::model::CardLink>& links) {
+std::string render_card_front_matter(
+    const holder::model::Card& card,
+    const std::vector<holder::model::CardLink>& links
+) {
   YAML::Emitter out;
   out << YAML::BeginMap;
   out << YAML::Key << "card_id" << YAML::Value << card.card_id;

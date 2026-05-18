@@ -10,7 +10,7 @@
 namespace holder::resource {
 
 class ResourceRepo {
-public:
+ public:
   explicit ResourceRepo(holder::platform::Db& db);
 
   void add(const holder::model::Resource& resource);
@@ -19,7 +19,7 @@ public:
   std::vector<holder::model::Resource> list(const std::string& project_id) const;
   void remove(const std::string& resource_id);
 
-private:
+ private:
   holder::platform::Db& db_;
 };
 

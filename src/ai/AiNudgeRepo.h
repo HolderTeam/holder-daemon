@@ -16,18 +16,24 @@ class AiNudgeRepo {
   void create(const Nudge& nudge);
   Nudge create_or_get(const Nudge& nudge);
   std::optional<Nudge> find_by_id(const std::string& nudge_id) const;
-  std::optional<Nudge> find_active_exact_match(const std::string& kind,
-                                               const std::string& project_id,
-                                               const std::optional<std::string>& card_id,
-                                               const std::optional<std::string>& basis_fingerprint,
-                                               const std::optional<std::string>& basis_commit) const;
-  std::vector<Nudge> list_active(const std::string& project_id,
-                                 const std::optional<std::string>& card_id = std::nullopt) const;
-  void dismiss_stale_variants(const std::string& kind,
-                              const std::string& project_id,
-                              const std::optional<std::string>& card_id,
-                              const std::optional<std::string>& basis_fingerprint,
-                              const std::optional<std::string>& basis_commit);
+  std::optional<Nudge> find_active_exact_match(
+      const std::string& kind,
+      const std::string& project_id,
+      const std::optional<std::string>& card_id,
+      const std::optional<std::string>& basis_fingerprint,
+      const std::optional<std::string>& basis_commit
+  ) const;
+  std::vector<Nudge> list_active(
+      const std::string& project_id,
+      const std::optional<std::string>& card_id = std::nullopt
+  ) const;
+  void dismiss_stale_variants(
+      const std::string& kind,
+      const std::string& project_id,
+      const std::optional<std::string>& card_id,
+      const std::optional<std::string>& basis_fingerprint,
+      const std::optional<std::string>& basis_commit
+  );
   bool dismiss(const std::string& nudge_id);
 
  private:

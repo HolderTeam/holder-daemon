@@ -17,7 +17,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_db_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -71,8 +72,10 @@ TEST_CASE("Db open failure throws sqlite open error", "[db]") {
   const auto impossible_path = dir / "missing-parent" / "holder.db";
 
   holder::platform::Db db;
-  REQUIRE_THROWS_WITH(db.open(impossible_path),
-                      Catch::Matchers::ContainsSubstring("sqlite open failed"));
+  REQUIRE_THROWS_WITH(
+      db.open(impossible_path),
+      Catch::Matchers::ContainsSubstring("sqlite open failed")
+  );
 }
 
 TEST_CASE("Db exec failure includes sqlite message", "[db]") {
@@ -82,8 +85,10 @@ TEST_CASE("Db exec failure includes sqlite message", "[db]") {
   holder::platform::Db db;
   db.open(db_path);
 
-  REQUIRE_THROWS_WITH(db.exec("THIS IS NOT VALID SQL;"),
-                      Catch::Matchers::ContainsSubstring("sqlite exec failed"));
+  REQUIRE_THROWS_WITH(
+      db.exec("THIS IS NOT VALID SQL;"),
+      Catch::Matchers::ContainsSubstring("sqlite exec failed")
+  );
 }
 
 TEST_CASE("Tx destructor swallows rollback failure", "[db][tx]") {

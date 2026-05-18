@@ -29,8 +29,12 @@ TEST_CASE("AiProviderRoutes returns false when no provider sub-route matches", "
   auto req = make_request(http::verb::get, "/ai/providers/unknown");
   http::response<http::string_body> res;
 
-  const bool handled =
-      holder::api::routes::handle_ai_provider_routes(
-          "/ai/providers/unknown", req, res, db, *secret_store);
+  const bool handled = holder::api::routes::handle_ai_provider_routes(
+      "/ai/providers/unknown",
+      req,
+      res,
+      db,
+      *secret_store
+  );
   REQUIRE_FALSE(handled);
 }

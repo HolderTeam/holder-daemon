@@ -34,19 +34,24 @@ long long now_epoch_seconds();
 std::string lower_ascii(std::string value);
 bool contains_case_insensitive(const std::string& haystack, const std::string& needle);
 
-nlohmann::json recovery_token_request(const holder::core::Paths& paths,
-                                      boost::beast::http::verb method,
-                                      const std::string& target,
-                                      const nlohmann::json& body);
+nlohmann::json recovery_token_request(
+    const holder::core::Paths& paths,
+    boost::beast::http::verb method,
+    const std::string& target,
+    const nlohmann::json& body
+);
 nlohmann::json require_current_project_payload(const holder::core::Paths& paths);
 nlohmann::json card_api_request(
     const holder::core::Paths& paths,
     boost::beast::http::verb method,
     const std::string& target,
     const nlohmann::json& body = nlohmann::json::object(),
-    boost::beast::http::status success = boost::beast::http::status::ok);
-nlohmann::json fetch_card_in_current_project(const holder::core::Paths& paths,
-                                             const std::string& current_project_id,
-                                             const std::string& card_id);
+    boost::beast::http::status success = boost::beast::http::status::ok
+);
+nlohmann::json fetch_card_in_current_project(
+    const holder::core::Paths& paths,
+    const std::string& current_project_id,
+    const std::string& card_id
+);
 
 } // namespace holder::cli

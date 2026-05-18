@@ -1,5 +1,11 @@
 #include "api/routes/ai/runs/AiRunPostRoute.h"
 
+#include "ai/AiLocalModelConfigRepo.h"
+#include "ai/AiMessageRepo.h"
+#include "ai/AiProviderCredentialRepo.h"
+#include "ai/AiProviderSettingRepo.h"
+#include "ai/AiRunRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "api/support/CloudClient.h"
 #include "api/support/CloudConfig.h"
 #include "api/support/CloudQuota.h"
@@ -9,12 +15,6 @@
 #include "api/support/RunEventStore.h"
 #include "api/support/ThreadCompaction.h"
 #include "api/support/Time.h"
-#include "ai/AiLocalModelConfigRepo.h"
-#include "ai/AiMessageRepo.h"
-#include "ai/AiProviderCredentialRepo.h"
-#include "ai/AiProviderSettingRepo.h"
-#include "ai/AiRunRepo.h"
-#include "ai/AiThreadRepo.h"
 #include "llm/RunnerClient.h"
 #include "llm/RunnerModelRef.h"
 
@@ -36,8 +36,9 @@ namespace {
 namespace http = boost::beast::http;
 
 holder::llm::RunnerClient* resolve_auto_local_runner(holder::llm::RunnerRegistry* runner_registry) {
-  return runner_registry ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
-                         : nullptr;
+  return runner_registry
+             ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
+             : nullptr;
 }
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
@@ -100,10 +101,13 @@ bool should_refresh_thread_title(const std::string& current_title, const std::st
 }
 
 bool is_installed_model(const holder::llm::RunnerStatus& status, const std::string& name) {
-  return std::find_if(status.models.begin(),
-                      status.models.end(),
-                      [&](const holder::llm::LocalModel& model) { return model.name == name; }) !=
-         status.models.end();
+  return std::find_if(
+             status.models.begin(),
+             status.models.end(),
+             [&](const holder::llm::LocalModel& model) {
+               return model.name == name;
+             }
+         ) != status.models.end();
 }
 
 std::optional<holder::model::AiLocalModelConfig> load_local_model_config(holder::platform::Db& db) {
@@ -119,15 +123,18 @@ std::optional<holder::llm::ResolvedRunnerModel> pick_local_title_model(
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
     holder::llm::RunnerClient* fallback_runner,
-    const std::string& fallback_runner_id) {
+    const std::string& fallback_runner_id
+) {
   if (runner_registry != nullptr) {
     const auto cfg = load_local_model_config(db);
-    const auto configured =
-        holder::llm::resolve_configured_runner_model(cfg.has_value() ? cfg->fast_model : std::nullopt,
-                                                     runner_registry);
+    const auto configured = holder::llm::resolve_configured_runner_model(
+        cfg.has_value() ? cfg->fast_model : std::nullopt,
+        runner_registry
+    );
     if (configured.has_value() && configured->runner != nullptr) {
       const auto configured_status = configured->runner->status();
-      if (configured_status.available && is_installed_model(configured_status, configured->model_name)) {
+      if (configured_status.available &&
+          is_installed_model(configured_status, configured->model_name)) {
         return configured;
       }
     }
@@ -155,12 +162,14 @@ std::optional<holder::llm::ResolvedRunnerModel> pick_local_title_model(
   };
 }
 
-std::optional<std::string> generate_thread_title(holder::llm::RunnerRegistry* runner_registry,
-                                                 holder::llm::RunnerClient* runner,
-                                                 const std::string& runner_id,
-                                                 holder::platform::Db& db,
-                                                 const std::string& prompt,
-                                                 const std::string& assistant_text) {
+std::optional<std::string> generate_thread_title(
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::llm::RunnerClient* runner,
+    const std::string& runner_id,
+    holder::platform::Db& db,
+    const std::string& prompt,
+    const std::string& assistant_text
+) {
   const auto target = pick_local_title_model(db, runner_registry, runner, runner_id);
   if (!target.has_value() || target->runner == nullptr) return std::nullopt;
 
@@ -182,8 +191,11 @@ std::optional<std::string> generate_thread_title(holder::llm::RunnerRegistry* ru
       target->model_name,
       prompt_ss.str(),
       "{}",
-      [&](const std::string& chunk) { generated += chunk; },
-      &error);
+      [&](const std::string& chunk) {
+        generated += chunk;
+      },
+      &error
+  );
   if (!ok) return std::nullopt;
 
   auto title = strip_wrapping_quotes(collapse_whitespace(generated));
@@ -205,14 +217,16 @@ std::optional<std::string> generate_thread_title(holder::llm::RunnerRegistry* ru
   return title.empty() ? std::nullopt : std::optional<std::string>(title);
 }
 
-void maybe_update_thread_title(holder::platform::Db& db,
-                               holder::llm::RunnerRegistry* runner_registry,
-                               holder::llm::RunnerClient* runner,
-                               const std::string& runner_id,
-                               const std::optional<std::string>& thread_id,
-                               const std::string& prompt,
-                               const std::string& assistant_text,
-                               long long updated_at) {
+void maybe_update_thread_title(
+    holder::platform::Db& db,
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::llm::RunnerClient* runner,
+    const std::string& runner_id,
+    const std::optional<std::string>& thread_id,
+    const std::string& prompt,
+    const std::string& assistant_text,
+    long long updated_at
+) {
   if (!thread_id.has_value() || assistant_text.empty()) return;
 
   holder::ai::AiThreadRepo thread_repo(db);
@@ -238,7 +252,8 @@ struct AiRunPostInput {
 
 std::optional<AiRunPostInput> parse_ai_run_post_input(
     const http::request<http::string_body>& req,
-    http::response<http::string_body>& res) {
+    http::response<http::string_body>& res
+) {
   AiRunPostInput input;
   try {
     input.body = nlohmann::json::parse(req.body());
@@ -273,9 +288,11 @@ std::optional<AiRunPostInput> parse_ai_run_post_input(
   return input;
 }
 
-void ensure_ai_run_thread(AiRunPostInput& input,
-                          holder::platform::Db& db,
-                          const std::function<std::string()>& uuid_v4) {
+void ensure_ai_run_thread(
+    AiRunPostInput& input,
+    holder::platform::Db& db,
+    const std::function<std::string()>& uuid_v4
+) {
   if (input.thread_id.has_value() || !input.project_id.has_value()) {
     return;
   }
@@ -299,7 +316,8 @@ void ensure_ai_run_thread(AiRunPostInput& input,
 }
 
 const support::CloudModelConfig* choose_compact_summary_model(
-    const support::CloudProviderConfig& provider) {
+    const support::CloudProviderConfig& provider
+) {
   for (const auto& model : provider.models) {
     if (model.role == "compact") return &model;
   }
@@ -309,7 +327,8 @@ const support::CloudModelConfig* choose_compact_summary_model(
 std::pair<long long, long long> effective_cooldown_policy(
     const support::CloudProvidersConfig& cfg,
     const support::CloudProviderConfig& provider,
-    const support::CloudModelConfig& model) {
+    const support::CloudModelConfig& model
+) {
   long long base = cfg.cooldown.base_seconds;
   long long cap = cfg.cooldown.cap_seconds;
   if (provider.cooldown_base_seconds > 0) base = provider.cooldown_base_seconds;
@@ -333,15 +352,18 @@ RouteDispatchResult execute_cloud_post_path(
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
     holder::platform::Db& db,
-    holder::index::FtsIndexer* fts) {
+    holder::index::FtsIndexer* fts
+) {
   RouteDispatchResult out{};
   out.handled = true;
 
   const auto cloud_cfg = support::load_cloudproviders_config();
   if (!cloud_cfg.has_value()) {
-    res = support::error_response(http::status::service_unavailable,
-                                  "runner_unavailable",
-                                  "No local runner and ai_catalog.yaml models runtime/catalog not found.");
+    res = support::error_response(
+        http::status::service_unavailable,
+        "runner_unavailable",
+        "No local runner and ai_catalog.yaml models runtime/catalog not found."
+    );
     return out;
   }
 
@@ -373,8 +395,8 @@ RouteDispatchResult execute_cloud_post_path(
 
   auto try_select = [&](const support::CloudProviderConfig& provider) -> bool {
     const auto enabled_it = enabled_by_provider.find(provider.id);
-    const bool effective_enabled =
-        (enabled_it != enabled_by_provider.end()) ? enabled_it->second : provider.enabled;
+    const bool effective_enabled = (enabled_it != enabled_by_provider.end()) ? enabled_it->second
+                                                                             : provider.enabled;
     if (!effective_enabled) return false;
     const auto it = creds_by_key.find(provider.credential_provider_key);
     if (it == creds_by_key.end()) return false;
@@ -387,9 +409,11 @@ RouteDispatchResult execute_cloud_post_path(
     if (provider && try_select(*provider)) {
       // selected by request
     } else {
-      res = support::error_response(http::status::service_unavailable,
-                                    "cloud_not_configured",
-                                    "Requested cloud provider is not enabled/configured.");
+      res = support::error_response(
+          http::status::service_unavailable,
+          "cloud_not_configured",
+          "Requested cloud provider is not enabled/configured."
+      );
       selection_failed = true;
     }
   }
@@ -403,32 +427,41 @@ RouteDispatchResult execute_cloud_post_path(
   }
 
   if (!selected_provider && !selection_failed) {
-    res = support::error_response(http::status::service_unavailable,
-                                  "cloud_not_configured",
-                                  "No enabled cloud provider with stored API key.");
+    res = support::error_response(
+        http::status::service_unavailable,
+        "cloud_not_configured",
+        "No enabled cloud provider with stored API key."
+    );
   }
 
   if (selected_provider) {
     if (secret_store == nullptr) {
-      res = support::error_response(http::status::service_unavailable,
-                                    "cloud_not_configured",
-                                    "Cloud provider credential secret store is unavailable.");
+      res = support::error_response(
+          http::status::service_unavailable,
+          "cloud_not_configured",
+          "Cloud provider credential secret store is unavailable."
+      );
       return out;
     }
     const auto selected_secret =
         secret_store->get(kSecretService, selected_provider->credential_provider_key);
     if (!selected_secret.has_value()) {
-      res = support::error_response(http::status::service_unavailable,
-                                    "cloud_not_configured",
-                                    "Cloud provider credential secret is missing.");
+      res = support::error_response(
+          http::status::service_unavailable,
+          "cloud_not_configured",
+          "Cloud provider credential secret is missing."
+      );
       return out;
     }
     const std::string provider_api_key = selected_secret->secret;
-    const auto candidate_models = support::cloud_model_candidates(*selected_provider, requested_model);
+    const auto candidate_models =
+        support::cloud_model_candidates(*selected_provider, requested_model);
     if (candidate_models.empty()) {
-      res = support::error_response(http::status::service_unavailable,
-                                    "cloud_not_configured",
-                                    "No cloud model configured for selected provider.");
+      res = support::error_response(
+          http::status::service_unavailable,
+          "cloud_not_configured",
+          "No cloud model configured for selected provider."
+      );
     } else {
       holder::ai::AiRunRepo run_repo(db);
       holder::model::AiRun run;
@@ -444,10 +477,12 @@ RouteDispatchResult execute_cloud_post_path(
       run.created_at = support::now_epoch_seconds();
       run.updated_at = run.created_at;
       run_repo.create(run);
-      support::append_run_event(run.run_id,
-                                "run_started",
-                                {{"status", "started"}, {"created_at", run.created_at}},
-                                false);
+      support::append_run_event(
+          run.run_id,
+          "run_started",
+          {{"status", "started"}, {"created_at", run.created_at}},
+          false
+      );
 
       out.streamed = true;
       http::response<http::empty_body> sse{http::status::ok, 11};
@@ -478,14 +513,18 @@ RouteDispatchResult execute_cloud_post_path(
       policy_trace["path"] = "cloud";
       policy_trace["provider"] = selected_provider->id;
       policy_trace["selection"] = {
-          {"requested_provider", requested_provider.empty() ? nlohmann::json(nullptr)
-                                                            : nlohmann::json(requested_provider)},
+          {"requested_provider",
+           requested_provider.empty() ? nlohmann::json(nullptr) : nlohmann::json(requested_provider)
+          },
           {"requested_model",
            requested_model.empty() ? nlohmann::json(nullptr) : nlohmann::json(requested_model)},
       };
       policy_trace["attempts"] = nlohmann::json::array();
 
-      send_event("progress", {{"message", "Using cloud provider"}, {"provider", selected_provider->id}});
+      send_event(
+          "progress",
+          {{"message", "Using cloud provider"}, {"provider", selected_provider->id}}
+      );
 
       if (thread_id.has_value()) {
         holder::ai::AiMessageRepo msg_repo(db, fts);
@@ -540,22 +579,24 @@ RouteDispatchResult execute_cloud_post_path(
           compaction_trace["summary_refresh"]["context_tokens"] = context_tokens;
         } else {
           const long long now = support::now_epoch_seconds();
-          const long long summary_tokens = (compaction_state.has_value() &&
-                                            compaction_state->rolling_summary.has_value())
-                                               ? support::estimate_tokens_from_text(
-                                                     compaction_state->rolling_summary.value())
-                                               : 0;
+          const long long summary_tokens =
+              (compaction_state.has_value() && compaction_state->rolling_summary.has_value())
+                  ? support::estimate_tokens_from_text(compaction_state->rolling_summary.value())
+                  : 0;
           const long long token_delta = std::max(0LL, context_tokens - summary_tokens);
-          const long long last_refresh_at =
-              compaction_state.has_value() ? compaction_state->updated_at : 0;
-          const long long since_last_refresh = (last_refresh_at > 0) ? (now - last_refresh_at) : (1LL << 30);
+          const long long last_refresh_at = compaction_state.has_value()
+                                                ? compaction_state->updated_at
+                                                : 0;
+          const long long since_last_refresh = (last_refresh_at > 0) ? (now - last_refresh_at)
+                                                                     : (1LL << 30);
           const bool forced_refresh = context_tokens >= force_refresh_tokens;
 
           if (!forced_refresh && last_refresh_at > 0 &&
               since_last_refresh < min_refresh_interval_seconds) {
             compaction_trace["summary_refresh"]["reason"] = "min_interval_not_elapsed";
             compaction_trace["summary_refresh"]["seconds_since_last"] = since_last_refresh;
-            compaction_trace["summary_refresh"]["min_interval_seconds"] = min_refresh_interval_seconds;
+            compaction_trace["summary_refresh"]["min_interval_seconds"] =
+                min_refresh_interval_seconds;
           } else if (!forced_refresh && token_delta < min_refresh_delta_tokens) {
             compaction_trace["summary_refresh"]["reason"] = "min_delta_not_met";
             compaction_trace["summary_refresh"]["token_delta"] = token_delta;
@@ -565,25 +606,39 @@ RouteDispatchResult execute_cloud_post_path(
                 support::load_cloud_model_cooldown(db, selected_provider->id, compact_model->id);
             if (cooldown_state.has_value() && cooldown_state->cooldown_until > now) {
               compaction_trace["summary_refresh"]["reason"] = "cooldown_active";
-              compaction_trace["summary_refresh"]["cooldown_until"] = cooldown_state->cooldown_until;
+              compaction_trace["summary_refresh"]["cooldown_until"] =
+                  cooldown_state->cooldown_until;
             } else {
               const long long minute_start = now - 60;
               const long long day_start = now - 86400;
               const auto minute_usage = support::load_cloud_window_usage(
-                  db, selected_provider->id, compact_model->id, minute_start);
+                  db,
+                  selected_provider->id,
+                  compact_model->id,
+                  minute_start
+              );
               const auto day_usage = support::load_cloud_window_usage(
-                  db, selected_provider->id, compact_model->id, day_start);
+                  db,
+                  selected_provider->id,
+                  compact_model->id,
+                  day_start
+              );
 
               bool src_compacted = false;
-              const std::string summary_source =
-                  support::compact_context_tail(context_json, summary_source_tokens, &src_compacted);
+              const std::string summary_source = support::compact_context_tail(
+                  context_json,
+                  summary_source_tokens,
+                  &src_compacted
+              );
               const std::optional<std::string> current_summary =
                   (compaction_state.has_value() ? compaction_state->rolling_summary : std::nullopt);
               const std::string summarize_prompt =
                   support::build_structured_summary_refresh_prompt(current_summary, summary_source);
-              const long long summary_prompt_tokens = support::estimate_tokens_from_text(summarize_prompt);
-              const long long summary_projected_tokens =
-                  summary_prompt_tokens + summary_response_tokens_budget;
+              const long long summary_prompt_tokens = support::estimate_tokens_from_text(
+                  summarize_prompt
+              );
+              const long long summary_projected_tokens = summary_prompt_tokens +
+                                                         summary_response_tokens_budget;
 
               bool quota_reject = false;
               if (compact_model->rpm > 0 && minute_usage.requests + 1 > compact_model->rpm) {
@@ -592,36 +647,51 @@ RouteDispatchResult execute_cloud_post_path(
               } else if (compact_model->rpd > 0 && day_usage.requests + 1 > compact_model->rpd) {
                 quota_reject = true; // LCOV_EXCL_LINE
                 compaction_trace["summary_refresh"]["reason"] = "rpd_exceeded"; // LCOV_EXCL_LINE
-              } else if (compact_model->tpm > 0 &&
-                         minute_usage.tokens + summary_projected_tokens > compact_model->tpm) { // LCOV_EXCL_LINE
+              } else if (compact_model->tpm > 0 && minute_usage.tokens + summary_projected_tokens >
+                                                       compact_model->tpm) { // LCOV_EXCL_LINE
                 quota_reject = true; // LCOV_EXCL_LINE
                 compaction_trace["summary_refresh"]["reason"] = "tpm_exceeded"; // LCOV_EXCL_LINE
               }
 
               if (!quota_reject) {
-                send_event("progress",
-                           {{"message", "Refreshing rolling summary"},
-                            {"provider", selected_provider->id},
-                            {"model", compact_model->id}});
+                send_event(
+                    "progress",
+                    {{"message", "Refreshing rolling summary"},
+                     {"provider", selected_provider->id},
+                     {"model", compact_model->id}}
+                );
                 std::string summary_error;
-                const auto summary_output = support::run_cloud_model(*selected_provider,
-                                                                     *compact_model,
-                                                                     provider_api_key,
-                                                                     summarize_prompt,
-                                                                     &summary_error);
+                const auto summary_output = support::run_cloud_model(
+                    *selected_provider,
+                    *compact_model,
+                    provider_api_key,
+                    summarize_prompt,
+                    &summary_error
+                );
                 if (summary_output.has_value()) {
-                  support::clear_cloud_model_cooldown(db, selected_provider->id, compact_model->id, now);
-                  const long long summary_response_tokens =
-                      support::estimate_tokens_from_text(summary_output.value());
-                  support::record_cloud_usage_event(db,
-                                                    selected_provider->id,
-                                                    compact_model->id,
-                                                    summary_prompt_tokens,
-                                                    summary_response_tokens,
-                                                    now,
-                                                    run.run_id + "-summary");
+                  support::clear_cloud_model_cooldown(
+                      db,
+                      selected_provider->id,
+                      compact_model->id,
+                      now
+                  );
+                  const long long summary_response_tokens = support::estimate_tokens_from_text(
+                      summary_output.value()
+                  );
+                  support::record_cloud_usage_event(
+                      db,
+                      selected_provider->id,
+                      compact_model->id,
+                      summary_prompt_tokens,
+                      summary_response_tokens,
+                      now,
+                      run.run_id + "-summary"
+                  );
                   const auto normalized = support::normalize_and_validate_rolling_summary(
-                      summary_output.value(), current_summary, max_summary_chars);
+                      summary_output.value(),
+                      current_summary,
+                      max_summary_chars
+                  );
                   if (normalized.accepted) {
                     support::ThreadCompactionState next_state;
                     if (compaction_state.has_value()) {
@@ -656,17 +726,19 @@ RouteDispatchResult execute_cloud_post_path(
                     };
                   }
                 } else {
-                  const std::string fail_error =
-                      summary_error.empty() ? "summary refresh failed" : summary_error;
+                  const std::string fail_error = summary_error.empty() ? "summary refresh failed"
+                                                                       : summary_error;
                   const auto [cooldown_base, cooldown_cap] =
                       effective_cooldown_policy(*cloud_cfg, *selected_provider, *compact_model);
-                  const auto cooldown = support::record_cloud_model_failure(db,
-                                                                            selected_provider->id,
-                                                                            compact_model->id,
-                                                                            fail_error,
-                                                                            now,
-                                                                            cooldown_base,
-                                                                            cooldown_cap);
+                  const auto cooldown = support::record_cloud_model_failure(
+                      db,
+                      selected_provider->id,
+                      compact_model->id,
+                      fail_error,
+                      now,
+                      cooldown_base,
+                      cooldown_cap
+                  );
                   compaction_trace["summary_refresh"] = {
                       {"status", "failed"},
                       {"model", compact_model->id},
@@ -696,9 +768,9 @@ RouteDispatchResult execute_cloud_post_path(
               {"failure_count", cooldown_state->failure_count},
               {"cooldown_until", cooldown_state->cooldown_until},
               {"remaining_seconds", cooldown_state->cooldown_until - now}, // LCOV_EXCL_LINE
-              {"last_error", cooldown_state->last_error.empty()
-                                 ? nlohmann::json(nullptr)
-                                 : nlohmann::json(cooldown_state->last_error)},
+              {"last_error",
+               cooldown_state->last_error.empty() ? nlohmann::json(nullptr)
+                                                  : nlohmann::json(cooldown_state->last_error)},
           };
           policy_trace["attempts"].push_back(attempt);
           continue;
@@ -706,20 +778,31 @@ RouteDispatchResult execute_cloud_post_path(
 
         const long long minute_start = now - 60;
         const long long day_start = now - 86400;
-        const auto minute_usage =
-            support::load_cloud_window_usage(db, selected_provider->id, candidate->id, minute_start);
+        const auto minute_usage = support::load_cloud_window_usage(
+            db,
+            selected_provider->id,
+            candidate->id,
+            minute_start
+        );
         const auto day_usage =
             support::load_cloud_window_usage(db, selected_provider->id, candidate->id, day_start);
 
         const long long prompt_tokens = support::estimate_tokens_from_text(prompt);
-        const long long model_input_budget =
-            (candidate->tpm > 0) ? std::max(256LL, (candidate->tpm * 7) / 10) : 6000LL;
+        const long long model_input_budget = (candidate->tpm > 0)
+                                                 ? std::max(256LL, (candidate->tpm * 7) / 10)
+                                                 : 6000LL;
         const long long context_budget = std::max(0LL, model_input_budget - prompt_tokens - 64LL);
         bool compacted = false;
         bool used_summary = false;
         int pinned_fact_count = 0;
         std::string compacted_context = support::build_compacted_context(
-            context_json, context_budget, compaction_state, &compacted, &used_summary, &pinned_fact_count);
+            context_json,
+            context_budget,
+            compaction_state,
+            &compacted,
+            &used_summary,
+            &pinned_fact_count
+        );
         std::string prompt_full = prompt;
         if (!compacted_context.empty()) {
           prompt_full += "\n\nContext:\n";
@@ -766,24 +849,32 @@ RouteDispatchResult execute_cloud_post_path(
 
         attempt["decision"] = "selected";
         policy_trace["attempts"].push_back(attempt);
-        send_event("progress",
-                   {{"message", "Trying cloud model"},
-                    {"provider", selected_provider->id},
-                    {"model", candidate->id},
-                    {"context_compacted", compacted}});
+        send_event(
+            "progress",
+            {{"message", "Trying cloud model"},
+             {"provider", selected_provider->id},
+             {"model", candidate->id},
+             {"context_compacted", compacted}}
+        );
 
         std::string cloud_error;
-        const auto candidate_output = support::run_cloud_model(*selected_provider,
-                                                               *candidate,
-                                                               provider_api_key,
-                                                               prompt_full,
-                                                               &cloud_error);
+        const auto candidate_output = support::run_cloud_model(
+            *selected_provider,
+            *candidate,
+            provider_api_key,
+            prompt_full,
+            &cloud_error
+        );
         if (candidate_output.has_value()) {
           chosen_model_id = candidate->id;
           output = candidate_output.value();
           output_prompt_tokens = prompt_full_tokens;
           support::clear_cloud_model_cooldown(
-              db, selected_provider->id, candidate->id, support::now_epoch_seconds());
+              db,
+              selected_provider->id,
+              candidate->id,
+              support::now_epoch_seconds()
+          );
           break;
         }
         final_error = cloud_error.empty() ? "cloud call failed" : cloud_error;
@@ -796,22 +887,28 @@ RouteDispatchResult execute_cloud_post_path(
             final_error,
             support::now_epoch_seconds(),
             cooldown_base,
-            cooldown_cap);
+            cooldown_cap
+        );
         attempt["cooldown"] = {
             {"failure_count", cooldown.failure_count},
             {"cooldown_until", cooldown.cooldown_until},
-            {"remaining_seconds", std::max(0LL, cooldown.cooldown_until - support::now_epoch_seconds())}, // LCOV_EXCL_LINE
+            // LCOV_EXCL_START
+            {"remaining_seconds",
+             std::max(0LL, cooldown.cooldown_until - support::now_epoch_seconds())},
+            // LCOV_EXCL_STOP
         };
         if (!policy_trace["attempts"].empty() && policy_trace["attempts"].back().is_object() &&
             policy_trace["attempts"].back().value("model", "") == candidate->id &&
             policy_trace["attempts"].back().value("decision", "") == "selected") {
           policy_trace["attempts"].back()["cooldown"] = attempt["cooldown"];
         }
-        send_event("fallback",
-                   {{"provider", selected_provider->id},
-                    {"model", candidate->id},
-                    {"error", final_error},
-                    {"cooldown_until", cooldown.cooldown_until}});
+        send_event(
+            "fallback",
+            {{"provider", selected_provider->id},
+             {"model", candidate->id},
+             {"error", final_error},
+             {"cooldown_until", cooldown.cooldown_until}}
+        );
       }
 
       const long long updated_at = support::now_epoch_seconds();
@@ -824,26 +921,30 @@ RouteDispatchResult execute_cloud_post_path(
             {"error", final_error},
         };
         send_event("failed", {{"error", final_error}, {"provider", selected_provider->id}});
-        run_repo.update_status(run.run_id,
-                               "failed",
-                               std::optional<std::string>(final_error),
-                               std::nullopt,
-                               std::nullopt,
-                               std::nullopt,
-                               std::optional<std::string>(policy_trace.dump()),
-                               updated_at);
+        run_repo.update_status(
+            run.run_id,
+            "failed",
+            std::optional<std::string>(final_error),
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            std::optional<std::string>(policy_trace.dump()),
+            updated_at
+        );
       } else {
         const long long response_tokens = support::estimate_tokens_from_text(output.value());
         if (thread_id.has_value() && !context_json.empty() && !summary_refreshed) {
           support::roll_thread_compaction_state(db, thread_id.value(), context_json, updated_at);
         }
-        support::record_cloud_usage_event(db,
-                                          selected_provider->id,
-                                          chosen_model_id.value(),
-                                          output_prompt_tokens,
-                                          response_tokens,
-                                          updated_at,
-                                          run.run_id);
+        support::record_cloud_usage_event(
+            db,
+            selected_provider->id,
+            chosen_model_id.value(),
+            output_prompt_tokens,
+            response_tokens,
+            updated_at,
+            run.run_id
+        );
 
         policy_trace["result"] = {
             {"status", "completed"},
@@ -853,11 +954,16 @@ RouteDispatchResult execute_cloud_post_path(
             {"response_tokens", response_tokens},
         };
 
-        send_event("chunk",
-                   {{"provider", selected_provider->id},
-                    {"model", chosen_model_id.value()},
-                    {"delta", output.value()}});
-        send_event("done", {{"provider", selected_provider->id}, {"model", chosen_model_id.value()}});
+        send_event(
+            "chunk",
+            {{"provider", selected_provider->id},
+             {"model", chosen_model_id.value()},
+             {"delta", output.value()}}
+        );
+        send_event(
+            "done",
+            {{"provider", selected_provider->id}, {"model", chosen_model_id.value()}}
+        );
 
         std::optional<std::string> message_id;
         if (thread_id.has_value()) {
@@ -883,7 +989,8 @@ RouteDispatchResult execute_cloud_post_path(
             thread_id,
             prompt,
             output.value(),
-            updated_at);
+            updated_at
+        );
 
         run_repo.update_status(
             run.run_id,
@@ -893,15 +1000,18 @@ RouteDispatchResult execute_cloud_post_path(
             std::optional<std::string>(selected_provider->id + ":" + chosen_model_id.value()),
             std::nullopt,
             std::optional<std::string>(policy_trace.dump()),
-            updated_at);
+            updated_at
+        );
       }
     }
   }
   return out;
 }
 
-std::optional<std::string> parse_requested_model_for_runner(const std::string& requested_model,
-                                                            const std::string& runner_id) {
+std::optional<std::string> parse_requested_model_for_runner(
+    const std::string& requested_model,
+    const std::string& runner_id
+) {
   if (requested_model.empty()) {
     return std::nullopt;
   }
@@ -915,8 +1025,10 @@ std::optional<std::string> parse_requested_model_for_runner(const std::string& r
   return parsed->model_name;
 }
 
-std::optional<std::string> configured_local_model_name(const std::optional<std::string>& configured_ref,
-                                                       const std::string& runner_id) {
+std::optional<std::string> configured_local_model_name(
+    const std::optional<std::string>& configured_ref,
+    const std::string& runner_id
+) {
   return holder::llm::local_model_name_from_ref(configured_ref, runner_id);
 }
 
@@ -924,9 +1036,11 @@ std::string local_model_ref(const std::string& runner_id, const std::string& mod
   return holder::llm::make_runner_model_ref(runner_id, model_name);
 }
 
-nlohmann::json with_local_runner_fields(nlohmann::json data,
-                                        const std::string& runner_id,
-                                        const std::string& model_name) {
+nlohmann::json with_local_runner_fields(
+    nlohmann::json data,
+    const std::string& runner_id,
+    const std::string& model_name
+) {
   data["runner_id"] = runner_id;
   data["model"] = model_name;
   data["model_ref"] = local_model_ref(runner_id, model_name);
@@ -948,7 +1062,8 @@ RouteDispatchResult execute_local_post_path(
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
     holder::platform::Db& db,
-    holder::index::FtsIndexer* fts) {
+    holder::index::FtsIndexer* fts
+) {
   RouteDispatchResult out{};
   out.handled = true;
 
@@ -957,9 +1072,11 @@ RouteDispatchResult execute_local_post_path(
     const auto parsed_model =
         parse_requested_model_for_runner(body.at("model").get<std::string>(), runner_id);
     if (!parsed_model.has_value()) {
-      res = support::error_response(http::status::bad_request,
-                                    "bad_request",
-                                    "Requested model runner is not available.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "Requested model runner is not available."
+      );
       return out;
     }
     forced_model = parsed_model.value();
@@ -978,18 +1095,23 @@ RouteDispatchResult execute_local_post_path(
                                    ? load_local_model_config(db)
                                    : std::nullopt;
   const bool forced_model_installed =
-      forced_model.empty() || std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
+      forced_model.empty() ||
+      std::find(candidates.begin(), candidates.end(), forced_model) != candidates.end();
   if (!forced_model_installed) {
-    res = support::error_response(http::status::bad_request,
-                                  "bad_request",
-                                  "Requested model is not installed.");
+    res = support::error_response(
+        http::status::bad_request,
+        "bad_request",
+        "Requested model is not installed."
+    );
   } else if (forced_model.empty() && machine_caste.has_value()) {
     std::vector<std::string> caste_candidates;
     caste_candidates.reserve(candidates.size());
     for (const auto& candidate : candidates) {
       const auto it = model_meta.find(candidate);
+      // LCOV_EXCL_START
       if (it == model_meta.end() || it->second.hardware_tier.empty() ||
-          support::caste_meets_or_exceeds(machine_caste->name, it->second.hardware_tier)) { // LCOV_EXCL_LINE
+          support::caste_meets_or_exceeds(machine_caste->name, it->second.hardware_tier)) {
+        // LCOV_EXCL_STOP
         caste_candidates.push_back(candidate);
       }
     }
@@ -1005,7 +1127,8 @@ RouteDispatchResult execute_local_post_path(
       if (!is_installed_model(runner_status, configured_name.value())) {
         return; // LCOV_EXCL_LINE
       }
-      if (std::find(candidates.begin(), candidates.end(), configured_name.value()) == candidates.end()) {
+      if (std::find(candidates.begin(), candidates.end(), configured_name.value()) ==
+          candidates.end()) {
         candidates.push_back(configured_name.value()); // LCOV_EXCL_LINE
       }
     };
@@ -1022,9 +1145,10 @@ RouteDispatchResult execute_local_post_path(
 
   std::string router_model;
   std::string configured_strong_model;
-  const auto configured_strong_model_ref =
-      configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->strong_model : std::nullopt,
-                                  runner_id);
+  const auto configured_strong_model_ref = configured_local_model_name(
+      local_model_cfg.has_value() ? local_model_cfg->strong_model : std::nullopt,
+      runner_id
+  );
   if (forced_model.empty() && configured_strong_model_ref.has_value() &&
       std::find(candidates.begin(), candidates.end(), configured_strong_model_ref.value()) !=
           candidates.end()) {
@@ -1036,11 +1160,13 @@ RouteDispatchResult execute_local_post_path(
   }
 
   if (forced_model.empty() && candidates.size() > 1) {
-    const auto configured_fast_model =
-        configured_local_model_name(local_model_cfg.has_value() ? local_model_cfg->fast_model : std::nullopt,
-                                    runner_id);
+    const auto configured_fast_model = configured_local_model_name(
+        local_model_cfg.has_value() ? local_model_cfg->fast_model : std::nullopt,
+        runner_id
+    );
     if (configured_fast_model.has_value() &&
-        std::find(candidates.begin(), candidates.end(), configured_fast_model.value()) != candidates.end()) {
+        std::find(candidates.begin(), candidates.end(), configured_fast_model.value()) !=
+            candidates.end()) {
       router_model = configured_fast_model.value();
     }
 
@@ -1077,10 +1203,12 @@ RouteDispatchResult execute_local_post_path(
   run.created_at = support::now_epoch_seconds();
   run.updated_at = run.created_at;
   run_repo.create(run);
-  support::append_run_event(run.run_id,
-                            "run_started",
-                            {{"status", "started"}, {"created_at", run.created_at}},
-                            false);
+  support::append_run_event(
+      run.run_id,
+      "run_started",
+      {{"status", "started"}, {"created_at", run.created_at}},
+      false
+  );
 
   out.streamed = true;
   http::response<http::empty_body> sse{http::status::ok, 11};
@@ -1142,11 +1270,13 @@ RouteDispatchResult execute_local_post_path(
     prompt_ss << "User prompt:\n" << router_input << "\n\n";
     prompt_ss << "Candidate models:\n";
     for (const auto& name : candidates) {
-      const auto model_it = std::find_if(runner_status.models.begin(),
-                                         runner_status.models.end(),
-                                         [&](const holder::llm::LocalModel& model) {
-                                           return model.name == name;
-                                         });
+      const auto model_it = std::find_if(
+          runner_status.models.begin(),
+          runner_status.models.end(),
+          [&](const holder::llm::LocalModel& model) {
+            return model.name == name;
+          }
+      );
       if (model_it == runner_status.models.end()) continue;
       const auto it = model_meta.find(model_it->name);
       const std::string category = (it != model_meta.end()) ? it->second.category : "";
@@ -1171,7 +1301,8 @@ RouteDispatchResult execute_local_post_path(
           router_text += chunk;
           send_event("router", {{"delta", chunk}});
         },
-        &router_error);
+        &router_error
+    );
 
     auto ranked = support::parse_ranked_models(router_text, candidates);
     if (ranked.empty()) {
@@ -1193,18 +1324,22 @@ RouteDispatchResult execute_local_post_path(
       ranked_payload.push_back(local_model_ref(runner_id, ranked_model));
     }
     ranked_json = ranked_payload.dump();
-    send_event("router_result",
-               {{"router_model", local_model_ref(runner_id, router_model)},
-                {"ranked", ranked_payload},
-                {"error", router_error.empty() ? nlohmann::json(nullptr)
-                                               : nlohmann::json(router_error)}});
+    send_event(
+        "router_result",
+        {{"router_model", local_model_ref(runner_id, router_model)},
+         {"ranked", ranked_payload},
+         {"error", router_error.empty() ? nlohmann::json(nullptr) : nlohmann::json(router_error)}}
+    );
     candidates = ranked;
   }
 
   std::string model_error;
   bool any_output = false;
   for (const auto& model : candidates) {
-    send_event("progress", with_local_runner_fields({{"message", "Trying model"}}, runner_id, model));
+    send_event(
+        "progress",
+        with_local_runner_fields({{"message", "Trying model"}}, runner_id, model)
+    );
     std::string prompt_full = prompt;
     if (!context_json.empty()) {
       prompt_full += "\n\nContext:\n";
@@ -1222,7 +1357,8 @@ RouteDispatchResult execute_local_post_path(
           assistant_text += chunk;
           send_event("chunk", with_local_runner_fields({{"delta", chunk}}, runner_id, model));
         },
-        &model_error);
+        &model_error
+    );
 
     if (ok && got_output) {
       chosen_model = local_model_ref(runner_id, model);
@@ -1264,29 +1400,38 @@ RouteDispatchResult execute_local_post_path(
       message_id = assistant_msg.message_id;
     }
     maybe_update_thread_title(
-        db, runner_registry, runner, runner_id, thread_id, prompt, assistant_text, updated_at);
-    run_repo.update_status(run.run_id,
-                           "completed",
-                           std::nullopt,
-                           message_id,
-                           chosen_model,
-                           ranked_json.empty() ? std::nullopt
-                                               : std::optional<std::string>(ranked_json),
-                           std::nullopt,
-                           updated_at);
+        db,
+        runner_registry,
+        runner,
+        runner_id,
+        thread_id,
+        prompt,
+        assistant_text,
+        updated_at
+    );
+    run_repo.update_status(
+        run.run_id,
+        "completed",
+        std::nullopt,
+        message_id,
+        chosen_model,
+        ranked_json.empty() ? std::nullopt : std::optional<std::string>(ranked_json),
+        std::nullopt,
+        updated_at
+    );
   } else {
     spdlog::warn("AI run failed runner_id=" + runner_id + " reason=all_models_failed");
-    send_event("failed",
-               {{"runner_id", runner_id}, {"error", "All models failed."}});
-    run_repo.update_status(run.run_id,
-                           "failed",
-                           std::optional<std::string>(any_output ? "partial failure" : "no output"),
-                           std::nullopt,
-                           std::nullopt,
-                           ranked_json.empty() ? std::nullopt
-                                               : std::optional<std::string>(ranked_json),
-                           std::nullopt,
-                           updated_at);
+    send_event("failed", {{"runner_id", runner_id}, {"error", "All models failed."}});
+    run_repo.update_status(
+        run.run_id,
+        "failed",
+        std::optional<std::string>(any_output ? "partial failure" : "no output"),
+        std::nullopt,
+        std::nullopt,
+        ranked_json.empty() ? std::nullopt : std::optional<std::string>(ranked_json),
+        std::nullopt,
+        updated_at
+    );
   }
 
   return out;
@@ -1302,7 +1447,8 @@ RouteDispatchResult handle_ai_runs_post_route(
     holder::index::FtsIndexer* fts,
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4) {
+    const std::function<std::string()>& uuid_v4
+) {
   RouteDispatchResult out{};
   out.handled = true;
   try {
@@ -1323,33 +1469,38 @@ RouteDispatchResult handle_ai_runs_post_route(
       selected_runner_id = body.at("runner_id").get<std::string>();
     }
     if (body.contains("model") && !body.at("model").is_null()) {
-      const auto parsed_model_ref =
-          holder::llm::parse_runner_model_ref(body.at("model").get<std::string>());
+      const auto parsed_model_ref = holder::llm::parse_runner_model_ref(
+          body.at("model").get<std::string>()
+      );
       if (parsed_model_ref.has_value()) {
         if (selected_runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId &&
             selected_runner_id != parsed_model_ref->runner_id) {
-          res = support::error_response(http::status::bad_request,
-                                        "bad_request",
-                                        "runner_id does not match requested model runner.");
+          res = support::error_response(
+              http::status::bad_request,
+              "bad_request",
+              "runner_id does not match requested model runner."
+          );
           return out;
         }
         selected_runner_id = parsed_model_ref->runner_id;
       }
     }
     runner = runner_registry ? runner_registry->get_client(selected_runner_id) : nullptr;
-    spdlog::info("AI run requested runner_id=" + selected_runner_id +
-                 " mode=" + mode +
-                 " thread_id=" +
-                 (thread_id.has_value() ? thread_id.value() : std::string("null")));
+    spdlog::info(
+        "AI run requested runner_id=" + selected_runner_id + " mode=" + mode +
+        " thread_id=" + (thread_id.has_value() ? thread_id.value() : std::string("null"))
+    );
     const bool cloud_provider_requested =
         body.contains("provider") && !body.at("provider").is_null() &&
         !support::normalize_provider_name(body.at("provider").get<std::string>()).empty();
 
     if (cloud_provider_requested &&
         selected_runner_id != holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
-      res = support::error_response(http::status::bad_request,
-                                    "bad_request",
-                                    "runner_id cannot be combined with cloud provider requests.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "runner_id cannot be combined with cloud provider requests."
+      );
       return out;
     }
 
@@ -1358,7 +1509,8 @@ RouteDispatchResult handle_ai_runs_post_route(
     if (has_runner) {
       runner_status = runner->status();
     }
-    const bool local_runner_ready = has_runner && runner_status.available && !runner_status.models.empty();
+    const bool local_runner_ready = has_runner && runner_status.available &&
+                                    !runner_status.models.empty();
 
     ensure_ai_run_thread(input, db, uuid_v4);
 
@@ -1377,23 +1529,26 @@ RouteDispatchResult handle_ai_runs_post_route(
           socket,
           res,
           db,
-          fts);
+          fts
+      );
     }
-    return execute_local_post_path(body,
-                                   selected_runner_id,
-                                   prompt,
-                                   mode,
-                                   project_id,
-                                   thread_id,
-                                   context_json,
-                                   runner_status,
-                                   runner_registry,
-                                   runner,
-                                   uuid_v4,
-                                   socket,
-                                   res,
-                                   db,
-                                   fts);
+    return execute_local_post_path(
+        body,
+        selected_runner_id,
+        prompt,
+        mode,
+        project_id,
+        thread_id,
+        context_json,
+        runner_status,
+        runner_registry,
+        runner,
+        uuid_v4,
+        socket,
+        res,
+        db,
+        fts
+    );
   } catch (const std::exception& ex) {
     res = support::error_response(http::status::bad_request, "bad_request", ex.what());
   }

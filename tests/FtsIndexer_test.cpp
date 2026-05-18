@@ -31,7 +31,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_fts_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -46,8 +47,7 @@ void apply_schema(holder::platform::Db& db) {
 }
 
 int count_cards_fts(holder::platform::Db& db, const std::string& query) {
-  static constexpr const char* SQL =
-      "SELECT count(*) FROM cards_fts WHERE cards_fts MATCH ?;";
+  static constexpr const char* SQL = "SELECT count(*) FROM cards_fts WHERE cards_fts MATCH ?;";
   sqlite3_stmt* stmt = nullptr;
   REQUIRE(sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) == SQLITE_OK);
   REQUIRE(sqlite3_bind_text(stmt, 1, query.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK);
@@ -60,8 +60,7 @@ int count_cards_fts(holder::platform::Db& db, const std::string& query) {
 }
 
 int count_ai_fts(holder::platform::Db& db, const std::string& query) {
-  static constexpr const char* SQL =
-      "SELECT count(*) FROM ai_fts WHERE ai_fts MATCH ?;";
+  static constexpr const char* SQL = "SELECT count(*) FROM ai_fts WHERE ai_fts MATCH ?;";
   sqlite3_stmt* stmt = nullptr;
   REQUIRE(sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) == SQLITE_OK);
   REQUIRE(sqlite3_bind_text(stmt, 1, query.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK);
@@ -177,7 +176,8 @@ TEST_CASE("FtsIndexer search_cards handles empty and pre-bracketed snippets", "[
   REQUIRE(empty_rows[0].id == "card-empty");
   REQUIRE((empty_rows[0].snippet.empty() || empty_rows[0].snippet.find('[') != std::string::npos));
 
-  // Body contains literal brackets and match term; snippet should be preserved as already bracketed.
+  // Body contains literal brackets and match term; snippet should be preserved as already
+  // bracketed.
   fts.upsert_card("card-bracket", "proj-1", "OtherTitle", "alpha [literal] omega");
   auto bracket_rows = fts.search_cards("proj-1", "literal", 10, 0);
   REQUIRE(bracket_rows.size() == 1);
@@ -261,12 +261,7 @@ int sqlite_interrupt_cb(void* data) {
   return (flag && *flag) ? 1 : 0;
 }
 
-int sqlite_deny_insert_into_table(void* data,
-                                  int action,
-                                  const char* detail1,
-                                  const char* detail2,
-                                  const char*,
-                                  const char*) {
+int sqlite_deny_insert_into_table(void* data, int action, const char* detail1, const char* detail2, const char*, const char*) {
   (void)detail2;
   const char* deny_table = static_cast<const char*>(data);
   if (action == SQLITE_INSERT && detail1 != nullptr && deny_table != nullptr &&

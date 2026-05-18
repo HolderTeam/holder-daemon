@@ -6,14 +6,14 @@
 
 #include "ai/AiLocalModelConfigRepo.h"
 #include "ai/AiMessageRepo.h"
-#include "ai/AiThreadRepo.h"
 #include "ai/AiRunnerRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "ai/NudgeService.h"
 #include "card/CardRepo.h"
 #include "git/GitRepo.h"
 #include "http_test_helpers.h"
-#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 
@@ -28,8 +28,8 @@
 namespace holder::ai {
 
 struct NudgeServiceTestAccess {
-  static holder::ai::NudgeDecision evaluate_candidate(
-      const holder::ai::NudgeCandidateInput& input) {
+  static holder::ai::NudgeDecision evaluate_candidate(const holder::ai::NudgeCandidateInput& input
+  ) {
     return holder::ai::NudgeService::evaluate_candidate(input);
   }
 
@@ -41,27 +41,35 @@ struct NudgeServiceTestAccess {
     return holder::ai::NudgeService::build_nudge_body(input);
   }
 
-  static std::optional<std::string> load_card_body(holder::platform::Db& db,
-                                                   const std::string& project_id,
-                                                   const std::string& card_id) {
+  static std::optional<std::string> load_card_body(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::string& card_id
+  ) {
     return holder::ai::NudgeService::access_load_card_body(db, project_id, card_id);
   }
 
-  static std::vector<std::string> sibling_card_titles(holder::platform::Db& db,
-                                                      const std::string& project_id,
-                                                      const std::string& card_id) {
+  static std::vector<std::string> sibling_card_titles(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::string& card_id
+  ) {
     return holder::ai::NudgeService::access_sibling_card_titles(db, project_id, card_id);
   }
 
-  static std::vector<holder::model::Card> sibling_cards(holder::platform::Db& db,
-                                                        const std::string& project_id,
-                                                        const std::string& card_id) {
+  static std::vector<holder::model::Card> sibling_cards(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::string& card_id
+  ) {
     return holder::ai::NudgeService::access_sibling_cards(db, project_id, card_id);
   }
 
-  static std::string card_excerpt_line(holder::platform::Db& db,
-                                       const std::string& project_id,
-                                       const holder::model::Card& card) {
+  static std::string card_excerpt_line(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const holder::model::Card& card
+  ) {
     return holder::ai::NudgeService::access_card_excerpt_line(db, project_id, card);
   }
 
@@ -69,19 +77,28 @@ struct NudgeServiceTestAccess {
       holder::platform::Db& db,
       const std::string& project_id,
       const std::optional<std::string>& exclude_card_id,
-      std::size_t limit) {
+      std::size_t limit
+  ) {
     return holder::ai::NudgeService::access_recent_project_card_excerpts(
-        db, project_id, exclude_card_id, limit);
+        db,
+        project_id,
+        exclude_card_id,
+        limit
+    );
   }
 
-  static std::optional<std::string> current_card_fingerprint(holder::platform::Db& db,
-                                                             const std::string& project_id,
-                                                             const std::string& card_id) {
+  static std::optional<std::string> current_card_fingerprint(
+      holder::platform::Db& db,
+      const std::string& project_id,
+      const std::string& card_id
+  ) {
     return holder::ai::NudgeService::current_card_fingerprint(db, project_id, card_id);
   }
 
-  static std::optional<std::string> current_project_head_commit(holder::platform::Db& db,
-                                                                const std::string& project_id) {
+  static std::optional<std::string> current_project_head_commit(
+      holder::platform::Db& db,
+      const std::string& project_id
+  ) {
     return holder::ai::NudgeService::current_project_head_commit(db, project_id);
   }
 };
@@ -90,27 +107,35 @@ struct NudgeServiceTestAccess {
 
 namespace {
 
-void create_card_fixture(holder::platform::Db& db,
-                         const std::string& project_id,
-                         const std::string& card_id) {
+void create_card_fixture(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id
+) {
   db.exec(
       "INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
-      "VALUES('" + card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);");
+      "VALUES('" +
+      card_id + "', '" + project_id + "', 'Fixture', 'cards/" + card_id + ".md', 1, 1);"
+  );
 }
 
-void insert_card_fixture(holder::platform::Db& db,
-                         const std::string& project_id,
-                         const std::string& card_id,
-                         const std::string& title,
-                         const std::string& rel_path,
-                         long long updated_at,
-                         const std::optional<std::string>& parent_card_id = std::nullopt) {
-  const std::string parent_sql =
-      parent_card_id.has_value() ? ("'" + parent_card_id.value() + "'") : "NULL";
-  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, parent_card_id, created_at, "
-          "updated_at) VALUES('" +
-          card_id + "', '" + project_id + "', '" + title + "', '" + rel_path + "', " + parent_sql +
-          ", 1, " + std::to_string(updated_at) + ");");
+void insert_card_fixture(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& card_id,
+    const std::string& title,
+    const std::string& rel_path,
+    long long updated_at,
+    const std::optional<std::string>& parent_card_id = std::nullopt
+) {
+  const std::string parent_sql = parent_card_id.has_value() ? ("'" + parent_card_id.value() + "'")
+                                                            : "NULL";
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, parent_card_id, created_at, "
+      "updated_at) VALUES('" +
+      card_id + "', '" + project_id + "', '" + title + "', '" + rel_path + "', " + parent_sql +
+      ", 1, " + std::to_string(updated_at) + ");"
+  );
 }
 
 holder::ai::NudgeCandidateInput title_only_candidate(const std::string& fingerprint) {
@@ -133,15 +158,14 @@ holder::ai::NudgeCandidateInput title_suggestion_candidate(const std::string& fi
       .created_at = 123,
       .basis_fingerprint = std::optional<std::string>(fingerprint),
       .basis_commit = std::nullopt,
-      .facts = {{"title", "Untitled"}, {"body_empty", false}, {"doc_chars", 180}, {"body_chars", 160}},
+      .facts =
+          {{"title", "Untitled"}, {"body_empty", false}, {"doc_chars", 180}, {"body_chars", 160}},
   };
 }
 
 std::string short_content_fingerprint(const std::string& content) {
   unsigned char digest[SHA256_DIGEST_LENGTH];
-  SHA256(reinterpret_cast<const unsigned char*>(content.data()),
-         content.size(),
-         digest);
+  SHA256(reinterpret_cast<const unsigned char*>(content.data()), content.size(), digest);
   std::ostringstream out;
   out << std::hex << std::setfill('0');
   for (int i = 0; i < 6; ++i) {
@@ -157,10 +181,12 @@ void write_text(const std::filesystem::path& path, const std::string& content) {
   out << content;
 }
 
-void write_card_markdown(const std::filesystem::path& project_root,
-                         const std::string& rel_path,
-                         const std::string& title,
-                         const std::string& body) {
+void write_card_markdown(
+    const std::filesystem::path& project_root,
+    const std::string& rel_path,
+    const std::string& title,
+    const std::string& body
+) {
   write_text(project_root / rel_path, "# " + title + "\n\n" + body);
 }
 
@@ -179,21 +205,26 @@ std::string current_head_commit(const std::filesystem::path& repo_path) {
   return out;
 }
 
-void insert_ai_message(holder::platform::Db& db,
-                       const std::string& message_id,
-                       const std::string& thread_id,
-                       const std::string& role,
-                       const std::string& content,
-                       long long created_at) {
-  db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
-          "created_at, deleted_at, prompt_hash, meta_json) VALUES('" +
-          message_id + "', '" + thread_id + "', '" + role +
-          "', 'test', NULL, NULL, '" + content + "', " + std::to_string(created_at) +
-          ", NULL, NULL, NULL);");
+void insert_ai_message(
+    holder::platform::Db& db,
+    const std::string& message_id,
+    const std::string& thread_id,
+    const std::string& role,
+    const std::string& content,
+    long long created_at
+) {
+  db.exec(
+      "INSERT INTO ai_messages(message_id, thread_id, role, source, provider, model, content, "
+      "created_at, deleted_at, prompt_hash, meta_json) VALUES('" +
+      message_id + "', '" + thread_id + "', '" + role + "', 'test', NULL, NULL, '" + content +
+      "', " + std::to_string(created_at) + ", NULL, NULL, NULL);"
+  );
 }
 
-std::string capture_nudge_prompt(holder::platform::Db& db,
-                                 const holder::ai::NudgeCandidateInput& input) {
+std::string capture_nudge_prompt(
+    holder::platform::Db& db,
+    const holder::ai::NudgeCandidateInput& input
+) {
   holder::llm::LocalModelRunner runner;
   holder::llm::RunnerStatus status;
   status.available = true;
@@ -201,16 +232,15 @@ std::string capture_nudge_prompt(holder::platform::Db& db,
   runner.set_status_override_for_tests(status);
 
   std::string captured_prompt;
-  runner.set_stream_generate_override_for_tests(
-      [&](const std::string&,
-          const std::string& prompt,
-          const std::string&,
-          const std::function<void(const std::string&)>&,
-          std::string* error) {
-        captured_prompt = prompt;
-        if (error) *error = "force deterministic fallback";
-        return false;
-      });
+  runner.set_stream_generate_override_for_tests([&](const std::string&,
+                                                    const std::string& prompt,
+                                                    const std::string&,
+                                                    const std::function<void(const std::string&)>&,
+                                                    std::string* error) {
+    captured_prompt = prompt;
+    if (error) *error = "force deterministic fallback";
+    return false;
+  });
 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -268,7 +298,12 @@ TEST_CASE("NudgeService creates title suggestion nudges with three options", "[a
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_card_markdown(repo_dir, "cards/card-1.md", "Untitled", "Frogs use wetlands as practical nurseries. Their eggs and tadpoles depend on shallow water, shelter, and seasonal changes.");
+  write_card_markdown(
+      repo_dir,
+      "cards/card-1.md",
+      "Untitled",
+      "Frogs use wetlands as practical nurseries. Their eggs and tadpoles depend on shallow water, shelter, and seasonal changes."
+  );
 
   holder::ai::NudgeService service(db);
   const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-1"));
@@ -287,17 +322,22 @@ TEST_CASE("NudgeService creates title suggestion nudges with three options", "[a
   REQUIRE(duplicate.nudge->nudge_id == decision.nudge->nudge_id);
 }
 
-TEST_CASE("NudgeService does not recreate dismissed exact title suggestion nudges", "[ai][nudges]") {
+TEST_CASE(
+    "NudgeService does not recreate dismissed exact title suggestion nudges",
+    "[ai][nudges]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir / "cards");
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_card_markdown(repo_dir,
-                      "cards/card-1.md",
-                      "Untitled",
-                      "Owls hunt quietly at night, using soft-edged feathers and sharp hearing.");
+  write_card_markdown(
+      repo_dir,
+      "cards/card-1.md",
+      "Untitled",
+      "Owls hunt quietly at night, using soft-edged feathers and sharp hearing."
+  );
 
   holder::ai::NudgeService service(db);
   const auto first = service.evaluate_and_record(title_suggestion_candidate("fp-title-dismissed"));
@@ -306,7 +346,8 @@ TEST_CASE("NudgeService does not recreate dismissed exact title suggestion nudge
   REQUIRE(first.nudge.has_value());
   REQUIRE(service.dismiss(first.nudge->nudge_id));
 
-  const auto duplicate = service.evaluate_and_record(title_suggestion_candidate("fp-title-dismissed"));
+  const auto duplicate = service.evaluate_and_record(title_suggestion_candidate("fp-title-dismissed"
+  ));
   REQUIRE(duplicate.accepted);
   REQUIRE_FALSE(duplicate.should_nudge);
   REQUIRE(duplicate.reason == "nudge_already_dismissed");
@@ -321,25 +362,29 @@ TEST_CASE("NudgeService parses fenced JSON title suggestions from runner", "[ai]
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_card_markdown(repo_dir,
-                      "cards/card-1.md",
-                      "Untitled",
-                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+  write_card_markdown(
+      repo_dir,
+      "cards/card-1.md",
+      "Untitled",
+      "In Holder, io_threads and general_workers serve different stages of the request pipeline."
+  );
 
   holder::llm::LocalModelRunner runner;
   holder::llm::RunnerStatus status;
   status.available = true;
   status.models.push_back({.name = "fake-title", .digest = "", .size = 1, .modified_at = ""});
   runner.set_status_override_for_tests(status);
-  runner.set_stream_generate_override_for_tests(
-      [](const std::string&,
-         const std::string&,
-         const std::string&,
-         const std::function<void(const std::string&)>& on_chunk,
-         std::string*) {
-        on_chunk("```json\n[\n  \"Understanding Threads in Holder\",\n  \"Request Pipeline Stages\",\n  \"Async Worker Roles\"\n]\n```");
-        return true;
-      });
+  runner.set_stream_generate_override_for_tests([](const std::string&,
+                                                   const std::string&,
+                                                   const std::string&,
+                                                   const std::function<void(const std::string&)>&
+                                                       on_chunk,
+                                                   std::string*) {
+    on_chunk(
+        "```json\n[\n  \"Understanding Threads in Holder\",\n  \"Request Pipeline Stages\",\n  \"Async Worker Roles\"\n]\n```"
+    );
+    return true;
+  });
 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -361,10 +406,12 @@ TEST_CASE("NudgeService uses bare JSON title suggestions from runner", "[ai][nud
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_card_markdown(repo_dir,
-                      "cards/card-1.md",
-                      "Untitled",
-                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+  write_card_markdown(
+      repo_dir,
+      "cards/card-1.md",
+      "Untitled",
+      "In Holder, io_threads and general_workers serve different stages of the request pipeline."
+  );
 
   holder::llm::LocalModelRunner runner;
   holder::llm::RunnerStatus status;
@@ -380,12 +427,14 @@ TEST_CASE("NudgeService uses bare JSON title suggestions from runner", "[ai][nud
         on_chunk("[\"\\\"Thread Roles in Holder\\\"\", \"Request Pipeline Stages\", "
                  "\"Socket Mechanics vs App Work\"]");
         return true;
-      });
+      }
+  );
 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
   holder::ai::NudgeService service(db, &runner_registry);
-  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-bare-json"));
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-bare-json")
+  );
 
   REQUIRE(decision.nudge.has_value());
   const auto suggestions = decision.nudge->meta_json["suggestions"];
@@ -402,10 +451,12 @@ TEST_CASE("NudgeService cleans plain-line title suggestions from runner", "[ai][
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_card_markdown(repo_dir,
-                      "cards/card-1.md",
-                      "Untitled",
-                      "In Holder, io_threads and general_workers serve different stages of the request pipeline.");
+  write_card_markdown(
+      repo_dir,
+      "cards/card-1.md",
+      "Untitled",
+      "In Holder, io_threads and general_workers serve different stages of the request pipeline."
+  );
 
   holder::llm::LocalModelRunner runner;
   holder::llm::RunnerStatus status;
@@ -420,9 +471,11 @@ TEST_CASE("NudgeService cleans plain-line title suggestions from runner", "[ai][
          std::string*) {
         on_chunk("* \"Thread Roles in Holder\"\n"
                  "2) Request Pipeline Management.\n"
-                 "This title is deliberately longer than sixty characters so it truncates cleanly\n");
+                 "This title is deliberately longer than sixty characters so it truncates cleanly\n"
+        );
         return true;
-      });
+      }
+  );
 
   holder::llm::LocalRunnerClient local_runner_client(&runner);
   holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -445,11 +498,11 @@ TEST_CASE("NudgeService falls back to generic titles for blank loaded body", "[a
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", repo_dir.string());
   insert_card_fixture(db, "proj-1", "card-1", "Untitled", "cards/card-1.md", 1);
-  write_text(repo_dir / "cards" / "card-1.md",
-             "---\ntitle: Untitled\n---\n     \n       \n");
+  write_text(repo_dir / "cards" / "card-1.md", "---\ntitle: Untitled\n---\n     \n       \n");
 
   holder::ai::NudgeService service(db);
-  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-blank-body"));
+  const auto decision = service.evaluate_and_record(title_suggestion_candidate("fp-title-blank-body"
+  ));
 
   REQUIRE(decision.nudge.has_value());
   const auto suggestions = decision.nudge->meta_json["suggestions"];
@@ -475,7 +528,9 @@ TEST_CASE("NudgeService prunes stale nudges on list", "[ai][nudges]") {
     write_text(repo_dir / "cards" / "card-1.md", updated);
 
     holder::ai::NudgeService service(db);
-    auto created = service.evaluate_and_record(title_only_candidate(short_content_fingerprint(original)));
+    auto created = service.evaluate_and_record(
+        title_only_candidate(short_content_fingerprint(original))
+    );
     REQUIRE(created.accepted);
     REQUIRE(created.should_nudge);
     REQUIRE(created.nudge.has_value());
@@ -550,7 +605,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
           if (model != "fake-echo") return false;
           on_chunk("Try drafting the first two sentences next.");
           return true;
-        });
+        }
+    );
 
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -566,23 +622,24 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
     status.available = true;
     status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
     runner.set_status_override_for_tests(status);
-    runner.set_stream_generate_override_for_tests(
-        [](const std::string&,
-           const std::string&,
-           const std::string&,
-           const std::function<void(const std::string&)>&,
-           std::string* error) {
-          if (error) *error = "boom";
-          return false;
-        });
+    runner.set_stream_generate_override_for_tests([](const std::string&,
+                                                     const std::string&,
+                                                     const std::string&,
+                                                     const std::function<void(const std::string&)>&,
+                                                     std::string* error) {
+      if (error) *error = "boom";
+      return false;
+    });
 
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
     holder::ai::NudgeService service(db, &runner_registry);
     auto decision = service.evaluate_and_record(title_only_candidate("fp-2"));
     REQUIRE(decision.nudge.has_value());
-    REQUIRE(decision.nudge->body ==
-            "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
+    REQUIRE(
+        decision.nudge->body ==
+        "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next."
+    );
   }
 
   SECTION("configured manual fast model does not fall back to auto-local runner") {
@@ -597,8 +654,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
         .created_at = 1,
         .updated_at = 1,
     });
-    holder::ai::AiLocalModelConfigRepo(db).set(
-        std::string("manual-a::fake-echo"), std::nullopt, std::nullopt, 2);
+    holder::ai::AiLocalModelConfigRepo(db)
+        .set(std::string("manual-a::fake-echo"), std::nullopt, std::nullopt, 2);
 
     holder::llm::LocalModelRunner runner;
     holder::llm::RunnerStatus status;
@@ -617,7 +674,8 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
             used_auto_local_for_nudge = true;
           }
           return false;
-        });
+        }
+    );
 
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -629,8 +687,10 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
     auto decision = service.evaluate_and_record(title_only_candidate("fp-3"));
     REQUIRE(decision.nudge.has_value());
     REQUIRE_FALSE(used_auto_local_for_nudge);
-    REQUIRE(decision.nudge->body ==
-            "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next.");
+    REQUIRE(
+        decision.nudge->body ==
+        "You named this card \"Frog\" but it still only has a title. Draft an opening paragraph or a short outline next."
+    );
   }
 }
 
@@ -644,46 +704,65 @@ TEST_CASE("NudgeService includes rich card and AI context in runner prompt", "[a
 
   insert_card_fixture(db, "proj-1", "parent-1", "Parent Topic", "cards/parent.md", 50);
   insert_card_fixture(
-      db, "proj-1", "card-1", "Frog", "cards/card-1.md", 80, std::optional<std::string>("parent-1"));
-  insert_card_fixture(db,
-                      "proj-1",
-                      "sib-1",
-                      "Sibling One",
-                      "cards/sibling-one.md",
-                      70,
-                      std::optional<std::string>("parent-1"));
-  insert_card_fixture(db,
-                      "proj-1",
-                      "sib-2",
-                      "",
-                      "cards/sibling-empty.md",
-                      65,
-                      std::optional<std::string>("parent-1"));
-  insert_card_fixture(db,
-                      "proj-1",
-                      "sib-3",
-                      "Missing Body",
-                      "cards/missing-body.md",
-                      60,
-                      std::optional<std::string>("parent-1"));
+      db,
+      "proj-1",
+      "card-1",
+      "Frog",
+      "cards/card-1.md",
+      80,
+      std::optional<std::string>("parent-1")
+  );
+  insert_card_fixture(
+      db,
+      "proj-1",
+      "sib-1",
+      "Sibling One",
+      "cards/sibling-one.md",
+      70,
+      std::optional<std::string>("parent-1")
+  );
+  insert_card_fixture(
+      db,
+      "proj-1",
+      "sib-2",
+      "",
+      "cards/sibling-empty.md",
+      65,
+      std::optional<std::string>("parent-1")
+  );
+  insert_card_fixture(
+      db,
+      "proj-1",
+      "sib-3",
+      "Missing Body",
+      "cards/missing-body.md",
+      60,
+      std::optional<std::string>("parent-1")
+  );
   insert_card_fixture(db, "proj-1", "recent-1", "Recent Note", "cards/recent.md", 120);
   insert_card_fixture(db, "proj-1", "recent-2", "Older Note", "cards/older.md", 110);
 
-  write_card_markdown(repo_dir,
-                      "cards/parent.md",
-                      "Parent Topic",
-                      "  Parent background context that should appear in the excerpt.  \n");
-  write_card_markdown(repo_dir,
-                      "cards/sibling-one.md",
-                      "Sibling One",
-                      "   Sibling body with enough detail to appear as an excerpt and exercise "
-                      "trimming at both ends.   \n");
+  write_card_markdown(
+      repo_dir,
+      "cards/parent.md",
+      "Parent Topic",
+      "  Parent background context that should appear in the excerpt.  \n"
+  );
+  write_card_markdown(
+      repo_dir,
+      "cards/sibling-one.md",
+      "Sibling One",
+      "   Sibling body with enough detail to appear as an excerpt and exercise "
+      "trimming at both ends.   \n"
+  );
   write_card_markdown(repo_dir, "cards/sibling-empty.md", "", "   \n");
-  write_card_markdown(repo_dir,
-                      "cards/recent.md",
-                      "Recent Note",
-                      "   Recent project note with useful context and a long enough body to be "
-                      "picked up in the prompt.   \n");
+  write_card_markdown(
+      repo_dir,
+      "cards/recent.md",
+      "Recent Note",
+      "   Recent project note with useful context and a long enough body to be "
+      "picked up in the prompt.   \n"
+  );
   write_card_markdown(repo_dir, "cards/older.md", "Older Note", "   Older note body.   \n");
 
   holder::ai::AiThreadRepo thread_repo(db);
@@ -698,12 +777,14 @@ TEST_CASE("NudgeService includes rich card and AI context in runner prompt", "[a
   insert_ai_message(db, "msg-1", "thread-card", "user", "  First draft question.  ", 10);
   insert_ai_message(db, "msg-2", "thread-card", "assistant", "  First answer.  ", 11);
   insert_ai_message(db, "msg-3", "thread-card", "user", "  Follow-up question.  ", 12);
-  insert_ai_message(db,
-                    "msg-4",
-                    "thread-card",
-                    "assistant",
-                    "  " + std::string(260, 'A') + "  ",
-                    13);
+  insert_ai_message(
+      db,
+      "msg-4",
+      "thread-card",
+      "assistant",
+      "  " + std::string(260, 'A') + "  ",
+      13
+  );
   insert_ai_message(db, "msg-5", "thread-card", "user", "  Final user question.  ", 14);
 
   const auto prompt = capture_nudge_prompt(
@@ -716,19 +797,23 @@ TEST_CASE("NudgeService includes rich card and AI context in runner prompt", "[a
           .basis_fingerprint = std::optional<std::string>("fp-rich"),
           .basis_commit = std::nullopt,
           .facts = {{"title", "Frog"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
-      });
+      }
+  );
 
   CAPTURE(prompt);
   REQUIRE(prompt.find("Current card title: Frog") != std::string::npos);
   REQUIRE(prompt.find("Sibling cards: Sibling One; Missing Body") != std::string::npos);
   REQUIRE(prompt.find("Parent card title: Parent Topic") != std::string::npos);
   REQUIRE(prompt.find("Parent card excerpt: # Parent Topic") != std::string::npos);
-  REQUIRE(prompt.find("Parent background context that should appear in the excerpt.") !=
-          std::string::npos);
-  REQUIRE(prompt.find("Sibling card excerpts:\n- Sibling One: # Sibling One") !=
-          std::string::npos);
-  REQUIRE(prompt.find("Recent project card excerpts:\n- Recent Note: # Recent Note") !=
-          std::string::npos);
+  REQUIRE(
+      prompt.find("Parent background context that should appear in the excerpt.") !=
+      std::string::npos
+  );
+  REQUIRE(prompt.find("Sibling card excerpts:\n- Sibling One: # Sibling One") != std::string::npos);
+  REQUIRE(
+      prompt.find("Recent project card excerpts:\n- Recent Note: # Recent Note") !=
+      std::string::npos
+  );
   REQUIRE(prompt.find("Recent AI thread:\nAssistant: ") != std::string::npos);
   REQUIRE(prompt.find("User: Final user question.") != std::string::npos);
   REQUIRE(prompt.find("Current card body:") == std::string::npos);
@@ -762,7 +847,10 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
       project.root_path,
       project.project_key_id,
       project.updated_at,
-      []() { return std::string("enc-key"); });
+      []() {
+        return std::string("enc-key");
+      }
+  );
 
   insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
   const auto stored_project = project_repo.get("proj-enc");
@@ -770,8 +858,7 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
   REQUIRE(stored_project->project_key_id.has_value());
 
   auto write_encrypted_card = [&](const std::string& key_id, const std::string& plaintext) {
-    const auto envelope =
-        holder::privacy::encrypt_project_blob("proj-enc", key_id, plaintext);
+    const auto envelope = holder::privacy::encrypt_project_blob("proj-enc", key_id, plaintext);
     write_text(repo_dir / "cards" / "card-1.md", envelope);
   };
 
@@ -786,8 +873,10 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
   };
 
   SECTION("valid encrypted card body is included") {
-    write_encrypted_card(stored_project->project_key_id.value(),
-                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    write_encrypted_card(
+        stored_project->project_key_id.value(),
+        "# Secret\n\n  Confidential details that should be decrypted.  \n"
+    );
     const auto prompt = capture_nudge_prompt(db, input);
     CAPTURE(prompt);
     REQUIRE(prompt.find("Current card body:\n# Secret") != std::string::npos);
@@ -795,8 +884,10 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
   }
 
   SECTION("missing project key id suppresses encrypted body context") {
-    write_encrypted_card(stored_project->project_key_id.value(),
-                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    write_encrypted_card(
+        stored_project->project_key_id.value(),
+        "# Secret\n\n  Confidential details that should be decrypted.  \n"
+    );
     project_repo.update_project_key_id("proj-enc", std::nullopt, 2);
     const auto prompt = capture_nudge_prompt(db, input);
     CAPTURE(prompt);
@@ -805,8 +896,10 @@ TEST_CASE("NudgeService handles encrypted card context in runner prompt", "[ai][
 
   SECTION("decrypt failure suppresses encrypted body context") {
     project_repo.update_project_key_id("proj-enc", std::optional<std::string>("wrong-key"), 2);
-    write_encrypted_card(stored_project->project_key_id.value(),
-                         "# Secret\n\n  Confidential details that should be decrypted.  \n");
+    write_encrypted_card(
+        stored_project->project_key_id.value(),
+        "# Secret\n\n  Confidential details that should be decrypted.  \n"
+    );
     const auto prompt = capture_nudge_prompt(db, input);
     CAPTURE(prompt);
     REQUIRE(prompt.find("Current card body:") == std::string::npos);
@@ -830,21 +923,25 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE_FALSE(decision.should_nudge);
     REQUIRE(decision.reason == "unknown_candidate_kind");
     REQUIRE(holder::ai::NudgeServiceTestAccess::build_nudge_title(input) == "Suggestion");
-    REQUIRE(holder::ai::NudgeServiceTestAccess::build_nudge_body(input) ==
-            "No suggestion available.");
+    REQUIRE(
+        holder::ai::NudgeServiceTestAccess::build_nudge_body(input) == "No suggestion available."
+    );
   }
 
   SECTION("current card fingerprint and project head commit handle missing inputs") {
     const auto dir = holder::test::make_temp_dir();
     auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
-    REQUIRE_FALSE(
-        holder::ai::NudgeServiceTestAccess::current_card_fingerprint(
-            db, "missing-project", "missing-card")
-            .has_value());
+    REQUIRE_FALSE(holder::ai::NudgeServiceTestAccess::current_card_fingerprint(
+                      db,
+                      "missing-project",
+                      "missing-card"
+    )
+                      .has_value());
     REQUIRE_FALSE(
         holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "missing-project")
-            .has_value());
+            .has_value()
+    );
   }
 
   SECTION("direct helper access covers missing-card and empty-excerpt branches") {
@@ -856,12 +953,12 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
 
     REQUIRE_FALSE(
         holder::ai::NudgeServiceTestAccess::load_card_body(db, "missing-project", "missing-card")
-            .has_value());
-    REQUIRE(
-        holder::ai::NudgeServiceTestAccess::sibling_card_titles(db, "proj-1", "missing-card")
-            .empty());
-    REQUIRE(
-        holder::ai::NudgeServiceTestAccess::sibling_cards(db, "proj-1", "missing-card").empty());
+            .has_value()
+    );
+    REQUIRE(holder::ai::NudgeServiceTestAccess::sibling_card_titles(db, "proj-1", "missing-card")
+                .empty());
+    REQUIRE(holder::ai::NudgeServiceTestAccess::sibling_cards(db, "proj-1", "missing-card").empty()
+    );
 
     insert_card_fixture(db, "proj-1", "card-1", "Focus", "cards/card-1.md", 50);
     insert_card_fixture(db, "proj-1", "blank-card", "", "cards/blank-card.md", 40);
@@ -869,11 +966,16 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
 
     const auto blank = holder::card::CardRepo(db).get("blank-card");
     REQUIRE(blank.has_value());
-    REQUIRE(holder::ai::NudgeServiceTestAccess::card_excerpt_line(db, "proj-1", blank.value())
-                .empty());
+    REQUIRE(
+        holder::ai::NudgeServiceTestAccess::card_excerpt_line(db, "proj-1", blank.value()).empty()
+    );
 
     const auto recent = holder::ai::NudgeServiceTestAccess::recent_project_card_excerpts(
-        db, "proj-1", std::nullopt, 8);
+        db,
+        "proj-1",
+        std::nullopt,
+        8
+    );
     REQUIRE(recent.empty());
   }
 
@@ -900,7 +1002,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
           captured_prompt = prompt;
           if (error) *error = "force deterministic fallback";
           return false;
-        });
+        }
+    );
 
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -931,15 +1034,15 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     holder::test::create_project(db, "proj-invalid", invalid_repo.string());
     REQUIRE_FALSE(
         holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "proj-invalid")
-            .has_value());
+            .has_value()
+    );
 
     const auto unborn_repo = dir / "unborn-repo";
     holder::git::GitRepo repo;
     repo.open_or_init(unborn_repo);
     holder::test::create_project(db, "proj-unborn", unborn_repo.string());
-    REQUIRE_FALSE(
-        holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "proj-unborn")
-            .has_value());
+    REQUIRE_FALSE(holder::ai::NudgeServiceTestAccess::current_project_head_commit(db, "proj-unborn")
+                      .has_value());
   }
 
   SECTION("current card fingerprint handles encrypted missing key and decrypt failure") {
@@ -969,7 +1072,10 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
         project.root_path,
         project.project_key_id,
         project.updated_at,
-        []() { return std::string("enc-key"); });
+        []() {
+          return std::string("enc-key");
+        }
+    );
 
     insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
     const auto stored_project = project_repo.get("proj-enc");
@@ -977,18 +1083,23 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE(stored_project->project_key_id.has_value());
 
     const auto envelope = holder::privacy::encrypt_project_blob(
-        "proj-enc", stored_project->project_key_id.value(), "# Secret\n\nEncrypted text.\n");
+        "proj-enc",
+        stored_project->project_key_id.value(),
+        "# Secret\n\nEncrypted text.\n"
+    );
     write_text(repo_dir / "cards" / "card-1.md", envelope);
 
     project_repo.update_project_key_id("proj-enc", std::nullopt, 2);
     REQUIRE_FALSE(
         holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1")
-            .has_value());
+            .has_value()
+    );
 
     project_repo.update_project_key_id("proj-enc", std::optional<std::string>("wrong-key"), 3);
     REQUIRE_FALSE(
         holder::ai::NudgeServiceTestAccess::current_card_fingerprint(db, "proj-enc", "card-1")
-            .has_value());
+            .has_value()
+    );
   }
 
   SECTION("current card fingerprint handles encrypted successful decrypt") {
@@ -1018,7 +1129,10 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
         project.root_path,
         project.project_key_id,
         project.updated_at,
-        []() { return std::string("enc-key"); });
+        []() {
+          return std::string("enc-key");
+        }
+    );
 
     insert_card_fixture(db, "proj-enc", "card-1", "Secret", "cards/card-1.md", 10);
     const auto stored_project = project_repo.get("proj-enc");
@@ -1027,7 +1141,10 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
 
     const std::string plain = "# Secret\n\nEncrypted text.\n";
     const auto envelope = holder::privacy::encrypt_project_blob(
-        "proj-enc", stored_project->project_key_id.value(), plain);
+        "proj-enc",
+        stored_project->project_key_id.value(),
+        plain
+    );
     write_text(repo_dir / "cards" / "card-1.md", envelope);
 
     const auto fingerprint =
@@ -1054,10 +1171,12 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
       const auto id = "sib-" + std::to_string(i);
       const auto rel = "cards/" + id + ".md";
       insert_card_fixture(db, "proj-1", id, "Sibling " + std::to_string(i), rel, 100 - i);
-      write_card_markdown(repo_dir,
-                          rel,
-                          "Sibling " + std::to_string(i),
-                          "Sibling excerpt " + std::to_string(i) + ".");
+      write_card_markdown(
+          repo_dir,
+          rel,
+          "Sibling " + std::to_string(i),
+          "Sibling excerpt " + std::to_string(i) + "."
+      );
     }
 
     insert_card_fixture(db, "proj-1", "recent-empty", "Recent Empty", "cards/recent-empty.md", 200);
@@ -1082,8 +1201,10 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
             .created_at = 123,
             .basis_fingerprint = std::optional<std::string>("fp-limits"),
             .basis_commit = std::nullopt,
-            .facts = {{"title", "Focus"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
-        });
+            .facts =
+                {{"title", "Focus"}, {"body_empty", true}, {"doc_chars", 12}, {"body_chars", 0}},
+        }
+    );
 
     CAPTURE(prompt);
     REQUIRE(prompt.find("Current card body:") == std::string::npos);
@@ -1101,7 +1222,6 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
     REQUIRE(prompt.find("Recent project card excerpts:") != std::string::npos);
     REQUIRE(prompt.find("blank-card") == std::string::npos);
     REQUIRE(prompt.find("Recent AI thread:") == std::string::npos);
-
   }
 
   SECTION("runner auto-pick prefers smaller positive model and rejects bad rewrites") {
@@ -1131,7 +1251,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
             return true;
           }
           return false;
-        });
+        }
+    );
 
     holder::llm::LocalRunnerClient local_runner_client(&runner);
     holder::llm::RunnerRegistry runner_registry(&db, &local_runner_client);
@@ -1150,7 +1271,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
           chosen_model = model;
           on_chunk("\"");
           return true;
-        });
+        }
+    );
 
     const auto second = service.evaluate_and_record(title_only_candidate("fp-quote"));
     REQUIRE(second.nudge.has_value());
@@ -1166,7 +1288,8 @@ TEST_CASE("NudgeService covers helper edge cases and runner fallback behaviour",
           chosen_model = model;
           on_chunk("Current card: do this next.");
           return true;
-        });
+        }
+    );
 
     const auto third = service.evaluate_and_record(title_only_candidate("fp-banned"));
     REQUIRE(third.nudge.has_value());

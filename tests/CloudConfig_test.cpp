@@ -13,7 +13,8 @@ namespace {
 
 class EnvGuard {
  public:
-  EnvGuard(const std::string& key, const std::string& value) : key_(key) {
+  EnvGuard(const std::string& key, const std::string& value)
+      : key_(key) {
     const char* previous = std::getenv(key_.c_str());
     if (previous) {
       had_previous_ = true;
@@ -143,8 +144,10 @@ TEST_CASE("CloudConfig rejects unknown provider api.kind", "[cloud_config]") {
   out.close();
 
   EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
-  REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
-                      Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
+  REQUIRE_THROWS_WITH(
+      holder::api::support::load_cloudproviders_config(),
+      Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'")
+  );
 }
 
 TEST_CASE("CloudConfig orders providers by configured order then cost tier", "[cloud_config]") {
@@ -181,7 +184,10 @@ TEST_CASE("CloudConfig orders providers by configured order then cost tier", "[c
   REQUIRE(ordered[3]->id == "unknown");
 }
 
-TEST_CASE("CloudConfig merges provider defaults and replaces duplicate model ids", "[cloud_config]") {
+TEST_CASE(
+    "CloudConfig merges provider defaults and replaces duplicate model ids",
+    "[cloud_config]"
+) {
   const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_merge_test";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
@@ -301,12 +307,15 @@ TEST_CASE("CloudConfig merges provider defaults and replaces duplicate model ids
 TEST_CASE("CloudConfig helper selectors cover null and requested branches", "[cloud_config]") {
   holder::api::support::CloudProviderConfig provider;
   provider.id = "p";
-  provider.models.push_back(holder::api::support::CloudModelConfig{
-      .id = "m-default", .endpoint = "/d", .role = "default"});
-  provider.models.push_back(holder::api::support::CloudModelConfig{
-      .id = "m-compact", .endpoint = "/c", .role = "compact"});
-  provider.models.push_back(holder::api::support::CloudModelConfig{
-      .id = "m-other", .endpoint = "/o", .role = ""});
+  provider.models.push_back(
+      holder::api::support::CloudModelConfig{.id = "m-default", .endpoint = "/d", .role = "default"}
+  );
+  provider.models.push_back(
+      holder::api::support::CloudModelConfig{.id = "m-compact", .endpoint = "/c", .role = "compact"}
+  );
+  provider.models.push_back(
+      holder::api::support::CloudModelConfig{.id = "m-other", .endpoint = "/o", .role = ""}
+  );
 
   REQUIRE(holder::api::support::find_cloud_model(provider, "missing") == nullptr);
   REQUIRE(holder::api::support::find_cloud_model(provider, "m-other") != nullptr);
@@ -327,8 +336,12 @@ TEST_CASE("CloudConfig helper selectors cover null and requested branches", "[cl
   REQUIRE(holder::api::support::find_cloud_provider(cfg, "missing") == nullptr);
 }
 
-TEST_CASE("CloudConfig duplicate provider merge fills provider fields from model node", "[cloud_config]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_model_fill";
+TEST_CASE(
+    "CloudConfig duplicate provider merge fills provider fields from model node",
+    "[cloud_config]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_cloud_config_second_pass_model_fill";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto yaml_path = dir / "ai_catalog.yaml";
@@ -382,9 +395,12 @@ TEST_CASE("CloudConfig duplicate provider merge fills provider fields from model
   REQUIRE(zeta->cooldown_cap_seconds == 222);
 }
 
-TEST_CASE("CloudConfig duplicate provider merge fills provider fields from provider_defaults",
-          "[cloud_config]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_default_fill";
+TEST_CASE(
+    "CloudConfig duplicate provider merge fills provider fields from provider_defaults",
+    "[cloud_config]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_cloud_config_second_pass_default_fill";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto yaml_path = dir / "ai_catalog.yaml";
@@ -451,11 +467,13 @@ TEST_CASE("CloudConfig duplicate provider merge fills provider fields from provi
   REQUIRE(eta->cooldown_cap_seconds == 170);
 }
 
-TEST_CASE("CloudConfig duplicate provider merge validates unsupported api.kind in second pass",
-          "[cloud_config]") {
+TEST_CASE(
+    "CloudConfig duplicate provider merge validates unsupported api.kind in second pass",
+    "[cloud_config]"
+) {
   SECTION("model node api_kind branch throws") {
-    const auto dir =
-        std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_kind_model_throw";
+    const auto dir = std::filesystem::temp_directory_path() /
+                     "holder_cloud_config_second_pass_kind_model_throw";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     const auto yaml_path = dir / "ai_catalog.yaml";
@@ -476,16 +494,19 @@ TEST_CASE("CloudConfig duplicate provider merge validates unsupported api.kind i
     out.close();
 
     EnvGuard env("HOLDER_AI_CATALOG_PATH", yaml_path.string());
-    REQUIRE_THROWS_WITH(holder::api::support::load_cloudproviders_config(),
-                        Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'"));
+    REQUIRE_THROWS_WITH(
+        holder::api::support::load_cloudproviders_config(),
+        Catch::Matchers::ContainsSubstring("unsupported api.kind 'made_up_kind'")
+    );
   }
-
 }
 
-TEST_CASE("CloudConfig duplicate provider second pass applies provider_default cooldown fallback",
-          "[cloud_config]") {
-  const auto dir =
-      std::filesystem::temp_directory_path() / "holder_cloud_config_second_pass_cooldown_default_fill";
+TEST_CASE(
+    "CloudConfig duplicate provider second pass applies provider_default cooldown fallback",
+    "[cloud_config]"
+) {
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_cloud_config_second_pass_cooldown_default_fill";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto yaml_path = dir / "ai_catalog.yaml";

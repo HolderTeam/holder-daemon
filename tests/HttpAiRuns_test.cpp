@@ -1,5 +1,5 @@
-#include "http_test_helpers.h"
 #include "ai/AiRunRepo.h"
+#include "http_test_helpers.h"
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -36,28 +36,34 @@ TEST_CASE("HTTP ai runs list and get", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto list = http_json_request(bound.bind,
-                                      bound.port,
-                                      token,
-                                      boost::beast::http::verb::get,
-                                      "/ai/runs?thread_id=thread-1",
-                                      nlohmann::json{},
-                                      boost::beast::http::status::ok);
+  const auto list = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs?thread_id=thread-1",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(list["ok"] == true);
   REQUIRE(list["data"].is_array());
   REQUIRE(list["data"].size() == 1);
   REQUIRE(list["data"][0]["run_id"] == "run-1");
 
-  const auto fetched = http_json_request(bound.bind,
-                                         bound.port,
-                                         token,
-                                         boost::beast::http::verb::get,
-                                         "/ai/runs/run-1",
-                                         nlohmann::json{},
-                                         boost::beast::http::status::ok);
+  const auto fetched = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs/run-1",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(fetched["ok"] == true);
   REQUIRE(fetched["data"]["run_id"] == "run-1");
 
@@ -80,16 +86,20 @@ TEST_CASE("HTTP ai runs list requires project_id or thread_id", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto out = http_json_request(bound.bind,
-                                     bound.port,
-                                     token,
-                                     boost::beast::http::verb::get,
-                                     "/ai/runs",
-                                     nlohmann::json{},
-                                     boost::beast::http::status::bad_request);
+  const auto out = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs",
+      nlohmann::json{},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "bad_request");
   REQUIRE(out["error"]["message"] == "Missing project_id or thread_id.");
@@ -127,16 +137,20 @@ TEST_CASE("HTTP ai runs list can query by project_id", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto out = http_json_request(bound.bind,
-                                     bound.port,
-                                     token,
-                                     boost::beast::http::verb::get,
-                                     "/ai/runs?project_id=proj-1",
-                                     nlohmann::json{},
-                                     boost::beast::http::status::ok);
+  const auto out = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs?project_id=proj-1",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(out["ok"] == true);
   REQUIRE(out["data"].is_array());
   REQUIRE(out["data"].size() == 1);
@@ -146,7 +160,10 @@ TEST_CASE("HTTP ai runs list can query by project_id", "[http]") {
   server_thread.join();
 }
 
-TEST_CASE("HTTP ai runs get supports legacy policy trace fallback and malformed JSON handling", "[http]") {
+TEST_CASE(
+    "HTTP ai runs get supports legacy policy trace fallback and malformed JSON handling",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
@@ -188,27 +205,33 @@ TEST_CASE("HTTP ai runs get supports legacy policy trace fallback and malformed 
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto legacy_out = http_json_request(bound.bind,
-                                            bound.port,
-                                            token,
-                                            boost::beast::http::verb::get,
-                                            "/ai/runs/run-legacy",
-                                            nlohmann::json{},
-                                            boost::beast::http::status::ok);
+  const auto legacy_out = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs/run-legacy",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(legacy_out["ok"] == true);
   REQUIRE(legacy_out["data"]["policy_trace"].is_object());
   REQUIRE(legacy_out["data"]["policy_trace"]["path"] == "cloud");
 
-  const auto malformed_out = http_json_request(bound.bind,
-                                               bound.port,
-                                               token,
-                                               boost::beast::http::verb::get,
-                                               "/ai/runs/run-malformed",
-                                               nlohmann::json{},
-                                               boost::beast::http::status::ok);
+  const auto malformed_out = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs/run-malformed",
+      nlohmann::json{},
+      boost::beast::http::status::ok
+  );
   REQUIRE(malformed_out["ok"] == true);
   REQUIRE(malformed_out["data"]["policy_trace"].is_null());
 
@@ -231,16 +254,20 @@ TEST_CASE("HTTP ai runs get returns not_found for missing id", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto out = http_json_request(bound.bind,
-                                     bound.port,
-                                     token,
-                                     boost::beast::http::verb::get,
-                                     "/ai/runs/no-such-run",
-                                     nlohmann::json{},
-                                     boost::beast::http::status::not_found);
+  const auto out = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/runs/no-such-run",
+      nlohmann::json{},
+      boost::beast::http::status::not_found
+  );
   REQUIRE(out["ok"] == false);
   REQUIRE(out["error"]["code"] == "not_found");
 

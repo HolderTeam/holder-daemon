@@ -1,8 +1,8 @@
 #include "ai/AiProviderCredentialRecovery.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "http_test_helpers.h"
-#include "privacy/SecretStore.h"
 #include "platform/Db.h"
+#include "privacy/SecretStore.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,8 +13,9 @@
 namespace {
 
 class EnvUnsetGuard {
-public:
-  explicit EnvUnsetGuard(const char* key) : key_(key) {
+ public:
+  explicit EnvUnsetGuard(const char* key)
+      : key_(key) {
     const char* current = std::getenv(key_);
     if (current != nullptr) {
       had_old_ = true;
@@ -31,7 +32,7 @@ public:
     }
   }
 
-private:
+ private:
   const char* key_;
   bool had_old_ = false;
   std::string old_;
@@ -44,12 +45,14 @@ TEST_CASE("SecretStore set/get/list/remove persists through index-backed test st
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   auto store = holder::privacy::make_default_secret_store(dir / "server");
-  store->set("holder.ai_provider_credentials",
-             "chocolatefactory",
-             "cf_test_secret",
-             "cf_****cret",
-             100,
-             120);
+  store->set(
+      "holder.ai_provider_credentials",
+      "chocolatefactory",
+      "cf_test_secret",
+      "cf_****cret",
+      100,
+      120
+  );
 
   const auto item = store->get("holder.ai_provider_credentials", "chocolatefactory");
   REQUIRE(item.has_value());
@@ -73,17 +76,22 @@ TEST_CASE("SecretStore set/get/list/remove persists through index-backed test st
   REQUIRE(store_again->list("holder.ai_provider_credentials").empty());
 }
 
-TEST_CASE("AI provider credential metadata rebuilds from SecretStore after sqlite deletion", "[startup][recovery]") {
+TEST_CASE(
+    "AI provider credential metadata rebuilds from SecretStore after sqlite deletion",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   auto store = holder::privacy::make_default_secret_store(dir / "server");
-  store->set("holder.ai_provider_credentials",
-             "switchyard",
-             "sw_secret_123",
-             "sw_****123",
-             200,
-             240);
+  store->set(
+      "holder.ai_provider_credentials",
+      "switchyard",
+      "sw_secret_123",
+      "sw_****123",
+      200,
+      240
+  );
 
   const auto db_path = dir / "holder.db";
   holder::platform::Db db;
@@ -103,18 +111,22 @@ TEST_CASE("AI provider credential metadata rebuilds from SecretStore after sqlit
   REQUIRE(row->updated_at == 240);
 }
 
-TEST_CASE("AI provider credential recovery does nothing when repo metadata already exists",
-          "[startup][recovery]") {
+TEST_CASE(
+    "AI provider credential recovery does nothing when repo metadata already exists",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   auto store = holder::privacy::make_default_secret_store(dir / "server");
-  store->set("holder.ai_provider_credentials",
-             "switchyard",
-             "sw_secret_123",
-             "sw_****123",
-             200,
-             240);
+  store->set(
+      "holder.ai_provider_credentials",
+      "switchyard",
+      "sw_secret_123",
+      "sw_****123",
+      200,
+      240
+  );
 
   const auto db_path = dir / "holder.db";
   holder::platform::Db db;
@@ -154,8 +166,8 @@ TEST_CASE("SecretStore handles sanitized filenames and tolerant metadata edge ca
   REQUIRE(item->secret == "secret-1");
   REQUIRE(item->metadata.preview == "se_****_1");
 
-  const auto sanitized_secret_path =
-      keystore_dir / "holder.ai_provider_creds__acct_with_spaces_and_chars.secret";
+  const auto sanitized_secret_path = keystore_dir /
+                                     "holder.ai_provider_creds__acct_with_spaces_and_chars.secret";
   REQUIRE(std::filesystem::exists(sanitized_secret_path));
 
   std::filesystem::remove(sanitized_secret_path);
@@ -189,17 +201,22 @@ TEST_CASE("SecretStore handles sanitized filenames and tolerant metadata edge ca
   REQUIRE(listed[0].account == account);
 }
 
-TEST_CASE("SecretStore encrypted fallback backend persists through encrypted file store", "[privacy]") {
+TEST_CASE(
+    "SecretStore encrypted fallback backend persists through encrypted file store",
+    "[privacy]"
+) {
   const auto dir = holder::test::make_temp_dir();
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
 
   auto store = holder::privacy::make_encrypted_file_secret_store_for_tests(dir / "server");
-  store->set("holder.ai_provider_credentials",
-             "fallback-provider",
-             "fallback-secret-123",
-             "fb_****_123",
-             300,
-             360);
+  store->set(
+      "holder.ai_provider_credentials",
+      "fallback-provider",
+      "fallback-secret-123",
+      "fb_****_123",
+      300,
+      360
+  );
 
   const auto item = store->get("holder.ai_provider_credentials", "fallback-provider");
   REQUIRE(item.has_value());
@@ -221,32 +238,39 @@ TEST_CASE("SecretStore encrypted fallback backend persists through encrypted fil
   REQUIRE(listed[0].account == "fallback-provider");
 
   store_again->remove("holder.ai_provider_credentials", "fallback-provider");
-  REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-provider").has_value());
+  REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-provider").has_value()
+  );
 
-  store_again->set("holder.ai_provider_credentials",
-                   "fallback-metadata-only",
-                   "fallback-secret-456",
-                   "fb_****_456",
-                   400,
-                   460);
+  store_again->set(
+      "holder.ai_provider_credentials",
+      "fallback-metadata-only",
+      "fallback-secret-456",
+      "fb_****_456",
+      400,
+      460
+  );
   std::filesystem::remove(dir / "server" / "secret_store_fallback.enc");
-  REQUIRE_FALSE(store_again->get("holder.ai_provider_credentials", "fallback-metadata-only").has_value());
+  REQUIRE_FALSE(
+      store_again->get("holder.ai_provider_credentials", "fallback-metadata-only").has_value()
+  );
 }
 
 #if HOLDER_HAVE_LIBSECRET
 namespace {
 
 class LibsecretLookupHookGuard {
-public:
+ public:
   explicit LibsecretLookupHookGuard(holder::privacy::LibsecretLookupHook hook) {
     holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(hook);
   }
 
-  ~LibsecretLookupHookGuard() { holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(nullptr); }
+  ~LibsecretLookupHookGuard() {
+    holder::privacy::secret_store_set_libsecret_lookup_hook_for_tests(nullptr);
+  }
 };
 
 class LibsecretApiLookupHookGuard {
-public:
+ public:
   explicit LibsecretApiLookupHookGuard(holder::privacy::LibsecretApiLookupHook hook) {
     holder::privacy::secret_store_set_libsecret_api_lookup_hook_for_tests(hook);
   }
@@ -272,17 +296,21 @@ holder::privacy::LibsecretApiLookupResult api_lookup_error(const std::string&, c
   return {.secret = std::nullopt, .error_message = std::string("default lookup failed for test")};
 }
 
-holder::privacy::LibsecretApiLookupResult api_lookup_missing(const std::string&, const std::string&) {
+holder::privacy::LibsecretApiLookupResult
+api_lookup_missing(const std::string&, const std::string&) {
   return {.secret = std::nullopt, .error_message = std::nullopt};
 }
 
-holder::privacy::LibsecretApiLookupResult api_lookup_success(const std::string&, const std::string&) {
+holder::privacy::LibsecretApiLookupResult
+api_lookup_success(const std::string&, const std::string&) {
   return {.secret = std::string("default-libsecret-secret"), .error_message = std::nullopt};
 }
 
-void seed_secret_store_index(const std::filesystem::path& server_dir,
-                             const std::string& service,
-                             const std::string& account) {
+void seed_secret_store_index(
+    const std::filesystem::path& server_dir,
+    const std::string& service,
+    const std::string& account
+) {
   std::filesystem::create_directories(server_dir);
   std::ofstream out(server_dir / "secret_store_index.json", std::ios::binary | std::ios::trunc);
   REQUIRE(out.is_open());
@@ -315,7 +343,10 @@ TEST_CASE("SecretStore get maps libsecret lookup failure to KeyMaterialMissing",
   }
 }
 
-TEST_CASE("SecretStore get returns nullopt when libsecret lookup misses existing metadata", "[privacy]") {
+TEST_CASE(
+    "SecretStore get returns nullopt when libsecret lookup misses existing metadata",
+    "[privacy]"
+) {
   const auto dir = holder::test::make_temp_dir();
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
   const auto server_dir = dir / "server";
@@ -349,7 +380,11 @@ TEST_CASE("SecretStore get covers default libsecret lookup via low-level API sea
   SECTION("error maps to KeyMaterialMissing") {
     LibsecretLookupHookGuard lookup_guard(nullptr);
     LibsecretApiLookupHookGuard api_guard(&api_lookup_error);
-    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-error");
+    seed_secret_store_index(
+        server_dir,
+        "holder.ai_provider_credentials",
+        "default-libsecret-error"
+    );
 
     auto store = holder::privacy::make_default_secret_store(server_dir);
     try {
@@ -363,16 +398,26 @@ TEST_CASE("SecretStore get covers default libsecret lookup via low-level API sea
   SECTION("missing secret returns nullopt") {
     LibsecretLookupHookGuard lookup_guard(nullptr);
     LibsecretApiLookupHookGuard api_guard(&api_lookup_missing);
-    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-missing");
+    seed_secret_store_index(
+        server_dir,
+        "holder.ai_provider_credentials",
+        "default-libsecret-missing"
+    );
 
     auto store = holder::privacy::make_default_secret_store(server_dir);
-    REQUIRE_FALSE(store->get("holder.ai_provider_credentials", "default-libsecret-missing").has_value());
+    REQUIRE_FALSE(
+        store->get("holder.ai_provider_credentials", "default-libsecret-missing").has_value()
+    );
   }
 
   SECTION("successful lookup returns stored secret") {
     LibsecretLookupHookGuard lookup_guard(nullptr);
     LibsecretApiLookupHookGuard api_guard(&api_lookup_success);
-    seed_secret_store_index(server_dir, "holder.ai_provider_credentials", "default-libsecret-success");
+    seed_secret_store_index(
+        server_dir,
+        "holder.ai_provider_credentials",
+        "default-libsecret-success"
+    );
 
     auto store = holder::privacy::make_default_secret_store(server_dir);
     const auto item = store->get("holder.ai_provider_credentials", "default-libsecret-success");

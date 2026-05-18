@@ -9,7 +9,7 @@
 
 namespace {
 int sqlite_interrupt_cb(void*) { return 1; }
-}
+} // namespace
 
 TEST_CASE("AiRunRepo create/get/update", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_runs";
@@ -49,14 +49,16 @@ TEST_CASE("AiRunRepo create/get/update", "[db]") {
   REQUIRE(fetched->run_id == "run-1");
   REQUIRE(fetched->status == "started");
 
-  repo.update_status("run-1",
-                     "completed",
-                     std::nullopt,
-                     "msg-1",
-                     "model-1",
-                     std::nullopt,
-                     std::optional<std::string>(R"({"path":"cloud","result":{"status":"completed"}})"),
-                     2);
+  repo.update_status(
+      "run-1",
+      "completed",
+      std::nullopt,
+      "msg-1",
+      "model-1",
+      std::nullopt,
+      std::optional<std::string>(R"({"path":"cloud","result":{"status":"completed"}})"),
+      2
+  );
   const auto updated = repo.get("run-1");
   REQUIRE(updated.has_value());
   REQUIRE(updated->status == "completed");
@@ -210,14 +212,16 @@ TEST_CASE("AiRunRepo throws when table missing for prepare paths", "[db]") {
   REQUIRE_THROWS(repo.create(run));
   REQUIRE_THROWS(repo.list_by_thread("thread-1"));
   REQUIRE_THROWS(repo.list_by_project("proj-1"));
-  REQUIRE_THROWS(repo.update_status("run-1",
-                                    "failed",
-                                    std::nullopt,
-                                    std::nullopt,
-                                    std::nullopt,
-                                    std::nullopt,
-                                    std::nullopt,
-                                    2));
+  REQUIRE_THROWS(repo.update_status(
+      "run-1",
+      "failed",
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      2
+  ));
 }
 
 TEST_CASE("AiRunRepo throws when update step fails", "[db]") {
@@ -246,14 +250,16 @@ TEST_CASE("AiRunRepo throws when update step fails", "[db]") {
 
   db.exec("CREATE TRIGGER fail_ai_runs_update BEFORE UPDATE ON ai_runs "
           "BEGIN SELECT RAISE(ABORT, 'no update'); END;");
-  REQUIRE_THROWS(repo.update_status("run-update-fail",
-                                    "failed",
-                                    std::optional<std::string>("err"),
-                                    std::optional<std::string>("msg"),
-                                    std::optional<std::string>("m"),
-                                    std::optional<std::string>("[]"),
-                                    std::optional<std::string>("{}"),
-                                    2));
+  REQUIRE_THROWS(repo.update_status(
+      "run-update-fail",
+      "failed",
+      std::optional<std::string>("err"),
+      std::optional<std::string>("msg"),
+      std::optional<std::string>("m"),
+      std::optional<std::string>("[]"),
+      std::optional<std::string>("{}"),
+      2
+  ));
 }
 
 TEST_CASE("AiRunRepo throws when get step is interrupted", "[db]") {

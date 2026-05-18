@@ -2,8 +2,8 @@
 
 #include <git2.h>
 
-#include <cstddef>
 #include <climits>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 
@@ -81,8 +81,10 @@ std::string current_local_branch_name(git_repository* repo) {
 
 } // namespace
 
-RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
-                                          const std::string& remote_name) {
+RepoSyncMetrics inspect_repo_sync_metrics(
+    const std::filesystem::path& repo_dir,
+    const std::string& remote_name
+) {
   RepoSyncMetrics metrics;
   git_libgit2_init();
 
@@ -99,8 +101,7 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
 
   git_status_options status_opts = GIT_STATUS_OPTIONS_INIT;
   status_opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
-  status_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED |
-                      GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS |
+  status_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS |
                       GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX;
   git_status_list* status_list = nullptr;
   rc = git_status_list_new(&status_list, repo, &status_opts);
@@ -139,7 +140,8 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
   rc = git_reference_lookup(
       &remote_ref,
       repo,
-      ("refs/remotes/" + remote_name + "/" + branch).c_str());
+      ("refs/remotes/" + remote_name + "/" + branch).c_str()
+  );
   if (rc == GIT_ENOTFOUND) {
     git_reference_free(head_ref);
     // Missing remote-tracking ref is common immediately after push in this local clone.
@@ -167,7 +169,7 @@ RepoSyncMetrics inspect_repo_sync_metrics(const std::filesystem::path& repo_dir,
   size_t ahead = 0;
   size_t behind = 0;
   rc = git_graph_ahead_behind(&ahead, &behind, repo, local_oid, remote_oid);
-  (void) behind;
+  (void)behind;
   git_reference_free(remote_ref);
   git_reference_free(head_ref);
   git_repository_free(repo);

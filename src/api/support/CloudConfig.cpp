@@ -4,9 +4,9 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
 #include <cctype>
 #include <stdexcept>
-#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -14,9 +14,13 @@ namespace holder::api::support {
 namespace {
 
 std::string trim_ascii(std::string s) {
-  auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front())))
+    s.erase(s.begin());
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back())))
+    s.pop_back();
   return s;
 }
 
@@ -68,7 +72,8 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
   if (runtime_root && runtime_root["route_policy"] &&
       runtime_root["route_policy"]["default_provider"]) {
     cfg.default_provider = normalize_provider_name(
-        runtime_root["route_policy"]["default_provider"].as<std::string>());
+        runtime_root["route_policy"]["default_provider"].as<std::string>()
+    );
   }
   if (runtime_root && runtime_root["route_policy"] &&
       runtime_root["route_policy"]["provider_order"] &&
@@ -80,8 +85,7 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       }
     }
   }
-  if (runtime_root && runtime_root["compaction"] &&
-      runtime_root["compaction"]["summary_refresh"]) {
+  if (runtime_root && runtime_root["compaction"] && runtime_root["compaction"]["summary_refresh"]) {
     const auto summary_refresh = runtime_root["compaction"]["summary_refresh"];
     if (summary_refresh["trigger_context_tokens"]) {
       cfg.summary_refresh.trigger_context_tokens =
@@ -99,13 +103,15 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       cfg.summary_refresh.max_summary_chars = summary_refresh["max_summary_chars"].as<long long>();
     }
     if (summary_refresh["min_interval_seconds"]) {
-      cfg.summary_refresh.min_interval_seconds = summary_refresh["min_interval_seconds"].as<long long>();
+      cfg.summary_refresh.min_interval_seconds =
+          summary_refresh["min_interval_seconds"].as<long long>();
     }
     if (summary_refresh["min_delta_tokens"]) {
       cfg.summary_refresh.min_delta_tokens = summary_refresh["min_delta_tokens"].as<long long>();
     }
     if (summary_refresh["force_refresh_tokens"]) {
-      cfg.summary_refresh.force_refresh_tokens = summary_refresh["force_refresh_tokens"].as<long long>();
+      cfg.summary_refresh.force_refresh_tokens =
+          summary_refresh["force_refresh_tokens"].as<long long>();
     }
   }
   if (runtime_root && runtime_root["cooldown"]) {
@@ -118,15 +124,14 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
     }
   }
 
-  const YAML::Node cloud_models =
-      (models_root["Models"] && models_root["Models"]["Cloud"] &&
-       models_root["Models"]["Cloud"].IsSequence())
-          ? models_root["Models"]["Cloud"]
-          : YAML::Node();
-  const YAML::Node provider_defaults =
-      (models_root["provider_defaults"] && models_root["provider_defaults"].IsMap())
-          ? models_root["provider_defaults"]
-          : YAML::Node();
+  const YAML::Node cloud_models = (models_root["Models"] && models_root["Models"]["Cloud"] &&
+                                   models_root["Models"]["Cloud"].IsSequence())
+                                      ? models_root["Models"]["Cloud"]
+                                      : YAML::Node();
+  const YAML::Node provider_defaults = (models_root["provider_defaults"] &&
+                                        models_root["provider_defaults"].IsMap())
+                                           ? models_root["provider_defaults"]
+                                           : YAML::Node();
   if (cloud_models) {
     std::unordered_map<std::string, size_t> provider_index;
     for (const auto& model_node : cloud_models) {
@@ -136,9 +141,9 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       if (model_node["provider_id"]) provider_id_raw = model_node["provider_id"].as<std::string>();
       const std::string provider_id = normalize_provider_name(provider_id_raw);
       if (provider_id.empty()) continue;
-      const YAML::Node provider_default =
-          (provider_defaults && provider_defaults[provider_id]) ? provider_defaults[provider_id]
-                                                                : YAML::Node();
+      const YAML::Node provider_default = (provider_defaults && provider_defaults[provider_id])
+                                              ? provider_defaults[provider_id]
+                                              : YAML::Node();
 
       size_t index = 0;
       auto it = provider_index.find(provider_id);
@@ -150,30 +155,32 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
                                     : (provider_default && provider_default["provider"]
                                            ? provider_default["provider"].as<std::string>()
                                            : provider.id);
-        provider.enabled =
-            model_node["enabled"]
-                ? model_node["enabled"].as<bool>()
-                : (provider_default && provider_default["enabled"]
-                       ? provider_default["enabled"].as<bool>()
-                       : false);
+        provider.enabled = model_node["enabled"] ? model_node["enabled"].as<bool>()
+                                                 : (provider_default && provider_default["enabled"]
+                                                        ? provider_default["enabled"].as<bool>()
+                                                        : false);
         if (model_node["provider_cost_tier"]) {
           provider.cost_tier = model_node["provider_cost_tier"].as<std::string>();
         } else if (provider_default && provider_default["provider_cost_tier"]) {
           provider.cost_tier = provider_default["provider_cost_tier"].as<std::string>();
         }
-        if (model_node["setup_url"]) provider.setup_url = model_node["setup_url"].as<std::string>();
+        if (model_node["setup_url"])
+          provider.setup_url = model_node["setup_url"].as<std::string>();
         else if (provider_default && provider_default["setup_url"]) {
           provider.setup_url = provider_default["setup_url"].as<std::string>();
         }
-        if (model_node["docs_url"]) provider.docs_url = model_node["docs_url"].as<std::string>();
+        if (model_node["docs_url"])
+          provider.docs_url = model_node["docs_url"].as<std::string>();
         else if (provider_default && provider_default["docs_url"]) {
           provider.docs_url = provider_default["docs_url"].as<std::string>();
         }
-        if (model_node["api_key_label"]) provider.api_key_label = model_node["api_key_label"].as<std::string>();
+        if (model_node["api_key_label"])
+          provider.api_key_label = model_node["api_key_label"].as<std::string>();
         else if (provider_default && provider_default["api_key_label"]) {
           provider.api_key_label = provider_default["api_key_label"].as<std::string>();
         }
-        if (model_node["api_key_hint"]) provider.api_key_hint = model_node["api_key_hint"].as<std::string>();
+        if (model_node["api_key_hint"])
+          provider.api_key_hint = model_node["api_key_hint"].as<std::string>();
         else if (provider_default && provider_default["api_key_hint"]) {
           provider.api_key_hint = provider_default["api_key_hint"].as<std::string>();
         }
@@ -190,18 +197,23 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           provider.kind = provider_default["api_kind"].as<std::string>();
         }
         if (!provider.kind.empty() && !is_supported_provider_kind(provider.kind)) {
-          throw std::runtime_error("ai_catalog.yaml: cloud provider '" + provider.id +
-                                   "' has unsupported api.kind '" + provider.kind + "'");
+          throw std::runtime_error(
+              "ai_catalog.yaml: cloud provider '" + provider.id + "' has unsupported api.kind '" +
+              provider.kind + "'"
+          );
         }
-        if (model_node["auth_type"]) provider.auth_type = model_node["auth_type"].as<std::string>();
+        if (model_node["auth_type"])
+          provider.auth_type = model_node["auth_type"].as<std::string>();
         else if (provider_default && provider_default["auth_type"]) {
           provider.auth_type = provider_default["auth_type"].as<std::string>();
         }
-        if (model_node["key_param"]) provider.key_param = model_node["key_param"].as<std::string>();
+        if (model_node["key_param"])
+          provider.key_param = model_node["key_param"].as<std::string>();
         else if (provider_default && provider_default["key_param"]) {
           provider.key_param = provider_default["key_param"].as<std::string>();
         }
-        if (model_node["header_name"]) provider.header_name = model_node["header_name"].as<std::string>();
+        if (model_node["header_name"])
+          provider.header_name = model_node["header_name"].as<std::string>();
         else if (provider_default && provider_default["header_name"]) {
           provider.header_name = provider_default["header_name"].as<std::string>();
         }
@@ -211,11 +223,13 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
           provider.bearer_prefix = provider_default["bearer_prefix"].as<std::string>();
         }
         if (model_node["credential_key"]) {
-          provider.credential_provider_key =
-              normalize_provider_name(model_node["credential_key"].as<std::string>());
+          provider.credential_provider_key = normalize_provider_name(
+              model_node["credential_key"].as<std::string>()
+          );
         } else if (provider_default && provider_default["credential_key"]) {
-          provider.credential_provider_key =
-              normalize_provider_name(provider_default["credential_key"].as<std::string>());
+          provider.credential_provider_key = normalize_provider_name(
+              provider_default["credential_key"].as<std::string>()
+          );
         }
         const YAML::Node provider_cooldown =
             (model_node["provider_cooldown"] && model_node["provider_cooldown"].IsMap())
@@ -245,16 +259,19 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       auto& provider = cfg.providers[index];
       if (provider.display_name.empty() && model_node["provider"]) {
         provider.display_name = model_node["provider"].as<std::string>();
-      } else if (provider.display_name.empty() && provider_default && provider_default["provider"]) {
+      } else if (provider.display_name.empty() && provider_default &&
+                 provider_default["provider"]) {
         provider.display_name = provider_default["provider"].as<std::string>();
       }
-      if (model_node["enabled"]) provider.enabled = model_node["enabled"].as<bool>();
+      if (model_node["enabled"])
+        provider.enabled = model_node["enabled"].as<bool>();
       else if (!provider.enabled && provider_default && provider_default["enabled"]) {
         provider.enabled = provider_default["enabled"].as<bool>();
       }
       if (provider.cost_tier.empty() && model_node["provider_cost_tier"]) {
         provider.cost_tier = model_node["provider_cost_tier"].as<std::string>();
-      } else if (provider.cost_tier.empty() && provider_default && provider_default["provider_cost_tier"]) {
+      } else if (provider.cost_tier.empty() && provider_default &&
+                 provider_default["provider_cost_tier"]) {
         provider.cost_tier = provider_default["provider_cost_tier"].as<std::string>();
       }
       if (provider.setup_url.empty() && model_node["setup_url"]) {
@@ -269,35 +286,42 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       }
       if (provider.api_key_label.empty() && model_node["api_key_label"]) {
         provider.api_key_label = model_node["api_key_label"].as<std::string>();
-      } else if (provider.api_key_label.empty() && provider_default && provider_default["api_key_label"]) {
+      } else if (provider.api_key_label.empty() && provider_default &&
+                 provider_default["api_key_label"]) {
         provider.api_key_label = provider_default["api_key_label"].as<std::string>();
       }
       if (provider.api_key_hint.empty() && model_node["api_key_hint"]) {
         provider.api_key_hint = model_node["api_key_hint"].as<std::string>();
-      } else if (provider.api_key_hint.empty() && provider_default && provider_default["api_key_hint"]) {
+      } else if (provider.api_key_hint.empty() && provider_default &&
+                 provider_default["api_key_hint"]) {
         provider.api_key_hint = provider_default["api_key_hint"].as<std::string>();
       }
       if (provider.base_url.empty()) {
-        if (model_node["base_url"]) provider.base_url = model_node["base_url"].as<std::string>();
+        if (model_node["base_url"])
+          provider.base_url = model_node["base_url"].as<std::string>();
         else if (provider_default && provider_default["base_url"]) {
           provider.base_url = provider_default["base_url"].as<std::string>();
-        }
-        else if (model_node["endpoint"]) provider.base_url = model_node["endpoint"].as<std::string>();
+        } else if (model_node["endpoint"])
+          provider.base_url = model_node["endpoint"].as<std::string>();
       }
       if (provider.kind.empty() && model_node["api_kind"]) {
         provider.kind = model_node["api_kind"].as<std::string>();
         if (!is_supported_provider_kind(provider.kind)) {
-          throw std::runtime_error("ai_catalog.yaml: cloud provider '" + provider.id +
-                                   "' has unsupported api.kind '" + provider.kind + "'");
+          throw std::runtime_error(
+              "ai_catalog.yaml: cloud provider '" + provider.id + "' has unsupported api.kind '" +
+              provider.kind + "'"
+          );
         }
-      // Provider kind is initialized on first encounter (new-provider block above),
-      // so this duplicate-pass provider_default fallback is effectively unreachable.
-      // LCOV_EXCL_START
+        // Provider kind is initialized on first encounter (new-provider block above),
+        // so this duplicate-pass provider_default fallback is effectively unreachable.
+        // LCOV_EXCL_START
       } else if (provider.kind.empty() && provider_default && provider_default["api_kind"]) {
         provider.kind = provider_default["api_kind"].as<std::string>();
         if (!is_supported_provider_kind(provider.kind)) {
-          throw std::runtime_error("ai_catalog.yaml: cloud provider '" + provider.id +
-                                   "' has unsupported api.kind '" + provider.kind + "'");
+          throw std::runtime_error(
+              "ai_catalog.yaml: cloud provider '" + provider.id + "' has unsupported api.kind '" +
+              provider.kind + "'"
+          );
         }
       }
       // LCOV_EXCL_STOP
@@ -313,24 +337,28 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       }
       if (provider.header_name.empty() && model_node["header_name"]) {
         provider.header_name = model_node["header_name"].as<std::string>();
-      } else if (provider.header_name.empty() && provider_default && provider_default["header_name"]) {
+      } else if (provider.header_name.empty() && provider_default &&
+                 provider_default["header_name"]) {
         provider.header_name = provider_default["header_name"].as<std::string>();
       }
       if (provider.bearer_prefix.empty() && model_node["bearer_prefix"]) {
         provider.bearer_prefix = model_node["bearer_prefix"].as<std::string>();
-      } else if (provider.bearer_prefix.empty() && provider_default && provider_default["bearer_prefix"]) {
+      } else if (provider.bearer_prefix.empty() && provider_default &&
+                 provider_default["bearer_prefix"]) {
         provider.bearer_prefix = provider_default["bearer_prefix"].as<std::string>();
       }
       // credential_provider_key is initialized to provider.id in the first-pass
       // new-provider block, so duplicate-pass key assignment is effectively unreachable.
       // LCOV_EXCL_START
       if (provider.credential_provider_key.empty() && model_node["credential_key"]) {
-        provider.credential_provider_key =
-            normalize_provider_name(model_node["credential_key"].as<std::string>());
+        provider.credential_provider_key = normalize_provider_name(
+            model_node["credential_key"].as<std::string>()
+        );
       } else if (provider.credential_provider_key.empty() && provider_default &&
                  provider_default["credential_key"]) {
-        provider.credential_provider_key =
-            normalize_provider_name(provider_default["credential_key"].as<std::string>());
+        provider.credential_provider_key = normalize_provider_name(
+            provider_default["credential_key"].as<std::string>()
+        );
       }
       if (provider.credential_provider_key.empty()) {
         provider.credential_provider_key = provider.id;
@@ -338,7 +366,8 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       // LCOV_EXCL_STOP
       if (provider.cooldown_base_seconds == 0 && model_node["provider_cooldown"] &&
           model_node["provider_cooldown"]["base_seconds"]) {
-        provider.cooldown_base_seconds = model_node["provider_cooldown"]["base_seconds"].as<long long>();
+        provider.cooldown_base_seconds =
+            model_node["provider_cooldown"]["base_seconds"].as<long long>();
       } else if (provider.cooldown_base_seconds == 0 && provider_default &&
                  provider_default["provider_cooldown"] &&
                  provider_default["provider_cooldown"]["base_seconds"]) {
@@ -347,7 +376,8 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
       }
       if (provider.cooldown_cap_seconds == 0 && model_node["provider_cooldown"] &&
           model_node["provider_cooldown"]["cap_seconds"]) {
-        provider.cooldown_cap_seconds = model_node["provider_cooldown"]["cap_seconds"].as<long long>();
+        provider.cooldown_cap_seconds =
+            model_node["provider_cooldown"]["cap_seconds"].as<long long>();
       } else if (provider.cooldown_cap_seconds == 0 && provider_default &&
                  provider_default["provider_cooldown"] &&
                  provider_default["provider_cooldown"]["cap_seconds"]) {
@@ -373,10 +403,10 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
         if (model_node["limits"]["tpm"]) model.tpm = model_node["limits"]["tpm"].as<long long>();
         if (model_node["limits"]["rpd"]) model.rpd = model_node["limits"]["rpd"].as<long long>();
       }
-      const YAML::Node model_cooldown =
-          (model_node["model_cooldown"] && model_node["model_cooldown"].IsMap())
-              ? model_node["model_cooldown"]
-              : model_node["cooldown"];
+      const YAML::Node model_cooldown = (model_node["model_cooldown"] &&
+                                         model_node["model_cooldown"].IsMap())
+                                            ? model_node["model_cooldown"]
+                                            : model_node["cooldown"];
       if (model_cooldown) {
         if (model_cooldown["base_seconds"]) {
           model.cooldown_base_seconds = model_cooldown["base_seconds"].as<long long>();
@@ -402,16 +432,20 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
   return cfg;
 }
 
-const CloudProviderConfig* find_cloud_provider(const CloudProvidersConfig& cfg,
-                                               const std::string& provider_id) {
+const CloudProviderConfig* find_cloud_provider(
+    const CloudProvidersConfig& cfg,
+    const std::string& provider_id
+) {
   for (const auto& provider : cfg.providers) {
     if (provider.id == provider_id) return &provider;
   }
   return nullptr;
 }
 
-const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
-                                           const std::string& requested_model) {
+const CloudModelConfig* choose_cloud_model(
+    const CloudProviderConfig& provider,
+    const std::string& requested_model
+) {
   if (!requested_model.empty()) {
     for (const auto& model : provider.models) {
       if (model.id == requested_model) return &model;
@@ -424,16 +458,20 @@ const CloudModelConfig* choose_cloud_model(const CloudProviderConfig& provider,
   return nullptr;
 }
 
-const CloudModelConfig* find_cloud_model(const CloudProviderConfig& provider,
-                                         const std::string& model_id) {
+const CloudModelConfig* find_cloud_model(
+    const CloudProviderConfig& provider,
+    const std::string& model_id
+) {
   for (const auto& model : provider.models) {
     if (model.id == model_id) return &model;
   }
   return nullptr;
 }
 
-std::vector<const CloudModelConfig*> cloud_model_candidates(const CloudProviderConfig& provider,
-                                                            const std::string& requested_model) {
+std::vector<const CloudModelConfig*> cloud_model_candidates(
+    const CloudProviderConfig& provider,
+    const std::string& requested_model
+) {
   std::vector<const CloudModelConfig*> out;
   std::unordered_set<std::string> seen;
   auto push = [&](const CloudModelConfig* model) {

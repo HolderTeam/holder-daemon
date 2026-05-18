@@ -17,8 +17,8 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -48,21 +48,20 @@ std::vector<unsigned char> random_bytes(std::size_t n) {
 
 std::string b64_encode(const unsigned char* data, std::size_t len) {
   std::vector<unsigned char> out(4 * ((len + 2) / 3) + 1);
-  const int written = EVP_EncodeBlock(out.data(),
-                                      data,
-                                      static_cast<int>(len));
+  const int written = EVP_EncodeBlock(out.data(), data, static_cast<int>(len));
   if (written <= 0) {
     throw std::runtime_error("EVP_EncodeBlock failed"); // LCOV_EXCL_LINE
   }
-  return std::string(reinterpret_cast<char*>(out.data()),
-                     static_cast<std::size_t>(written));
+  return std::string(reinterpret_cast<char*>(out.data()), static_cast<std::size_t>(written));
 }
 
 std::vector<unsigned char> b64_decode(const std::string& text) {
   std::vector<unsigned char> out((text.size() * 3) / 4 + 3);
-  const int written = EVP_DecodeBlock(out.data(),
-                                      reinterpret_cast<const unsigned char*>(text.data()),
-                                      static_cast<int>(text.size()));
+  const int written = EVP_DecodeBlock(
+      out.data(),
+      reinterpret_cast<const unsigned char*>(text.data()),
+      static_cast<int>(text.size())
+  );
   if (written < 0) {
     throw std::runtime_error("EVP_DecodeBlock failed");
   }
@@ -78,27 +77,33 @@ std::vector<unsigned char> b64_decode(const std::string& text) {
   return out;
 }
 
-std::array<unsigned char, holder::privacy::kPrivacyKeyBytes> derive_wrap_key(const std::string& pin,
-                                                                              const std::vector<unsigned char>& salt,
-                                                                              int iterations) {
+std::array<unsigned char, holder::privacy::kPrivacyKeyBytes> derive_wrap_key(
+    const std::string& pin,
+    const std::vector<unsigned char>& salt,
+    int iterations
+) {
   std::array<unsigned char, holder::privacy::kPrivacyKeyBytes> key{};
-  const int rc = PKCS5_PBKDF2_HMAC(pin.c_str(),
-                                   static_cast<int>(pin.size()),
-                                   salt.data(),
-                                   static_cast<int>(salt.size()),
-                                   iterations,
-                                   EVP_sha256(),
-                                   static_cast<int>(key.size()),
-                                   key.data());
+  const int rc = PKCS5_PBKDF2_HMAC(
+      pin.c_str(),
+      static_cast<int>(pin.size()),
+      salt.data(),
+      static_cast<int>(salt.size()),
+      iterations,
+      EVP_sha256(),
+      static_cast<int>(key.size()),
+      key.data()
+  );
   if (rc != 1) {
     throw std::runtime_error("PKCS5_PBKDF2_HMAC failed"); // LCOV_EXCL_LINE
   }
   return key;
 }
 
-void store_key_test_override(const std::filesystem::path& dir,
-                             const std::string& key_id,
-                             const std::string& key_material_b64) {
+void store_key_test_override(
+    const std::filesystem::path& dir,
+    const std::string& key_id,
+    const std::string& key_material_b64
+) {
   std::filesystem::create_directories(dir);
   const auto out_path = dir / (key_id + ".key");
   std::ofstream out(out_path, std::ios::binary | std::ios::trunc);
@@ -125,14 +130,17 @@ const SecretSchema* holder_project_key_schema() {
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr
+  };
   return &schema;
 }
 #endif
 
-void store_key_material(const std::string& project_id,
-                        const std::string& key_id,
-                        const std::string& key_material_b64) {
+void store_key_material(
+    const std::string& project_id,
+    const std::string& key_id,
+    const std::string& key_material_b64
+) {
   if (const char* test_dir = std::getenv("HOLDER_TEST_KEYSTORE_DIR")) {
     store_key_test_override(std::filesystem::path(test_dir), key_id, key_material_b64);
     return;
@@ -140,17 +148,19 @@ void store_key_material(const std::string& project_id,
 
 #if HOLDER_HAVE_LIBSECRET
   GError* error = nullptr;
-  const bool ok = secret_password_store_sync(holder_project_key_schema(),
-                                             SECRET_COLLECTION_DEFAULT,
-                                             ("Holder project key " + key_id).c_str(),
-                                             key_material_b64.c_str(),
-                                             nullptr,
-                                             &error,
-                                             "key_id",
-                                             key_id.c_str(),
-                                             "project_id",
-                                             project_id.c_str(),
-                                             nullptr);
+  const bool ok = secret_password_store_sync(
+      holder_project_key_schema(),
+      SECRET_COLLECTION_DEFAULT,
+      ("Holder project key " + key_id).c_str(),
+      key_material_b64.c_str(),
+      nullptr,
+      &error,
+      "key_id",
+      key_id.c_str(),
+      "project_id",
+      project_id.c_str(),
+      nullptr
+  );
   if (!ok) {
     std::string message = "failed to store project key in libsecret";
     if (error && error->message) {
@@ -163,19 +173,22 @@ void store_key_material(const std::string& project_id,
     throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
   }
 #else
-  throw PrivacyError(PrivacyErrorCode::KeyringUnavailable,
-                      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set");
+  throw PrivacyError(
+      PrivacyErrorCode::KeyringUnavailable,
+      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"
+  );
 #endif
 }
 
-std::string load_key_material(const std::string& project_id,
-                              const std::string& key_id) {
+std::string load_key_material(const std::string& project_id, const std::string& key_id) {
   if (const char* test_dir = std::getenv("HOLDER_TEST_KEYSTORE_DIR")) {
     const auto in_path = std::filesystem::path(test_dir) / (key_id + ".key");
     std::ifstream in(in_path, std::ios::binary);
     if (!in) {
-      throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing,
-                          "project key material not found in test keystore: " + in_path.string());
+      throw PrivacyError(
+          PrivacyErrorCode::KeyMaterialMissing,
+          "project key material not found in test keystore: " + in_path.string()
+      );
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -184,14 +197,16 @@ std::string load_key_material(const std::string& project_id,
 
 #if HOLDER_HAVE_LIBSECRET
   GError* error = nullptr;
-  gchar* secret = secret_password_lookup_sync(holder_project_key_schema(),
-                                              nullptr,
-                                              &error,
-                                              "key_id",
-                                              key_id.c_str(),
-                                              "project_id",
-                                              project_id.c_str(),
-                                              nullptr);
+  gchar* secret = secret_password_lookup_sync(
+      holder_project_key_schema(),
+      nullptr,
+      &error,
+      "key_id",
+      key_id.c_str(),
+      "project_id",
+      project_id.c_str(),
+      nullptr
+  );
   if (!secret) {
     std::string message = "project key material not found in libsecret";
     if (error && error->message) {
@@ -207,8 +222,10 @@ std::string load_key_material(const std::string& project_id,
   secret_password_free(secret);
   return out;
 #else
-  throw PrivacyError(PrivacyErrorCode::KeyringUnavailable,
-                      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set");
+  throw PrivacyError(
+      PrivacyErrorCode::KeyringUnavailable,
+      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"
+  );
 #endif
 }
 
@@ -226,9 +243,11 @@ bool starts_with(const std::string& text, const std::string& prefix) {
   return text.rfind(prefix, 0) == 0;
 }
 
-void write_privacy_meta(const std::filesystem::path& repo_root,
-                        const std::string& project_id,
-                        const std::string& key_id) {
+void write_privacy_meta(
+    const std::filesystem::path& repo_root,
+    const std::string& project_id,
+    const std::string& key_id
+) {
   const auto path = repo_root / ".holder" / "privacy.json";
   std::filesystem::create_directories(path.parent_path());
   nlohmann::json body = {
@@ -244,8 +263,10 @@ void write_privacy_meta(const std::filesystem::path& repo_root,
   out << body.dump(2) << '\n';
 }
 
-DecryptedRecoveryTokenPayload decrypt_recovery_payload(const std::string& pin,
-                                                       const std::string& token_json) {
+DecryptedRecoveryTokenPayload decrypt_recovery_payload(
+    const std::string& pin,
+    const std::string& token_json
+) {
   if (pin.empty()) {
     throw std::runtime_error("pin must not be empty");
   }
@@ -262,10 +283,8 @@ DecryptedRecoveryTokenPayload decrypt_recovery_payload(const std::string& pin,
 
   const auto cipher = token.at("cipher");
   const auto wrapped = cipher.at("wrapped").get<std::string>();
-  const auto decrypted_payload = holder::privacy::decrypt_envelope_v1(
-      wrapped,
-      wrap_key,
-      kRecoveryTokenWrapKeyIdV1);
+  const auto decrypted_payload =
+      holder::privacy::decrypt_envelope_v1(wrapped, wrap_key, kRecoveryTokenWrapKeyIdV1);
   const auto payload = nlohmann::json::parse(decrypted_payload);
 
   DecryptedRecoveryTokenPayload out;
@@ -283,20 +302,24 @@ DecryptedRecoveryTokenPayload decrypt_recovery_payload(const std::string& pin,
 
 } // namespace
 
-void ensure_encrypted_git_setup(holder::git::GitOps& git,
-                                const std::string& root_path,
-                                const std::string& project_id,
-                                const std::string& project_key_id) {
+void ensure_encrypted_git_setup(
+    holder::git::GitOps& git,
+    const std::string& root_path,
+    const std::string& project_id,
+    const std::string& project_key_id
+) {
   const auto repo_root = std::filesystem::path(root_path);
   git.open_or_init(repo_root);
   write_privacy_meta(repo_root, project_id, project_key_id);
 }
 
-std::string ensure_project_key_material(holder::project::ProjectRepo& repo,
-                                        const std::string& project_id,
-                                        const std::optional<std::string>& project_key_id,
-                                        long long updated_at,
-                                        const std::function<std::string()>& uuid_v4) {
+std::string ensure_project_key_material(
+    holder::project::ProjectRepo& repo,
+    const std::string& project_id,
+    const std::optional<std::string>& project_key_id,
+    long long updated_at,
+    const std::function<std::string()>& uuid_v4
+) {
   if (project_key_id.has_value() && !project_key_id->empty()) {
     return project_key_id.value();
   }
@@ -309,23 +332,27 @@ std::string ensure_project_key_material(holder::project::ProjectRepo& repo,
   return key_id;
 }
 
-void ensure_encrypted_project_ready(holder::git::GitOps& git,
-                                    holder::project::ProjectRepo& repo,
-                                    const std::string& project_id,
-                                    const std::string& root_path,
-                                    const std::optional<std::string>& project_key_id,
-                                    long long updated_at,
-                                    const std::function<std::string()>& uuid_v4) {
+void ensure_encrypted_project_ready(
+    holder::git::GitOps& git,
+    holder::project::ProjectRepo& repo,
+    const std::string& project_id,
+    const std::string& root_path,
+    const std::optional<std::string>& project_key_id,
+    long long updated_at,
+    const std::function<std::string()>& uuid_v4
+) {
   const std::string key_id =
       ensure_project_key_material(repo, project_id, project_key_id, updated_at, uuid_v4);
   ensure_encrypted_git_setup(git, root_path, project_id, key_id);
 }
 
-std::string export_recovery_token(const std::string& project_id,
-                                  const std::string& project_key_id,
-                                  const std::string& pin,
-                                  const std::optional<std::string>& project_name,
-                                  const std::optional<std::string>& git_remote_url) {
+std::string export_recovery_token(
+    const std::string& project_id,
+    const std::string& project_key_id,
+    const std::string& pin,
+    const std::optional<std::string>& project_name,
+    const std::optional<std::string>& git_remote_url
+) {
   if (pin.empty()) {
     throw std::runtime_error("pin must not be empty");
   }
@@ -357,7 +384,8 @@ std::string export_recovery_token(const std::string& project_id,
   const std::string wrapped = holder::privacy::encrypt_envelope_v1(
       wrapped_payload.dump(),
       wrap_key,
-      kRecoveryTokenWrapKeyIdV1);
+      kRecoveryTokenWrapKeyIdV1
+  );
 
   nlohmann::json token;
   token["version"] = 1;
@@ -373,47 +401,57 @@ std::string export_recovery_token(const std::string& project_id,
   return token.dump();
 }
 
-std::string encrypt_project_blob(const std::string& project_id,
-                                 const std::string& project_key_id,
-                                 const std::string& plaintext) {
+std::string encrypt_project_blob(
+    const std::string& project_id,
+    const std::string& project_key_id,
+    const std::string& plaintext
+) {
   try {
     const std::string key_material_b64 = load_key_material(project_id, project_key_id);
     const auto key = holder::privacy::key_from_base64(key_material_b64);
     return holder::privacy::encrypt_envelope_v1(plaintext, key, project_key_id);
   } catch (const PrivacyError&) {
     throw;
-  // load_key_material/key_from_base64/encrypt_envelope_v1 only throw PrivacyError in normal flow.
-  // LCOV_EXCL_START
+    // load_key_material/key_from_base64/encrypt_envelope_v1 only throw PrivacyError in normal flow.
+    // LCOV_EXCL_START
   } catch (const std::exception& ex) {
-    throw PrivacyError(PrivacyErrorCode::PrivacyCryptoFailed,
-                        std::string("failed to encrypt project blob: ") + ex.what());
+    throw PrivacyError(
+        PrivacyErrorCode::PrivacyCryptoFailed,
+        std::string("failed to encrypt project blob: ") + ex.what()
+    );
   }
   // LCOV_EXCL_STOP
 }
 
-std::string decrypt_project_blob(const std::string& project_id,
-                                 const std::string& project_key_id,
-                                 const std::string& envelope) {
+std::string decrypt_project_blob(
+    const std::string& project_id,
+    const std::string& project_key_id,
+    const std::string& envelope
+) {
   try {
     const std::string key_material_b64 = load_key_material(project_id, project_key_id);
     const auto key = holder::privacy::key_from_base64(key_material_b64);
     return holder::privacy::decrypt_envelope_v1(envelope, key, project_key_id);
   } catch (const PrivacyError&) {
     throw;
-  // load_key_material/key_from_base64/decrypt_envelope_v1 only throw PrivacyError in normal flow.
-  // LCOV_EXCL_START
+    // load_key_material/key_from_base64/decrypt_envelope_v1 only throw PrivacyError in normal flow.
+    // LCOV_EXCL_START
   } catch (const std::exception& ex) {
-    throw PrivacyError(PrivacyErrorCode::PrivacyCryptoFailed,
-                        std::string("failed to decrypt project blob: ") + ex.what());
+    throw PrivacyError(
+        PrivacyErrorCode::PrivacyCryptoFailed,
+        std::string("failed to decrypt project blob: ") + ex.what()
+    );
   }
   // LCOV_EXCL_STOP
 }
 
-void import_recovery_token(holder::project::ProjectRepo& repo,
-                           const std::string& project_id,
-                           const std::string& pin,
-                           const std::string& token_json,
-                           long long updated_at) {
+void import_recovery_token(
+    holder::project::ProjectRepo& repo,
+    const std::string& project_id,
+    const std::string& pin,
+    const std::string& token_json,
+    long long updated_at
+) {
   try {
     const auto payload = decrypt_recovery_payload(pin, token_json);
 
@@ -423,7 +461,11 @@ void import_recovery_token(holder::project::ProjectRepo& repo,
 
     // Validate key shape before storing.
     (void)holder::privacy::key_from_base64(payload.project_key_material_b64);
-    store_key_material(project_id, payload.metadata.project_key_id, payload.project_key_material_b64);
+    store_key_material(
+        project_id,
+        payload.metadata.project_key_id,
+        payload.project_key_material_b64
+    );
     repo.update_project_key_id(project_id, payload.metadata.project_key_id, updated_at);
     if (payload.metadata.git_remote_url.has_value()) {
       const auto& remote = payload.metadata.git_remote_url.value();
@@ -435,34 +477,44 @@ void import_recovery_token(holder::project::ProjectRepo& repo,
     if (ex.code() == PrivacyErrorCode::EnvelopeInvalid ||
         ex.code() == PrivacyErrorCode::EnvelopeMetadataMismatch ||
         ex.code() == PrivacyErrorCode::PrivacyCryptoFailed) {
-      throw PrivacyError(PrivacyErrorCode::RecoveryTokenInvalid,
-                          std::string("invalid recovery token: ") + ex.what());
+      throw PrivacyError(
+          PrivacyErrorCode::RecoveryTokenInvalid,
+          std::string("invalid recovery token: ") + ex.what()
+      );
     }
     throw;
   } catch (const std::exception& ex) {
-    throw PrivacyError(PrivacyErrorCode::RecoveryTokenInvalid,
-                        std::string("invalid recovery token: ") + ex.what());
+    throw PrivacyError(
+        PrivacyErrorCode::RecoveryTokenInvalid,
+        std::string("invalid recovery token: ") + ex.what()
+    );
   }
 }
 
-RecoveryTokenMetadata inspect_recovery_token(const std::string& pin,
-                                             const std::string& token_json) {
+RecoveryTokenMetadata inspect_recovery_token(
+    const std::string& pin,
+    const std::string& token_json
+) {
   try {
     return decrypt_recovery_payload(pin, token_json).metadata;
   } catch (const PrivacyError& ex) {
-    // decrypt_recovery_payload only emits EnvelopeInvalid/EnvelopeMetadataMismatch for token crypto faults.
-    // LCOV_EXCL_START
+    // decrypt_recovery_payload only emits EnvelopeInvalid/EnvelopeMetadataMismatch for token crypto
+    // faults. LCOV_EXCL_START
     if (ex.code() == PrivacyErrorCode::EnvelopeInvalid ||
         ex.code() == PrivacyErrorCode::EnvelopeMetadataMismatch ||
         ex.code() == PrivacyErrorCode::PrivacyCryptoFailed) {
-      throw PrivacyError(PrivacyErrorCode::RecoveryTokenInvalid,
-                         std::string("invalid recovery token: ") + ex.what());
+      throw PrivacyError(
+          PrivacyErrorCode::RecoveryTokenInvalid,
+          std::string("invalid recovery token: ") + ex.what()
+      );
     }
     throw;
     // LCOV_EXCL_STOP
   } catch (const std::exception& ex) {
-    throw PrivacyError(PrivacyErrorCode::RecoveryTokenInvalid,
-                       std::string("invalid recovery token: ") + ex.what());
+    throw PrivacyError(
+        PrivacyErrorCode::RecoveryTokenInvalid,
+        std::string("invalid recovery token: ") + ex.what()
+    );
   }
 }
 
@@ -506,22 +558,28 @@ void assert_encryption_push_safe(const std::string& root_path) {
   }
 }
 
-void assert_encryption_index_paths_safe(const std::string& root_path,
-                                        const std::vector<std::string>& relative_paths) {
+void assert_encryption_index_paths_safe(
+    const std::string& root_path,
+    const std::vector<std::string>& relative_paths
+) {
 #if CARD_SERVER_HAVE_LIBGIT2
   git_repository* repo = nullptr;
   const int open_rc = git_repository_open(&repo, root_path.c_str());
   if (open_rc != 0 || !repo) {
-    throw PrivacyError(PrivacyErrorCode::EncryptionSafetyCheckFailed,
-                        "failed to open git repository for privacy safety check");
+    throw PrivacyError(
+        PrivacyErrorCode::EncryptionSafetyCheckFailed,
+        "failed to open git repository for privacy safety check"
+    );
   }
 
   git_index* index = nullptr;
   const int idx_rc = git_repository_index(&index, repo);
   if (idx_rc != 0 || !index) {
     git_repository_free(repo);
-    throw PrivacyError(PrivacyErrorCode::EncryptionSafetyCheckFailed,
-                        "failed to load git index for privacy safety check");
+    throw PrivacyError(
+        PrivacyErrorCode::EncryptionSafetyCheckFailed,
+        "failed to load git index for privacy safety check"
+    );
   }
 
   std::vector<std::string> unsafe_paths;
@@ -570,8 +628,10 @@ void assert_encryption_index_paths_safe(const std::string& root_path,
 #else
   (void)root_path;
   (void)relative_paths;
-  throw PrivacyError(PrivacyErrorCode::EncryptionSafetyCheckFailed,
-                      "libgit2 support is required for staged privacy safety checks");
+  throw PrivacyError(
+      PrivacyErrorCode::EncryptionSafetyCheckFailed,
+      "libgit2 support is required for staged privacy safety checks"
+  );
 #endif
 }
 

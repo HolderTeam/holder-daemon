@@ -4,18 +4,18 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "card/CardRepo.h"
 #include "model/Card.h"
 #include "model/Project.h"
-#include "card/CardRepo.h"
 #include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
-#include <sqlite3.h>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <sqlite3.h>
 #include <string>
 #include <thread>
 #include <vector>
@@ -54,7 +54,8 @@ std::filesystem::path make_temp_dir() {
 #else
   for (int attempt = 0; attempt < 64; ++attempt) {
     const auto suffix = std::to_string(
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+    );
     auto dir = base / ("holder_card_test_" + suffix);
     std::error_code ec;
     if (std::filesystem::create_directory(dir, ec)) {

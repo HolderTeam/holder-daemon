@@ -1,7 +1,7 @@
 #pragma once
 
-#include "index/FtsIndexer.h"
 #include "card/CardStore.h"
+#include "index/FtsIndexer.h"
 #include "platform/Db.h"
 
 #include <boost/beast/http.hpp>
@@ -19,6 +19,7 @@ bool handle_card_routes(
     holder::card::CardStore* card_store,
     holder::index::FtsIndexer* fts,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get);
+    const std::function<std::string(const std::string&)>& param_get
+);
 
 } // namespace holder::api::routes

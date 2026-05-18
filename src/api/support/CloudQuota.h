@@ -21,34 +21,44 @@ struct CloudModelCooldownState {
   long long updated_at = 0;
 };
 
-CloudQuotaWindowUsage load_cloud_window_usage(holder::platform::Db& db,
-                                              const std::string& provider,
-                                              const std::string& model_id,
-                                              long long since_epoch_seconds);
+CloudQuotaWindowUsage load_cloud_window_usage(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long since_epoch_seconds
+);
 
-void record_cloud_usage_event(holder::platform::Db& db,
-                              const std::string& provider,
-                              const std::string& model_id,
-                              long long prompt_tokens,
-                              long long response_tokens,
-                              long long created_at,
-                              const std::string& event_id_seed);
+void record_cloud_usage_event(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long prompt_tokens,
+    long long response_tokens,
+    long long created_at,
+    const std::string& event_id_seed
+);
 
-std::optional<CloudModelCooldownState> load_cloud_model_cooldown(holder::platform::Db& db,
-                                                                  const std::string& provider,
-                                                                  const std::string& model_id);
+std::optional<CloudModelCooldownState> load_cloud_model_cooldown(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id
+);
 
-CloudModelCooldownState record_cloud_model_failure(holder::platform::Db& db,
-                                                   const std::string& provider,
-                                                   const std::string& model_id,
-                                                   const std::string& error,
-                                                   long long now_epoch_seconds,
-                                                   long long cooldown_base_seconds = 30,
-                                                   long long cooldown_cap_seconds = 900);
+CloudModelCooldownState record_cloud_model_failure(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    const std::string& error,
+    long long now_epoch_seconds,
+    long long cooldown_base_seconds = 30,
+    long long cooldown_cap_seconds = 900
+);
 
-void clear_cloud_model_cooldown(holder::platform::Db& db,
-                                const std::string& provider,
-                                const std::string& model_id,
-                                long long now_epoch_seconds);
+void clear_cloud_model_cooldown(
+    holder::platform::Db& db,
+    const std::string& provider,
+    const std::string& model_id,
+    long long now_epoch_seconds
+);
 
 } // namespace holder::api::support

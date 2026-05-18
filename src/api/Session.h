@@ -2,10 +2,10 @@
 
 #include "ai/NudgeService.h"
 #include "api/Router.h"
-#include "git/GitOps.h"
-#include "llm/RunnerRegistry.h"
-#include "index/FtsIndexer.h"
 #include "card/CardStore.h"
+#include "git/GitOps.h"
+#include "index/FtsIndexer.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
 
@@ -14,14 +14,14 @@
 
 #include <chrono>
 #include <functional>
-#include <optional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace holder::api {
 
 class Session {
-public:
+ public:
   using tcp = boost::asio::ip::tcp;
   using Request = boost::beast::http::request<boost::beast::http::string_body>;
   using Response = boost::beast::http::response<boost::beast::http::string_body>;
@@ -54,40 +54,48 @@ public:
     RequestLane lane = RequestLane::Foreground;
   };
 
-  Session(tcp::socket socket,
-          holder::platform::Db& db,
-          const std::string& auth_token,
-          const Router& router,
-          std::chrono::steady_clock::time_point started_at,
-          holder::card::CardStore* card_store,
-          holder::index::FtsIndexer* fts,
-          holder::ai::NudgeService* nudge_service,
-          holder::privacy::SecretStore* secret_store = nullptr,
-          holder::git::GitOps* git_ops = nullptr,
-          holder::llm::RunnerRegistry* runner_registry = nullptr);
-  Session(PreparedRequest prepared,
-          holder::platform::Db& db,
-          const std::string& auth_token,
-          const Router& router,
-          std::chrono::steady_clock::time_point started_at,
-          holder::card::CardStore* card_store,
-          holder::index::FtsIndexer* fts,
-          holder::ai::NudgeService* nudge_service,
-          holder::privacy::SecretStore* secret_store = nullptr,
-          holder::git::GitOps* git_ops = nullptr,
-          holder::llm::RunnerRegistry* runner_registry = nullptr);
+  Session(
+      tcp::socket socket,
+      holder::platform::Db& db,
+      const std::string& auth_token,
+      const Router& router,
+      std::chrono::steady_clock::time_point started_at,
+      holder::card::CardStore* card_store,
+      holder::index::FtsIndexer* fts,
+      holder::ai::NudgeService* nudge_service,
+      holder::privacy::SecretStore* secret_store = nullptr,
+      holder::git::GitOps* git_ops = nullptr,
+      holder::llm::RunnerRegistry* runner_registry = nullptr
+  );
+  Session(
+      PreparedRequest prepared,
+      holder::platform::Db& db,
+      const std::string& auth_token,
+      const Router& router,
+      std::chrono::steady_clock::time_point started_at,
+      holder::card::CardStore* card_store,
+      holder::index::FtsIndexer* fts,
+      holder::ai::NudgeService* nudge_service,
+      holder::privacy::SecretStore* secret_store = nullptr,
+      holder::git::GitOps* git_ops = nullptr,
+      holder::llm::RunnerRegistry* runner_registry = nullptr
+  );
 
   void run();
-  static std::optional<PreparedRequest> prepare_request(tcp::socket socket,
-                                                        SocketHook on_io_start = {},
-                                                        SocketHook on_io_done = {});
+  static std::optional<PreparedRequest> prepare_request(
+      tcp::socket socket,
+      SocketHook on_io_start = {},
+      SocketHook on_io_done = {}
+  );
   std::optional<PreparedResponse> execute();
-  static void write_prepared_response(PreparedResponse prepared,
-                                     SocketHook on_io_start = {},
-                                     SocketHook on_io_done = {});
+  static void write_prepared_response(
+      PreparedResponse prepared,
+      SocketHook on_io_start = {},
+      SocketHook on_io_done = {}
+  );
   static const char* lane_name(RequestLane lane);
 
-private:
+ private:
   bool ensure_request_loaded();
   std::optional<PreparedResponse> process_loaded_request();
   static RequestLane classify_request_lane(const Request& req, const std::string& path);

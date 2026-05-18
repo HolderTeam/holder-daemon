@@ -29,7 +29,8 @@ void lockfile_set_force_release_throw_for_tests(bool enabled) {
   g_force_release_throw_for_tests.store(enabled);
 }
 
-LockFile::LockFile(std::filesystem::path path) : path_(std::move(path)) {}
+LockFile::LockFile(std::filesystem::path path)
+    : path_(std::move(path)) {}
 
 LockFile::~LockFile() {
   try {
@@ -81,8 +82,9 @@ bool LockFile::try_acquire() {
     }
     if (!lock_->try_lock()) return false;
   } catch (const boost::interprocess::interprocess_exception& ex) {
-    throw std::runtime_error("Failed to acquire lock: " + path_.string() +
-                             " (" + std::string(ex.what()) + ")");
+    throw std::runtime_error(
+        "Failed to acquire lock: " + path_.string() + " (" + std::string(ex.what()) + ")"
+    );
   }
 
   locked_ = true;

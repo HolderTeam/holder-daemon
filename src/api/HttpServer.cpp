@@ -19,15 +19,17 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-HttpServer::HttpServer(std::string bind,
-                       unsigned short port,
-                       holder::platform::Db& db,
-                       std::string auth_token,
-                       holder::card::CardStore* card_store,
-                       holder::index::FtsIndexer* fts,
-                       holder::git::GitOps* git_ops,
-                       holder::llm::RunnerRegistry* runner_registry,
-                       holder::api::ConcurrencyProfile concurrency)
+HttpServer::HttpServer(
+    std::string bind,
+    unsigned short port,
+    holder::platform::Db& db,
+    std::string auth_token,
+    holder::card::CardStore* card_store,
+    holder::index::FtsIndexer* fts,
+    holder::git::GitOps* git_ops,
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::api::ConcurrencyProfile concurrency
+)
     : bind_(std::move(bind)),
       port_(port),
       db_(db),
@@ -35,43 +37,46 @@ HttpServer::HttpServer(std::string bind,
       router_(),
       runner_registry_(runner_registry),
       nudge_service_(db, runner_registry),
-      secret_store_(holder::privacy::make_default_secret_store(holder::core::Paths::resolve("holder").server_dir())),
+      secret_store_(holder::privacy::make_default_secret_store(
+          holder::core::Paths::resolve("holder").server_dir()
+      )),
       card_store_(card_store),
       fts_(fts),
       git_ops_(git_ops),
       concurrency_(concurrency) {
-  router_.add(http::verb::get, "/health",
-              [this](const Router::Request&, Router::Response& res) {
-                nlohmann::json payload;
-                payload["ok"] = true;
-                payload["data"] = support::build_health_data(db_, started_at_);
+  router_.add(http::verb::get, "/health", [this](const Router::Request&, Router::Response& res) {
+    nlohmann::json payload;
+    payload["ok"] = true;
+    payload["data"] = support::build_health_data(db_, started_at_);
 
-                http::response<http::string_body> response{http::status::ok, 11};
-                response.set(http::field::content_type, "application/json");
-                response.keep_alive(false);
-                response.body() = payload.dump();
-                response.prepare_payload();
-                res = std::move(response);
-              });
+    http::response<http::string_body> response{http::status::ok, 11};
+    response.set(http::field::content_type, "application/json");
+    response.keep_alive(false);
+    response.body() = payload.dump();
+    response.prepare_payload();
+    res = std::move(response);
+  });
 }
 
 HttpServer::~HttpServer() = default;
 
 HttpServer::BoundInfo HttpServer::start() {
   started_at_ = std::chrono::steady_clock::now();
-  listener_ = std::make_unique<Listener>(bind_,
-                                         port_,
-                                         db_,
-                                         auth_token_,
-                                         router_,
-                                         started_at_,
-                                         card_store_,
-                                         fts_,
-                                         &nudge_service_, // LCOV_EXCL_LINE
-                                         secret_store_.get(),
-                                         git_ops_,
-                                         runner_registry_,
-                                         concurrency_);
+  listener_ = std::make_unique<Listener>(
+      bind_,
+      port_,
+      db_,
+      auth_token_,
+      router_,
+      started_at_,
+      card_store_,
+      fts_,
+      &nudge_service_, // LCOV_EXCL_LINE
+      secret_store_.get(),
+      git_ops_,
+      runner_registry_,
+      concurrency_
+  );
   const auto bound = listener_->start();
   return BoundInfo{bound.bind, bound.port};
 }

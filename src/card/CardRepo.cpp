@@ -75,7 +75,8 @@ holder::model::Card read_card(sqlite3_stmt* stmt) {
 
 } // namespace
 
-CardRepo::CardRepo(holder::platform::Db& db) : db_(db) {}
+CardRepo::CardRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 void CardRepo::create(const holder::model::Card& card) {
   static constexpr const char* SQL =
@@ -160,8 +161,10 @@ std::vector<holder::model::Card> CardRepo::list_roots(const std::string& project
   return out;
 } // LCOV_EXCL_LINE
 
-std::vector<holder::model::Card> CardRepo::list_children(const std::string& project_id,
-                                                         const std::string& parent_card_id) const {
+std::vector<holder::model::Card> CardRepo::list_children(
+    const std::string& project_id,
+    const std::string& parent_card_id
+) const {
   static constexpr const char* SQL =
       "SELECT card_id, project_id, title, rel_path, parent_card_id, sort_key, "
       "created_at, updated_at, deleted_at "
@@ -259,8 +262,10 @@ int CardRepo::count_roots_not_deleted(const std::string& project_id) const {
   return 0; // LCOV_EXCL_LINE
 }
 
-int CardRepo::count_children_not_deleted(const std::string& project_id,
-                                         const std::string& parent_card_id) const {
+int CardRepo::count_children_not_deleted(
+    const std::string& project_id,
+    const std::string& parent_card_id
+) const {
   static constexpr const char* SQL =
       "SELECT COUNT(*) FROM cards "
       "WHERE project_id = ? AND parent_card_id = ? AND deleted_at IS NULL;";
@@ -283,8 +288,10 @@ int CardRepo::count_children_not_deleted(const std::string& project_id,
   return 0; // LCOV_EXCL_LINE
 }
 
-double CardRepo::next_sort_key(const std::string& project_id,
-                               const std::optional<std::string>& parent_card_id) const {
+double CardRepo::next_sort_key(
+    const std::string& project_id,
+    const std::optional<std::string>& parent_card_id
+) const {
   static constexpr const char* SQL_ROOT =
       "SELECT COALESCE(MAX(sort_key), -1.0) + 1.0 "
       "FROM cards WHERE project_id = ? AND parent_card_id IS NULL AND deleted_at IS NULL;";
@@ -317,7 +324,11 @@ double CardRepo::next_sort_key(const std::string& project_id,
   return 0.0; // LCOV_EXCL_LINE
 }
 
-void CardRepo::update_title(const std::string& card_id, const std::string& title, long long updated_at) {
+void CardRepo::update_title(
+    const std::string& card_id,
+    const std::string& title,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE cards SET title = ?, updated_at = ? WHERE card_id = ?;";
 
@@ -338,8 +349,7 @@ void CardRepo::update_title(const std::string& card_id, const std::string& title
 }
 
 void CardRepo::touch_updated(const std::string& card_id, long long updated_at) {
-  static constexpr const char* SQL =
-      "UPDATE cards SET updated_at = ? WHERE card_id = ?;";
+  static constexpr const char* SQL = "UPDATE cards SET updated_at = ? WHERE card_id = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -412,10 +422,12 @@ void CardRepo::remove(const std::string& card_id) {
   }
 }
 
-void CardRepo::move(const std::string& card_id,
-                    const std::optional<std::string>& parent_card_id,
-                    double sort_key,
-                    long long updated_at) {
+void CardRepo::move(
+    const std::string& card_id,
+    const std::optional<std::string>& parent_card_id,
+    double sort_key,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "UPDATE cards SET parent_card_id = ?, sort_key = ?, updated_at = ? WHERE card_id = ?;";
 

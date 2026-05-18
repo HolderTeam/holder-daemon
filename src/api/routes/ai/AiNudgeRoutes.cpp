@@ -19,16 +19,17 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
       {"nudge_id", nudge.nudge_id},
       {"kind", nudge.kind},
       {"project_id", nudge.project_id},
-      {"card_id", nudge.card_id.has_value() ? nlohmann::json(nudge.card_id.value())
-                                             : nlohmann::json(nullptr)},
+      {"card_id",
+       nudge.card_id.has_value() ? nlohmann::json(nudge.card_id.value()) : nlohmann::json(nullptr)},
       {"title", nudge.title},
       {"body", nudge.body},
       {"meta_json", nudge.meta_json},
       {"basis_fingerprint",
        nudge.basis_fingerprint.has_value() ? nlohmann::json(nudge.basis_fingerprint.value())
                                            : nlohmann::json(nullptr)},
-      {"basis_commit", nudge.basis_commit.has_value() ? nlohmann::json(nudge.basis_commit.value())
-                                                      : nlohmann::json(nullptr)},
+      {"basis_commit",
+       nudge.basis_commit.has_value() ? nlohmann::json(nudge.basis_commit.value())
+                                      : nlohmann::json(nullptr)},
       {"created_at", nudge.created_at},
   };
   if (nudge.meta_json.is_object() && nudge.meta_json.contains("suggestions")) {
@@ -37,36 +38,43 @@ nlohmann::json nudge_to_json(const holder::ai::Nudge& nudge) {
   return item;
 }
 
-bool handle_nudge_list_route(const std::string& path,
-                             const http::request<http::string_body>& req,
-                             http::response<http::string_body>& res,
-                             holder::ai::NudgeService* nudge_service) {
+bool handle_nudge_list_route(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::ai::NudgeService* nudge_service
+) {
   if (path != "/ai/nudges" || req.method() != http::verb::get) {
     return false;
   }
   if (nudge_service == nullptr) {
-    res = support::error_response(http::status::internal_server_error,
-                                  "service_unavailable",
-                                  "Nudge service unavailable.");
+    res = support::error_response(
+        http::status::internal_server_error,
+        "service_unavailable",
+        "Nudge service unavailable."
+    );
     return true;
   }
 
   const auto target = std::string(req.target());
   const auto query_pos = target.find('?');
-  const auto query_string =
-      query_pos == std::string::npos ? std::string() : target.substr(query_pos + 1);
+  const auto query_string = query_pos == std::string::npos ? std::string()
+                                                           : target.substr(query_pos + 1);
   const auto project_id = support::query_param_value(query_string, "project_id");
   const auto card_id_raw = support::query_param_value(query_string, "card_id");
   if (project_id.empty()) {
-    res = support::error_response(http::status::bad_request,
-                                  "invalid_query",
-                                  "project_id is required.");
+    res = support::error_response(
+        http::status::bad_request,
+        "invalid_query",
+        "project_id is required."
+    );
     return true;
   }
 
   const auto nudges = nudge_service->list(
       project_id,
-      card_id_raw.empty() ? std::optional<std::string>() : std::optional<std::string>(card_id_raw));
+      card_id_raw.empty() ? std::optional<std::string>() : std::optional<std::string>(card_id_raw)
+  );
 
   nlohmann::json items = nlohmann::json::array();
   for (const auto& nudge : nudges) {
@@ -80,19 +88,23 @@ bool handle_nudge_list_route(const std::string& path,
   return true;
 }
 
-bool handle_nudge_dismiss_route(const std::string& path,
-                                const http::request<http::string_body>& req,
-                                http::response<http::string_body>& res,
-                                holder::ai::NudgeService* nudge_service) {
+bool handle_nudge_dismiss_route(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::ai::NudgeService* nudge_service
+) {
   static constexpr std::string_view prefix = "/ai/nudges/";
   static constexpr std::string_view suffix = "/dismiss";
   if (!path.starts_with(prefix) || !path.ends_with(suffix) || req.method() != http::verb::post) {
     return false;
   }
   if (nudge_service == nullptr) {
-    res = support::error_response(http::status::internal_server_error,
-                                  "service_unavailable",
-                                  "Nudge service unavailable.");
+    res = support::error_response(
+        http::status::internal_server_error,
+        "service_unavailable",
+        "Nudge service unavailable."
+    );
     return true;
   }
 
@@ -115,10 +127,12 @@ bool handle_nudge_dismiss_route(const std::string& path,
 
 } // namespace
 
-bool handle_ai_nudge_routes(const std::string& path,
-                            const http::request<http::string_body>& req,
-                            http::response<http::string_body>& res,
-                            holder::ai::NudgeService* nudge_service) {
+bool handle_ai_nudge_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::ai::NudgeService* nudge_service
+) {
   if (handle_nudge_list_route(path, req, res, nudge_service)) {
     return true;
   }
@@ -129,9 +143,11 @@ bool handle_ai_nudge_routes(const std::string& path,
     return false;
   }
   if (nudge_service == nullptr) {
-    res = support::error_response(http::status::internal_server_error,
-                                  "service_unavailable",
-                                  "Nudge service unavailable.");
+    res = support::error_response(
+        http::status::internal_server_error,
+        "service_unavailable",
+        "Nudge service unavailable."
+    );
     return true;
   }
 
@@ -147,16 +163,22 @@ bool handle_ai_nudge_routes(const std::string& path,
       !body.contains("project_id") || !body["project_id"].is_string() ||
       !body.contains("created_at") || !body["created_at"].is_number_integer() ||
       !body.contains("facts") || !body["facts"].is_object()) {
-    res = support::error_response(http::status::bad_request,
-                                  "invalid_body",
-                                  "Expected kind, project_id, created_at, and facts.");
+    res = support::error_response(
+        http::status::bad_request,
+        "invalid_body",
+        "Expected kind, project_id, created_at, and facts."
+    );
     return true;
   }
 
   const auto kind = body.value("kind", "");
   const auto project_id = body.value("project_id", "");
   if (kind.empty() || project_id.empty()) {
-    res = support::error_response(http::status::bad_request, "invalid_body", "kind and project_id are required.");
+    res = support::error_response(
+        http::status::bad_request,
+        "invalid_body",
+        "kind and project_id are required."
+    );
     return true;
   }
 
@@ -167,9 +189,10 @@ bool handle_ai_nudge_routes(const std::string& path,
                      ? std::optional<std::string>(body["card_id"].get<std::string>())
                      : std::optional<std::string>(),
       .created_at = body.value("created_at", std::int64_t{0}), // LCOV_EXCL_LINE
-      .basis_fingerprint = body.contains("basis_fingerprint") && body["basis_fingerprint"].is_string()
-                               ? std::optional<std::string>(body["basis_fingerprint"].get<std::string>())
-                               : std::optional<std::string>(),
+      .basis_fingerprint =
+          body.contains("basis_fingerprint") && body["basis_fingerprint"].is_string()
+              ? std::optional<std::string>(body["basis_fingerprint"].get<std::string>())
+              : std::optional<std::string>(),
       .basis_commit = body.contains("basis_commit") && body["basis_commit"].is_string()
                           ? std::optional<std::string>(body["basis_commit"].get<std::string>())
                           : std::optional<std::string>(),
@@ -184,8 +207,9 @@ bool handle_ai_nudge_routes(const std::string& path,
       {"accepted", decision.accepted},
       {"should_nudge", decision.should_nudge},
       {"reason", decision.reason},
-      {"nudge", decision.nudge.has_value() ? nudge_to_json(decision.nudge.value())
-                                            : nlohmann::json(nullptr)},
+      {"nudge",
+       decision.nudge.has_value() ? nudge_to_json(decision.nudge.value()) : nlohmann::json(nullptr)
+      },
   };
   res = support::json_response(http::status::ok, payload);
   return true;

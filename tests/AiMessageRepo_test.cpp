@@ -4,19 +4,19 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "model/AiMessage.h"
-#include "model/AiThread.h"
-#include "model/Project.h"
-#include "index/FtsIndexer.h"
 #include "ai/AiMessagePaths.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
 #include "git/GitOps.h"
+#include "index/FtsIndexer.h"
+#include "model/AiMessage.h"
+#include "model/AiThread.h"
+#include "model/Project.h"
 #include "platform/Db.h"
 #include "project/ProjectRepo.h"
 
-#include <chrono>
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sqlite3.h>
@@ -57,7 +57,8 @@ std::filesystem::path make_temp_dir() {
 #else
   for (int attempt = 0; attempt < 64; ++attempt) {
     const auto suffix = std::to_string(
-        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+    );
     auto dir = base / ("holder_ai_message_test_" + suffix);
     std::error_code ec;
     if (std::filesystem::create_directory(dir, ec)) {
@@ -79,9 +80,11 @@ void apply_schema(holder::platform::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::platform::Db& db,
-                    const std::string& project_id,
-                    const std::string& root_path) {
+void create_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& root_path
+) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
@@ -92,10 +95,12 @@ void create_project(holder::platform::Db& db,
   repo.create(project);
 }
 
-void update_project_remote(holder::platform::Db& db,
-                           const std::string& project_id,
-                           const std::string& remote_url,
-                           long long updated_at) {
+void update_project_remote(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& remote_url,
+    long long updated_at
+) {
   holder::project::ProjectRepo repo(db);
   repo.update_git_remote(project_id, std::optional<std::string>(remote_url), updated_at);
 }
@@ -106,7 +111,11 @@ std::string read_file(const std::filesystem::path& path) {
   return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-void create_thread(holder::platform::Db& db, const std::string& thread_id, const std::string& project_id) {
+void create_thread(
+    holder::platform::Db& db,
+    const std::string& thread_id,
+    const std::string& project_id
+) {
   holder::ai::AiThreadRepo repo(db);
   holder::model::AiThread thread;
   thread.thread_id = thread_id;
@@ -118,7 +127,7 @@ void create_thread(holder::platform::Db& db, const std::string& thread_id, const
 }
 
 class TrackingGitOps final : public holder::git::GitOps {
-public:
+ public:
   std::filesystem::path repo_root;
   int set_remote_calls = 0;
   std::vector<std::filesystem::path> removed_paths;
@@ -127,8 +136,7 @@ public:
     repo_root = repo_dir;
     std::filesystem::create_directories(repo_root);
   }
-  void write_file(const std::filesystem::path& relative_path,
-                  const std::string& content) override {
+  void write_file(const std::filesystem::path& relative_path, const std::string& content) override {
     const auto full_path = repo_root / relative_path;
     std::filesystem::create_directories(full_path.parent_path());
     std::ofstream out(full_path, std::ios::binary);
@@ -142,28 +150,28 @@ public:
     removed_paths.push_back(relative_path);
   }
   void commit(const std::string&) override {}
-  void set_remote(const std::string&, const std::string&) override {
-    set_remote_calls++;
-  }
+  void set_remote(const std::string&, const std::string&) override { set_remote_calls++; }
   void remove_remote(const std::string&) override {}
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override {
-    return {.status = holder::git::RemoteProbeStatus::Reachable, .remote_has_head = true, .error_message = {}};
+    return {
+        .status = holder::git::RemoteProbeStatus::Reachable,
+        .remote_has_head = true,
+        .error_message = {}
+    };
   }
-  holder::git::PushResult push_branch(const std::string&,
-                                      const std::string&,
-                                      bool) override {
-    return {.status = holder::git::PushStatus::Pushed, .ahead_count = 0, .behind_count = 0, .error_message = {}};
+  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    return {
+        .status = holder::git::PushStatus::Pushed,
+        .ahead_count = 0,
+        .behind_count = 0,
+        .error_message = {}
+    };
   }
   std::filesystem::path repo_dir() const override { return repo_root; }
 };
 
-int deny_ai_messages_update_delete(void*,
-                                   int action,
-                                   const char* detail1,
-                                   const char*,
-                                   const char*,
-                                   const char*) {
+int deny_ai_messages_update_delete(void*, int action, const char* detail1, const char*, const char*, const char*) {
   if (detail1 == nullptr) {
     return SQLITE_OK;
   }
@@ -365,7 +373,10 @@ TEST_CASE("AiMessageRepo trash restore and remove live file", "[aimessagerepo]")
 
   repo.remove(msg.message_id);
   REQUIRE(!std::filesystem::exists(live_path));
-  REQUIRE(std::find(git.removed_paths.begin(), git.removed_paths.end(), live_rel) != git.removed_paths.end());
+  REQUIRE(
+      std::find(git.removed_paths.begin(), git.removed_paths.end(), live_rel) !=
+      git.removed_paths.end()
+  );
 }
 
 TEST_CASE("AiMessageRepo trash throws for missing message and missing content", "[aimessagerepo]") {
@@ -442,7 +453,10 @@ TEST_CASE("AiMessageRepo restore throws when message is not deleted", "[aimessag
   REQUIRE_THROWS(repo.restore(msg.message_id));
 }
 
-TEST_CASE("AiMessageRepo restore throws when deleted message thread/project is missing", "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo restore throws when deleted message thread/project is missing",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -463,14 +477,18 @@ TEST_CASE("AiMessageRepo restore throws when deleted message thread/project is m
   repo.trash(msg.message_id, 100);
 
   db.exec("PRAGMA foreign_keys=OFF;");
-  db.exec("UPDATE ai_messages SET thread_id = 'missing-thread' WHERE message_id = 'msg-restore-guards';");
+  db.exec(
+      "UPDATE ai_messages SET thread_id = 'missing-thread' WHERE message_id = 'msg-restore-guards';"
+  );
   db.exec("PRAGMA foreign_keys=ON;");
   REQUIRE_THROWS(repo.restore(msg.message_id));
 
   db.exec("PRAGMA foreign_keys=OFF;");
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-bad-restore', 'missing-proj', 'T', 1, 1);");
-  db.exec("UPDATE ai_messages SET thread_id = 'thread-bad-restore' WHERE message_id = 'msg-restore-guards';");
+  db.exec(
+      "UPDATE ai_messages SET thread_id = 'thread-bad-restore' WHERE message_id = 'msg-restore-guards';"
+  );
   db.exec("PRAGMA foreign_keys=ON;");
   REQUIRE_THROWS(repo.restore(msg.message_id));
 }
@@ -598,7 +616,10 @@ TEST_CASE("AiMessageRepo update/trash/restore/remove SQL step failures throw", "
   REQUIRE_THROWS(repo.remove(msg.message_id));
 }
 
-TEST_CASE("AiMessageRepo get/list step error paths via sqlite progress handler", "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo get/list step error paths via sqlite progress handler",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -618,14 +639,24 @@ TEST_CASE("AiMessageRepo get/list step error paths via sqlite progress handler",
   repo.append(msg);
   repo.trash(msg.message_id, 200);
 
-  sqlite3_progress_handler(db.handle(), 1, [](void*) -> int { return 1; }, nullptr);
+  sqlite3_progress_handler(
+      db.handle(),
+      1,
+      [](void*) -> int {
+        return 1;
+      },
+      nullptr
+  );
   REQUIRE_THROWS(repo.get(msg.message_id));
   REQUIRE_THROWS(repo.list_by_thread("thread-1"));
   REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
 
-TEST_CASE("AiMessageRepo trash/restore/update_links throw when thread or project missing", "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo trash/restore/update_links throw when thread or project missing",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -691,7 +722,10 @@ TEST_CASE("AiMessageRepo methods honor project remote set_remote path", "[aimess
   REQUIRE(git.set_remote_calls >= 5);
 }
 
-TEST_CASE("AiMessageRepo prepare failures via authorizer for update/trash/restore/remove", "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo prepare failures via authorizer for update/trash/restore/remove",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -738,7 +772,9 @@ TEST_CASE("AiMessageRepo prepare failures via authorizer for update/trash/restor
   msg_remove.created_at = 31;
   repo.append(msg_remove);
 
-  REQUIRE(sqlite3_set_authorizer(db.handle(), deny_ai_messages_update_delete, nullptr) == SQLITE_OK);
+  REQUIRE(
+      sqlite3_set_authorizer(db.handle(), deny_ai_messages_update_delete, nullptr) == SQLITE_OK
+  );
   REQUIRE_THROWS(repo.update(msg_update));
   REQUIRE_THROWS(repo.trash(msg_trash.message_id, 200));
   REQUIRE_THROWS(repo.restore(msg_restore.message_id));
@@ -746,8 +782,10 @@ TEST_CASE("AiMessageRepo prepare failures via authorizer for update/trash/restor
   REQUIRE(sqlite3_set_authorizer(db.handle(), nullptr, nullptr) == SQLITE_OK);
 }
 
-TEST_CASE("AiMessageRepo list_by_thread and list_deleted throw when interrupted mid-scan",
-          "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo list_by_thread and list_deleted throw when interrupted mid-scan",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -774,30 +812,37 @@ TEST_CASE("AiMessageRepo list_by_thread and list_deleted throw when interrupted 
 
   int cb_count = 0;
   sqlite3_progress_handler(
-      db.handle(), 1,
+      db.handle(),
+      1,
       [](void* ctx) -> int {
         auto* count = static_cast<int*>(ctx);
         ++(*count);
         return (*count > 3000) ? 1 : 0;
       },
-      &cb_count);
+      &cb_count
+  );
   REQUIRE_THROWS(repo.list_by_thread("thread-1"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 
   cb_count = 0;
   sqlite3_progress_handler(
-      db.handle(), 1,
+      db.handle(),
+      1,
       [](void* ctx) -> int {
         auto* count = static_cast<int*>(ctx);
         ++(*count);
         return (*count > 3000) ? 1 : 0;
       },
-      &cb_count);
+      &cb_count
+  );
   REQUIRE_THROWS(repo.list_deleted_by_project("proj-1"));
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
 
-TEST_CASE("AiMessageRepo restore covers missing trash file and SQL step failure", "[aimessagerepo]") {
+TEST_CASE(
+    "AiMessageRepo restore covers missing trash file and SQL step failure",
+    "[aimessagerepo]"
+) {
   const auto dir = make_temp_dir();
   holder::platform::Db db;
   db.open(dir / "holder.db");
@@ -816,7 +861,8 @@ TEST_CASE("AiMessageRepo restore covers missing trash file and SQL step failure"
   missing_file_msg.created_at = 50;
   repo.append(missing_file_msg);
   repo.trash(missing_file_msg.message_id, 500);
-  const auto missing_trash_rel = holder::core::ai_message_trash_rel_path(missing_file_msg.message_id);
+  const auto missing_trash_rel = holder::core::ai_message_trash_rel_path(missing_file_msg.message_id
+  );
   std::filesystem::remove(project_root / missing_trash_rel);
   REQUIRE_THROWS(repo.restore(missing_file_msg.message_id));
 

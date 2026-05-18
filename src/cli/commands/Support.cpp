@@ -1,8 +1,8 @@
 #include "cli/commands/Support.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -24,10 +24,13 @@ nlohmann::json list_projects_payload(const holder::core::Paths& paths, bool incl
   const auto connection = read_secure_daemon_connection(paths);
   const std::string target = include_count ? "/projects?count=true" : "/projects";
   const auto response = http_json_request(
-      connection, boost::beast::http::verb::get, target, std::chrono::seconds(10));
+      connection,
+      boost::beast::http::verb::get,
+      target,
+      std::chrono::seconds(10) // LCOV_EXCL_LINE
+  );
 
-  if (response.status != boost::beast::http::status::ok ||
-      !response.payload.value("ok", false)) {
+  if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
     const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
     throw std::runtime_error("Projects request failed: " + api_error_message(response, fallback));
   }
@@ -66,7 +69,9 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   {
     std::ofstream out(tmp_path, std::ios::trunc);
     if (!out.is_open()) {
-      throw std::runtime_error("Failed to open holderctl config: " + tmp_path); // LCOV_EXCL_LINE: requires filesystem permission fault.
+      // LCOV_EXCL_START
+      throw std::runtime_error("Failed to open holderctl config: " + tmp_path);
+      // LCOV_EXCL_STOP
     }
     out << config.dump(2) << "\n";
   }
@@ -74,12 +79,15 @@ void write_holderctl_config(const holder::core::Paths& paths, const std::string&
   std::error_code ec;
   std::filesystem::rename(tmp_path, config_path, ec);
   if (ec) {
-    std::filesystem::remove(config_path, ec); // LCOV_EXCL_LINE: cross-device/permission fallback is platform dependent.
-    std::filesystem::rename(tmp_path, config_path, ec); // LCOV_EXCL_LINE
-    if (ec) { // LCOV_EXCL_LINE
-      throw std::runtime_error("Failed to write holderctl config: " + config_path.string() + // LCOV_EXCL_LINE
-                               " (" + ec.message() + ")"); // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    std::filesystem::remove(config_path, ec);
+    std::filesystem::rename(tmp_path, config_path, ec);
+    if (ec) {
+      throw std::runtime_error(
+          "Failed to write holderctl config: " + config_path.string() + " (" + ec.message() + ")"
+      );
     }
+    // LCOV_EXCL_STOP
   }
 } // LCOV_EXCL_LINE
 
@@ -146,9 +154,8 @@ std::string url_encode_component(const std::string& value) {
   out << std::uppercase << std::hex;
   for (const char ch : value) {
     const auto c = static_cast<unsigned char>(ch);
-    const bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                      (c >= '0' && c <= '9') || c == '-' || c == '_' ||
-                      c == '.' || c == '~';
+    const bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                      c == '-' || c == '_' || c == '.' || c == '~';
     if (safe) {
       out << static_cast<char>(c);
     } else {
@@ -199,7 +206,8 @@ std::string first_non_empty_line(const std::string& text) {
 std::string title_from_content(const std::string& content) {
   auto title = first_non_empty_line(content);
   if (title.empty()) {
-    title = "Untitled"; // LCOV_EXCL_LINE: command_new rejects all-whitespace content before title derivation.
+    title = "Untitled"; // LCOV_EXCL_LINE: command_new rejects all-whitespace content before title
+                        // derivation.
   }
   constexpr std::size_t kMaxTitleLength = 80;
   if (title.size() > kMaxTitleLength) {
@@ -214,9 +222,7 @@ void trim_trailing_line_breaks(std::string& text) {
   }
 }
 
-long long now_epoch_seconds() {
-  return static_cast<long long>(std::time(nullptr));
-}
+long long now_epoch_seconds() { return static_cast<long long>(std::time(nullptr)); }
 
 std::string lower_ascii(std::string value) {
   for (char& c : value) {
@@ -229,13 +235,15 @@ bool contains_case_insensitive(const std::string& haystack, const std::string& n
   return lower_ascii(haystack).find(lower_ascii(needle)) != std::string::npos;
 }
 
-nlohmann::json recovery_token_request(const holder::core::Paths& paths,
-                                      boost::beast::http::verb method,
-                                      const std::string& target,
-                                      const nlohmann::json& body) {
+nlohmann::json recovery_token_request(
+    const holder::core::Paths& paths,
+    boost::beast::http::verb method,
+    const std::string& target,
+    const nlohmann::json& body
+) {
   const auto connection = read_secure_daemon_connection(paths);
-  const auto response = http_json_request(
-      connection, method, target, std::chrono::seconds(30), body);
+  const auto response =
+      http_json_request(connection, method, target, std::chrono::seconds(30), body);
 
   if ((response.status != boost::beast::http::status::ok &&
        response.status != boost::beast::http::status::created) ||
@@ -253,30 +261,44 @@ nlohmann::json require_current_project_payload(const holder::core::Paths& paths)
   return find_project_by_id(projects_payload.at("data"), current_project_id);
 }
 
-nlohmann::json card_api_request(const holder::core::Paths& paths,
-                                boost::beast::http::verb method,
-                                const std::string& target,
-                                const nlohmann::json& body,
-                                boost::beast::http::status success) {
+nlohmann::json card_api_request(
+    const holder::core::Paths& paths,
+    boost::beast::http::verb method,
+    const std::string& target,
+    const nlohmann::json& body,
+    boost::beast::http::status success
+) {
   const auto connection = read_secure_daemon_connection(paths);
-  const auto response = method == boost::beast::http::verb::get
-                            ? http_json_request(connection, method, target, std::chrono::seconds(10)) // LCOV_EXCL_LINE: gcov misattributes the covered ternary arm.
-                            : http_json_request(connection, method, target, std::chrono::seconds(30), body);
+  const auto response =
+      method == boost::beast::http::verb::get
+          ? http_json_request(
+                connection,
+                method,
+                target,
+                std::chrono::seconds(10) // LCOV_EXCL_LINE
+            )
+          : http_json_request(connection, method, target, std::chrono::seconds(30), body);
 
   if (response.status != success || !response.payload.value("ok", false)) {
-    const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status)); // LCOV_EXCL_LINE: covered failures carry structured messages.
+    const auto fallback = "HTTP " +
+                          std::to_string(static_cast<unsigned>(response.status)
+                          ); // LCOV_EXCL_LINE: covered failures carry structured messages.
     throw std::runtime_error(api_error_message(response, fallback)); // LCOV_EXCL_LINE
   } // LCOV_EXCL_LINE
 
   return response.payload;
 }
 
-nlohmann::json fetch_card_in_current_project(const holder::core::Paths& paths,
-                                             const std::string& current_project_id,
-                                             const std::string& card_id) {
-  const auto payload = card_api_request(paths,
-                                        boost::beast::http::verb::get,
-                                        "/cards/" + url_encode_component(card_id));
+nlohmann::json fetch_card_in_current_project(
+    const holder::core::Paths& paths,
+    const std::string& current_project_id,
+    const std::string& card_id
+) {
+  const auto payload = card_api_request(
+      paths,
+      boost::beast::http::verb::get,
+      "/cards/" + url_encode_component(card_id)
+  );
   const auto& data = payload.at("data");
   if (json_string(data, "project_id") != current_project_id) {
     throw std::runtime_error("Card is not in the current project: " + card_id);

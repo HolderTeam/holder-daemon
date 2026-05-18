@@ -1,9 +1,9 @@
 #include "api/routes/ai/status/AiRuntimeStatusRoutes.h"
 
+#include "ai/AiProviderCredentialRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
-#include "ai/AiProviderCredentialRepo.h"
 #include "llm/LocalModelRunner.h"
 #include "llm/RunnerModelRef.h"
 
@@ -38,7 +38,10 @@ std::string preview_for_output(const std::string& stored) {
   return stored.find('*') != std::string::npos ? stored : support::mask_api_key(stored);
 }
 
-nlohmann::json runtime_model_to_json(const holder::llm::LocalModel& model, const std::string& runner_id) {
+nlohmann::json runtime_model_to_json(
+    const holder::llm::LocalModel& model,
+    const std::string& runner_id
+) {
   return {
       {"runner_id", runner_id},
       {"name", model.name},
@@ -49,7 +52,10 @@ nlohmann::json runtime_model_to_json(const holder::llm::LocalModel& model, const
   };
 }
 
-nlohmann::json runtime_pull_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
+nlohmann::json runtime_pull_to_json(
+    const holder::llm::RunnerPullJob& job,
+    const std::string& runner_id
+) {
   return {
       {"job_id", job.job_id},
       {"runner_id", runner_id},
@@ -68,8 +74,10 @@ nlohmann::json runtime_pull_to_json(const holder::llm::RunnerPullJob& job, const
   };
 }
 
-nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
-                                      holder::llm::RunnerClient* client) {
+nlohmann::json runner_runtime_to_json(
+    const holder::model::AiRunner& runner,
+    holder::llm::RunnerClient* client
+) {
   nlohmann::json runtime;
   runtime["configured"] = client != nullptr;
   if (client == nullptr) {
@@ -87,7 +95,8 @@ nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
   runtime["available"] = status.available;
   runtime["spawn_attempted"] = status.spawn_attempted;
   runtime["last_checked"] = status.last_checked;
-  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.version);
+  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr)
+                                              : nlohmann::json(status.version);
   runtime["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
   runtime["models"] = nlohmann::json::array();
   for (const auto& model : status.models) {
@@ -100,20 +109,26 @@ nlohmann::json runner_runtime_to_json(const holder::model::AiRunner& runner,
   return runtime;
 }
 
-nlohmann::json runner_to_json(const holder::model::AiRunner& runner,
-                              holder::llm::RunnerRegistry* runner_registry) {
+nlohmann::json runner_to_json(
+    const holder::model::AiRunner& runner,
+    holder::llm::RunnerRegistry* runner_registry
+) {
   return {
       {"runner_id", runner.runner_id},
       {"name", runner.name},
       {"kind", runner.kind},
-      {"base_url", runner.base_url.has_value() ? nlohmann::json(runner.base_url.value()) : nlohmann::json(nullptr)},
+      {"base_url",
+       runner.base_url.has_value() ? nlohmann::json(runner.base_url.value())
+                                   : nlohmann::json(nullptr)},
       {"source", runner.source},
       {"enabled", runner.enabled},
       {"created_at", runner.created_at},
       {"updated_at", runner.updated_at},
       {"runtime",
        runner_runtime_to_json(
-           runner, runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr)},
+           runner,
+           runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr
+       )},
   };
 }
 
@@ -132,12 +147,14 @@ long long active_pull_jobs_from_runtime(const nlohmann::json& runtime) {
 
 } // namespace
 
-bool handle_ai_runtime_status_routes(const std::string& path,
-                                     const http::request<http::string_body>& req,
-                                     http::response<http::string_body>& res,
-                                     holder::platform::Db& db,
-                                     holder::llm::RunnerRegistry* runner_registry,
-                                     const std::function<std::string(const std::string&)>& param_get) {
+bool handle_ai_runtime_status_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::llm::RunnerRegistry* runner_registry,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   (void)req;
   (void)param_get;
   if (path == "/ai/status" && req.method() == http::verb::get) {

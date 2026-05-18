@@ -4,8 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -78,7 +78,9 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
       options.recent = true;
     } else if (arg == "--limit") {
       if (i + 1 >= argc) {
-        throw std::runtime_error("Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]");
+        throw std::runtime_error(
+            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+        );
       }
       try {
         options.limit = std::stoi(argv[++i]);
@@ -90,7 +92,9 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
       }
     } else if (arg == "--parent") {
       if (i + 1 >= argc) {
-        throw std::runtime_error("Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]");
+        throw std::runtime_error(
+            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+        );
       }
       const std::string parent = argv[++i];
       if (parent.empty()) {
@@ -100,7 +104,9 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
     } else if (arg.rfind("--", 0) == 0) {
       throw std::runtime_error("Unknown cards option: " + arg);
     } else {
-      throw std::runtime_error("Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]");
+      throw std::runtime_error(
+          "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+      );
     }
   }
 
@@ -133,6 +139,14 @@ CardOptions parse_card_options(int argc, char* argv[]) {
   }
   return options;
 }
+
+nlohmann::json card_update_body(const nlohmann::json& card, const std::string& content) {
+  nlohmann::json body;
+  body["content"] = content;
+  body["title"] = json_string(card, "title");
+  body["updated_at"] = now_epoch_seconds();
+  return body;
+} // LCOV_EXCL_LINE
 
 std::string shell_quote(const std::string& value) {
 #ifdef _WIN32
@@ -172,15 +186,16 @@ std::string sanitized_filename_component(const std::string& value) {
 
 std::filesystem::path edit_temp_path(const holder::core::Paths& paths, const std::string& card_id) {
   const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
-  return paths.cache_dir /
-         ("holderctl-edit-" + sanitized_filename_component(card_id) + "-" +
-          std::to_string(unique) + ".md");
+  return paths.cache_dir / ("holderctl-edit-" + sanitized_filename_component(card_id) + "-" +
+                            std::to_string(unique) + ".md");
 }
 
 std::string read_text_file_raw(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open()) {
-    throw std::runtime_error("Failed to read editor temp file: " + path.string()); // LCOV_EXCL_LINE: requires the editor to remove or revoke the temp file.
+    // LCOV_EXCL_START
+    throw std::runtime_error("Failed to read editor temp file: " + path.string());
+    // LCOV_EXCL_STOP
   }
   std::ostringstream buffer;
   buffer << in.rdbuf();
@@ -193,7 +208,9 @@ void write_text_file_raw(const std::filesystem::path& path, const std::string& c
   }
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out.is_open()) {
-    throw std::runtime_error("Failed to create editor temp file: " + path.string()); // LCOV_EXCL_LINE: requires filesystem permission fault.
+    // LCOV_EXCL_START
+    throw std::runtime_error("Failed to create editor temp file: " + path.string());
+    // LCOV_EXCL_STOP
   }
   out << content;
 }
@@ -230,14 +247,17 @@ int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
   try {
     const auto connection = read_secure_daemon_connection(paths);
     const std::string target = "/search/cards?project_id=" +
-                               url_encode_component(current_project_id) + "&q=" +
-                               url_encode_component(options.query) + "&limit=" +
-                               std::to_string(options.limit);
+                               url_encode_component(current_project_id) +
+                               "&q=" + url_encode_component(options.query) +
+                               "&limit=" + std::to_string(options.limit);
     const auto response = http_json_request(
-        connection, boost::beast::http::verb::get, target, std::chrono::seconds(10));
+        connection,
+        boost::beast::http::verb::get,
+        target,
+        std::chrono::seconds(10) // LCOV_EXCL_LINE
+    );
 
-    if (response.status != boost::beast::http::status::ok ||
-        !response.payload.value("ok", false)) {
+    if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
       const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
       throw std::runtime_error("Search failed: " + api_error_message(response, fallback));
     }
@@ -296,15 +316,15 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
 
     std::cout << "CARD_ID\tTITLE\tCHILDREN\tUPDATED\n";
     for (const auto& card : cards) {
-      std::cout << json_string(card, "card_id") << "\t"
-                << json_string(card, "title") << "\t"
-                << card.value("child_count", 0) << "\t"
-                << card.value("updated_at", 0) << "\n";
+      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\t"
+                << card.value("child_count", 0) << "\t" << card.value("updated_at", 0) << "\n";
     }
     return 0;
-  } catch (const std::exception& ex) { // LCOV_EXCL_LINE: current-project validation handles reachable daemon failures first.
-    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what()); // LCOV_EXCL_LINE
-  } // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+  } catch (const std::exception& ex) {
+    throw std::runtime_error(std::string("Failed to list cards: ") + ex.what());
+  }
+  // LCOV_EXCL_STOP
 }
 
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
@@ -315,13 +335,14 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
 
   try {
     const auto connection = read_secure_daemon_connection(paths);
-    const auto response = http_json_request(connection,
-                                            boost::beast::http::verb::get,
-                                            "/cards/" + url_encode_component(options.card_id),
-                                            std::chrono::seconds(10));
+    const auto response = http_json_request(
+        connection,
+        boost::beast::http::verb::get,
+        "/cards/" + url_encode_component(options.card_id),
+        std::chrono::seconds(10) // LCOV_EXCL_LINE
+    );
 
-    if (response.status != boost::beast::http::status::ok ||
-        !response.payload.value("ok", false)) {
+    if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
       const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
       throw std::runtime_error("Card request failed: " + api_error_message(response, fallback));
     }
@@ -357,9 +378,11 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
-    const auto fetched = card_api_request(paths,
-                                          boost::beast::http::verb::get,
-                                          "/cards/" + url_encode_component(card_id));
+    const auto fetched = card_api_request(
+        paths,
+        boost::beast::http::verb::get,
+        "/cards/" + url_encode_component(card_id)
+    );
     const auto& data = fetched.at("data");
     if (json_string(data, "project_id") != current_project_id) {
       throw std::runtime_error("Card is not in the current project: " + card_id);
@@ -379,12 +402,12 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
       return 0;
     }
 
-    (void)card_api_request(paths,
-                           boost::beast::http::verb::patch,
-                           "/cards/" + url_encode_component(card_id),
-                           {{"content", edited_content},
-                            {"title", json_string(data, "title")},
-                            {"updated_at", now_epoch_seconds()}}); // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer line.
+    (void)card_api_request(
+        paths,
+        boost::beast::http::verb::patch,
+        "/cards/" + url_encode_component(card_id),
+        card_update_body(data, edited_content)
+    );
     remove_temp_file(temp_path);
     std::cout << "Updated card: " << card_id << "\n";
     return 0;
@@ -405,15 +428,19 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
   try {
     const auto project = require_current_project_payload(paths);
     const auto project_id = json_string(project, "project_id");
-    const auto payload = card_api_request(paths,
-                                          boost::beast::http::verb::post,
-                                          "/cards",
-                                          {{"project_id", project_id},
-                                           {"title", title_from_content(content)},
-                                           {"content", content},
-                                           {"created_at", now_epoch_seconds()}, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
-                                           {"updated_at", now_epoch_seconds()}}, // LCOV_EXCL_LINE
-                                          boost::beast::http::status::created);
+    const auto payload = card_api_request(
+        paths,
+        boost::beast::http::verb::post,
+        "/cards",
+        // LCOV_EXCL_START
+        {{"project_id", project_id},
+         {"title", title_from_content(content)},
+         {"content", content},
+         {"created_at", now_epoch_seconds()},
+         {"updated_at", now_epoch_seconds()}},
+        // LCOV_EXCL_STOP
+        boost::beast::http::status::created
+    );
     std::cout << "Created card: " << json_string(payload.at("data"), "card_id") << "\n";
     return 0;
   } catch (const std::exception& ex) {
@@ -423,7 +450,9 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
 
 int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
   if (argc < 3) {
-    throw std::runtime_error("Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>");
+    throw std::runtime_error(
+        "Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>"
+    );
   }
 
   const std::string card_id = argv[2];
@@ -432,15 +461,19 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
     addition = read_stdin_all();
   }
   if (trim_ascii_whitespace(addition).empty()) {
-    throw std::runtime_error("Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>");
+    throw std::runtime_error(
+        "Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>"
+    );
   }
 
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
-    const auto fetched = card_api_request(paths,
-                                          boost::beast::http::verb::get,
-                                          "/cards/" + url_encode_component(card_id));
+    const auto fetched = card_api_request(
+        paths,
+        boost::beast::http::verb::get,
+        "/cards/" + url_encode_component(card_id)
+    );
     const auto& data = fetched.at("data");
     if (json_string(data, "project_id") != current_project_id) {
       throw std::runtime_error("Card is not in the current project: " + card_id);
@@ -453,12 +486,12 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
     content += addition;
 
-    (void)card_api_request(paths,
-                           boost::beast::http::verb::patch,
-                           "/cards/" + url_encode_component(card_id),
-                           {{"content", content},
-                            {"title", json_string(data, "title")},
-                            {"updated_at", now_epoch_seconds()}}); // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer line.
+    (void)card_api_request(
+        paths,
+        boost::beast::http::verb::patch,
+        "/cards/" + url_encode_component(card_id),
+        card_update_body(data, content)
+    );
     std::cout << "Appended to card: " << card_id << "\n";
     return 0;
   } catch (const std::exception& ex) {

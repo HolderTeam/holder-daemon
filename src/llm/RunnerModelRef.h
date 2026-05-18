@@ -24,10 +24,12 @@ std::optional<RunnerModelRef> parse_runner_model_ref(const std::string& ref);
 std::string normalize_local_runner_model_ref(const std::string& ref);
 std::optional<std::string> local_model_name_from_ref(
     const std::optional<std::string>& ref,
-    const std::string& expected_runner_id);
+    const std::string& expected_runner_id
+);
 std::optional<std::string> runner_id_from_ref(const std::optional<std::string>& ref);
 std::optional<ResolvedRunnerModel> resolve_configured_runner_model(
     const std::optional<std::string>& ref,
-    RunnerRegistry* runner_registry);
+    RunnerRegistry* runner_registry
+);
 
 } // namespace holder::llm

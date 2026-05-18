@@ -11,9 +11,11 @@ constexpr std::string_view kDelimiter = "---\n";
 
 } // namespace
 
-std::string render_ai_message_front_matter(const holder::model::AiMessage& message,
-                                           const std::string& project_id,
-                                           const std::vector<holder::model::CardLink>& links) {
+std::string render_ai_message_front_matter(
+    const holder::model::AiMessage& message,
+    const std::string& project_id,
+    const std::vector<holder::model::CardLink>& links
+) {
   YAML::Emitter out;
   out << YAML::BeginMap;
   out << YAML::Key << "message_id" << YAML::Value << message.message_id;

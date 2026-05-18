@@ -48,9 +48,8 @@ bool client_disconnected(Session::tcp::socket& socket) {
   }
 
   std::array<char, 1> buf{};
-  const auto received = socket.receive(boost::asio::buffer(buf),
-                                       boost::asio::socket_base::message_peek,
-                                       ec);
+  const auto received =
+      socket.receive(boost::asio::buffer(buf), boost::asio::socket_base::message_peek, ec);
 
   boost::system::error_code restore_ec;
   socket.non_blocking(was_non_blocking, restore_ec);
@@ -72,10 +71,12 @@ bool should_drop_stale_background_request(Session::PreparedRequest& prepared) {
   return client_disconnected(prepared.socket);
 }
 
-void reject_prepared_request(Session::PreparedRequest prepared,
-                             http::status status,
-                             const std::string& code,
-                             const std::string& message) {
+void reject_prepared_request(
+    Session::PreparedRequest prepared,
+    http::status status,
+    const std::string& code,
+    const std::string& message
+) {
   boost::system::error_code ec;
   auto res = support::error_response(status, code, message);
   http::write(prepared.socket, res, ec);
@@ -90,13 +91,15 @@ struct WorkerContext {
   std::unique_ptr<holder::ai::NudgeService> nudge_service;
 };
 
-WorkerContext make_worker_context(holder::platform::Db& root_db,
-                                  holder::index::FtsIndexer* root_fts,
-                                  holder::card::CardStore* root_card_store,
-                                  holder::llm::RunnerRegistry* root_runner_registry,
-                                  holder::ai::NudgeService* root_nudge_service,
-                                  holder::git::GitOps* git_ops,
-                                  const holder::core::SerialExecutor* ai_runtime_executor) {
+WorkerContext make_worker_context(
+    holder::platform::Db& root_db,
+    holder::index::FtsIndexer* root_fts,
+    holder::card::CardStore* root_card_store,
+    holder::llm::RunnerRegistry* root_runner_registry,
+    holder::ai::NudgeService* root_nudge_service,
+    holder::git::GitOps* git_ops,
+    const holder::core::SerialExecutor* ai_runtime_executor
+) {
   WorkerContext context;
   context.db.open(root_db.path());
 
@@ -104,44 +107,46 @@ WorkerContext make_worker_context(holder::platform::Db& root_db,
     context.fts = std::make_unique<holder::index::FtsIndexer>(context.db);
   }
   if (root_card_store != nullptr) {
-    context.card_store = std::make_unique<holder::card::CardStore>(
-        context.db,
-        context.fts.get(),
-        nullptr,
-        git_ops);
+    context.card_store =
+        std::make_unique<holder::card::CardStore>(context.db, context.fts.get(), nullptr, git_ops);
   }
 
   holder::llm::RunnerClient* auto_local_client = nullptr;
   if (root_runner_registry != nullptr) {
-    auto_local_client =
-        root_runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId);
+    auto_local_client = root_runner_registry->get_client(
+        holder::llm::RunnerRegistry::kAutoLocalRunnerId
+    );
     context.runner_registry = std::make_unique<holder::llm::RunnerRegistry>(
         &context.db,
         auto_local_client,
-        ai_runtime_executor);
+        ai_runtime_executor
+    );
   }
 
   if (root_nudge_service != nullptr) {
-    context.nudge_service = std::make_unique<holder::ai::NudgeService>(
-        context.db,
-        context.runner_registry.get());
+    context.nudge_service =
+        std::make_unique<holder::ai::NudgeService>(context.db, context.runner_registry.get());
   }
 
   return context;
 } // LCOV_EXCL_LINE
 
-void track_socket(std::mutex& mutex,
-                  std::unordered_set<Session::IoHandlePtr>& sockets,
-                  const Session::IoHandlePtr& socket) {
+void track_socket(
+    std::mutex& mutex,
+    std::unordered_set<Session::IoHandlePtr>& sockets,
+    const Session::IoHandlePtr& socket
+) {
   std::lock_guard<std::mutex> lock(mutex);
   if (socket != nullptr) {
     sockets.insert(socket);
   }
 }
 
-void untrack_socket(std::mutex& mutex,
-                    std::unordered_set<Session::IoHandlePtr>& sockets,
-                    const Session::IoHandlePtr& socket) {
+void untrack_socket(
+    std::mutex& mutex,
+    std::unordered_set<Session::IoHandlePtr>& sockets,
+    const Session::IoHandlePtr& socket
+) {
   std::lock_guard<std::mutex> lock(mutex);
   if (socket != nullptr) {
     sockets.erase(socket);
@@ -150,19 +155,21 @@ void untrack_socket(std::mutex& mutex,
 
 } // namespace
 
-Listener::Listener(std::string bind,
-                   unsigned short port,
-                   holder::platform::Db& db,
-                   const std::string& auth_token,
-                   const Router& router,
-                   std::chrono::steady_clock::time_point started_at,
-                   holder::card::CardStore* card_store,
-                   holder::index::FtsIndexer* fts,
-                   holder::ai::NudgeService* nudge_service,
-                   holder::privacy::SecretStore* secret_store,
-                   holder::git::GitOps* git_ops,
-                   holder::llm::RunnerRegistry* runner_registry,
-                   holder::api::ConcurrencyProfile concurrency)
+Listener::Listener(
+    std::string bind,
+    unsigned short port,
+    holder::platform::Db& db,
+    const std::string& auth_token,
+    const Router& router,
+    std::chrono::steady_clock::time_point started_at,
+    holder::card::CardStore* card_store,
+    holder::index::FtsIndexer* fts,
+    holder::ai::NudgeService* nudge_service,
+    holder::privacy::SecretStore* secret_store,
+    holder::git::GitOps* git_ops,
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::api::ConcurrencyProfile concurrency
+)
     : acceptor_(ioc_),
       bind_(std::move(bind)),
       port_(port),
@@ -227,8 +234,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     request_git_ops_ = executor_git_ops_.get();
   }
   if (runner_registry_ != nullptr) {
-    ai_runtime_executor_ =
-        std::make_unique<holder::core::SerialExecutor>("request-ai-runtime", 16);
+    ai_runtime_executor_ = std::make_unique<holder::core::SerialExecutor>("request-ai-runtime", 16);
   }
 
   ingress_workers_.clear();
@@ -239,28 +245,38 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
   ingress_workers_.reserve(concurrency_.ingress_workers);
   for (std::size_t i = 0; i < concurrency_.ingress_workers; ++i) {
-    ingress_workers_.emplace_back([this]() { run_ingress_worker(); });
+    ingress_workers_.emplace_back([this]() {
+      run_ingress_worker();
+    });
   }
 
   save_workers_.reserve(concurrency_.save_workers);
   for (std::size_t i = 0; i < concurrency_.save_workers; ++i) {
-    save_workers_.emplace_back([this]() { run_save_worker(); });
+    save_workers_.emplace_back([this]() {
+      run_save_worker();
+    });
   }
 
   general_workers_.reserve(concurrency_.general_workers);
   for (std::size_t i = 0; i < concurrency_.general_workers; ++i) {
-    general_workers_.emplace_back([this]() { run_general_worker(); });
+    general_workers_.emplace_back([this]() {
+      run_general_worker();
+    });
   }
 
   writer_workers_.reserve(concurrency_.writer_workers);
   for (std::size_t i = 0; i < concurrency_.writer_workers; ++i) {
-    writer_workers_.emplace_back([this]() { run_writer_worker(); });
+    writer_workers_.emplace_back([this]() {
+      run_writer_worker();
+    });
   }
 
   start_accept_loop();
   io_workers_.reserve(concurrency_.io_threads);
   for (std::size_t i = 0; i < concurrency_.io_threads; ++i) {
-    io_workers_.emplace_back([this]() { ioc_.run(); });
+    io_workers_.emplace_back([this]() {
+      ioc_.run();
+    });
   }
 
   while (!stop_requested_.load() && !signals.is_requested()) {
@@ -421,7 +437,8 @@ void Listener::run_ingress_worker() {
         },
         [this](const Session::IoHandlePtr& active) { // LCOV_EXCL_LINE
           untrack_socket(active_socket_mutex_, active_read_sockets_, active);
-        });
+        }
+    );
     if (!prepared.has_value()) {
       continue;
     }
@@ -441,23 +458,29 @@ void Listener::run_ingress_worker() {
       }
 
       if (target_queue->size() < kMaxPreparedRequestsPerLane) {
-        spdlog::debug("queued request lane={} target={} queue_size_before={}",
-                      Session::lane_name(prepared->lane),
-                      std::string(prepared->req.target()),
-                      target_queue->size());
+        spdlog::debug(
+            "queued request lane={} target={} queue_size_before={}",
+            Session::lane_name(prepared->lane),
+            std::string(prepared->req.target()),
+            target_queue->size()
+        );
         target_queue->emplace_back(std::move(*prepared));
         queued = true;
       }
     }
 
     if (!queued) {
-      spdlog::warn("request lane queue full; rejecting lane={} target={}",
-                   Session::lane_name(prepared->lane),
-                   std::string(prepared->req.target()));
-      reject_prepared_request(std::move(*prepared),
-                              http::status::service_unavailable,
-                              "server_busy",
-                              "Server busy. Please retry.");
+      spdlog::warn(
+          "request lane queue full; rejecting lane={} target={}",
+          Session::lane_name(prepared->lane),
+          std::string(prepared->req.target())
+      );
+      reject_prepared_request(
+          std::move(*prepared),
+          http::status::service_unavailable,
+          "server_busy",
+          "Server busy. Please retry."
+      );
       continue;
     }
     lane_queue_cv_.notify_all();
@@ -465,17 +488,19 @@ void Listener::run_ingress_worker() {
 }
 
 void Listener::run_save_worker() {
-  auto context =
-      make_worker_context(db_,
-                          fts_,
-                          card_store_,
-                          runner_registry_,
-                          nudge_service_,
-                          request_git_ops_,
-                          ai_runtime_executor_.get());
+  auto context = make_worker_context(
+      db_,
+      fts_,
+      card_store_,
+      runner_registry_,
+      nudge_service_,
+      request_git_ops_,
+      ai_runtime_executor_.get()
+  );
 
   while (true) {
-    Session::PreparedRequest prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Save};
+    Session::PreparedRequest
+        prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Save};
     {
       std::unique_lock<std::mutex> lock(lane_queue_mutex_);
       lane_queue_cv_.wait(lock, [this]() {
@@ -491,17 +516,19 @@ void Listener::run_save_worker() {
       save_queue_.pop_front();
     }
 
-    Session session(std::move(prepared),
-                    context.db,
-                    auth_token_,
-                    router_,
-                    started_at_,
-                    context.card_store.get(),
-                    context.fts.get(),
-                    context.nudge_service.get(),
-                    secret_store_,
-                    git_ops_,
-                    context.runner_registry.get());
+    Session session(
+        std::move(prepared),
+        context.db,
+        auth_token_,
+        router_,
+        started_at_,
+        context.card_store.get(),
+        context.fts.get(),
+        context.nudge_service.get(),
+        secret_store_,
+        git_ops_,
+        context.runner_registry.get()
+    );
     auto response = session.execute();
     if (response.has_value()) {
       if (stop_requested_.load()) {
@@ -518,18 +545,19 @@ void Listener::run_save_worker() {
 }
 
 void Listener::run_general_worker() {
-  auto context =
-      make_worker_context(db_,
-                          fts_,
-                          card_store_,
-                          runner_registry_,
-                          nudge_service_,
-                          request_git_ops_,
-                          ai_runtime_executor_.get());
+  auto context = make_worker_context(
+      db_,
+      fts_,
+      card_store_,
+      runner_registry_,
+      nudge_service_,
+      request_git_ops_,
+      ai_runtime_executor_.get()
+  );
 
   while (true) {
-    Session::PreparedRequest prepared{
-        tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Foreground};
+    Session::PreparedRequest
+        prepared{tcp::socket(ioc_), {}, {}, "", "", Session::RequestLane::Foreground};
     {
       std::unique_lock<std::mutex> lock(lane_queue_mutex_);
       lane_queue_cv_.wait(lock, [this]() {
@@ -552,26 +580,30 @@ void Listener::run_general_worker() {
     }
 
     if (should_drop_stale_background_request(prepared)) {
-      spdlog::info("dropping stale background request before execution: lane={} target={}",
-                   Session::lane_name(prepared.lane),
-                   std::string(prepared.req.target()));
+      spdlog::info(
+          "dropping stale background request before execution: lane={} target={}",
+          Session::lane_name(prepared.lane),
+          std::string(prepared.req.target())
+      );
       boost::system::error_code close_ec;
       prepared.socket.shutdown(tcp::socket::shutdown_both, close_ec);
       prepared.socket.close(close_ec);
       continue;
     }
 
-    Session session(std::move(prepared),
-                    context.db,
-                    auth_token_,
-                    router_,
-                    started_at_,
-                    context.card_store.get(),
-                    context.fts.get(),
-                    context.nudge_service.get(),
-                    secret_store_,
-                    git_ops_,
-                    context.runner_registry.get());
+    Session session(
+        std::move(prepared),
+        context.db,
+        auth_token_,
+        router_,
+        started_at_,
+        context.card_store.get(),
+        context.fts.get(),
+        context.nudge_service.get(),
+        secret_store_,
+        git_ops_,
+        context.runner_registry.get()
+    );
     auto response = session.execute();
     if (response.has_value()) {
       if (stop_requested_.load()) {
@@ -611,7 +643,8 @@ void Listener::run_writer_worker() {
         },
         [this](const Session::IoHandlePtr& active) {
           untrack_socket(active_socket_mutex_, active_write_sockets_, active);
-        });
+        }
+    );
   }
 }
 
@@ -661,10 +694,13 @@ void Listener::shutdown_active_sockets() {
   {
     std::lock_guard<std::mutex> lock(active_socket_mutex_);
     sockets_to_cancel.reserve(active_read_sockets_.size() + active_write_sockets_.size());
+    sockets_to_cancel
+        .insert(sockets_to_cancel.end(), active_read_sockets_.begin(), active_read_sockets_.end());
     sockets_to_cancel.insert(
-        sockets_to_cancel.end(), active_read_sockets_.begin(), active_read_sockets_.end());
-    sockets_to_cancel.insert(
-        sockets_to_cancel.end(), active_write_sockets_.begin(), active_write_sockets_.end());
+        sockets_to_cancel.end(),
+        active_write_sockets_.begin(),
+        active_write_sockets_.end()
+    );
   }
 
   for (const auto& io_handle : sockets_to_cancel) {

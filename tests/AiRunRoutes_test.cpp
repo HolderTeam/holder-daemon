@@ -34,8 +34,12 @@ TEST_CASE("AiRunRoutes returns default out when no run sub-route matches", "[ai]
   auto req = make_request(http::verb::delete_, "/ai/runs");
   http::response<http::string_body> res;
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const auto out = holder::api::routes::handle_ai_run_routes(
       "/ai/runs",
@@ -47,7 +51,8 @@ TEST_CASE("AiRunRoutes returns default out when no run sub-route matches", "[ai]
       secret_store.get(),
       static_cast<holder::llm::RunnerRegistry*>(nullptr),
       uuid_v4,
-      param_get);
+      param_get
+  );
   REQUIRE_FALSE(out.handled);
   REQUIRE_FALSE(out.streamed);
 }

@@ -5,8 +5,8 @@
 #endif
 
 #include "api/routes/ProjectRoutes.h"
-#include "http_test_helpers.h"
 #include "git/GitOps.h"
+#include "http_test_helpers.h"
 #include "model/Project.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
@@ -20,9 +20,11 @@
 namespace {
 namespace http = boost::beast::http;
 
-http::request<http::string_body> make_request(http::verb method,
-                                              const std::string& target,
-                                              const nlohmann::json& body = nlohmann::json()) {
+http::request<http::string_body> make_request(
+    http::verb method,
+    const std::string& target,
+    const nlohmann::json& body = nlohmann::json()
+) {
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
   if (!body.is_null() && !body.empty()) {
@@ -34,7 +36,7 @@ http::request<http::string_body> make_request(http::verb method,
 }
 
 class ProjectRoutesTestGitOps final : public holder::git::GitOps {
-public:
+ public:
   holder::git::RemoteProbeResult probe_result{
       .status = holder::git::RemoteProbeStatus::Reachable,
       .remote_has_head = true,
@@ -66,7 +68,9 @@ public:
     }
   }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
-  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override { return push_result; }
+  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    return push_result;
+  }
   std::filesystem::path repo_dir() const override { return {}; }
 };
 
@@ -78,11 +82,22 @@ TEST_CASE("ProjectRoutes returns false when path does not match", "[project-rout
 
   auto req = make_request(http::verb::get, "/not-projects");
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const bool handled = holder::api::routes::handle_project_routes(
-      "/not-projects", req, res, db, nullptr, uuid_v4, param_get);
+      "/not-projects",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  );
   REQUIRE_FALSE(handled);
 }
 
@@ -92,11 +107,22 @@ TEST_CASE("ProjectRoutes global recovery import validates required fields", "[pr
 
   auto req = make_request(http::verb::post, "/recovery-token/import", nlohmann::json::object());
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const bool handled = holder::api::routes::handle_project_routes(
-      "/recovery-token/import", req, res, db, nullptr, uuid_v4, param_get);
+      "/recovery-token/import",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  );
   REQUIRE(handled);
   REQUIRE(res.result() == http::status::bad_request);
   const auto payload = nlohmann::json::parse(res.body());
@@ -110,11 +136,22 @@ TEST_CASE("ProjectRoutes rejects empty project id segment", "[project-routes]") 
 
   auto req = make_request(http::verb::get, "/projects/");
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const bool handled = holder::api::routes::handle_project_routes(
-      "/projects/", req, res, db, nullptr, uuid_v4, param_get);
+      "/projects/",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  );
   REQUIRE(handled);
   REQUIRE(res.result() == http::status::not_found);
   const auto payload = nlohmann::json::parse(res.body());
@@ -136,8 +173,12 @@ TEST_CASE("ProjectRoutes covers additional uncovered branches", "[project-routes
   project.updated_at = 1;
   repo.create(project);
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto empty_param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto empty_param_get = [](const std::string&) {
+    return std::string();
+  };
   ProjectRoutesTestGitOps git;
 
   auto call = [&](http::verb method,
@@ -146,7 +187,14 @@ TEST_CASE("ProjectRoutes covers additional uncovered branches", "[project-routes
     auto req = make_request(method, path, body);
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        path, req, res, db, &git, uuid_v4, empty_param_get);
+        path,
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
   };
@@ -180,8 +228,12 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
   project.git_remote_url = std::string("git@example.com:test/repo.git");
   repo.create(project);
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto empty_param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto empty_param_get = [](const std::string&) {
+    return std::string();
+  };
   ProjectRoutesTestGitOps git;
 
   auto call = [&](http::verb method,
@@ -190,7 +242,14 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     auto req = make_request(method, path, body);
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        path, req, res, db, &git, uuid_v4, empty_param_get);
+        path,
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
   };
@@ -201,9 +260,11 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .remote_has_head = false,
         .error_message = "auth",
     };
-    auto [status, payload] = call(http::verb::post,
-                                  "/projects/proj-1/git/test-remote",
-                                  {{"remote_url", nullptr}, {"branch", "main"}});
+    auto [status, payload] = call(
+        http::verb::post,
+        "/projects/proj-1/git/test-remote",
+        {{"remote_url", nullptr}, {"branch", "main"}}
+    );
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "remote_unset");
     REQUIRE(payload["data"]["error_code"] == "remote_unset");
@@ -216,9 +277,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .remote_has_head = true,
         .error_message = {},
     };
-    auto [status, payload] = call(http::verb::post,
-                                  "/projects/proj-1/git/test-remote",
-                                  {{"branch", "main"}});
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/test-remote", {{"branch", "main"}});
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "reachable");
     REQUIRE(payload["data"]["error_code"].is_null());
@@ -231,7 +291,14 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     req.prepare_payload();
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        "/projects/proj-1/git/test-remote", req, res, db, &git, uuid_v4, empty_param_get);
+        "/projects/proj-1/git/test-remote",
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     REQUIRE(res.result() == http::status::bad_request);
   }
@@ -243,7 +310,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .behind_count = 0,
         .error_message = "auth failed",
     };
-    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "auth_failed");
     REQUIRE(payload["data"]["error_code"] == "auth_failed");
@@ -257,7 +325,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .local_head_commit = "",
         .error_message = {},
     };
-    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "pushed");
     REQUIRE(payload["data"]["local_head_commit"].is_null());
@@ -271,7 +340,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .local_head_commit = "abc123def456",
         .error_message = {},
     };
-    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["data"]["status"] == "pushed");
     REQUIRE(payload["data"]["local_head_commit"] == "abc123def456");
@@ -283,7 +353,14 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     req.prepare_payload();
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        "/projects/proj-1/git/push", req, res, db, &git, uuid_v4, empty_param_get);
+        "/projects/proj-1/git/push",
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     REQUIRE(res.result() == http::status::bad_request);
   }
@@ -311,7 +388,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     db.exec(
         "INSERT INTO project_sync_state(project_id,uncommitted_changes_count,unpushed_commits_count,"
         "retry_count,pull_retry_count,updated_at) VALUES('proj-1',0,0,0,0,0) "
-        "ON CONFLICT(project_id) DO UPDATE SET updated_at=0;");
+        "ON CONFLICT(project_id) DO UPDATE SET updated_at=0;"
+    );
 
     auto [status, payload] = call(http::verb::get, "/projects/proj-1/git/sync-status");
     REQUIRE(status == http::status::ok);
@@ -326,7 +404,8 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
         .behind_count = 0,
         .error_message = {},
     };
-    auto [status, payload] = call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/push", nlohmann::json::object());
     REQUIRE(status == http::status::ok);
     REQUIRE(payload["ok"] == true);
     REQUIRE(payload["data"]["status"] == "pushed");
@@ -350,8 +429,12 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
 TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[project-routes]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto empty_param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto empty_param_get = [](const std::string&) {
+    return std::string();
+  };
   ProjectRoutesTestGitOps git;
 
   auto call = [&](http::verb method,
@@ -360,7 +443,14 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
     auto req = make_request(method, path, body);
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        path, req, res, db, &git, uuid_v4, empty_param_get);
+        path,
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
   };
@@ -369,21 +459,22 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
     const auto repo_root = dir / "enc-repo";
     std::filesystem::create_directories(repo_root);
 
-    auto [create_status, create_payload] = call(http::verb::post,
-                                                "/projects",
-                                                {{"project_id", "proj-enc"},
-                                                 {"name", "Encrypted"},
-                                                 {"root_path", repo_root.string()},
-                                                 {"privacy_mode", "encrypted_git"},
-                                                 {"git_remote_url", "https://example.com/recovered.git"},
-                                                 {"created_at", 10},
-                                                 {"updated_at", 10}});
+    auto [create_status, create_payload] = call(
+        http::verb::post,
+        "/projects",
+        {{"project_id", "proj-enc"},
+         {"name", "Encrypted"},
+         {"root_path", repo_root.string()},
+         {"privacy_mode", "encrypted_git"},
+         {"git_remote_url", "https://example.com/recovered.git"},
+         {"created_at", 10},
+         {"updated_at", 10}}
+    );
     REQUIRE(create_status == http::status::created);
     REQUIRE(create_payload["ok"] == true);
 
-    auto [export_status, export_payload] = call(http::verb::post,
-                                                "/projects/proj-enc/recovery-token/export",
-                                                {{"pin", "1234"}});
+    auto [export_status, export_payload] =
+        call(http::verb::post, "/projects/proj-enc/recovery-token/export", {{"pin", "1234"}});
     REQUIRE(export_status == http::status::ok);
     const std::string token = export_payload["data"]["recovery_token"].get<std::string>();
 
@@ -391,9 +482,11 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
     REQUIRE(del_status == http::status::ok);
     REQUIRE(del_payload["ok"] == true);
 
-    auto [import_status, import_payload] = call(http::verb::post,
-                                                "/recovery-token/import",
-                                                {{"pin", "1234"}, {"recovery_token", token}});
+    auto [import_status, import_payload] = call(
+        http::verb::post,
+        "/recovery-token/import",
+        {{"pin", "1234"}, {"recovery_token", token}}
+    );
     REQUIRE(import_status == http::status::created);
     REQUIRE(import_payload["ok"] == true);
     REQUIRE(import_payload["data"]["remote_hint_present"] == true);
@@ -433,8 +526,9 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
         call(http::verb::get, "/projects/proj-encrypted/encryption-check");
     REQUIRE(enc_status == http::status::ok);
     REQUIRE(enc_payload["data"]["check"].contains("unsafe_files"));
-    const bool unsafe_files_is_int = enc_payload["data"]["check"]["unsafe_files"].is_number_unsigned() ||
-                                     enc_payload["data"]["check"]["unsafe_files"].is_number_integer();
+    const bool unsafe_files_is_int =
+        enc_payload["data"]["check"]["unsafe_files"].is_number_unsigned() ||
+        enc_payload["data"]["check"]["unsafe_files"].is_number_integer();
     REQUIRE(unsafe_files_is_int);
 
     db.close();
@@ -448,8 +542,12 @@ TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[proje
 TEST_CASE("ProjectRoutes create and recovery required field branches", "[project-routes]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto empty_param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto empty_param_get = [](const std::string&) {
+    return std::string();
+  };
   ProjectRoutesTestGitOps git;
 
   auto call = [&](http::verb method,
@@ -458,7 +556,14 @@ TEST_CASE("ProjectRoutes create and recovery required field branches", "[project
     auto req = make_request(method, path, body);
     http::response<http::string_body> res;
     const bool handled = holder::api::routes::handle_project_routes(
-        path, req, res, db, &git, uuid_v4, empty_param_get);
+        path,
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
     REQUIRE(handled);
     return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
   };
@@ -470,15 +575,17 @@ TEST_CASE("ProjectRoutes create and recovery required field branches", "[project
   }
 
   SECTION("projects post parses project_key_id") {
-    auto [status, payload] = call(http::verb::post,
-                                  "/projects",
-                                  {{"project_id", "proj-2"},
-                                   {"name", "Two"},
-                                   {"root_path", (dir / "repo2").string()},
-                                   {"project_key_id", "k1"},
-                                   {"privacy_mode", "plain"},
-                                   {"created_at", 1},
-                                   {"updated_at", 1}});
+    auto [status, payload] = call(
+        http::verb::post,
+        "/projects",
+        {{"project_id", "proj-2"},
+         {"name", "Two"},
+         {"root_path", (dir / "repo2").string()},
+         {"project_key_id", "k1"},
+         {"privacy_mode", "plain"},
+         {"created_at", 1},
+         {"updated_at", 1}}
+    );
     REQUIRE(status == http::status::created);
     REQUIRE(payload["ok"] == true);
   }

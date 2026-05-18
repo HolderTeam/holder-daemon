@@ -7,8 +7,8 @@
 #include "git/PushResult.h"
 
 TEST_CASE("push_status_name covers all PushStatus values", "[git]") {
-  using holder::git::PushStatus;
   using holder::git::push_status_name;
+  using holder::git::PushStatus;
 
   REQUIRE(std::string(push_status_name(PushStatus::Pushed)) == "pushed");
   REQUIRE(std::string(push_status_name(PushStatus::UpToDate)) == "up_to_date");

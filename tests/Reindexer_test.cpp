@@ -31,7 +31,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_reindex_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -69,8 +70,10 @@ TEST_CASE("Reindexer rebuilds FTS tables", "[reindex]") {
 
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
-          "VALUES('card-1', 'proj-1', 'Title', 'cards/aa/bb/card-1.md', 0.0, 1, 1);");
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+      "VALUES('card-1', 'proj-1', 'Title', 'cards/aa/bb/card-1.md', 0.0, 1, 1);"
+  );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
           "VALUES('thread-1', 'proj-1', 'Thread', 2, 2);");
   db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
@@ -110,8 +113,10 @@ TEST_CASE("Reindexer throws when ai messages query prepare fails", "[reindex]") 
 
   db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
           "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
-  db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
-          "VALUES('card-1', 'proj-1', 'Title', 'cards/aa/bb/card-1.md', 0.0, 1, 1);");
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+      "VALUES('card-1', 'proj-1', 'Title', 'cards/aa/bb/card-1.md', 0.0, 1, 1);"
+  );
   db.exec("DROP TABLE ai_messages;");
 
   holder::index::Reindexer reindexer(db);
@@ -131,8 +136,11 @@ TEST_CASE("Reindexer throws when cards scan is interrupted", "[reindex]") {
 
   for (int i = 0; i < 5000; ++i) {
     const std::string id = "card-" + std::to_string(i);
-    db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
-            "VALUES('" + id + "', 'proj-1', 'Title', 'cards/aa/bb/" + id + ".md', 0.0, 1, 1);");
+    db.exec(
+        "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+        "VALUES('" +
+        id + "', 'proj-1', 'Title', 'cards/aa/bb/" + id + ".md', 0.0, 1, 1);"
+    );
   }
 
   holder::index::Reindexer reindexer(db);
@@ -160,8 +168,11 @@ TEST_CASE("Reindexer throws when ai messages scan is interrupted", "[reindex]") 
 
   for (int i = 0; i < 5000; ++i) {
     const std::string id = "msg-" + std::to_string(i);
-    db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
-            "VALUES('" + id + "', 'thread-1', 'user', 'manual', 'Hello', 3);");
+    db.exec(
+        "INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
+        "VALUES('" +
+        id + "', 'thread-1', 'user', 'manual', 'Hello', 3);"
+    );
   }
 
   holder::index::Reindexer reindexer(db);

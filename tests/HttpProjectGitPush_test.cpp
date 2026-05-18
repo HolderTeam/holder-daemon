@@ -9,7 +9,7 @@
 namespace {
 
 class PushGitOps final : public holder::git::GitOps {
-public:
+ public:
   std::filesystem::path repo_dir_;
   holder::git::PushResult push_result{
       .status = holder::git::PushStatus::Pushed,
@@ -32,11 +32,17 @@ public:
   void remove_remote(const std::string&) override {}
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override {
-    return {.status = holder::git::RemoteProbeStatus::Reachable, .remote_has_head = true, .error_message = {}};
+    return {
+        .status = holder::git::RemoteProbeStatus::Reachable,
+        .remote_has_head = true,
+        .error_message = {}
+    };
   }
-  holder::git::PushResult push_branch(const std::string&,
-                                      const std::string& branch,
-                                      bool set_upstream) override {
+  holder::git::PushResult push_branch(
+      const std::string&,
+      const std::string& branch,
+      bool set_upstream
+  ) override {
     pushed_branch = branch;
     pushed_set_upstream = set_upstream;
     return push_result;
@@ -71,28 +77,34 @@ TEST_CASE("Project git push returns remote_unset when no remote configured", "[g
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto pushed = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      boost::beast::http::verb::post,
-                                                      "/projects/proj-1/git/push",
-                                                      nlohmann::json::object(),
-                                                      boost::beast::http::status::ok);
+  const auto pushed = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects/proj-1/git/push",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(pushed["ok"] == true);
   REQUIRE(pushed["data"]["status"] == "remote_unset");
   REQUIRE(pushed["data"]["error_code"] == "remote_unset");
   REQUIRE(pushed["data"]["next_action"].is_null());
 
-  const auto sync = holder::test::http_json_request(bound.bind,
-                                                    bound.port,
-                                                    token,
-                                                    boost::beast::http::verb::get,
-                                                    "/projects/proj-1/git/sync-status",
-                                                    nlohmann::json::object(),
-                                                    boost::beast::http::status::ok);
+  const auto sync = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/projects/proj-1/git/sync-status",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(sync["ok"] == true);
   REQUIRE(sync["data"]["project_id"] == "proj-1");
   REQUIRE(sync["data"]["sync"]["last_push_status"] == "remote_unset");
@@ -131,16 +143,20 @@ TEST_CASE("Project git sync-status returns zero defaults when sync row is absent
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto sync = holder::test::http_json_request(bound.bind,
-                                                    bound.port,
-                                                    token,
-                                                    boost::beast::http::verb::get,
-                                                    "/projects/proj-1/git/sync-status",
-                                                    nlohmann::json::object(),
-                                                    boost::beast::http::status::ok);
+  const auto sync = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/projects/proj-1/git/sync-status",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(sync["ok"] == true);
   REQUIRE(sync["data"]["project_id"] == "proj-1");
   REQUIRE(sync["data"]["sync"]["uncommitted_changes_count"] == 0);
@@ -185,16 +201,20 @@ TEST_CASE("Project git push returns structured non_fast_forward result", "[git][
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto pushed = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      boost::beast::http::verb::post,
-                                                      "/projects/proj-1/git/push",
-                                                      {{"branch", "main"}, {"set_upstream", false}},
-                                                      boost::beast::http::status::ok);
+  const auto pushed = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/projects/proj-1/git/push",
+      {{"branch", "main"}, {"set_upstream", false}},
+      boost::beast::http::status::ok
+  );
   REQUIRE(pushed["ok"] == true);
   REQUIRE(pushed["data"]["status"] == "non_fast_forward");
   REQUIRE(pushed["data"]["error_code"] == "non_fast_forward");
@@ -204,13 +224,15 @@ TEST_CASE("Project git push returns structured non_fast_forward result", "[git][
   REQUIRE(git.pushed_branch == "main");
   REQUIRE(git.pushed_set_upstream == false);
 
-  const auto sync = holder::test::http_json_request(bound.bind,
-                                                    bound.port,
-                                                    token,
-                                                    boost::beast::http::verb::get,
-                                                    "/projects/proj-1/git/sync-status",
-                                                    nlohmann::json::object(),
-                                                    boost::beast::http::status::ok);
+  const auto sync = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/projects/proj-1/git/sync-status",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(sync["ok"] == true);
   REQUIRE(sync["data"]["sync"]["last_push_status"] == "non_fast_forward");
   REQUIRE(sync["data"]["sync"]["retry_count"] == 1);
@@ -249,7 +271,9 @@ TEST_CASE("Project git push maps error statuses to expected next_action", "[git]
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   SECTION("auth_failed -> fix_auth_then_retry") {
@@ -259,13 +283,15 @@ TEST_CASE("Project git push maps error statuses to expected next_action", "[git]
         .behind_count = 0,
         .error_message = "auth failed",
     };
-    const auto pushed = holder::test::http_json_request(bound.bind,
-                                                        bound.port,
-                                                        token,
-                                                        boost::beast::http::verb::post,
-                                                        "/projects/proj-1/git/push",
-                                                        nlohmann::json::object(),
-                                                        boost::beast::http::status::ok);
+    const auto pushed = holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/projects/proj-1/git/push",
+        nlohmann::json::object(),
+        boost::beast::http::status::ok
+    );
     REQUIRE(pushed["data"]["status"] == "auth_failed");
     REQUIRE(pushed["data"]["next_action"] == "fix_auth_then_retry");
   }
@@ -277,13 +303,15 @@ TEST_CASE("Project git push maps error statuses to expected next_action", "[git]
         .behind_count = 0,
         .error_message = "not found",
     };
-    const auto pushed = holder::test::http_json_request(bound.bind,
-                                                        bound.port,
-                                                        token,
-                                                        boost::beast::http::verb::post,
-                                                        "/projects/proj-1/git/push",
-                                                        nlohmann::json::object(),
-                                                        boost::beast::http::status::ok);
+    const auto pushed = holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/projects/proj-1/git/push",
+        nlohmann::json::object(),
+        boost::beast::http::status::ok
+    );
     REQUIRE(pushed["data"]["status"] == "not_found");
     REQUIRE(pushed["data"]["next_action"] == "fix_remote_url_then_retry");
   }
@@ -295,13 +323,15 @@ TEST_CASE("Project git push maps error statuses to expected next_action", "[git]
         .behind_count = 0,
         .error_message = "network",
     };
-    const auto pushed = holder::test::http_json_request(bound.bind,
-                                                        bound.port,
-                                                        token,
-                                                        boost::beast::http::verb::post,
-                                                        "/projects/proj-1/git/push",
-                                                        nlohmann::json::object(),
-                                                        boost::beast::http::status::ok);
+    const auto pushed = holder::test::http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/projects/proj-1/git/push",
+        nlohmann::json::object(),
+        boost::beast::http::status::ok
+    );
     REQUIRE(pushed["data"]["status"] == "network_error");
     REQUIRE(pushed["data"]["next_action"] == "retry");
   }

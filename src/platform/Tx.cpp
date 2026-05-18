@@ -2,7 +2,8 @@
 
 namespace holder::platform {
 
-Tx::Tx(Db& db) : db_(db) {
+Tx::Tx(Db& db)
+    : db_(db) {
   db_.exec("BEGIN IMMEDIATE;");
 }
 

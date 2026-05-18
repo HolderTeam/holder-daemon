@@ -1,8 +1,8 @@
 #include "api/routes/ai/threads/AiThreadCollectionRoutes.h"
 
+#include "ai/AiThreadRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
-#include "ai/AiThreadRepo.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -21,8 +21,8 @@ nlohmann::json ai_thread_to_json(const holder::model::AiThread& thread) {
   item["title"] = thread.title;
   item["created_at"] = thread.created_at;
   item["updated_at"] = thread.updated_at;
-  item["card_id"] =
-      thread.card_id.has_value() ? nlohmann::json(thread.card_id.value()) : nlohmann::json(nullptr);
+  item["card_id"] = thread.card_id.has_value() ? nlohmann::json(thread.card_id.value())
+                                               : nlohmann::json(nullptr);
   return item;
 } // LCOV_EXCL_LINE
 
@@ -34,11 +34,13 @@ bool handle_ai_thread_collection_routes(
     http::response<http::string_body>& res,
     holder::platform::Db& db,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get) {
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (path == "/ai/threads" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
 
@@ -63,7 +65,11 @@ bool handle_ai_thread_collection_routes(
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("project_id") || !body.contains("title")) {
-        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing required fields."
+        );
       } else {
         holder::model::AiThread thread;
         if (body.contains("thread_id") && !body.at("thread_id").is_null()) {

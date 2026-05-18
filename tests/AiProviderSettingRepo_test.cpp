@@ -9,7 +9,7 @@
 
 namespace {
 int sqlite_interrupt_cb(void*) { return 1; }
-}
+} // namespace
 
 TEST_CASE("AiProviderSettingRepo upsert/list/remove", "[db]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_settings";
@@ -50,7 +50,8 @@ TEST_CASE("AiProviderSettingRepo upsert/list/remove", "[db]") {
 }
 
 TEST_CASE("AiProviderSettingRepo throws when get prepare fails", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_settings_get_prepare_fail";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_provider_settings_get_prepare_fail";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -69,7 +70,8 @@ TEST_CASE("AiProviderSettingRepo throws when get prepare fails", "[db]") {
 }
 
 TEST_CASE("AiProviderSettingRepo throws when upsert step fails", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_settings_upsert_step_fail";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_provider_settings_upsert_step_fail";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -89,7 +91,8 @@ TEST_CASE("AiProviderSettingRepo throws when upsert step fails", "[db]") {
 }
 
 TEST_CASE("AiProviderSettingRepo throws when delete step fails", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_settings_delete_step_fail";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_provider_settings_delete_step_fail";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";
@@ -111,7 +114,8 @@ TEST_CASE("AiProviderSettingRepo throws when delete step fails", "[db]") {
 }
 
 TEST_CASE("AiProviderSettingRepo throws when list/get step is interrupted", "[db]") {
-  const auto dir = std::filesystem::temp_directory_path() / "holder_ai_provider_settings_step_interrupt";
+  const auto dir = std::filesystem::temp_directory_path() /
+                   "holder_ai_provider_settings_step_interrupt";
   std::filesystem::remove_all(dir);
   std::filesystem::create_directories(dir);
   const auto db_path = dir / "holder.db";

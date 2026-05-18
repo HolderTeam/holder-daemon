@@ -8,7 +8,9 @@
 
 namespace holder::api::support {
 
-nlohmann::json build_health_data(holder::platform::Db& db,
-                                 std::chrono::steady_clock::time_point started_at);
+nlohmann::json build_health_data(
+    holder::platform::Db& db,
+    std::chrono::steady_clock::time_point started_at
+);
 
 } // namespace holder::api::support

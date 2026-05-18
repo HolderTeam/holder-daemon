@@ -15,7 +15,8 @@ TEST_CASE("RebuildRoutes returns false for non-matching route", "[http][rebuild]
   req.prepare_payload();
   http::response<http::string_body> res;
 
-  const bool handled = holder::api::routes::handle_rebuild_routes("/rebuild", req, res, db, nullptr);
+  const bool handled =
+      holder::api::routes::handle_rebuild_routes("/rebuild", req, res, db, nullptr);
   REQUIRE_FALSE(handled);
 }
 
@@ -28,7 +29,8 @@ TEST_CASE("RebuildRoutes returns bad_request when project_id is missing", "[http
   req.prepare_payload();
   http::response<http::string_body> res;
 
-  const bool handled = holder::api::routes::handle_rebuild_routes("/rebuild", req, res, db, nullptr);
+  const bool handled =
+      holder::api::routes::handle_rebuild_routes("/rebuild", req, res, db, nullptr);
   REQUIRE(handled);
   REQUIRE(res.result() == http::status::bad_request);
 

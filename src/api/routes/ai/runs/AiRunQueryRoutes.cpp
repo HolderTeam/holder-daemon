@@ -1,9 +1,9 @@
 #include "api/routes/ai/runs/AiRunQueryRoutes.h"
 
+#include "ai/AiRunRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/RunEventStore.h"
 #include "api/support/Time.h"
-#include "ai/AiRunRepo.h"
 #include "llm/RunnerModelRef.h"
 
 #include <boost/asio/write.hpp>
@@ -35,22 +35,22 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
   const auto router_runner_id = holder::llm::runner_id_from_ref(run.router_model);
   const auto chosen_runner_id = holder::llm::runner_id_from_ref(run.chosen_model);
   item["run_id"] = run.run_id;
-  item["project_id"] =
-      run.project_id.has_value() ? nlohmann::json(run.project_id.value()) : nlohmann::json(nullptr);
-  item["thread_id"] =
-      run.thread_id.has_value() ? nlohmann::json(run.thread_id.value()) : nlohmann::json(nullptr);
-  item["message_id"] =
-      run.message_id.has_value() ? nlohmann::json(run.message_id.value()) : nlohmann::json(nullptr);
+  item["project_id"] = run.project_id.has_value() ? nlohmann::json(run.project_id.value())
+                                                  : nlohmann::json(nullptr);
+  item["thread_id"] = run.thread_id.has_value() ? nlohmann::json(run.thread_id.value())
+                                                : nlohmann::json(nullptr);
+  item["message_id"] = run.message_id.has_value() ? nlohmann::json(run.message_id.value())
+                                                  : nlohmann::json(nullptr);
   item["mode"] = run.mode;
   item["prompt"] = run.prompt;
-  item["context_json"] =
-      run.context_json.has_value() ? nlohmann::json(run.context_json.value()) : nlohmann::json(nullptr);
-  item["router_model"] =
-      run.router_model.has_value() ? nlohmann::json(run.router_model.value()) : nlohmann::json(nullptr);
-  item["router_runner_id"] =
-      router_runner_id.has_value() ? nlohmann::json(router_runner_id.value()) : nlohmann::json(nullptr);
-  item["ranked_json"] =
-      run.ranked_json.has_value() ? nlohmann::json(run.ranked_json.value()) : nlohmann::json(nullptr);
+  item["context_json"] = run.context_json.has_value() ? nlohmann::json(run.context_json.value())
+                                                      : nlohmann::json(nullptr);
+  item["router_model"] = run.router_model.has_value() ? nlohmann::json(run.router_model.value())
+                                                      : nlohmann::json(nullptr);
+  item["router_runner_id"] = router_runner_id.has_value() ? nlohmann::json(router_runner_id.value())
+                                                          : nlohmann::json(nullptr);
+  item["ranked_json"] = run.ranked_json.has_value() ? nlohmann::json(run.ranked_json.value())
+                                                    : nlohmann::json(nullptr);
   item["policy_trace_json"] = run.policy_trace_json.has_value()
                                   ? nlohmann::json(run.policy_trace_json.value())
                                   : nlohmann::json(nullptr);
@@ -63,12 +63,13 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
     }
   }
   item["policy_trace"] = policy_trace;
-  item["chosen_model"] =
-      run.chosen_model.has_value() ? nlohmann::json(run.chosen_model.value()) : nlohmann::json(nullptr);
-  item["chosen_runner_id"] =
-      chosen_runner_id.has_value() ? nlohmann::json(chosen_runner_id.value()) : nlohmann::json(nullptr);
+  item["chosen_model"] = run.chosen_model.has_value() ? nlohmann::json(run.chosen_model.value())
+                                                      : nlohmann::json(nullptr);
+  item["chosen_runner_id"] = chosen_runner_id.has_value() ? nlohmann::json(chosen_runner_id.value())
+                                                          : nlohmann::json(nullptr);
   item["status"] = run.status;
-  item["error"] = run.error.has_value() ? nlohmann::json(run.error.value()) : nlohmann::json(nullptr);
+  item["error"] = run.error.has_value() ? nlohmann::json(run.error.value())
+                                        : nlohmann::json(nullptr);
   item["created_at"] = run.created_at;
   item["updated_at"] = run.updated_at;
   return item;
@@ -79,15 +80,18 @@ nlohmann::json ai_run_to_json(const holder::model::AiRun& run) {
 RouteDispatchResult handle_ai_runs_list_route(
     const std::function<std::string(const std::string&)>& param_get,
     http::response<http::string_body>& res,
-    holder::platform::Db& db) {
+    holder::platform::Db& db
+) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string project_id = param_get("project_id");
   const std::string thread_id = param_get("thread_id");
   if (project_id.empty() && thread_id.empty()) {
-    res = support::error_response(http::status::bad_request,
-                                  "bad_request",
-                                  "Missing project_id or thread_id.");
+    res = support::error_response(
+        http::status::bad_request,
+        "bad_request",
+        "Missing project_id or thread_id."
+    );
     return out;
   }
   try {
@@ -112,16 +116,19 @@ RouteDispatchResult handle_ai_runs_list_route(
   return out;
 }
 
-RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
-                                                boost::asio::ip::tcp::socket& socket,
-                                                http::response<http::string_body>& res,
-                                                holder::platform::Db& db) {
+RouteDispatchResult handle_ai_runs_events_route(
+    const std::string& path,
+    boost::asio::ip::tcp::socket& socket,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db
+) {
   RouteDispatchResult out{};
   out.handled = true;
   out.streamed = true;
   const std::string prefix = "/ai/runs/";
   const std::string suffix = "/events";
-  const std::string run_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+  const std::string run_id =
+      path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
   if (run_id.empty()) {
     out.streamed = false;
     res = support::error_response(http::status::not_found, "not_found", "Run not found.");
@@ -214,9 +221,11 @@ RouteDispatchResult handle_ai_runs_events_route(const std::string& path,
   }
 }
 
-RouteDispatchResult handle_ai_runs_get_route(const std::string& path,
-                                             http::response<http::string_body>& res,
-                                             holder::platform::Db& db) {
+RouteDispatchResult handle_ai_runs_get_route(
+    const std::string& path,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db
+) {
   RouteDispatchResult out{};
   out.handled = true;
   const std::string run_id = path.substr(std::string("/ai/runs/").size());

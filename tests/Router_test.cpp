@@ -8,12 +8,15 @@
 
 TEST_CASE("Router dispatches to registered handler", "[router]") {
   holder::api::Router router;
-  router.add(boost::beast::http::verb::get, "/ping",
-             [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
-               res.result(boost::beast::http::status::ok);
-               res.body() = "pong";
-               res.prepare_payload();
-             });
+  router.add(
+      boost::beast::http::verb::get,
+      "/ping",
+      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        res.result(boost::beast::http::status::ok);
+        res.body() = "pong";
+        res.prepare_payload();
+      }
+  );
 
   holder::api::Router::Request req{boost::beast::http::verb::get, "/ping", 11};
   holder::api::Router::Response res;

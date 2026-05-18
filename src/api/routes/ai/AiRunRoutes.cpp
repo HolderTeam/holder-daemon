@@ -24,12 +24,21 @@ RouteDispatchResult handle_ai_run_routes(
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get) {
+    const std::function<std::string(const std::string&)>& param_get
+) {
   RouteDispatchResult out{};
 
   if (path == "/ai/runs" && req.method() == http::verb::post) {
     return ai::runs::handle_ai_runs_post_route(
-        req, res, socket, db, fts, secret_store, runner_registry, uuid_v4);
+        req,
+        res,
+        socket,
+        db,
+        fts,
+        secret_store,
+        runner_registry,
+        uuid_v4
+    );
   }
 
   if (path == "/ai/runs" && req.method() == http::verb::get) {
@@ -38,9 +47,11 @@ RouteDispatchResult handle_ai_run_routes(
 
   if (path.rfind("/ai/runs/", 0) == 0 &&
       path.size() > std::string("/ai/runs/").size() + std::string("/events").size() &&
-      path.compare(path.size() - std::string("/events").size(),
-                   std::string("/events").size(),
-                   "/events") == 0 &&
+      path.compare(
+          path.size() - std::string("/events").size(),
+          std::string("/events").size(),
+          "/events"
+      ) == 0 &&
       req.method() == http::verb::get) {
     return ai::runs::handle_ai_runs_events_route(path, socket, res, db);
   }

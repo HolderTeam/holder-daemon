@@ -16,6 +16,7 @@ bool handle_ai_runtime_status_routes(
     boost::beast::http::response<boost::beast::http::string_body>& res,
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string(const std::string&)>& param_get);
+    const std::function<std::string(const std::string&)>& param_get
+);
 
 } // namespace holder::api::routes::ai::status

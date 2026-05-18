@@ -8,8 +8,8 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -17,29 +17,33 @@
 namespace holder::project {
 namespace {
 
-bool should_retry_plain_recovery(const holder::privacy::PrivacyError& ex,
-                                 const holder::model::Project& project) {
+bool should_retry_plain_recovery(
+    const holder::privacy::PrivacyError& ex,
+    const holder::model::Project& project
+) {
   if (project.privacy_mode != "encrypted_git") {
     return false; // LCOV_EXCL_LINE
   }
   switch (ex.code()) {
-    case holder::privacy::PrivacyErrorCode::EnvelopeInvalid:
-    case holder::privacy::PrivacyErrorCode::KeyMaterialMissing:
-      return true;
-    default:
-      return false;
+  case holder::privacy::PrivacyErrorCode::EnvelopeInvalid:
+  case holder::privacy::PrivacyErrorCode::KeyMaterialMissing:
+    return true;
+  default:
+    return false;
   }
 }
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
+             std::chrono::system_clock::now().time_since_epoch()
+  )
       .count();
 }
 
 bool looks_like_project_root(const std::filesystem::path& root) {
   return std::filesystem::is_directory(root) &&
-         (std::filesystem::exists(root / "cards") || std::filesystem::exists(root / "trash" / "cards") ||
+         (std::filesystem::exists(root / "cards") ||
+          std::filesystem::exists(root / "trash" / "cards") ||
           std::filesystem::exists(root / "ai_messages") ||
           std::filesystem::exists(root / ".holder" / "privacy.json"));
 }
@@ -99,7 +103,8 @@ std::vector<holder::model::Project> recover_projects_from_disk(
     holder::platform::Db& db,
     holder::index::FtsIndexer* fts,
     const std::filesystem::path& projects_root,
-    const std::function<std::string()>& uuid_v4) {
+    const std::function<std::string()>& uuid_v4
+) {
   std::vector<holder::model::Project> recovered;
   if (!std::filesystem::exists(projects_root) || !std::filesystem::is_directory(projects_root)) {
     return recovered;
@@ -140,9 +145,11 @@ std::vector<holder::model::Project> recover_projects_from_disk(
           repo.create(fallback);
           rebuilder.rebuild_project(fallback);
           recovered.push_back(fallback);
-          spdlog::warn("Recovered project as plain after envelope mismatch: {} ({})",
-                       fallback.name,
-                       fallback.root_path);
+          spdlog::warn(
+              "Recovered project as plain after envelope mismatch: {} ({})",
+              fallback.name,
+              fallback.root_path
+          );
         } catch (const std::exception& retry_ex) {
           repo.remove(fallback.project_id);
           spdlog::warn("Skipping project recovery at {}: {}", root.string(), retry_ex.what());

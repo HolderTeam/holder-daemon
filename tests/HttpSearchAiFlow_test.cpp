@@ -1,15 +1,15 @@
 #include "http_test_helpers.h"
 
-#include "model/AiMessage.h"
-#include "model/AiThread.h"
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "model/AiMessage.h"
+#include "model/AiThread.h"
 
 using holder::test::create_project;
+using holder::test::ensure_uuid_seeded;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
-using holder::test::ensure_uuid_seeded;
 
 TEST_CASE("HTTP search AI flow finds message", "[http]") {
   const auto dir = make_temp_dir();
@@ -33,7 +33,9 @@ TEST_CASE("HTTP search AI flow finds message", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -56,11 +58,15 @@ TEST_CASE("HTTP search AI flow finds message", "[http]") {
   holder::ai::AiMessageRepo msg_repo(db, &fts);
   msg_repo.append(msg);
 
-  const auto messages = http_json_request(bound.bind, bound.port, token,
-                                          boost::beast::http::verb::get,
-                                          "/search/ai?project_id=proj-1&q=search",
-                                          nlohmann::json::object(),
-                                          boost::beast::http::status::ok);
+  const auto messages = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/search/ai?project_id=proj-1&q=search",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(messages["ok"] == true);
   REQUIRE(messages["data"].is_array());
   REQUIRE(messages["data"].size() >= 1);

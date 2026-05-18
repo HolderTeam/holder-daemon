@@ -1,17 +1,17 @@
 #include "http_test_helpers.h"
 
 #include "api/HttpServer.h"
-#include "index/FtsIndexer.h"
+#include "card/CardRepo.h"
 #include "card/CardStore.h"
+#include "index/FtsIndexer.h"
 #include "platform/Db.h"
 #include "platform/LockFile.h"
 #include "platform/Paths.h"
 #include "project/ProjectRepo.h"
-#include "card/CardRepo.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <chrono>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -19,8 +19,8 @@
 #include <nlohmann/json.hpp>
 
 #ifndef _WIN32
-#include <sys/wait.h>
 #include <csignal>
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -39,7 +39,8 @@ int run_command(const std::string& cmd) {
 
 class CwdGuard {
  public:
-  explicit CwdGuard(std::filesystem::path next) : prev_(std::filesystem::current_path()) {
+  explicit CwdGuard(std::filesystem::path next)
+      : prev_(std::filesystem::current_path()) {
     std::filesystem::current_path(std::move(next));
   }
   ~CwdGuard() { std::filesystem::current_path(prev_); }
@@ -58,8 +59,7 @@ TEST_CASE("CLI --port rejects invalid values", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -78,8 +78,7 @@ TEST_CASE("CLI --port rejects non-numeric values", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -98,8 +97,7 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -172,8 +170,7 @@ TEST_CASE("CLI --help and unknown args branches", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -192,8 +189,7 @@ TEST_CASE("CLI --bind and valid --port parse paths", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -211,8 +207,7 @@ TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const std::string bin = HOLDER_BIN_PATH;
   const auto build_dir = std::filesystem::path(bin).parent_path();
@@ -230,8 +225,7 @@ TEST_CASE("CLI reindex fails when schema cannot be found", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto isolated = dir / "isolated";
   std::filesystem::create_directories(isolated);
@@ -249,15 +243,16 @@ TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be ope
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_schema";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
-  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
-                             isolated / "schema" / "schema.sql");
+  std::filesystem::copy_file(
+      repo_root / "schema" / "schema.sql",
+      isolated / "schema" / "schema.sql"
+  );
   const auto welcome = isolated / "config" / "WELCOME.md";
   {
     std::ofstream out(welcome, std::ios::trunc);
@@ -267,7 +262,8 @@ TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be ope
       welcome,
       std::filesystem::perms::owner_read | std::filesystem::perms::owner_write |
           std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-      std::filesystem::perm_options::remove);
+      std::filesystem::perm_options::remove
+  );
   CwdGuard cwd(isolated);
 
   const std::string bin = HOLDER_BIN_PATH;
@@ -282,14 +278,15 @@ TEST_CASE("CLI reindex fails when schema exists but welcome markdown is missing"
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_schema_no_welcome";
   std::filesystem::create_directories(isolated / "schema");
-  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
-                             isolated / "schema" / "schema.sql");
+  std::filesystem::copy_file(
+      repo_root / "schema" / "schema.sql",
+      isolated / "schema" / "schema.sql"
+  );
   CwdGuard cwd(isolated);
 
   const std::string bin = HOLDER_BIN_PATH;
@@ -304,15 +301,16 @@ TEST_CASE("CLI welcome title falls back when first markdown line is not a headin
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_custom_welcome";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
-  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
-                             isolated / "schema" / "schema.sql");
+  std::filesystem::copy_file(
+      repo_root / "schema" / "schema.sql",
+      isolated / "schema" / "schema.sql"
+  );
   {
     std::ofstream out(isolated / "config" / "WELCOME.md", std::ios::trunc);
     out << "Not a heading first line\nBut still content\n";
@@ -341,15 +339,16 @@ TEST_CASE("CLI welcome title falls back when first markdown line is blank", "[cl
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_blank_first_line";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
-  std::filesystem::copy_file(repo_root / "schema" / "schema.sql",
-                             isolated / "schema" / "schema.sql");
+  std::filesystem::copy_file(
+      repo_root / "schema" / "schema.sql",
+      isolated / "schema" / "schema.sql"
+  );
   {
     std::ofstream out(isolated / "config" / "WELCOME.md", std::ios::trunc);
     out << "   \n# Heading on second line\n";
@@ -378,8 +377,7 @@ TEST_CASE("CLI exits when lock file is busy", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
@@ -402,8 +400,7 @@ TEST_CASE("CLI normal run starts server and exits on SIGTERM", "[cli]") {
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
-  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR",
-                                      (xdg_root / "keystore").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const std::string bin = HOLDER_BIN_PATH;

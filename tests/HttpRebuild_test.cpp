@@ -62,46 +62,56 @@ TEST_CASE("HTTP rebuild repopulates DB from files", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto rebuild = holder::test::http_json_request(bound.bind,
-                                                  bound.port,
-                                                  token,
-                                                  boost::beast::http::verb::post,
-                                                  "/rebuild",
-                                                  nlohmann::json{{"project_id", project_id}},
-                                                  boost::beast::http::status::ok);
+  auto rebuild = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::ok
+  );
   REQUIRE(rebuild["ok"] == true);
   REQUIRE(rebuild["data"]["cards"] == 1);
   REQUIRE(rebuild["data"]["ai_messages"] == 1);
   REQUIRE(rebuild["data"]["ai_threads"] == 1);
 
-  auto cards = holder::test::http_json_request(bound.bind,
-                                               bound.port,
-                                               token,
-                                               boost::beast::http::verb::get,
-                                               "/cards?project_id=" + project_id,
-                                               nlohmann::json::object(),
-                                               boost::beast::http::status::ok);
+  auto cards = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards?project_id=" + project_id,
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(cards["data"].size() == 1);
 
-  auto threads = holder::test::http_json_request(bound.bind,
-                                                 bound.port,
-                                                 token,
-                                                 boost::beast::http::verb::get,
-                                                 "/ai/threads?project_id=" + project_id,
-                                                 nlohmann::json::object(),
-                                                 boost::beast::http::status::ok);
+  auto threads = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/threads?project_id=" + project_id,
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(threads["data"].size() == 1);
 
-  auto messages = holder::test::http_json_request(bound.bind,
-                                                  bound.port,
-                                                  token,
-                                                  boost::beast::http::verb::get,
-                                                  "/ai/messages?thread_id=thread-1",
-                                                  nlohmann::json::object(),
-                                                  boost::beast::http::status::ok);
+  auto messages = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/ai/messages?thread_id=thread-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(messages["data"].size() == 1);
 
   std::raise(SIGTERM);
@@ -125,34 +135,42 @@ TEST_CASE("HTTP rebuild errors on missing project or root", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto missing_field = holder::test::http_json_request(bound.bind,
-                                                       bound.port,
-                                                       token,
-                                                       boost::beast::http::verb::post,
-                                                       "/rebuild",
-                                                       nlohmann::json::object(),
-                                                       boost::beast::http::status::bad_request);
+  auto missing_field = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_field["ok"] == false);
 
-  auto unknown_project = holder::test::http_json_request(bound.bind,
-                                                         bound.port,
-                                                         token,
-                                                         boost::beast::http::verb::post,
-                                                         "/rebuild",
-                                                         nlohmann::json{{"project_id", "missing"}},
-                                                         boost::beast::http::status::not_found);
+  auto unknown_project = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", "missing"}},
+      boost::beast::http::status::not_found
+  );
   REQUIRE(unknown_project["ok"] == false);
 
-  auto missing_root = holder::test::http_json_request(bound.bind,
-                                                      bound.port,
-                                                      token,
-                                                      boost::beast::http::verb::post,
-                                                      "/rebuild",
-                                                      nlohmann::json{{"project_id", "proj-1"}},
-                                                      boost::beast::http::status::bad_request);
+  auto missing_root = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", "proj-1"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_root["ok"] == false);
 
   std::raise(SIGTERM);
@@ -193,16 +211,20 @@ TEST_CASE("HTTP rebuild errors on card path mismatch", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto mismatch = holder::test::http_json_request(bound.bind,
-                                                  bound.port,
-                                                  token,
-                                                  boost::beast::http::verb::post,
-                                                  "/rebuild",
-                                                  nlohmann::json{{"project_id", project_id}},
-                                                  boost::beast::http::status::bad_request);
+  auto mismatch = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(mismatch["ok"] == false);
 
   std::raise(SIGTERM);
@@ -220,7 +242,10 @@ TEST_CASE("HTTP rebuild errors on short ai message id", "[http]") {
   holder::test::create_project(db, project_id, root.string());
 
   const auto short_path = root / "ai_messages" / "ab" / "cd" / "abc.md";
-  write_text(short_path, "---\nmessage_id: abc\nthread_id: t\nrole: user\nsource: manual\ncreated_at: 1\n---\nbody");
+  write_text(
+      short_path,
+      "---\nmessage_id: abc\nthread_id: t\nrole: user\nsource: manual\ncreated_at: 1\n---\nbody"
+  );
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -232,16 +257,20 @@ TEST_CASE("HTTP rebuild errors on short ai message id", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto invalid = holder::test::http_json_request(bound.bind,
-                                                 bound.port,
-                                                 token,
-                                                 boost::beast::http::verb::post,
-                                                 "/rebuild",
-                                                 nlohmann::json{{"project_id", project_id}},
-                                                 boost::beast::http::status::bad_request);
+  auto invalid = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(invalid["ok"] == false);
 
   std::raise(SIGTERM);
@@ -271,16 +300,20 @@ TEST_CASE("HTTP rebuild errors on malformed YAML", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto invalid = holder::test::http_json_request(bound.bind,
-                                                 bound.port,
-                                                 token,
-                                                 boost::beast::http::verb::post,
-                                                 "/rebuild",
-                                                 nlohmann::json{{"project_id", project_id}},
-                                                 boost::beast::http::status::bad_request);
+  auto invalid = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(invalid["ok"] == false);
 
   std::raise(SIGTERM);
@@ -323,16 +356,20 @@ TEST_CASE("HTTP rebuild errors on duplicate IDs", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto dup = holder::test::http_json_request(bound.bind,
-                                             bound.port,
-                                             token,
-                                             boost::beast::http::verb::post,
-                                             "/rebuild",
-                                             nlohmann::json{{"project_id", project_id}},
-                                             boost::beast::http::status::bad_request);
+  auto dup = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(dup["ok"] == false);
 
   std::raise(SIGTERM);
@@ -362,16 +399,20 @@ TEST_CASE("HTTP rebuild errors on empty IDs", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto invalid = holder::test::http_json_request(bound.bind,
-                                                 bound.port,
-                                                 token,
-                                                 boost::beast::http::verb::post,
-                                                 "/rebuild",
-                                                 nlohmann::json{{"project_id", project_id}},
-                                                 boost::beast::http::status::bad_request);
+  auto invalid = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/rebuild",
+      nlohmann::json{{"project_id", project_id}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(invalid["ok"] == false);
 
   std::raise(SIGTERM);

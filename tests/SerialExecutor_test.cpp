@@ -88,7 +88,9 @@ TEST_CASE("SerialExecutor stop wakes blocked submit and rejects new work", "[cor
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   REQUIRE(third_submit.wait_for(std::chrono::milliseconds(0)) == std::future_status::timeout);
 
-  auto stop_future = std::async(std::launch::async, [&]() { executor.stop(); });
+  auto stop_future = std::async(std::launch::async, [&]() {
+    executor.stop();
+  });
 
   REQUIRE(third_submit.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready);
   REQUIRE_FALSE(third_ran.load());

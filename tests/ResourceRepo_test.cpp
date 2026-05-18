@@ -10,10 +10,10 @@
 #include "project/ProjectRepo.h"
 #include "resource/ResourceRepo.h"
 
-#include <sqlite3.h>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sqlite3.h>
 #include <string>
 
 namespace {
@@ -34,7 +34,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_resource_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -171,7 +172,10 @@ TEST_CASE("ResourceRepo add throws on duplicate resource_id", "[resourcerepo]") 
   REQUIRE_THROWS(repo.add(resource));
 }
 
-TEST_CASE("ResourceRepo list/get/update/remove throw on interrupted sqlite step", "[resourcerepo]") {
+TEST_CASE(
+    "ResourceRepo list/get/update/remove throw on interrupted sqlite step",
+    "[resourcerepo]"
+) {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
@@ -234,7 +238,10 @@ TEST_CASE("ResourceRepo list throws sqlite error branch under heavy interrupt", 
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
 
-TEST_CASE("ResourceRepo add throws sqlite error branch on interrupted insert step", "[resourcerepo]") {
+TEST_CASE(
+    "ResourceRepo add throws sqlite error branch on interrupted insert step",
+    "[resourcerepo]"
+) {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 
@@ -261,7 +268,10 @@ TEST_CASE("ResourceRepo add throws sqlite error branch on interrupted insert ste
   sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
 
-TEST_CASE("ResourceRepo list throws sqlite error branch when resources table is missing", "[resourcerepo]") {
+TEST_CASE(
+    "ResourceRepo list throws sqlite error branch when resources table is missing",
+    "[resourcerepo]"
+) {
   const auto dir = make_temp_dir();
   const auto db_path = dir / "holder.db";
 

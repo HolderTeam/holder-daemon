@@ -54,7 +54,9 @@ nlohmann::json read_json_or_empty(const std::filesystem::path& path) {
 
   std::ifstream in(path, std::ios::binary);
   if (!in) {
-    throw std::runtime_error("failed to open secret metadata file: " + path.string()); // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    throw std::runtime_error("failed to open secret metadata file: " + path.string());
+    // LCOV_EXCL_STOP
   }
   std::ostringstream buffer;
   buffer << in.rdbuf();
@@ -68,7 +70,9 @@ void write_json(const std::filesystem::path& path, const nlohmann::json& body) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
   if (!out) {
-    throw std::runtime_error("failed to write secret metadata file: " + path.string()); // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    throw std::runtime_error("failed to write secret metadata file: " + path.string());
+    // LCOV_EXCL_STOP
   }
   out << body.dump(2);
 }
@@ -84,8 +88,9 @@ SecretMetadata metadata_from_json(const nlohmann::json& item) {
 } // LCOV_EXCL_LINE
 
 class SecretMetadataIndex {
-public:
-  explicit SecretMetadataIndex(std::filesystem::path path) : path_(std::move(path)) {}
+ public:
+  explicit SecretMetadataIndex(std::filesystem::path path)
+      : path_(std::move(path)) {}
 
   std::optional<SecretMetadata> get(const std::string& service, const std::string& account) const {
     const auto body = read_json_or_empty(path_);
@@ -129,37 +134,47 @@ public:
     write_json(path_, body);
   }
 
-private:
+ private:
   std::filesystem::path path_;
 };
 
 class RawSecretBackend {
-public:
+ public:
   virtual ~RawSecretBackend() = default;
-  virtual std::optional<std::string> get(const std::string& service, const std::string& account) const = 0;
-  virtual void set(const std::string& service, const std::string& account, const std::string& secret) = 0;
+  virtual std::optional<std::string> get(const std::string& service, const std::string& account)
+      const = 0;
+  virtual void set(
+      const std::string& service,
+      const std::string& account,
+      const std::string& secret
+  ) = 0;
   virtual void remove(const std::string& service, const std::string& account) = 0;
 };
 
 class TestDirSecretBackend final : public RawSecretBackend {
-public:
-  explicit TestDirSecretBackend(std::filesystem::path dir) : dir_(std::move(dir)) {}
+ public:
+  explicit TestDirSecretBackend(std::filesystem::path dir)
+      : dir_(std::move(dir)) {}
 
-  std::optional<std::string> get(const std::string& service, const std::string& account) const override {
+  std::optional<std::string> get(const std::string& service, const std::string& account)
+      const override {
     const auto path = secret_path(service, account);
     if (!std::filesystem::exists(path)) {
       return std::nullopt;
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {
-      throw std::runtime_error("failed to open test secret file: " + path.string()); // LCOV_EXCL_LINE
+      // LCOV_EXCL_START
+      throw std::runtime_error("failed to open test secret file: " + path.string());
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
     return buffer.str();
   }
 
-  void set(const std::string& service, const std::string& account, const std::string& secret) override {
+  void set(const std::string& service, const std::string& account, const std::string& secret)
+      override {
     std::filesystem::create_directories(dir_);
     std::ofstream out(secret_path(service, account), std::ios::binary | std::ios::trunc);
     if (!out) {
@@ -173,7 +188,7 @@ public:
     std::filesystem::remove(secret_path(service, account), ec);
   }
 
-private:
+ private:
   std::filesystem::path secret_path(const std::string& service, const std::string& account) const {
     return dir_ / (sanitize_component(service) + "__" + sanitize_component(account) + ".secret");
   }
@@ -198,7 +213,8 @@ const SecretSchema* holder_secret_schema() {
       nullptr,
       nullptr,
       nullptr,
-      nullptr};
+      nullptr
+  };
   return &schema;
 }
 
@@ -207,21 +223,27 @@ LibsecretApiLookupHook& libsecret_api_lookup_hook_storage() {
   return hook;
 }
 
-LibsecretLookupResult default_libsecret_lookup(const std::string& service, const std::string& account) {
+LibsecretLookupResult default_libsecret_lookup(
+    const std::string& service,
+    const std::string& account
+) {
   if (const auto hook = libsecret_api_lookup_hook_storage(); hook != nullptr) {
     const auto result = hook(service, account);
     return {.secret = result.secret, .error_message = result.error_message};
   }
-  // LCOV_EXCL_START: exercised via low-level seam tests; real libsecret calls depend on host keyring state.
+  // LCOV_EXCL_START: exercised via low-level seam tests; real libsecret calls depend on host
+  // keyring state.
   GError* error = nullptr;
-  gchar* secret = secret_password_lookup_sync(holder_secret_schema(),
-                                              nullptr,
-                                              &error,
-                                              "service",
-                                              service.c_str(),
-                                              "account",
-                                              account.c_str(),
-                                              nullptr);
+  gchar* secret = secret_password_lookup_sync(
+      holder_secret_schema(),
+      nullptr,
+      &error,
+      "service",
+      service.c_str(),
+      "account",
+      account.c_str(),
+      nullptr
+  );
   if (!secret) {
     std::optional<std::string> message;
     if (error) {
@@ -253,8 +275,9 @@ LibsecretLookupResult run_libsecret_lookup(const std::string& service, const std
 }
 
 class LibsecretSecretBackend final : public RawSecretBackend {
-public:
-  std::optional<std::string> get(const std::string& service, const std::string& account) const override {
+ public:
+  std::optional<std::string> get(const std::string& service, const std::string& account)
+      const override {
     const auto result = run_libsecret_lookup(service, account);
     if (result.error_message.has_value()) {
       throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, *result.error_message);
@@ -262,19 +285,22 @@ public:
     return result.secret;
   }
 
-  void set(const std::string& service, const std::string& account, const std::string& secret) override {
+  void set(const std::string& service, const std::string& account, const std::string& secret)
+      override {
     GError* error = nullptr;
-    const bool ok = secret_password_store_sync(holder_secret_schema(),
-                                               SECRET_COLLECTION_DEFAULT,
-                                               ("Holder secret " + service + "/" + account).c_str(),
-                                               secret.c_str(),
-                                               nullptr,
-                                               &error,
-                                               "service",
-                                               service.c_str(),
-                                               "account",
-                                               account.c_str(),
-                                               nullptr);
+    const bool ok = secret_password_store_sync(
+        holder_secret_schema(),
+        SECRET_COLLECTION_DEFAULT,
+        ("Holder secret " + service + "/" + account).c_str(),
+        secret.c_str(),
+        nullptr,
+        &error,
+        "service",
+        service.c_str(),
+        "account",
+        account.c_str(),
+        nullptr
+    );
     // LCOV_EXCL_START: libsecret store failures are external keyring behaviour, not Holder logic.
     if (!ok) {
       std::string message = "failed to store secret in libsecret";
@@ -292,14 +318,16 @@ public:
 
   void remove(const std::string& service, const std::string& account) override {
     GError* error = nullptr;
-    const bool ok = secret_password_clear_sync(holder_secret_schema(),
-                                               nullptr,
-                                               &error,
-                                               "service",
-                                               service.c_str(),
-                                               "account",
-                                               account.c_str(),
-                                               nullptr);
+    const bool ok = secret_password_clear_sync(
+        holder_secret_schema(),
+        nullptr,
+        &error,
+        "service",
+        service.c_str(),
+        "account",
+        account.c_str(),
+        nullptr
+    );
     // LCOV_EXCL_START: libsecret clear failures are external keyring behaviour, not Holder logic.
     if (!ok && error) {
       std::string message = "failed to remove secret from libsecret";
@@ -315,11 +343,15 @@ public:
 };
 #endif
 
-std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(const std::filesystem::path& key_path) {
+std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
+    const std::filesystem::path& key_path
+) {
   if (std::filesystem::exists(key_path)) {
     std::ifstream in(key_path, std::ios::binary);
     if (!in) {
-      throw std::runtime_error("failed to open secret-store master key: " + key_path.string()); // LCOV_EXCL_LINE
+      // LCOV_EXCL_START
+      throw std::runtime_error("failed to open secret-store master key: " + key_path.string());
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
@@ -330,23 +362,28 @@ std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(const std:
   std::filesystem::create_directories(key_path.parent_path());
   std::ofstream out(key_path, std::ios::binary | std::ios::trunc);
   if (!out) {
-    throw std::runtime_error("failed to write secret-store master key: " + key_path.string()); // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    throw std::runtime_error("failed to write secret-store master key: " + key_path.string());
+    // LCOV_EXCL_STOP
   }
   out << key_to_base64(key);
   out.close();
   std::filesystem::permissions(
       key_path,
       std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-      std::filesystem::perm_options::replace);
+      std::filesystem::perm_options::replace
+  );
   return key;
 }
 
 class EncryptedFileSecretBackend final : public RawSecretBackend {
-public:
+ public:
   EncryptedFileSecretBackend(std::filesystem::path store_path, std::filesystem::path key_path)
-      : store_path_(std::move(store_path)), key_path_(std::move(key_path)) {}
+      : store_path_(std::move(store_path)),
+        key_path_(std::move(key_path)) {}
 
-  std::optional<std::string> get(const std::string& service, const std::string& account) const override {
+  std::optional<std::string> get(const std::string& service, const std::string& account)
+      const override {
     const auto map = load_map();
     const auto it = map.find(make_key(service, account));
     if (it == map.end()) {
@@ -355,7 +392,8 @@ public:
     return it->second;
   }
 
-  void set(const std::string& service, const std::string& account, const std::string& secret) override {
+  void set(const std::string& service, const std::string& account, const std::string& secret)
+      override {
     auto map = load_map();
     map[make_key(service, account)] = secret;
     save_map(map);
@@ -367,7 +405,7 @@ public:
     save_map(map);
   }
 
-private:
+ private:
   std::unordered_map<std::string, std::string> load_map() const {
     if (!std::filesystem::exists(store_path_)) {
       return {};
@@ -375,12 +413,20 @@ private:
 
     std::ifstream in(store_path_, std::ios::binary);
     if (!in) {
-      throw PrivacyError(PrivacyErrorCode::KeyringUnavailable,
-                         "failed to open fallback secret file: " + store_path_.string()); // LCOV_EXCL_LINE
+      // LCOV_EXCL_START
+      throw PrivacyError(
+          PrivacyErrorCode::KeyringUnavailable,
+          "failed to open fallback secret file: " + store_path_.string()
+      );
+      // LCOV_EXCL_STOP
     }
     std::ostringstream buffer;
     buffer << in.rdbuf();
-    const auto plaintext = decrypt_envelope_v1(buffer.str(), load_or_create_master_key(key_path_), "holder-secret-store");
+    const auto plaintext = decrypt_envelope_v1(
+        buffer.str(),
+        load_or_create_master_key(key_path_),
+        "holder-secret-store"
+    );
     const auto body = nlohmann::json::parse(plaintext);
     std::unordered_map<std::string, std::string> out;
     for (auto it = body.begin(); it != body.end(); ++it) {
@@ -394,13 +440,20 @@ private:
     for (const auto& [key, value] : map) {
       body[key] = value;
     }
-    const auto ciphertext =
-        encrypt_envelope_v1(body.dump(), load_or_create_master_key(key_path_), "holder-secret-store");
+    const auto ciphertext = encrypt_envelope_v1(
+        body.dump(),
+        load_or_create_master_key(key_path_),
+        "holder-secret-store"
+    );
     std::filesystem::create_directories(store_path_.parent_path());
     std::ofstream out(store_path_, std::ios::binary | std::ios::trunc);
     if (!out) {
-      throw PrivacyError(PrivacyErrorCode::KeyringUnavailable,
-                         "failed to write fallback secret file: " + store_path_.string()); // LCOV_EXCL_LINE
+      // LCOV_EXCL_START
+      throw PrivacyError(
+          PrivacyErrorCode::KeyringUnavailable,
+          "failed to write fallback secret file: " + store_path_.string()
+      );
+      // LCOV_EXCL_STOP
     }
     out << ciphertext;
   }
@@ -410,9 +463,13 @@ private:
 };
 
 class DefaultSecretStore final : public SecretStore {
-public:
-  DefaultSecretStore(const std::filesystem::path& server_dir, std::unique_ptr<RawSecretBackend> backend)
-      : index_(test_store_root(server_dir) / kMetadataFilename), backend_(std::move(backend)) {}
+ public:
+  DefaultSecretStore(
+      const std::filesystem::path& server_dir,
+      std::unique_ptr<RawSecretBackend> backend
+  )
+      : index_(test_store_root(server_dir) / kMetadataFilename),
+        backend_(std::move(backend)) {}
 
   explicit DefaultSecretStore(const std::filesystem::path& server_dir)
       : index_(test_store_root(server_dir) / kMetadataFilename) {
@@ -423,13 +480,15 @@ public:
 #if HOLDER_HAVE_LIBSECRET
     backend_ = std::make_unique<LibsecretSecretBackend>();
 #else
-    backend_ = std::make_unique<EncryptedFileSecretBackend>(server_dir / kFallbackSecretsFilename,
-                                                            server_dir / kFallbackMasterKeyFilename);
+    backend_ = std::make_unique<EncryptedFileSecretBackend>(
+        server_dir / kFallbackSecretsFilename,
+        server_dir / kFallbackMasterKeyFilename
+    );
 #endif
   } // LCOV_EXCL_LINE
 
-  std::optional<StoredSecret> get(const std::string& service,
-                                  const std::string& account) const override {
+  std::optional<StoredSecret> get(const std::string& service, const std::string& account)
+      const override {
     const auto metadata = index_.get(service, account);
     if (!metadata.has_value()) {
       return std::nullopt;
@@ -445,12 +504,14 @@ public:
     return index_.list(service);
   }
 
-  void set(const std::string& service,
-           const std::string& account,
-           const std::string& secret,
-           const std::string& preview,
-           long long created_at,
-           long long updated_at) override {
+  void set(
+      const std::string& service,
+      const std::string& account,
+      const std::string& secret,
+      const std::string& preview,
+      long long created_at,
+      long long updated_at
+  ) override {
     backend_->set(service, account, secret);
     index_.upsert(SecretMetadata{service, account, preview, created_at, updated_at});
   }
@@ -460,7 +521,7 @@ public:
     index_.remove(service, account);
   }
 
-private:
+ private:
   SecretMetadataIndex index_;
   std::unique_ptr<RawSecretBackend> backend_;
 };
@@ -471,11 +532,16 @@ std::unique_ptr<SecretStore> make_default_secret_store(const std::filesystem::pa
   return std::make_unique<DefaultSecretStore>(server_dir);
 }
 
-std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(const std::filesystem::path& server_dir) {
+std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(
+    const std::filesystem::path& server_dir
+) {
   return std::make_unique<DefaultSecretStore>(
       server_dir,
-      std::make_unique<EncryptedFileSecretBackend>(server_dir / kFallbackSecretsFilename,
-                                                   server_dir / kFallbackMasterKeyFilename));
+      std::make_unique<EncryptedFileSecretBackend>(
+          server_dir / kFallbackSecretsFilename,
+          server_dir / kFallbackMasterKeyFilename
+      )
+  );
 }
 
 #if HOLDER_HAVE_LIBSECRET

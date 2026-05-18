@@ -1,10 +1,10 @@
 #include "http_test_helpers.h"
 
+#include "ai/AiMessageRepo.h"
+#include "ai/AiThreadRepo.h"
 #include "model/AiMessage.h"
 #include "model/AiThread.h"
 #include "model/Resource.h"
-#include "ai/AiMessageRepo.h"
-#include "ai/AiThreadRepo.h"
 #include "resource/ResourceRepo.h"
 
 using holder::test::create_project;
@@ -35,7 +35,9 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -56,16 +58,24 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
       {"updated_at", 11}
   };
 
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_a,
-                    boost::beast::http::status::created);
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_b,
-                    boost::beast::http::status::created);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_a,
+      boost::beast::http::status::created
+  );
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_b,
+      boost::beast::http::status::created
+  );
   nlohmann::json link_body = {
       {"to_card_id", "card-b"},
       {"to_type", "card"},
@@ -73,22 +83,30 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
       {"label", "See"},
       {"created_at", 123}
   };
-  const auto created = http_json_request(bound.bind, bound.port, token,
-                                         boost::beast::http::verb::post,
-                                         "/cards/card-a/links",
-                                         link_body,
-                                         boost::beast::http::status::created);
+  const auto created = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/card-a/links",
+      link_body,
+      boost::beast::http::status::created
+  );
   REQUIRE(created["ok"] == true);
   REQUIRE(created["data"]["to_card_id"] == "card-b");
   REQUIRE(created["data"]["to_type"] == "card");
   REQUIRE(created["data"]["kind"] == "ref");
   REQUIRE(created["data"]["label"] == "See");
 
-  const auto listed = http_json_request(bound.bind, bound.port, token,
-                                        boost::beast::http::verb::get,
-                                        "/cards/card-a/links",
-                                        nlohmann::json::object(),
-                                        boost::beast::http::status::ok);
+  const auto listed = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(listed["ok"] == true);
   REQUIRE(listed["data"].is_array());
   REQUIRE(listed["data"].size() == 1);
@@ -97,52 +115,73 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
   REQUIRE(listed["data"][0]["kind"] == "ref");
   REQUIRE(listed["data"][0]["label"] == "See");
 
-  const auto backlinks = http_json_request(bound.bind, bound.port, token,
-                                           boost::beast::http::verb::get,
-                                           "/cards/card-b/backlinks",
-                                           nlohmann::json::object(),
-                                           boost::beast::http::status::ok);
+  const auto backlinks = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-b/backlinks",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(backlinks["ok"] == true);
   REQUIRE(backlinks["data"].is_array());
   REQUIRE(backlinks["data"].size() == 1);
   REQUIRE(backlinks["data"][0]["from_card_id"] == "card-a");
 
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/cards/card-b",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/cards/card-b",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
 
-  const auto hidden = http_json_request(bound.bind, bound.port, token,
-                                        boost::beast::http::verb::get,
-                                        "/cards/card-a/links",
-                                        nlohmann::json::object(),
-                                        boost::beast::http::status::ok);
+  const auto hidden = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(hidden["data"].size() == 0);
 
-  const auto visible = http_json_request(bound.bind, bound.port, token,
-                                         boost::beast::http::verb::get,
-                                         "/cards/card-a/links?include_deleted=1",
-                                         nlohmann::json::object(),
-                                         boost::beast::http::status::ok);
+  const auto visible = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links?include_deleted=1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(visible["data"].size() == 1);
 
-  nlohmann::json delete_body = {
-      {"to_card_id", "card-b"},
-      {"kind", "ref"}
-  };
-  const auto deleted = http_json_request(bound.bind, bound.port, token,
-                                         boost::beast::http::verb::delete_,
-                                         "/cards/card-a/links",
-                                         delete_body,
-                                         boost::beast::http::status::ok);
+  nlohmann::json delete_body = {{"to_card_id", "card-b"}, {"kind", "ref"}};
+  const auto deleted = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/cards/card-a/links",
+      delete_body,
+      boost::beast::http::status::ok
+  );
   REQUIRE(deleted["ok"] == true);
 
-  const auto listed_after = http_json_request(bound.bind, bound.port, token,
-                                              boost::beast::http::verb::get,
-                                              "/cards/card-a/links",
-                                              nlohmann::json::object(),
-                                              boost::beast::http::status::ok);
+  const auto listed_after = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(listed_after["data"].size() == 0);
 
   nlohmann::json invalid_body = {
@@ -150,11 +189,15 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
       {"to_type", "card"},
       {"kind", "ref"}
   };
-  const auto invalid = http_json_request(bound.bind, bound.port, token,
-                                         boost::beast::http::verb::post,
-                                         "/cards/card-a/links",
-                                         invalid_body,
-                                         boost::beast::http::status::bad_request);
+  const auto invalid = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/card-a/links",
+      invalid_body,
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(invalid["ok"] == false);
 
   server.stop();
@@ -245,7 +288,9 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   nlohmann::json card_a = {
@@ -264,16 +309,24 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
       {"created_at", 13},
       {"updated_at", 13}
   };
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_a,
-                    boost::beast::http::status::created);
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_b,
-                    boost::beast::http::status::created);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_a,
+      boost::beast::http::status::created
+  );
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_b,
+      boost::beast::http::status::created
+  );
   nlohmann::json card_c_other_project = {
       {"card_id", "card-c"},
       {"project_id", "proj-2"},
@@ -282,80 +335,145 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
       {"created_at", 14},
       {"updated_at", 14}
   };
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_c_other_project,
-                    boost::beast::http::status::created);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_c_other_project,
+      boost::beast::http::status::created
+  );
 
   auto create_link = [&](const nlohmann::json& body, boost::beast::http::status status) {
-    return http_json_request(bound.bind, bound.port, token,
-                             boost::beast::http::verb::post,
-                             "/cards/card-a/links",
-                             body,
-                             status);
+    return http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/cards/card-a/links",
+        body,
+        status
+    );
   };
 
-  const auto link_ai_thread = create_link({{"to_card_id", "thread-1"}, {"to_type", "ai_thread"}}, boost::beast::http::status::created);
+  const auto link_ai_thread = create_link(
+      {{"to_card_id", "thread-1"}, {"to_type", "ai_thread"}},
+      boost::beast::http::status::created
+  );
   REQUIRE(link_ai_thread["ok"] == true);
   REQUIRE(link_ai_thread["data"]["to_type"] == "ai_thread");
 
-  const auto link_resource = create_link({{"to_card_id", "res-1"}, {"to_type", "resource"}}, boost::beast::http::status::created);
+  const auto link_resource = create_link(
+      {{"to_card_id", "res-1"}, {"to_type", "resource"}},
+      boost::beast::http::status::created
+  );
   REQUIRE(link_resource["ok"] == true);
   REQUIRE(link_resource["data"]["to_type"] == "resource");
 
-  const auto link_ai_message = create_link({{"to_card_id", "msg-2"}, {"to_type", "ai_message"}}, boost::beast::http::status::created);
+  const auto link_ai_message = create_link(
+      {{"to_card_id", "msg-2"}, {"to_type", "ai_message"}},
+      boost::beast::http::status::created
+  );
   REQUIRE(link_ai_message["ok"] == true);
   REQUIRE(link_ai_message["data"]["to_type"] == "ai_message");
 
-  const auto missing_target_id = create_link({{"to_card_id", ""}, {"to_type", "ai_thread"}}, boost::beast::http::status::bad_request);
+  const auto missing_target_id = create_link(
+      {{"to_card_id", ""}, {"to_type", "ai_thread"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_target_id["error"]["message"] == "Missing to_card_id.");
 
-  const auto thread_other_project = create_link({{"to_card_id", "thread-2"}, {"to_type", "ai_thread"}}, boost::beast::http::status::bad_request);
-  REQUIRE(thread_other_project["error"]["message"] == "Target ai thread is in a different project.");
-  const auto thread_missing = create_link({{"to_card_id", "thread-missing"}, {"to_type", "ai_thread"}}, boost::beast::http::status::bad_request);
+  const auto thread_other_project = create_link(
+      {{"to_card_id", "thread-2"}, {"to_type", "ai_thread"}},
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(
+      thread_other_project["error"]["message"] == "Target ai thread is in a different project."
+  );
+  const auto thread_missing = create_link(
+      {{"to_card_id", "thread-missing"}, {"to_type", "ai_thread"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(thread_missing["error"]["message"] == "Target ai thread not found.");
 
-  const auto resource_other_project = create_link({{"to_card_id", "res-2"}, {"to_type", "resource"}}, boost::beast::http::status::bad_request);
-  REQUIRE(resource_other_project["error"]["message"] == "Target resource is in a different project.");
-  const auto resource_missing = create_link({{"to_card_id", "res-missing"}, {"to_type", "resource"}}, boost::beast::http::status::bad_request);
+  const auto resource_other_project = create_link(
+      {{"to_card_id", "res-2"}, {"to_type", "resource"}},
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(
+      resource_other_project["error"]["message"] == "Target resource is in a different project."
+  );
+  const auto resource_missing = create_link(
+      {{"to_card_id", "res-missing"}, {"to_type", "resource"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(resource_missing["error"]["message"] == "Target resource not found.");
 
-  const auto message_other_project = create_link({{"to_card_id", "msg-3"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
-  REQUIRE(message_other_project["error"]["message"] == "Target ai message is in a different project.");
-  const auto message_missing = create_link({{"to_card_id", "msg-missing"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
+  const auto message_other_project = create_link(
+      {{"to_card_id", "msg-3"}, {"to_type", "ai_message"}},
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(
+      message_other_project["error"]["message"] == "Target ai message is in a different project."
+  );
+  const auto message_missing = create_link(
+      {{"to_card_id", "msg-missing"}, {"to_type", "ai_message"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(message_missing["error"]["message"] == "Target ai message not found.");
-  const auto card_other_project = create_link({{"to_card_id", "card-c"}, {"to_type", "card"}}, boost::beast::http::status::bad_request);
+  const auto card_other_project = create_link(
+      {{"to_card_id", "card-c"}, {"to_type", "card"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(card_other_project["error"]["message"] == "Target card is in a different project.");
 
   db.exec("PRAGMA foreign_keys = OFF;");
   db.exec("INSERT INTO ai_messages(message_id, thread_id, role, source, content, created_at) "
           "VALUES('msg-orphan', 'thread-missing', 'user', 'manual', 'orphan', 20);");
   db.exec("PRAGMA foreign_keys = ON;");
-  const auto orphan_thread = create_link({{"to_card_id", "msg-orphan"}, {"to_type", "ai_message"}}, boost::beast::http::status::bad_request);
+  const auto orphan_thread = create_link(
+      {{"to_card_id", "msg-orphan"}, {"to_type", "ai_message"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(orphan_thread["error"]["message"] == "Target ai message thread not found.");
 
-  const auto unsupported = create_link({{"to_card_id", "whatever"}, {"to_type", "custom_type"}}, boost::beast::http::status::bad_request);
+  const auto unsupported = create_link(
+      {{"to_card_id", "whatever"}, {"to_type", "custom_type"}},
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(unsupported["error"]["message"] == "Unsupported to_type.");
 
-  const auto list_outgoing = http_json_request(bound.bind, bound.port, token,
-                                               boost::beast::http::verb::get,
-                                               "/cards/card-a/links",
-                                               nlohmann::json::object(),
-                                               boost::beast::http::status::ok);
+  const auto list_outgoing = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(list_outgoing["data"].size() >= 3);
 
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/ai/messages/msg-2",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/ai/messages/msg-2",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
 
-  const auto filtered_outgoing = http_json_request(bound.bind, bound.port, token,
-                                                   boost::beast::http::verb::get,
-                                                   "/cards/card-a/links",
-                                                   nlohmann::json::object(),
-                                                   boost::beast::http::status::ok);
+  const auto filtered_outgoing = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   bool saw_deleted_message_link = false;
   for (const auto& item : filtered_outgoing["data"]) {
     if (item["to_type"] == "ai_message" && item["to_card_id"] == "msg-2") {
@@ -364,11 +482,15 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
   REQUIRE(saw_deleted_message_link == false);
 
-  const auto include_deleted_outgoing = http_json_request(bound.bind, bound.port, token,
-                                                          boost::beast::http::verb::get,
-                                                          "/cards/card-a/links?include_deleted=1",
-                                                          nlohmann::json::object(),
-                                                          boost::beast::http::status::ok);
+  const auto include_deleted_outgoing = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/links?include_deleted=1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   bool saw_included_deleted_message_link = false;
   for (const auto& item : include_deleted_outgoing["data"]) {
     if (item["to_type"] == "ai_message" && item["to_card_id"] == "msg-2") {
@@ -377,18 +499,26 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
   REQUIRE(saw_included_deleted_message_link);
 
-  const auto ai_to_card = http_json_request(bound.bind, bound.port, token,
-                                            boost::beast::http::verb::post,
-                                            "/ai/messages/msg-1/links",
-                                            {{"to_card_id", "card-a"}, {"to_type", "card"}},
-                                            boost::beast::http::status::created);
+  const auto ai_to_card = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/messages/msg-1/links",
+      {{"to_card_id", "card-a"}, {"to_type", "card"}},
+      boost::beast::http::status::created
+  );
   REQUIRE(ai_to_card["ok"] == true);
 
-  const auto card_backlinks = http_json_request(bound.bind, bound.port, token,
-                                                boost::beast::http::verb::get,
-                                                "/cards/card-a/backlinks",
-                                                nlohmann::json::object(),
-                                                boost::beast::http::status::ok);
+  const auto card_backlinks = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/backlinks",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   bool saw_msg_source = false;
   for (const auto& item : card_backlinks["data"]) {
     if (item["from_card_id"] == "msg-1") {
@@ -397,17 +527,25 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
   REQUIRE(saw_msg_source);
 
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/ai/messages/msg-1",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/ai/messages/msg-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
 
-  const auto filtered_backlinks = http_json_request(bound.bind, bound.port, token,
-                                                    boost::beast::http::verb::get,
-                                                    "/cards/card-a/backlinks",
-                                                    nlohmann::json::object(),
-                                                    boost::beast::http::status::ok);
+  const auto filtered_backlinks = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/backlinks",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   bool saw_deleted_msg_source = false;
   for (const auto& item : filtered_backlinks["data"]) {
     if (item["from_card_id"] == "msg-1") {
@@ -416,11 +554,15 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   }
   REQUIRE(saw_deleted_msg_source == false);
 
-  const auto include_deleted_backlinks = http_json_request(bound.bind, bound.port, token,
-                                                           boost::beast::http::verb::get,
-                                                           "/cards/card-a/backlinks?include_deleted=1",
-                                                           nlohmann::json::object(),
-                                                           boost::beast::http::status::ok);
+  const auto include_deleted_backlinks = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/cards/card-a/backlinks?include_deleted=1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   bool saw_included_deleted_msg_source = false;
   for (const auto& item : include_deleted_backlinks["data"]) {
     if (item["from_card_id"] == "msg-1") {

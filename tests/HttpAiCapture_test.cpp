@@ -1,5 +1,5 @@
-#include "http_test_helpers.h"
 #include "ai/AiMessageRepo.h"
+#include "http_test_helpers.h"
 
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
@@ -11,8 +11,11 @@ TEST_CASE("HTTP ai messages capture creates thread and two messages", "[http]") 
   const auto project_root = dir / "project";
 
   auto db = open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '" + project_root.string() + "', 1, 1);");
+  db.exec(
+      "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+      "VALUES('proj-1', 'Project', '" +
+      project_root.string() + "', 1, 1);"
+  );
 
   const std::string token = "testtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
@@ -24,22 +27,28 @@ TEST_CASE("HTTP ai messages capture creates thread and two messages", "[http]") 
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto created = http_json_request(bound.bind,
-                                         bound.port,
-                                         token,
-                                         boost::beast::http::verb::post,
-                                         "/ai/messages/capture",
-                                         nlohmann::json{{"project_id", "proj-1"},
-                                                        {"prompt", "What is this?"},
-                                                        {"response", "A captured response."},
-                                                        {"source", "manual_paste"},
-                                                        {"provider", "Gemini"},
-                                                        {"model", "gemma-3-12b"},
-                                                        {"url", "https://example.com"}},
-                                         boost::beast::http::status::created);
+  const auto created = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/messages/capture",
+      nlohmann::json{
+          {"project_id", "proj-1"},
+          {"prompt", "What is this?"},
+          {"response", "A captured response."},
+          {"source", "manual_paste"},
+          {"provider", "Gemini"},
+          {"model", "gemma-3-12b"},
+          {"url", "https://example.com"}
+      },
+      boost::beast::http::status::created
+  );
   REQUIRE(created["ok"] == true);
   REQUIRE(created["data"]["thread_id"].is_string());
   REQUIRE(created["data"]["user_message_id"].is_string());

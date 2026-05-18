@@ -1,65 +1,51 @@
-#include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
-#include "platform/LockFile.h"
-#include "platform/Paths.h"
-#include "platform/ServerInfo.h"
-#include "platform/Signal.h"
+#include "ai/AiProviderCredentialRecovery.h"
 #include "api/HttpServer.h"
-#include "core/ConcurrencyProfilePolicy.h"
 #include "card/CardStore.h"
-#include "project/ProjectRepo.h"
-#include "model/Card.h"
+#include "core/ConcurrencyProfilePolicy.h"
+#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
 #include "llm/LocalModelRunner.h"
 #include "llm/LocalRunnerClient.h"
 #include "llm/RunnerRegistry.h"
+#include "model/Card.h"
 #include "platform/Db.h"
+#include "platform/InstalledDataPath.h"
+#include "platform/LockFile.h"
 #include "platform/Migrations.h"
-#include "project/ProjectPaths.h"
-#include "project/StartupRecovery.h"
-#include "ai/AiProviderCredentialRecovery.h"
+#include "platform/Paths.h"
+#include "platform/ServerInfo.h"
+#include "platform/Signal.h"
 #include "privacy/ProjectPrivacy.h"
 #include "privacy/SecretStore.h"
-#include "git/GitOps.h"
+#include "project/ProjectPaths.h"
+#include "project/ProjectRepo.h"
+#include "project/StartupRecovery.h"
 #include "sync/ProjectSyncWorker.h"
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <optional>
-#include <filesystem>
 #include <chrono>
-#include <memory>
 #include <exception>
-#include <string>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <sstream>
+#include <string>
 
 #ifndef CARD_SERVER_VERSION
 #define CARD_SERVER_VERSION "0.0.0"
 #endif
 
-#ifndef HOLDER_INSTALL_DATADIR
-#define HOLDER_INSTALL_DATADIR ""
-#endif
-
 static void print_usage(std::ostream& out) {
   out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex]\n";
 }
-
-static std::optional<std::filesystem::path> installed_data_path(const std::filesystem::path& rel_path) { // LCOV_EXCL_LINE
-  // LCOV_EXCL_START: install-layout fallback is exercised by Debian packages, not repo-local tests.
-  namespace fs = std::filesystem;
-  const fs::path root(HOLDER_INSTALL_DATADIR);
-  if (root.empty()) return std::nullopt;
-  fs::path candidate = root / rel_path;
-  if (fs::exists(candidate)) return candidate;
-  return std::nullopt;
-  // LCOV_EXCL_STOP
-} // LCOV_EXCL_LINE
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -72,9 +58,11 @@ static std::filesystem::path find_schema_sql() {
   fs::path p2 = fs::current_path().parent_path() / "schema" / "schema.sql";
   if (fs::exists(p2)) return p2;
 
-  if (auto installed = installed_data_path("schema/schema.sql")) return installed.value(); // LCOV_EXCL_LINE
+  if (auto installed = holder::core::installed_data_path("schema/schema.sql")) // LCOV_EXCL_LINE
+    return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find schema/schema.sql from current directory."); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find schema/schema.sql from current directory."
+  ); // LCOV_EXCL_LINE
 }
 
 static std::string generate_uuid_v4() {
@@ -91,9 +79,11 @@ static std::filesystem::path find_welcome_markdown() {
   fs::path p2 = fs::current_path().parent_path() / "config" / "WELCOME.md";
   if (fs::exists(p2)) return p2;
 
-  if (auto installed = installed_data_path("config/WELCOME.md")) return installed.value(); // LCOV_EXCL_LINE
+  if (auto installed = holder::core::installed_data_path("config/WELCOME.md")) // LCOV_EXCL_LINE
+    return installed.value(); // LCOV_EXCL_LINE
 
-  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."); // LCOV_EXCL_LINE
+  throw std::runtime_error("Cannot find config/WELCOME.md from current directory."
+  ); // LCOV_EXCL_LINE
 }
 
 static std::string load_welcome_markdown_body() {
@@ -106,8 +96,10 @@ static std::string load_welcome_markdown_body() {
   return buffer.str();
 }
 
-static std::string derive_title_from_markdown_first_line(const std::string& body,
-                                                         const std::string& fallback) {
+static std::string derive_title_from_markdown_first_line(
+    const std::string& body,
+    const std::string& fallback
+) {
   std::string line;
   for (char ch : body) {
     if (ch == '\n') break;
@@ -140,7 +132,8 @@ static std::optional<holder::model::Project> ensure_default_home_project(holder:
   home.privacy_mode = "encrypted_git";
   home.project_key_id.reset();
   home.created_at = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
+                        std::chrono::system_clock::now().time_since_epoch()
+  )
                         .count();
   home.updated_at = home.created_at;
 
@@ -153,10 +146,13 @@ static std::optional<holder::model::Project> ensure_default_home_project(holder:
   return home;
 }
 
-static void ensure_default_welcome_card(holder::card::CardStore& card_store,
-                                        const holder::model::Project& home) {
+static void ensure_default_welcome_card(
+    holder::card::CardStore& card_store,
+    const holder::model::Project& home
+) {
   const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-                       std::chrono::system_clock::now().time_since_epoch())
+                       std::chrono::system_clock::now().time_since_epoch()
+  )
                        .count();
   const std::string content = load_welcome_markdown_body();
   holder::model::Card welcome;
@@ -188,13 +184,14 @@ int main(int argc, char* argv[]) {
   const auto log_path = paths.log_dir() / "server.log";
   auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
   auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_path.string(), true);
-  auto logger = std::make_shared<spdlog::logger>("holder", spdlog::sinks_init_list{stdout_sink, file_sink});
+  auto logger =
+      std::make_shared<spdlog::logger>("holder", spdlog::sinks_init_list{stdout_sink, file_sink});
   spdlog::set_default_logger(logger);
   const char* log_pattern = "[%Y-%m-%d %H:%M:%S.%e] [%l] %v";
   spdlog::set_pattern(log_pattern);
 
-  auto console_logger = std::make_shared<spdlog::logger>("holder_console",
-                                                         spdlog::sinks_init_list{stdout_sink});
+  auto console_logger =
+      std::make_shared<spdlog::logger>("holder_console", spdlog::sinks_init_list{stdout_sink});
   console_logger->set_pattern(log_pattern);
   spdlog::flush_on(spdlog::level::info);
 
@@ -237,8 +234,10 @@ int main(int argc, char* argv[]) {
 
   holder::core::LockFile lock(paths.lock_path());
   if (!lock.try_acquire()) {
-    spdlog::error("Another holder instance appears to be running (lock busy: {}).",
-                  paths.lock_path().string());
+    spdlog::error(
+        "Another holder instance appears to be running (lock busy: {}).",
+        paths.lock_path().string()
+    );
     return 2;
   }
 
@@ -257,14 +256,16 @@ int main(int argc, char* argv[]) {
         db,
         &fts,
         holder::core::default_projects_root(),
-        generate_uuid_v4);
+        generate_uuid_v4
+    );
   }
   holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
   const auto bootstrapped_home = ensure_default_home_project(db);
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
+                        std::chrono::system_clock::now().time_since_epoch()
+  )
                         .count();
   info.api_version = "0.1";
   info.server_version = CARD_SERVER_VERSION;
@@ -283,7 +284,8 @@ int main(int argc, char* argv[]) {
         bootstrapped_home->root_path,
         bootstrapped_home->project_key_id,
         bootstrapped_home->updated_at,
-        generate_uuid_v4);
+        generate_uuid_v4
+    );
     ensure_default_welcome_card(card_store, bootstrapped_home.value());
   }
   if (reindex_only) {
@@ -302,14 +304,25 @@ int main(int argc, char* argv[]) {
   const CasteResult machine_caste = detect_caste();
   const auto concurrency = holder::core::concurrency_profile_for_caste(machine_caste.caste);
   spdlog::info("machine caste: {} ({})", caste_name(machine_caste.caste), machine_caste.reason);
-  spdlog::info("listener concurrency: io={}, ingress={}, save={}, general={}, writer={}",
-               concurrency.io_threads,
-               concurrency.ingress_workers,
-               concurrency.save_workers,
-               concurrency.general_workers,
-               concurrency.writer_workers);
+  spdlog::info(
+      "listener concurrency: io={}, ingress={}, save={}, general={}, writer={}",
+      concurrency.io_threads,
+      concurrency.ingress_workers,
+      concurrency.save_workers,
+      concurrency.general_workers,
+      concurrency.writer_workers
+  );
   holder::api::HttpServer server(
-      bind, port, db, info.auth_token, &card_store, &fts, nullptr, &runner_registry, concurrency);
+      bind,
+      port,
+      db,
+      info.auth_token,
+      &card_store,
+      &fts,
+      nullptr,
+      &runner_registry,
+      concurrency
+  );
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());
@@ -323,10 +336,12 @@ int main(int argc, char* argv[]) {
   holder::core::write_server_info(paths.info_path(), info);
   spdlog::info("listening on {}:{}", info.bind, info.port);
   spdlog::info("docs available at http://{}:{}/docs", info.bind, info.port);
-  console_logger->info("docs available at http://{}:{}/docs (auth token: {})",
-                       info.bind,
-                       info.port,
-                       info.auth_token);
+  console_logger->info(
+      "docs available at http://{}:{}/docs (auth token: {})",
+      info.bind,
+      info.port,
+      info.auth_token
+  );
 
   server.run(signals);
   runner.stop();

@@ -4,14 +4,14 @@
 #include "api/ConcurrencyProfile.h"
 #include "api/Router.h"
 #include "api/Session.h"
+#include "card/CardStore.h"
 #include "core/SerialExecutor.h"
-#include "platform/Signal.h"
 #include "git/ExecutorGitOps.h"
 #include "git/GitOps.h"
-#include "llm/RunnerRegistry.h"
 #include "index/FtsIndexer.h"
-#include "card/CardStore.h"
+#include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
+#include "platform/Signal.h"
 #include "privacy/SecretStore.h"
 
 #include <boost/asio.hpp>
@@ -29,25 +29,27 @@
 namespace holder::api {
 
 class Listener {
-public:
+ public:
   struct BoundInfo {
     std::string bind;
     unsigned short port = 0;
   };
 
-  Listener(std::string bind,
-           unsigned short port,
-           holder::platform::Db& db,
-           const std::string& auth_token,
-           const Router& router,
-           std::chrono::steady_clock::time_point started_at,
-           holder::card::CardStore* card_store,
-           holder::index::FtsIndexer* fts,
-           holder::ai::NudgeService* nudge_service,
-           holder::privacy::SecretStore* secret_store = nullptr,
-           holder::git::GitOps* git_ops = nullptr,
-           holder::llm::RunnerRegistry* runner_registry = nullptr,
-           holder::api::ConcurrencyProfile concurrency = {});
+  Listener(
+      std::string bind,
+      unsigned short port,
+      holder::platform::Db& db,
+      const std::string& auth_token,
+      const Router& router,
+      std::chrono::steady_clock::time_point started_at,
+      holder::card::CardStore* card_store,
+      holder::index::FtsIndexer* fts,
+      holder::ai::NudgeService* nudge_service,
+      holder::privacy::SecretStore* secret_store = nullptr,
+      holder::git::GitOps* git_ops = nullptr,
+      holder::llm::RunnerRegistry* runner_registry = nullptr,
+      holder::api::ConcurrencyProfile concurrency = {}
+  );
 
   BoundInfo start();
   void run(const holder::core::SignalHandler& signals);
@@ -59,7 +61,7 @@ public:
   std::size_t background_queue_count() const;
   void enqueue_pending_socket_for_test();
 
-private:
+ private:
   using tcp = boost::asio::ip::tcp;
 
   boost::asio::io_context ioc_;

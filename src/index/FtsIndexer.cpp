@@ -20,14 +20,16 @@ void bind_text(sqlite3_stmt* stmt, int idx, const std::string& value) {
 
 } // namespace
 
-FtsIndexer::FtsIndexer(holder::platform::Db& db) : db_(db) {}
+FtsIndexer::FtsIndexer(holder::platform::Db& db)
+    : db_(db) {}
 
-void FtsIndexer::upsert_card(const std::string& card_id,
-                             const std::string& project_id,
-                             const std::string& title,
-                             const std::string& body) {
-  static constexpr const char* SQL_DELETE =
-      "DELETE FROM cards_fts WHERE card_id = ?;";
+void FtsIndexer::upsert_card(
+    const std::string& card_id,
+    const std::string& project_id,
+    const std::string& title,
+    const std::string& body
+) {
+  static constexpr const char* SQL_DELETE = "DELETE FROM cards_fts WHERE card_id = ?;";
   static constexpr const char* SQL_INSERT =
       "INSERT INTO cards_fts(card_id, project_id, title, body) "
       "VALUES(?, ?, ?, ?);";
@@ -75,12 +77,13 @@ void FtsIndexer::delete_card(const std::string& card_id) {
   }
 }
 
-void FtsIndexer::upsert_message(const std::string& message_id,
-                                const std::string& thread_id,
-                                const std::string& project_id,
-                                const std::string& content) {
-  static constexpr const char* SQL_DELETE =
-      "DELETE FROM ai_fts WHERE message_id = ?;";
+void FtsIndexer::upsert_message(
+    const std::string& message_id,
+    const std::string& thread_id,
+    const std::string& project_id,
+    const std::string& content
+) {
+  static constexpr const char* SQL_DELETE = "DELETE FROM ai_fts WHERE message_id = ?;";
   static constexpr const char* SQL_INSERT =
       "INSERT INTO ai_fts(message_id, thread_id, project_id, content) "
       "VALUES(?, ?, ?, ?);";
@@ -128,19 +131,20 @@ void FtsIndexer::delete_message(const std::string& message_id) {
   }
 }
 
-std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& project_id,
-                                                            const std::string& query,
-                                                            int limit,
-                                                            int offset) {
-  static constexpr const char* SQL =
-      "SELECT c.card_id, c.title, c.updated_at, c.created_at, "
-      "bm25(cards_fts) AS score, "
-      "snippet(cards_fts, 2, '[', ']', '...', 10) "
-      "FROM cards_fts "
-      "JOIN cards c ON c.card_id = cards_fts.card_id "
-      "WHERE cards_fts.project_id = ? AND cards_fts MATCH ? "
-      "ORDER BY score "
-      "LIMIT ? OFFSET ?;";
+std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(
+    const std::string& project_id,
+    const std::string& query,
+    int limit,
+    int offset
+) {
+  static constexpr const char* SQL = "SELECT c.card_id, c.title, c.updated_at, c.created_at, "
+                                     "bm25(cards_fts) AS score, "
+                                     "snippet(cards_fts, 2, '[', ']', '...', 10) "
+                                     "FROM cards_fts "
+                                     "JOIN cards c ON c.card_id = cards_fts.card_id "
+                                     "WHERE cards_fts.project_id = ? AND cards_fts MATCH ? "
+                                     "ORDER BY score "
+                                     "LIMIT ? OFFSET ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -186,19 +190,20 @@ std::vector<FtsIndexer::SearchRow> FtsIndexer::search_cards(const std::string& p
   return out;
 }
 
-std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(const std::string& project_id,
-                                                               const std::string& query,
-                                                               int limit,
-                                                               int offset) {
-  static constexpr const char* SQL =
-      "SELECT m.message_id, m.created_at, "
-      "bm25(ai_fts) AS score, "
-      "snippet(ai_fts, 3, '[', ']', '...', 10) "
-      "FROM ai_fts "
-      "JOIN ai_messages m ON m.message_id = ai_fts.message_id "
-      "WHERE ai_fts.project_id = ? AND ai_fts MATCH ? "
-      "ORDER BY score "
-      "LIMIT ? OFFSET ?;";
+std::vector<FtsIndexer::SearchRow> FtsIndexer::search_messages(
+    const std::string& project_id,
+    const std::string& query,
+    int limit,
+    int offset
+) {
+  static constexpr const char* SQL = "SELECT m.message_id, m.created_at, "
+                                     "bm25(ai_fts) AS score, "
+                                     "snippet(ai_fts, 3, '[', ']', '...', 10) "
+                                     "FROM ai_fts "
+                                     "JOIN ai_messages m ON m.message_id = ai_fts.message_id "
+                                     "WHERE ai_fts.project_id = ? AND ai_fts MATCH ? "
+                                     "ORDER BY score "
+                                     "LIMIT ? OFFSET ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

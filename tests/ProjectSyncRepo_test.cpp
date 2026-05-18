@@ -1,6 +1,6 @@
+#include "http_test_helpers.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
-#include "http_test_helpers.h"
 #include <sqlite3.h>
 
 namespace {
@@ -9,18 +9,14 @@ int sqlite_interrupt_cb(void* data) {
   return (enabled != nullptr && *enabled != 0) ? 1 : 0;
 }
 
-int deny_project_sync_insert(void*,
-                             int action,
-                             const char* detail1,
-                             const char*,
-                             const char*,
-                             const char*) {
-  if (action == SQLITE_INSERT && detail1 != nullptr && std::string(detail1) == "project_sync_state") {
+int deny_project_sync_insert(void*, int action, const char* detail1, const char*, const char*, const char*) {
+  if (action == SQLITE_INSERT && detail1 != nullptr &&
+      std::string(detail1) == "project_sync_state") {
     return SQLITE_DENY;
   }
   return SQLITE_OK;
 }
-}
+} // namespace
 
 TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][repo]") {
   const auto dir = holder::test::make_temp_dir();
@@ -38,7 +34,13 @@ TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][
 
   holder::project::ProjectSyncRepo sync(db);
 
-  sync.record_push_result("proj-1", "auth_failed", false, std::optional<std::string>{"bad auth"}, 100);
+  sync.record_push_result(
+      "proj-1",
+      "auth_failed",
+      false,
+      std::optional<std::string>{"bad auth"},
+      100
+  );
   auto first = sync.get("proj-1");
   REQUIRE(first.has_value());
   REQUIRE(first->retry_count == 1);
@@ -49,7 +51,13 @@ TEST_CASE("ProjectSyncRepo records push retries and clears on success", "[sync][
   REQUIRE(first->last_push_status.has_value());
   REQUIRE(first->last_push_status.value() == "auth_failed");
 
-  sync.record_push_result("proj-1", "unknown_error", false, std::optional<std::string>{"still broken"}, 200);
+  sync.record_push_result(
+      "proj-1",
+      "unknown_error",
+      false,
+      std::optional<std::string>{"still broken"},
+      200
+  );
   auto second = sync.get("proj-1");
   REQUIRE(second.has_value());
   REQUIRE(second->retry_count == 2);
@@ -81,7 +89,13 @@ TEST_CASE("ProjectSyncRepo records pull status and errors", "[sync][repo]") {
   projects.create(project);
 
   holder::project::ProjectSyncRepo sync(db);
-  sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{"ff-only failed"}, 400);
+  sync.record_pull_result(
+      "proj-1",
+      "failed",
+      false,
+      std::optional<std::string>{"ff-only failed"},
+      400
+  );
   auto failed = sync.get("proj-1");
   REQUIRE(failed.has_value());
   REQUIRE(failed->last_pull_status.has_value());
@@ -142,22 +156,21 @@ TEST_CASE("ProjectSyncRepo upgrades old sync table with pull retry columns", "[s
   projects.create(project);
 
   // Simulate pre-upgrade schema with no pull_retry_count/next_pull_retry_at.
-  db.exec(
-      "CREATE TABLE IF NOT EXISTS project_sync_state ("
-      " project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,"
-      " last_commit_at INTEGER NULL,"
-      " last_push_at INTEGER NULL,"
-      " last_pull_at INTEGER NULL,"
-      " uncommitted_changes_count INTEGER NOT NULL DEFAULT 0,"
-      " unpushed_commits_count INTEGER NOT NULL DEFAULT 0,"
-      " last_push_status TEXT NULL,"
-      " last_pull_status TEXT NULL,"
-      " last_sync_error TEXT NULL,"
-      " last_sync_error_at INTEGER NULL,"
-      " retry_count INTEGER NOT NULL DEFAULT 0,"
-      " next_retry_at INTEGER NULL,"
-      " updated_at INTEGER NOT NULL DEFAULT 0"
-      ");");
+  db.exec("CREATE TABLE IF NOT EXISTS project_sync_state ("
+          " project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,"
+          " last_commit_at INTEGER NULL,"
+          " last_push_at INTEGER NULL,"
+          " last_pull_at INTEGER NULL,"
+          " uncommitted_changes_count INTEGER NOT NULL DEFAULT 0,"
+          " unpushed_commits_count INTEGER NOT NULL DEFAULT 0,"
+          " last_push_status TEXT NULL,"
+          " last_pull_status TEXT NULL,"
+          " last_sync_error TEXT NULL,"
+          " last_sync_error_at INTEGER NULL,"
+          " retry_count INTEGER NOT NULL DEFAULT 0,"
+          " next_retry_at INTEGER NULL,"
+          " updated_at INTEGER NOT NULL DEFAULT 0"
+          ");");
 
   holder::project::ProjectSyncRepo sync(db);
   sync.record_pull_result("proj-1", "failed", false, std::optional<std::string>{"boom"}, 500);
@@ -333,10 +346,9 @@ TEST_CASE("ProjectSyncRepo upsert step fails when trigger aborts insert", "[sync
   projects.create(project);
 
   holder::project::ProjectSyncRepo sync(db);
-  db.exec(
-      "CREATE TRIGGER block_project_sync_insert "
-      "BEFORE INSERT ON project_sync_state "
-      "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
+  db.exec("CREATE TRIGGER block_project_sync_insert "
+          "BEFORE INSERT ON project_sync_state "
+          "BEGIN SELECT RAISE(ABORT, 'blocked insert'); END;");
 
   REQUIRE_THROWS(sync.record_push_result("proj-1", "failed", false, std::nullopt, 3));
 }

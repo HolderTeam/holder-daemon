@@ -31,7 +31,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_migrations_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -62,8 +63,10 @@ TEST_CASE("ensure_schema_version rejects mismatch", "[migrations]") {
   const auto schema_path = find_schema_sql();
   holder::platform::Migrations::ensure_schema(db, schema_path);
 
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema_version(db, 2),
-                      Catch::Matchers::ContainsSubstring("Schema version mismatch"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema_version(db, 2),
+      Catch::Matchers::ContainsSubstring("Schema version mismatch")
+  );
 }
 
 TEST_CASE("ensure_schema fails when schema file is missing", "[migrations]") {
@@ -76,8 +79,10 @@ TEST_CASE("ensure_schema fails when schema file is missing", "[migrations]") {
   const auto missing_schema = dir / "missing-schema.sql";
   REQUIRE_FALSE(std::filesystem::exists(missing_schema));
 
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema(db, missing_schema),
-                      Catch::Matchers::ContainsSubstring("Failed to open schema file"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema(db, missing_schema),
+      Catch::Matchers::ContainsSubstring("Failed to open schema file")
+  );
 }
 
 TEST_CASE("ensure_schema throws when sqlite prepare fails", "[migrations]") {
@@ -89,8 +94,10 @@ TEST_CASE("ensure_schema throws when sqlite prepare fails", "[migrations]") {
   db.close();
 
   const auto schema_path = find_schema_sql();
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema(db, schema_path),
-                      Catch::Matchers::ContainsSubstring("sqlite prepare failed"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema(db, schema_path),
+      Catch::Matchers::ContainsSubstring("sqlite prepare failed")
+  );
 }
 
 TEST_CASE("ensure_schema_version throws when sqlite prepare fails", "[migrations]") {
@@ -101,8 +108,10 @@ TEST_CASE("ensure_schema_version throws when sqlite prepare fails", "[migrations
   db.open(db_path);
   db.close();
 
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema_version(db, 1),
-                      Catch::Matchers::ContainsSubstring("sqlite prepare failed"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema_version(db, 1),
+      Catch::Matchers::ContainsSubstring("sqlite prepare failed")
+  );
 }
 
 TEST_CASE("ensure_schema_version throws when schema_version row is missing", "[migrations]") {
@@ -113,8 +122,10 @@ TEST_CASE("ensure_schema_version throws when schema_version row is missing", "[m
   db.open(db_path);
   db.exec("CREATE TABLE schema_version(version INTEGER NOT NULL);");
 
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema_version(db, 1),
-                      Catch::Matchers::ContainsSubstring("schema_version row missing"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema_version(db, 1),
+      Catch::Matchers::ContainsSubstring("schema_version row missing")
+  );
 }
 
 TEST_CASE("ensure_schema_version throws when sqlite step fails", "[migrations]") {
@@ -127,12 +138,24 @@ TEST_CASE("ensure_schema_version throws when sqlite step fails", "[migrations]")
   auto fail_fn = [](sqlite3_context* ctx, int /*argc*/, sqlite3_value** /*argv*/) {
     sqlite3_result_error(ctx, "forced-step-error", -1);
   };
-  REQUIRE(sqlite3_create_function_v2(
-              db.handle(), "always_fail", 0, SQLITE_UTF8, nullptr, fail_fn, nullptr, nullptr, nullptr) ==
-          SQLITE_OK);
+  REQUIRE(
+      sqlite3_create_function_v2(
+          db.handle(),
+          "always_fail",
+          0,
+          SQLITE_UTF8,
+          nullptr,
+          fail_fn,
+          nullptr,
+          nullptr,
+          nullptr
+      ) == SQLITE_OK
+  );
 
   db.exec("CREATE VIEW schema_version AS SELECT always_fail() AS version;");
 
-  REQUIRE_THROWS_WITH(holder::platform::Migrations::ensure_schema_version(db, 1),
-                      Catch::Matchers::ContainsSubstring("sqlite step failed"));
+  REQUIRE_THROWS_WITH(
+      holder::platform::Migrations::ensure_schema_version(db, 1),
+      Catch::Matchers::ContainsSubstring("sqlite step failed")
+  );
 }

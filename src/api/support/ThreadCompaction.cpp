@@ -35,9 +35,13 @@ std::string truncate_bytes_tail(const std::string& text, size_t max_bytes) {
 }
 
 std::string trim_ascii(std::string s) {
-  auto not_space = [](unsigned char c) { return !std::isspace(c); };
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front()))) s.erase(s.begin());
-  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back()))) s.pop_back();
+  auto not_space = [](unsigned char c) {
+    return !std::isspace(c);
+  };
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.front())))
+    s.erase(s.begin());
+  while (!s.empty() && !not_space(static_cast<unsigned char>(s.back())))
+    s.pop_back();
   return s;
 }
 
@@ -67,7 +71,8 @@ std::string lowercase_ascii(std::string s) {
 
 std::string normalize_section_key(const std::string& line) {
   std::string key = line;
-  while (!key.empty() && key.front() == '#') key.erase(key.begin());
+  while (!key.empty() && key.front() == '#')
+    key.erase(key.begin());
   key = trim_ascii(lowercase_ascii(key));
   return key;
 } // LCOV_EXCL_LINE
@@ -104,7 +109,8 @@ std::optional<std::string> extract_pinned_facts_json_from_context(const std::str
   if (context_json.empty()) return std::nullopt;
   try {
     const auto parsed = nlohmann::json::parse(context_json);
-    if (parsed.is_object() && parsed.contains("pinned_facts") && parsed.at("pinned_facts").is_array()) {
+    if (parsed.is_object() && parsed.contains("pinned_facts") &&
+        parsed.at("pinned_facts").is_array()) {
       return parsed.at("pinned_facts").dump();
     }
   } catch (const std::exception&) {
@@ -113,8 +119,10 @@ std::optional<std::string> extract_pinned_facts_json_from_context(const std::str
   return std::nullopt;
 }
 
-std::optional<std::string> merge_pinned_facts_json(const std::optional<std::string>& current_json,
-                                                   const std::optional<std::string>& incoming_json) {
+std::optional<std::string> merge_pinned_facts_json(
+    const std::optional<std::string>& current_json,
+    const std::optional<std::string>& incoming_json
+) {
   std::set<std::string> dedupe;
   std::vector<std::string> merged;
 
@@ -137,8 +145,10 @@ std::optional<std::string> merge_pinned_facts_json(const std::optional<std::stri
 
 } // namespace
 
-std::optional<ThreadCompactionState> load_thread_compaction_state(holder::platform::Db& db,
-                                                                  const std::string& thread_id) {
+std::optional<ThreadCompactionState> load_thread_compaction_state(
+    holder::platform::Db& db,
+    const std::string& thread_id
+) {
   static constexpr const char* SQL =
       "SELECT thread_id, rolling_summary, pinned_facts_json, last_compacted_message_id, updated_at "
       "FROM ai_thread_compaction_state "
@@ -205,12 +215,14 @@ void upsert_thread_compaction_state(holder::platform::Db& db, const ThreadCompac
   }
 }
 
-std::string build_compacted_context(const std::string& context_json,
-                                    long long allowed_context_tokens,
-                                    const std::optional<ThreadCompactionState>& state,
-                                    bool* compacted,
-                                    bool* used_summary,
-                                    int* pinned_fact_count) {
+std::string build_compacted_context(
+    const std::string& context_json,
+    long long allowed_context_tokens,
+    const std::optional<ThreadCompactionState>& state,
+    bool* compacted,
+    bool* used_summary,
+    int* pinned_fact_count
+) {
   if (compacted) *compacted = false;
   if (used_summary) *used_summary = false;
   if (pinned_fact_count) *pinned_fact_count = 0;
@@ -243,7 +255,8 @@ std::string build_compacted_context(const std::string& context_json,
       }
       if (count > 0) {
         facts_block += "\n";
-        facts_block = truncate_bytes_tail(facts_block, std::min(max_bytes, static_cast<size_t>(1200)));
+        facts_block =
+            truncate_bytes_tail(facts_block, std::min(max_bytes, static_cast<size_t>(1200)));
         prefix += facts_block;
         if (pinned_fact_count) *pinned_fact_count = count;
       }
@@ -252,8 +265,8 @@ std::string build_compacted_context(const std::string& context_json,
 
   size_t remaining = (prefix.size() >= max_bytes) ? 0 : (max_bytes - prefix.size());
   bool tail_compacted = false;
-  std::string tail = compact_context_tail(
-      context_json, static_cast<long long>(remaining / 4), &tail_compacted);
+  std::string tail =
+      compact_context_tail(context_json, static_cast<long long>(remaining / 4), &tail_compacted);
   if (tail_compacted) {
     if (compacted) *compacted = true;
   }
@@ -277,10 +290,12 @@ std::string build_compacted_context(const std::string& context_json,
   return out;
 }
 
-void roll_thread_compaction_state(holder::platform::Db& db,
-                                  const std::string& thread_id,
-                                  const std::string& context_json,
-                                  long long updated_at) {
+void roll_thread_compaction_state(
+    holder::platform::Db& db,
+    const std::string& thread_id,
+    const std::string& context_json,
+    long long updated_at
+) {
   if (thread_id.empty()) return;
 
   ThreadCompactionState next;
@@ -315,19 +330,19 @@ void roll_thread_compaction_state(holder::platform::Db& db,
 
 std::string build_structured_summary_refresh_prompt(
     const std::optional<std::string>& current_summary,
-    const std::string& new_context) {
-  std::string prompt =
-      "Refresh the rolling summary for future turns.\n"
-      "Return plain text only in this exact structure:\n"
-      "## Decisions\n"
-      "- ...\n"
-      "## Constraints\n"
-      "- ...\n"
-      "## Open Questions\n"
-      "- ...\n"
-      "## Next Actions\n"
-      "- ...\n"
-      "Keep bullet points concise and durable.\n";
+    const std::string& new_context
+) {
+  std::string prompt = "Refresh the rolling summary for future turns.\n"
+                       "Return plain text only in this exact structure:\n"
+                       "## Decisions\n"
+                       "- ...\n"
+                       "## Constraints\n"
+                       "- ...\n"
+                       "## Open Questions\n"
+                       "- ...\n"
+                       "## Next Actions\n"
+                       "- ...\n"
+                       "Keep bullet points concise and durable.\n";
   if (current_summary.has_value() && !current_summary->empty()) {
     prompt += "\nCurrent summary:\n";
     prompt += current_summary.value();
@@ -341,7 +356,8 @@ std::string build_structured_summary_refresh_prompt(
 SummaryValidationResult normalize_and_validate_rolling_summary(
     const std::string& candidate_summary,
     const std::optional<std::string>& previous_summary,
-    long long max_summary_chars) {
+    long long max_summary_chars
+) {
   SummaryValidationResult result;
   const std::string trimmed = trim_ascii(candidate_summary);
   if (trimmed.size() < 40) {

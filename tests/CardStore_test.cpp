@@ -4,19 +4,19 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "http_test_helpers.h"
-#include "card/CardPaths.h"
 #include "card/CardFrontMatter.h"
-#include "git/GitRepo.h"
-#include "git/GitOps.h"
-#include "model/Card.h"
-#include "model/Project.h"
-#include "privacy/ProjectPrivacy.h"
+#include "card/CardPaths.h"
 #include "card/CardRepo.h"
 #include "card/CardStore.h"
-#include "platform/Db.h"
-#include "project/ProjectRepo.h"
+#include "git/GitOps.h"
+#include "git/GitRepo.h"
+#include "http_test_helpers.h"
 #include "index/FtsIndexer.h"
+#include "model/Card.h"
+#include "model/Project.h"
+#include "platform/Db.h"
+#include "privacy/ProjectPrivacy.h"
+#include "project/ProjectRepo.h"
 
 #include <git2.h>
 
@@ -48,7 +48,8 @@ std::filesystem::path find_schema_sql() {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_card_store_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -62,9 +63,11 @@ void apply_schema(holder::platform::Db& db) {
   db.exec(sql);
 }
 
-void create_project(holder::platform::Db& db,
-                    const std::string& project_id,
-                    const std::string& root_path) {
+void create_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::string& root_path
+) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
   project.project_id = project_id;
@@ -85,7 +88,8 @@ std::string read_file(const std::filesystem::path& path) {
 }
 
 std::string make_large_body(std::size_t bytes) {
-  const std::string chunk = "TOP_SECRET_MARKER_12345 lorem ipsum dolor sit amet, consectetur adipiscing elit.\n";
+  const std::string chunk =
+      "TOP_SECRET_MARKER_12345 lorem ipsum dolor sit amet, consectetur adipiscing elit.\n";
   std::string out;
   out.reserve(bytes);
   while (out.size() + chunk.size() <= bytes) {
@@ -123,10 +127,11 @@ int count_commits(const std::filesystem::path& repo_dir) {
 }
 
 class PlaintextForcingGitOps final : public holder::git::GitOps {
-public:
-  void open_or_init(const std::filesystem::path& repo_dir) override { real_.open_or_init(repo_dir); }
-  void write_file(const std::filesystem::path& relative_path,
-                  const std::string&) override {
+ public:
+  void open_or_init(const std::filesystem::path& repo_dir) override {
+    real_.open_or_init(repo_dir);
+  }
+  void write_file(const std::filesystem::path& relative_path, const std::string&) override {
     // Intentionally wrong: stage plaintext regardless of requested content.
     real_.write_file(relative_path, "# forced-plaintext\n");
   }
@@ -145,24 +150,28 @@ public:
   holder::git::RemoteProbeResult probe_remote(const std::string& name) override {
     return real_.probe_remote(name);
   }
-  holder::git::PushResult push_branch(const std::string& name,
-                                      const std::string& branch,
-                                      bool set_upstream) override {
+  holder::git::PushResult push_branch(
+      const std::string& name,
+      const std::string& branch,
+      bool set_upstream
+  ) override {
     return real_.push_branch(name, branch, set_upstream);
   }
   std::filesystem::path repo_dir() const override { return real_.repo_dir(); }
 
-private:
+ private:
   holder::git::RealGitOps real_;
 };
 
 class CloseDbOnStageGitOps final : public holder::git::GitOps {
-public:
-  explicit CloseDbOnStageGitOps(holder::platform::Db& db) : db_(db) {}
+ public:
+  explicit CloseDbOnStageGitOps(holder::platform::Db& db)
+      : db_(db) {}
 
-  void open_or_init(const std::filesystem::path& repo_dir) override { real_.open_or_init(repo_dir); }
-  void write_file(const std::filesystem::path& relative_path,
-                  const std::string& content) override {
+  void open_or_init(const std::filesystem::path& repo_dir) override {
+    real_.open_or_init(repo_dir);
+  }
+  void write_file(const std::filesystem::path& relative_path, const std::string& content) override {
     real_.write_file(relative_path, content);
   }
   void stage_path(const std::filesystem::path& relative_path) override {
@@ -181,14 +190,16 @@ public:
   holder::git::RemoteProbeResult probe_remote(const std::string& name) override {
     return real_.probe_remote(name);
   }
-  holder::git::PushResult push_branch(const std::string& name,
-                                      const std::string& branch,
-                                      bool set_upstream) override {
+  holder::git::PushResult push_branch(
+      const std::string& name,
+      const std::string& branch,
+      bool set_upstream
+  ) override {
     return real_.push_branch(name, branch, set_upstream);
   }
   std::filesystem::path repo_dir() const override { return real_.repo_dir(); }
 
-private:
+ private:
   holder::platform::Db& db_;
   holder::git::RealGitOps real_;
 };
@@ -373,7 +384,10 @@ TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardst
       project.root_path,
       std::nullopt,
       2,
-      []() { return std::string("key-enc"); });
+      []() {
+        return std::string("key-enc");
+      }
+  );
 
   holder::index::FtsIndexer fts(db);
   PlaintextForcingGitOps broken_git;
@@ -386,8 +400,7 @@ TEST_CASE("CardStore encrypted project rejects staged plaintext blobs", "[cardst
   card.created_at = 10;
   card.updated_at = 10;
 
-  REQUIRE_THROWS_AS(store.create(card, "secret"),
-                    holder::privacy::PrivacyError);
+  REQUIRE_THROWS_AS(store.create(card, "secret"), holder::privacy::PrivacyError);
 }
 
 TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") {
@@ -419,7 +432,10 @@ TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") 
       project.root_path,
       std::nullopt,
       2,
-      []() { return std::string("key-large"); });
+      []() {
+        return std::string("key-large");
+      }
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore store(db, &fts);
@@ -476,7 +492,10 @@ TEST_CASE("CardStore encrypted project rejects tampered envelope", "[cardstore]"
       project.root_path,
       std::nullopt,
       2,
-      []() { return std::string("key-tamper"); });
+      []() {
+        return std::string("key-tamper");
+      }
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore store(db, &fts);
@@ -548,7 +567,10 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
       project.root_path,
       std::nullopt,
       2,
-      []() { return std::string("key-perf"); });
+      []() {
+        return std::string("key-perf");
+      }
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore store(db, &fts);
@@ -588,15 +610,12 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
   }
 
   std::cout << "\nprivacy-card-perf\n";
-  std::cout << std::left << std::setw(10) << "size_kb"
-            << std::right << std::setw(12) << "create_ms"
-            << std::setw(12) << "update_ms"
-            << std::setw(10) << "read_ms" << "\n";
+  std::cout << std::left << std::setw(10) << "size_kb" << std::right << std::setw(12) << "create_ms"
+            << std::setw(12) << "update_ms" << std::setw(10) << "read_ms" << "\n";
   for (const auto& row : rows) {
-    std::cout << std::left << std::setw(10) << (row.bytes / 1024)
-              << std::right << std::setw(12) << std::fixed << std::setprecision(2) << row.create_ms
-              << std::setw(12) << row.update_ms
-              << std::setw(10) << row.read_ms << "\n";
+    std::cout << std::left << std::setw(10) << (row.bytes / 1024) << std::right << std::setw(12)
+              << std::fixed << std::setprecision(2) << row.create_ms << std::setw(12)
+              << row.update_ms << std::setw(10) << row.read_ms << "\n";
   }
 }
 
@@ -630,7 +649,13 @@ TEST_CASE("CardStore move updates parent and sort metadata", "[cardstore]") {
   store.create(child, "child body");
 
   const int before = count_commits(project_root);
-  store.move(child.card_id, true, std::optional<std::string>(parent.card_id), std::optional<double>(42.5), 20);
+  store.move(
+      child.card_id,
+      true,
+      std::optional<std::string>(parent.card_id),
+      std::optional<double>(42.5),
+      20
+  );
   const int after = count_commits(project_root);
   REQUIRE(after == before + 1);
 
@@ -1021,7 +1046,9 @@ TEST_CASE("CardStore move exercises error and no-op branches", "[cardstore]") {
   missing_body.updated_at = 1;
   store.create(missing_body, "body");
   std::filesystem::remove(project_root / holder::core::card_rel_path(missing_body.card_id));
-  REQUIRE_THROWS(store.move(missing_body.card_id, true, std::optional<std::string>("parentx"), std::nullopt, 2));
+  REQUIRE_THROWS(
+      store.move(missing_body.card_id, true, std::optional<std::string>("parentx"), std::nullopt, 2)
+  );
 
   // Make file front matter already match target move while DB still has old values.
   // This forces changed=true but updated_raw==raw, exercising the no-write branch.
@@ -1045,18 +1072,20 @@ TEST_CASE("CardStore move exercises error and no-op branches", "[cardstore]") {
   file_card.parent_card_id = std::optional<std::string>("parent-target");
   file_card.sort_key = 7.0;
   file_card.updated_at = 77;
-  const auto prewritten_raw =
-      holder::core::render_card_front_matter(file_card, {}) + stale_parsed.body;
+  const auto prewritten_raw = holder::core::render_card_front_matter(file_card, {}) +
+                              stale_parsed.body;
   holder::git::GitRepo stale_repo;
   stale_repo.open_or_init(project_root);
   stale_repo.write_file(stale_rel, prewritten_raw);
 
   const int before_raw_noop = count_commits(project_root);
-  store.move(stale_db.card_id,
-             true,
-             std::optional<std::string>("parent-target"),
-             std::optional<double>(7.0),
-             77);
+  store.move(
+      stale_db.card_id,
+      true,
+      std::optional<std::string>("parent-target"),
+      std::optional<double>(7.0),
+      77
+  );
   REQUIRE(count_commits(project_root) == before_raw_noop);
 }
 
@@ -1087,7 +1116,10 @@ TEST_CASE("CardStore move encrypted branch updates and commits", "[cardstore]") 
       project.root_path,
       std::nullopt,
       2,
-      []() { return std::string("key-move"); });
+      []() {
+        return std::string("key-move");
+      }
+  );
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore store(db, &fts);
@@ -1164,7 +1196,16 @@ TEST_CASE("CardStore update_links exercises error, encrypted, and no-op branches
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   holder::git::RealGitOps bootstrap_git;
   holder::privacy::ensure_encrypted_project_ready(
-      bootstrap_git, project_repo, enc.project_id, enc.root_path, std::nullopt, 2, []() { return std::string("key-links"); });
+      bootstrap_git,
+      project_repo,
+      enc.project_id,
+      enc.root_path,
+      std::nullopt,
+      2,
+      []() {
+        return std::string("key-links");
+      }
+  );
 
   holder::model::Card enc_card;
   enc_card.card_id = "enclnk01";

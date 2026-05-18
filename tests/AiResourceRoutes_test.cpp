@@ -15,9 +15,11 @@
 namespace {
 namespace http = boost::beast::http;
 
-http::request<http::string_body> make_request(http::verb method,
-                                              const std::string& target,
-                                              const nlohmann::json& body = nlohmann::json()) {
+http::request<http::string_body> make_request(
+    http::verb method,
+    const std::string& target,
+    const nlohmann::json& body = nlohmann::json()
+) {
   http::request<http::string_body> req{method, target, 11};
   req.set(http::field::host, "127.0.0.1");
   if (!body.is_null() && !body.empty()) {
@@ -30,25 +32,41 @@ http::request<http::string_body> make_request(http::verb method,
 
 } // namespace
 
-TEST_CASE("AiResourceRoutes POST maps non-conflict exceptions to bad_request", "[resources][routes]") {
+TEST_CASE(
+    "AiResourceRoutes POST maps non-conflict exceptions to bad_request",
+    "[resources][routes]"
+) {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   // Force a non-conflict exception inside POST handling: type mismatch on project_id.
-  auto req = make_request(http::verb::post,
-                          "/resources",
-                          nlohmann::json{
-                              {"project_id", nlohmann::json::array()},
-                              {"kind", "url"},
-                              {"uri", "https://example.com"},
-                              {"label", "Example"}});
+  auto req = make_request(
+      http::verb::post,
+      "/resources",
+      nlohmann::json{
+          {"project_id", nlohmann::json::array()},
+          {"kind", "url"},
+          {"uri", "https://example.com"},
+          {"label", "Example"}
+      }
+  );
   http::response<http::string_body> res;
 
-  const bool handled =
-      holder::api::routes::handle_ai_resource_routes("/resources", req, res, db, uuid_v4, param_get);
+  const bool handled = holder::api::routes::handle_ai_resource_routes(
+      "/resources",
+      req,
+      res,
+      db,
+      uuid_v4,
+      param_get
+  );
   REQUIRE(handled);
   REQUIRE(res.result() == http::status::bad_request);
 
@@ -61,14 +79,23 @@ TEST_CASE("AiResourceRoutes returns false for unrelated paths", "[resources][rou
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   auto req = make_request(http::verb::get, "/not-a-resource-route");
   http::response<http::string_body> res;
 
   const bool handled = holder::api::routes::handle_ai_resource_routes(
-      "/not-a-resource-route", req, res, db, uuid_v4, param_get);
+      "/not-a-resource-route",
+      req,
+      res,
+      db,
+      uuid_v4,
+      param_get
+  );
   REQUIRE_FALSE(handled);
 }
-

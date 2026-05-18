@@ -1,7 +1,7 @@
 #pragma once
 
-#include "platform/Db.h"
 #include "llm/RunnerRegistry.h"
+#include "platform/Db.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
@@ -24,6 +24,7 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get);
+    const std::function<std::string(const std::string&)>& param_get
+);
 
 } // namespace holder::api::routes

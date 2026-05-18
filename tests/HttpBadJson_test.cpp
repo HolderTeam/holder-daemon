@@ -3,9 +3,9 @@
 #include <boost/asio.hpp>
 #include <boost/beast/http.hpp>
 
+using holder::test::create_project;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
-using holder::test::create_project;
 
 TEST_CASE("HTTP endpoints reject invalid JSON bodies", "[http]") {
   const auto dir = make_temp_dir();
@@ -27,7 +27,9 @@ TEST_CASE("HTTP endpoints reject invalid JSON bodies", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 

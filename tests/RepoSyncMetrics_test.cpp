@@ -17,7 +17,8 @@ namespace {
 std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   const auto suffix = std::to_string(
-      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+      static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count())
+  );
   auto dir = base / ("holder_repo_sync_metrics_test_" + suffix);
   std::filesystem::create_directories(dir);
   return dir;
@@ -46,7 +47,10 @@ TEST_CASE("RepoSyncMetrics ignores .holder/privacy.json in uncommitted count", "
   REQUIRE(metrics.uncommitted_changes_count == 1);
 }
 
-TEST_CASE("RepoSyncMetrics returns zero unpushed when remote-tracking ref is missing", "[git][sync]") {
+TEST_CASE(
+    "RepoSyncMetrics returns zero unpushed when remote-tracking ref is missing",
+    "[git][sync]"
+) {
   const auto dir = make_temp_dir();
   holder::git::GitRepo repo;
   repo.open_or_init(dir);
@@ -110,8 +114,10 @@ TEST_CASE("RepoSyncMetrics throws when HEAD is malformed", "[git][sync]") {
     FAIL("Expected inspect_repo_sync_metrics to throw for malformed HEAD");
   } catch (const std::runtime_error& e) {
     const std::string msg(e.what());
-    REQUIRE((msg.find("git_repository_head failed") != std::string::npos ||
-             msg.find("git_status_list_new failed") != std::string::npos));
+    REQUIRE(
+        (msg.find("git_repository_head failed") != std::string::npos ||
+         msg.find("git_status_list_new failed") != std::string::npos)
+    );
   }
 }
 
@@ -137,13 +143,16 @@ TEST_CASE("RepoSyncMetrics throws when remote ref has no direct target oid", "[g
 
   git_reference* remote_ref = nullptr;
   const std::string remote_ref_name = "refs/remotes/origin/" + branch;
-  REQUIRE(git_reference_symbolic_create(
-              &remote_ref,
-              raw,
-              remote_ref_name.c_str(),
-              "refs/remotes/origin/missing",
-              1,
-              nullptr) == 0);
+  REQUIRE(
+      git_reference_symbolic_create(
+          &remote_ref,
+          raw,
+          remote_ref_name.c_str(),
+          "refs/remotes/origin/missing",
+          1,
+          nullptr
+      ) == 0
+  );
   git_reference_free(remote_ref);
   git_repository_free(raw);
 
@@ -155,7 +164,10 @@ TEST_CASE("RepoSyncMetrics throws when remote ref has no direct target oid", "[g
   }
 }
 
-TEST_CASE("RepoSyncMetrics throws when graph ahead-behind cannot resolve remote oid", "[git][sync]") {
+TEST_CASE(
+    "RepoSyncMetrics throws when graph ahead-behind cannot resolve remote oid",
+    "[git][sync]"
+) {
   const auto dir = make_temp_dir();
   holder::git::GitRepo repo;
   repo.open_or_init(dir);
@@ -210,7 +222,9 @@ TEST_CASE("RepoSyncMetrics malformed HEAD can fail at git_repository_head", "[gi
     FAIL("Expected inspect_repo_sync_metrics to throw for malformed HEAD ref");
   } catch (const std::runtime_error& e) {
     const std::string msg(e.what());
-    REQUIRE((msg.find("git_repository_head failed") != std::string::npos ||
-             msg.find("git_status_list_new failed") != std::string::npos));
+    REQUIRE(
+        (msg.find("git_repository_head failed") != std::string::npos ||
+         msg.find("git_status_list_new failed") != std::string::npos)
+    );
   }
 }

@@ -7,6 +7,21 @@
 namespace holder::platform {
 namespace {
 
+// LCOV_EXCL_START
+bool should_retry_open_pragma(int rc, int attempt, int max_attempts) {
+  return (rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt + 1 < max_attempts;
+}
+
+std::string open_pragma_error_message(sqlite3* db, const std::string& msg, int rc) {
+  std::string full = "sqlite exec failed: " + msg + " (rc=" + std::to_string(rc) + ")";
+  if (db) {
+    full += ": ";
+    full += sqlite3_errmsg(db);
+  }
+  return full;
+}
+// LCOV_EXCL_STOP
+
 void exec_open_pragma(sqlite3* db, const std::string& sql) {
   constexpr int kMaxAttempts = 50;
   constexpr auto kRetryDelay = std::chrono::milliseconds(10);
@@ -21,17 +36,12 @@ void exec_open_pragma(sqlite3* db, const std::string& sql) {
     std::string msg = err ? err : "unknown sqlite error"; // LCOV_EXCL_LINE
     sqlite3_free(err); // LCOV_EXCL_LINE
 
-    if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt + 1 < kMaxAttempts) { // LCOV_EXCL_LINE
+    if (should_retry_open_pragma(rc, attempt, kMaxAttempts)) { // LCOV_EXCL_LINE
       std::this_thread::sleep_for(kRetryDelay); // LCOV_EXCL_LINE
       continue; // LCOV_EXCL_LINE
     }
 
-    std::string full = "sqlite exec failed: " + msg + " (rc=" + std::to_string(rc) + ")"; // LCOV_EXCL_LINE
-    if (db) { // LCOV_EXCL_LINE
-      full += ": "; // LCOV_EXCL_LINE
-      full += sqlite3_errmsg(db); // LCOV_EXCL_LINE
-    }
-    throw std::runtime_error(full); // LCOV_EXCL_LINE
+    throw std::runtime_error(open_pragma_error_message(db, msg, rc)); // LCOV_EXCL_LINE
   } // LCOV_EXCL_LINE
 }
 
@@ -72,7 +82,8 @@ void Db::open(const std::filesystem::path& path) {
       path.string().c_str(),
       &db_,
       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-      nullptr);
+      nullptr
+  );
 
   if (rc != SQLITE_OK) {
     // db_ may be non-null even on failure

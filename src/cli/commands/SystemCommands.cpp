@@ -65,7 +65,8 @@ int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
   return 0;
 #else
   std::cout << url << "\n";
-  throw std::runtime_error("openapi browser launch is not supported on this platform yet"); // LCOV_EXCL_LINE
+  throw std::runtime_error("openapi browser launch is not supported on this platform yet"
+  ); // LCOV_EXCL_LINE
 #endif
 }
 
@@ -73,21 +74,29 @@ int command_restart() {
 #if defined(__linux__)
   const auto systemctl = boost::process::v2::environment::find_executable("systemctl");
   if (systemctl.empty()) {
-    throw std::runtime_error("systemctl not found; restart holder-daemon.service manually"); // LCOV_EXCL_LINE: depends on host PATH contents.
+    throw std::runtime_error("systemctl not found; restart holder-daemon.service manually"
+    ); // LCOV_EXCL_LINE: depends on host PATH contents.
   }
 
   boost::asio::io_context ioc;
   boost::process::v2::process proc(
-      ioc.get_executor(), systemctl, {"--user", "restart", "holder-daemon.service"});
+      ioc.get_executor(),
+      systemctl,
+      {"--user", "restart", "holder-daemon.service"}
+  );
 
   boost::system::error_code ec;
   const int exit_code = proc.wait(ec);
   if (ec) {
-    throw std::runtime_error("Failed to run systemctl: " + ec.message()); // LCOV_EXCL_LINE: requires process wait syscall failure.
+    // LCOV_EXCL_START
+    throw std::runtime_error("Failed to run systemctl: " + ec.message());
+    // LCOV_EXCL_STOP
   }
   if (exit_code != 0) {
-    throw std::runtime_error("systemctl --user restart holder-daemon.service failed with exit code " +
-                             std::to_string(exit_code));
+    throw std::runtime_error(
+        "systemctl --user restart holder-daemon.service failed with exit code " +
+        std::to_string(exit_code)
+    );
   }
 
   std::cout << "Holder daemon restarted. A new local API token was generated.\n";
@@ -121,7 +130,9 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
 #if defined(__linux__)
     const auto tail = boost::process::v2::environment::find_executable("tail");
     if (tail.empty()) {
-      throw std::runtime_error("tail not found; log file is: " + log_path.string()); // LCOV_EXCL_LINE: depends on host PATH contents.
+      // LCOV_EXCL_START
+      throw std::runtime_error("tail not found; log file is: " + log_path.string());
+      // LCOV_EXCL_STOP
     }
 
     boost::asio::io_context ioc;
@@ -130,11 +141,14 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
     boost::system::error_code ec;
     const int exit_code = proc.wait(ec);
     if (ec) {
-      throw std::runtime_error("Failed to run tail: " + ec.message()); // LCOV_EXCL_LINE: requires process wait syscall failure.
+      // LCOV_EXCL_START
+      throw std::runtime_error("Failed to run tail: " + ec.message());
+      // LCOV_EXCL_STOP
     }
     return exit_code;
 #else
-    throw std::runtime_error("logs --follow is not supported on this platform yet"); // LCOV_EXCL_LINE
+    throw std::runtime_error("logs --follow is not supported on this platform yet"
+    ); // LCOV_EXCL_LINE
 #endif
   }
 

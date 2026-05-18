@@ -5,9 +5,9 @@
 namespace holder::core {
 
 struct Paths {
-  std::filesystem::path data_dir;    // ~/.local/share/holder
-  std::filesystem::path config_dir;  // ~/.config/holder
-  std::filesystem::path cache_dir;   // ~/.cache/holder
+  std::filesystem::path data_dir; // ~/.local/share/holder
+  std::filesystem::path config_dir; // ~/.config/holder
+  std::filesystem::path cache_dir; // ~/.cache/holder
 
   std::filesystem::path server_dir() const { return data_dir / "server"; }
   std::filesystem::path db_path() const { return server_dir() / "holder.db"; }

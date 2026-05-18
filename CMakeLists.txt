@@ -88,6 +88,7 @@ endif()
 # ----------------------------
 add_executable(holderd
   src/main.cpp
+  src/platform/InstalledDataPath.cpp
   src/platform/Paths.cpp
   src/platform/LockFile.cpp
   src/platform/ServerInfo.cpp

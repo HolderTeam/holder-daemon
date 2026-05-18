@@ -47,7 +47,11 @@ int command_status(const holder::core::Paths& paths) {
 bool http_health_ok(const DaemonConnection& connection, std::string* detail) {
   try {
     const auto response = http_json_request(
-        connection, boost::beast::http::verb::get, "/health", std::chrono::seconds(2));
+        connection,
+        boost::beast::http::verb::get,
+        "/health",
+        std::chrono::seconds(2)
+    );
     if (response.status != boost::beast::http::status::ok) {
       if (detail) *detail = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
       return false;

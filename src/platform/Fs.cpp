@@ -15,18 +15,17 @@ void RealFs::create_directories(const std::filesystem::path& path) const {
   std::error_code ec;
   std::filesystem::create_directories(path, ec);
   if (ec) {
-    throw std::runtime_error("Failed to create dirs: " + path.string() + " (" + ec.message() +
-                             ")");
+    throw std::runtime_error("Failed to create dirs: " + path.string() + " (" + ec.message() + ")");
   }
 }
 
-void RealFs::rename(const std::filesystem::path& from,
-                    const std::filesystem::path& to) const {
+void RealFs::rename(const std::filesystem::path& from, const std::filesystem::path& to) const {
   std::error_code ec;
   std::filesystem::rename(from, to, ec);
   if (ec) {
-    throw std::runtime_error("Failed to rename: " + from.string() + " -> " + to.string() +
-                             " (" + ec.message() + ")");
+    throw std::runtime_error(
+        "Failed to rename: " + from.string() + " -> " + to.string() + " (" + ec.message() + ")"
+    );
   }
 }
 
@@ -44,9 +43,9 @@ long long RealFs::last_write_time_seconds(const std::filesystem::path& path) con
   if (ec) {
     throw std::runtime_error("Failed to stat: " + path.string() + " (" + ec.message() + ")");
   }
-  const auto sctp =
-      std::chrono::time_point_cast<std::chrono::seconds>(ftime - decltype(ftime)::clock::now() +
-                                                         std::chrono::system_clock::now());
+  const auto sctp = std::chrono::time_point_cast<std::chrono::seconds>(
+      ftime - decltype(ftime)::clock::now() + std::chrono::system_clock::now()
+  );
   return sctp.time_since_epoch().count();
 }
 
@@ -58,8 +57,7 @@ std::string RealFs::read_file(const std::filesystem::path& path) const {
   return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
 
-void RealFs::write_file(const std::filesystem::path& path,
-                        const std::string& content) const {
+void RealFs::write_file(const std::filesystem::path& path, const std::string& content) const {
   std::ofstream out(path, std::ios::binary);
   if (!out.is_open()) {
     throw std::runtime_error("Failed to open for write: " + path.string());

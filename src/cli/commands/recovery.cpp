@@ -38,9 +38,11 @@ std::string recovery_token_usage(const std::string& subcommand) {
   return "Usage: holderctl recovery-token <export|import|import-global> ...";
 }
 
-RecoveryTokenOptions parse_recovery_token_options(const std::string& subcommand,
-                                                  int argc,
-                                                  char* argv[]) {
+RecoveryTokenOptions parse_recovery_token_options(
+    const std::string& subcommand,
+    int argc,
+    char* argv[]
+) {
   RecoveryTokenOptions options;
   for (int i = 3; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -74,7 +76,7 @@ RecoveryTokenOptions parse_recovery_token_options(const std::string& subcommand,
 
   if (subcommand == "export") {
     if (!options.in_path.empty() || !options.token.empty()) {
-      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE: parser rejects these options for export.
+      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE
     }
   } else {
     const bool has_file = !options.in_path.empty();
@@ -83,7 +85,7 @@ RecoveryTokenOptions parse_recovery_token_options(const std::string& subcommand,
       throw std::runtime_error(recovery_token_usage(subcommand));
     }
     if (!options.out_path.empty()) {
-      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE: parser rejects --out for import subcommands.
+      throw std::runtime_error(recovery_token_usage(subcommand)); // LCOV_EXCL_LINE
     }
   }
 
@@ -143,10 +145,12 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
           paths,
           boost::beast::http::verb::post,
           "/projects/" + url_encode_component(current_project_id) + "/recovery-token/export",
-          {{"pin", options.pin}});
+          {{"pin", options.pin}}
+      );
       const auto token = json_string(payload.at("data"), "recovery_token");
       if (token.empty()) {
-        throw std::runtime_error("Recovery token export response did not include a token"); // LCOV_EXCL_LINE: protocol violation.
+        throw std::runtime_error("Recovery token export response did not include a token"
+        ); // LCOV_EXCL_LINE: protocol violation.
       }
 
       if (!options.out_path.empty()) {
@@ -159,9 +163,8 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
       return 0;
     }
 
-    const std::string token = !options.token.empty()
-                                  ? trim_ascii_whitespace(options.token)
-                                  : read_text_file_trimmed(options.in_path);
+    const std::string token = !options.token.empty() ? trim_ascii_whitespace(options.token)
+                                                     : read_text_file_trimmed(options.in_path);
     if (token.empty()) {
       throw std::runtime_error("Recovery token must not be empty");
     }
@@ -175,27 +178,39 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
           paths,
           boost::beast::http::verb::post,
           "/projects/" + url_encode_component(current_project_id) + "/recovery-token/import",
-          {{"pin", options.pin}, {"recovery_token", token}});
+          {{"pin", options.pin}, {"recovery_token", token}}
+      );
       std::cout << "Recovery token imported for project: "
                 << json_string(payload.at("data"), "project_id", current_project_id) << "\n";
       return 0;
     }
 
-    const auto payload = recovery_token_request(paths,
-                                                boost::beast::http::verb::post,
-                                                "/recovery-token/import",
-                                                {{"pin", options.pin}, {"recovery_token", token}});
+    const auto payload = recovery_token_request(
+        paths,
+        boost::beast::http::verb::post,
+        "/recovery-token/import",
+        {{"pin", options.pin}, {"recovery_token", token}}
+    );
     const auto& data = payload.at("data");
+    // LCOV_EXCL_START
     std::cout << "Recovery token imported for project: " << json_string(data, "project_id") << "\n"
-              << "Project created: " << (data.value("project_created", false) ? "yes" : "no") << "\n" // LCOV_EXCL_LINE: gcov misattributes covered ostream chain lines.
-              << "Remote hint: " << (data.value("remote_hint_present", false) ? "yes" : "no") << "\n" // LCOV_EXCL_LINE
-              << "Remote configured: " << (data.value("remote_configured", false) ? "yes" : "no") << "\n" // LCOV_EXCL_LINE
+              << "Project created: " << (data.value("project_created", false) ? "yes" : "no")
+              << "\n"
+              << "Remote hint: " << (data.value("remote_hint_present", false) ? "yes" : "no")
+              << "\n"
+              << "Remote configured: " << (data.value("remote_configured", false) ? "yes" : "no")
+              << "\n"
               << "Pull status: " << json_string(data, "pull_status", "not_attempted") << "\n";
+    // LCOV_EXCL_STOP
     if (data.contains("remote_error") && !data.at("remote_error").is_null()) {
-      std::cout << "Remote error: " << data.at("remote_error").get<std::string>() << "\n"; // LCOV_EXCL_LINE: depends on optional git remote failure.
+      // LCOV_EXCL_START
+      std::cout << "Remote error: " << data.at("remote_error").get<std::string>() << "\n";
+      // LCOV_EXCL_STOP
     }
     if (data.contains("pull_error") && !data.at("pull_error").is_null()) {
-      std::cout << "Pull error: " << data.at("pull_error").get<std::string>() << "\n"; // LCOV_EXCL_LINE: depends on optional git pull failure.
+      // LCOV_EXCL_START
+      std::cout << "Pull error: " << data.at("pull_error").get<std::string>() << "\n";
+      // LCOV_EXCL_STOP
     }
     return 0;
   } catch (const std::exception& ex) {

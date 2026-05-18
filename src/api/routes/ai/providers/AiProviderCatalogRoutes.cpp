@@ -1,9 +1,9 @@
 #include "api/routes/ai/providers/AiProviderCatalogRoutes.h"
 
-#include "api/support/CloudConfig.h"
-#include "api/support/HttpResponses.h"
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
+#include "api/support/CloudConfig.h"
+#include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -22,7 +22,8 @@ nlohmann::json model_to_json(const support::CloudModelConfig& model) {
   out["id"] = model.id;
   out["endpoint"] = model.endpoint;
   out["role"] = model.role.empty() ? nlohmann::json(nullptr) : nlohmann::json(model.role);
-  out["cost_tier"] = model.cost_tier.empty() ? nlohmann::json(nullptr) : nlohmann::json(model.cost_tier);
+  out["cost_tier"] = model.cost_tier.empty() ? nlohmann::json(nullptr)
+                                             : nlohmann::json(model.cost_tier);
   out["default_for_low_budget"] = model.default_for_low_budget;
   out["limits"] = {
       {"rpm", model.rpm},
@@ -50,10 +51,12 @@ nlohmann::json api_to_json(const support::CloudProviderConfig& provider) {
 
 } // namespace
 
-bool handle_ai_provider_catalog_routes(const std::string& path,
-                                       const http::request<http::string_body>& req,
-                                       http::response<http::string_body>& res,
-                                       holder::platform::Db& db) {
+bool handle_ai_provider_catalog_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db
+) {
   if (path != "/ai/providers/catalog" || req.method() != http::verb::get) {
     return false;
   }
@@ -61,9 +64,11 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
   try {
     const auto cloud_cfg = support::load_cloudproviders_config();
     if (!cloud_cfg.has_value()) {
-      res = support::error_response(http::status::bad_request,
-                                    "bad_request",
-                                    "ai_catalog.yaml models runtime/catalog not found.");
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "ai_catalog.yaml models runtime/catalog not found."
+      );
       return true;
     }
 
@@ -89,18 +94,20 @@ bool handle_ai_provider_catalog_routes(const std::string& path,
       item["id"] = provider.id;
       item["display_name"] = provider.display_name.empty() ? provider.id : provider.display_name;
       const auto enabled_it = enabled_by_provider.find(provider.id);
-      item["enabled"] = (enabled_it != enabled_by_provider.end()) ? enabled_it->second : provider.enabled;
+      item["enabled"] = (enabled_it != enabled_by_provider.end()) ? enabled_it->second
+                                                                  : provider.enabled;
       item["configured"] = configured_ids.find(provider.id) != configured_ids.end();
-      item["cost_tier"] =
-          provider.cost_tier.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.cost_tier);
-      item["setup_url"] =
-          provider.setup_url.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.setup_url);
-      item["docs_url"] =
-          provider.docs_url.empty() ? nlohmann::json(nullptr) : nlohmann::json(provider.docs_url);
-      item["api_key_label"] = provider.api_key_label.empty() ? nlohmann::json(nullptr)
-                                                              : nlohmann::json(provider.api_key_label);
+      item["cost_tier"] = provider.cost_tier.empty() ? nlohmann::json(nullptr)
+                                                     : nlohmann::json(provider.cost_tier);
+      item["setup_url"] = provider.setup_url.empty() ? nlohmann::json(nullptr)
+                                                     : nlohmann::json(provider.setup_url);
+      item["docs_url"] = provider.docs_url.empty() ? nlohmann::json(nullptr)
+                                                   : nlohmann::json(provider.docs_url);
+      item["api_key_label"] = provider.api_key_label.empty()
+                                  ? nlohmann::json(nullptr)
+                                  : nlohmann::json(provider.api_key_label);
       item["api_key_hint"] = provider.api_key_hint.empty() ? nlohmann::json(nullptr)
-                                                            : nlohmann::json(provider.api_key_hint);
+                                                           : nlohmann::json(provider.api_key_hint);
       item["api"] = api_to_json(provider);
       item["auth"] = auth_to_json(provider);
       nlohmann::json models = nlohmann::json::array();

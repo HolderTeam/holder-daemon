@@ -34,15 +34,19 @@ void print_usage(std::ostream& out);
 bool is_process_running(int pid);
 void require_secure_file(const std::filesystem::path& path);
 ServerInfoFile read_server_info(const holder::core::Paths& paths);
-std::string json_string(const nlohmann::json& json,
-                        const char* key,
-                        const std::string& fallback = "");
+std::string json_string(
+    const nlohmann::json& json,
+    const char* key,
+    const std::string& fallback = ""
+);
 int json_int(const nlohmann::json& json, const char* key, int fallback = 0);
 DaemonConnection read_secure_daemon_connection(const holder::core::Paths& paths);
-HttpJsonResponse http_json_request(const DaemonConnection& connection,
-                                   boost::beast::http::verb method,
-                                   const std::string& target,
-                                   std::chrono::seconds timeout,
-                                   const std::optional<nlohmann::json>& body = std::nullopt);
+HttpJsonResponse http_json_request(
+    const DaemonConnection& connection,
+    boost::beast::http::verb method,
+    const std::string& target,
+    std::chrono::seconds timeout,
+    const std::optional<nlohmann::json>& body = std::nullopt
+);
 
 } // namespace holder::cli

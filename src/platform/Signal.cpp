@@ -26,13 +26,9 @@ SignalHandler::~SignalHandler() {
   std::signal(SIGTERM, g_prev_term);
 } // LCOV_EXCL_LINE
 
-bool SignalHandler::is_requested() const {
-  return g_signal_requested.load();
-}
+bool SignalHandler::is_requested() const { return g_signal_requested.load(); }
 
-int SignalHandler::last_signal() const {
-  return g_last_signal.load();
-}
+int SignalHandler::last_signal() const { return g_last_signal.load(); }
 
 void SignalHandler::handle(int signum) {
   if (signum == SIGINT || signum == SIGTERM) {

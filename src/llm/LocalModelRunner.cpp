@@ -21,7 +21,8 @@ namespace {
 
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
+             std::chrono::system_clock::now().time_since_epoch()
+  )
       .count();
 }
 
@@ -63,10 +64,12 @@ LocalModelRunner::LocalModelRunner()
   }
 }
 
-LocalModelRunner::LocalModelRunner(std::string host,
-                                   std::string port,
-                                   std::string exec_path,
-                                   bool allow_spawn)
+LocalModelRunner::LocalModelRunner(
+    std::string host,
+    std::string port,
+    std::string exec_path,
+    bool allow_spawn
+)
     : host_(std::move(host)),
       port_(std::move(port)),
       exec_path_(std::move(exec_path)),
@@ -98,7 +101,9 @@ void LocalModelRunner::start_background_probe() {
   if (!background_started_.compare_exchange_strong(expected, true)) {
     return;
   }
-  std::thread([this]() { probe(true); }).detach();
+  std::thread([this]() {
+    probe(true);
+  }).detach();
 }
 
 RunnerStatus LocalModelRunner::status() const {
@@ -128,9 +133,7 @@ RunnerStatus LocalModelRunner::retry() {
   return status();
 }
 
-void LocalModelRunner::set_fake_mode(bool enabled) {
-  fake_mode_ = enabled;
-}
+void LocalModelRunner::set_fake_mode(bool enabled) { fake_mode_ = enabled; }
 
 void LocalModelRunner::set_status_override_for_tests(const std::optional<RunnerStatus>& status) {
   std::lock_guard<std::mutex> lock(mu_);
@@ -152,8 +155,7 @@ std::string LocalModelRunner::generate_job_id() {
   static std::atomic<unsigned long long> counter{0};
   const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
   const auto seq = ++counter;
-  return "pull-" + std::to_string(static_cast<unsigned long long>(now)) + "-" +
-         std::to_string(seq);
+  return "pull-" + std::to_string(static_cast<unsigned long long>(now)) + "-" + std::to_string(seq);
 }
 
 LocalModelRunner::PullJob LocalModelRunner::start_pull(const std::string& model) {
@@ -190,11 +192,14 @@ LocalModelRunner::PullJob LocalModelRunner::start_pull(const std::string& model)
     return job;
   }
 
-  std::thread([this, job_id = job.job_id, model]() { run_pull(job_id, model); }).detach();
+  std::thread([this, job_id = job.job_id, model]() {
+    run_pull(job_id, model);
+  }).detach();
   return job;
 }
 
-std::optional<LocalModelRunner::PullJob> LocalModelRunner::get_pull(const std::string& job_id) const {
+std::optional<LocalModelRunner::PullJob> LocalModelRunner::get_pull(const std::string& job_id
+) const {
   std::lock_guard<std::mutex> lock(pulls_mu_);
   maybe_complete_fake_pulls_locked();
   const auto it = pulls_.find(job_id);
@@ -231,9 +236,11 @@ void LocalModelRunner::maybe_complete_fake_pulls_locked() const {
   }
 }
 
-bool LocalModelRunner::http_get_json(const std::string& target,
-                                  std::string* out,
-                                  std::string* error) {
+bool LocalModelRunner::http_get_json(
+    const std::string& target,
+    std::string* out,
+    std::string* error
+) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
 
@@ -278,11 +285,13 @@ bool LocalModelRunner::http_get_json(const std::string& target,
   }
 }
 
-bool LocalModelRunner::stream_generate(const std::string& model,
-                                       const std::string& prompt,
-                                       const std::string& options_json,
-                                       const std::function<void(const std::string&)>& on_chunk,
-                                       std::string* error) {
+bool LocalModelRunner::stream_generate(
+    const std::string& model,
+    const std::string& prompt,
+    const std::string& options_json,
+    const std::function<void(const std::string&)>& on_chunk,
+    std::string* error
+) {
   StreamGenerateOverride override_fn;
   {
     std::lock_guard<std::mutex> lock(mu_);
@@ -482,7 +491,8 @@ void LocalModelRunner::probe(bool allow_spawn) {
           if (model.contains("name")) item.name = model["name"].get<std::string>();
           if (model.contains("digest")) item.digest = model["digest"].get<std::string>();
           if (model.contains("size")) item.size = model["size"].get<long long>();
-          if (model.contains("modified_at")) item.modified_at = model["modified_at"].get<std::string>();
+          if (model.contains("modified_at"))
+            item.modified_at = model["modified_at"].get<std::string>();
           next.models.push_back(item);
         }
       }
@@ -516,9 +526,11 @@ void LocalModelRunner::probe(bool allow_spawn) {
       }
     } else {
       if (!next.version.empty()) {
-        spdlog::info("Connected to already running local model runner instance ({} {}).",
-                     provider,
-                     next.version);
+        spdlog::info(
+            "Connected to already running local model runner instance ({} {}).",
+            provider,
+            next.version
+        );
       } else {
         spdlog::info("Connected to already running local model runner instance ({}).", provider);
       }
@@ -663,10 +675,9 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
             update.progress.total = payload["total"].get<long long>();
           }
           if (update.progress.total > 0) {
-            update.progress.percent =
-                (static_cast<double>(update.progress.completed) /
-                 static_cast<double>(update.progress.total)) *
-                100.0;
+            update.progress.percent = (static_cast<double>(update.progress.completed) /
+                                       static_cast<double>(update.progress.total)) *
+                                      100.0;
           }
 
           {
@@ -677,7 +688,8 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
               if (!update.error.empty()) it->second.error = update.error;
               if (!update.progress.stage.empty()) it->second.progress.stage = update.progress.stage;
               if (update.progress.total > 0) it->second.progress.total = update.progress.total;
-              if (update.progress.completed > 0) it->second.progress.completed = update.progress.completed;
+              if (update.progress.completed > 0)
+                it->second.progress.completed = update.progress.completed;
               if (update.progress.total > 0) it->second.progress.percent = update.progress.percent;
               it->second.updated_at = now_epoch_seconds();
             }

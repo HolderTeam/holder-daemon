@@ -1,11 +1,11 @@
 #include "api/routes/ai/AiRunnerRoutes.h"
 
-#include "api/support/HttpResponses.h"
-#include "api/support/LocalModelRouting.h"
-#include "api/support/Time.h"
 #include "ai/AiRunnerRepo.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
 #include "api/routes/ai/runner/AiRunnerPullRoutes.h"
+#include "api/support/HttpResponses.h"
+#include "api/support/LocalModelRouting.h"
+#include "api/support/Time.h"
 #include "llm/RunnerModelRef.h"
 
 #include <boost/beast/http.hpp>
@@ -19,9 +19,11 @@ namespace {
 
 namespace http = boost::beast::http;
 
-std::optional<std::string> validated_runner_base_url(const nlohmann::json& body,
-                                                     bool required,
-                                                     std::string* error) {
+std::optional<std::string> validated_runner_base_url(
+    const nlohmann::json& body,
+    bool required,
+    std::string* error
+) {
   if (!body.contains("base_url") || body.at("base_url").is_null()) {
     if (required) {
       if (error) *error = "Missing base_url.";
@@ -29,7 +31,8 @@ std::optional<std::string> validated_runner_base_url(const nlohmann::json& body,
     return std::nullopt;
   }
 
-  const std::string value = holder::api::support::trim_ascii(body.at("base_url").get<std::string>());
+  const std::string value = holder::api::support::trim_ascii(body.at("base_url").get<std::string>()
+  );
   if (value.empty()) {
     if (error) *error = "base_url cannot be empty.";
     return std::nullopt;
@@ -57,14 +60,20 @@ nlohmann::json local_model_to_json(const holder::llm::LocalModel& model) {
   };
 }
 
-nlohmann::json local_model_to_json(const holder::llm::LocalModel& model, const std::string& runner_id) {
+nlohmann::json local_model_to_json(
+    const holder::llm::LocalModel& model,
+    const std::string& runner_id
+) {
   auto item = local_model_to_json(model);
   item["runner_id"] = runner_id;
   item["model_ref"] = holder::llm::make_runner_model_ref(runner_id, model.name);
   return item;
 } // LCOV_EXCL_LINE
 
-nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
+nlohmann::json pull_job_to_json(
+    const holder::llm::RunnerPullJob& job,
+    const std::string& runner_id
+) {
   return {
       {"job_id", job.job_id},
       {"runner_id", runner_id},
@@ -80,8 +89,10 @@ nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std
   };
 }
 
-nlohmann::json runner_runtime_to_json(const std::string& runner_id,
-                                     holder::llm::RunnerClient* client) {
+nlohmann::json runner_runtime_to_json(
+    const std::string& runner_id,
+    holder::llm::RunnerClient* client
+) {
   nlohmann::json runtime;
   runtime["configured"] = client != nullptr;
   if (client == nullptr) {
@@ -99,7 +110,8 @@ nlohmann::json runner_runtime_to_json(const std::string& runner_id,
   runtime["available"] = status.available;
   runtime["spawn_attempted"] = status.spawn_attempted;
   runtime["last_checked"] = status.last_checked;
-  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.version);
+  runtime["version"] = status.version.empty() ? nlohmann::json(nullptr)
+                                              : nlohmann::json(status.version);
   runtime["error"] = status.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(status.error);
   runtime["models"] = nlohmann::json::array();
   for (const auto& model : status.models) {
@@ -112,27 +124,35 @@ nlohmann::json runner_runtime_to_json(const std::string& runner_id,
   return runtime;
 }
 
-nlohmann::json runner_to_json(const holder::model::AiRunner& runner, holder::llm::RunnerRegistry* runner_registry) {
+nlohmann::json runner_to_json(
+    const holder::model::AiRunner& runner,
+    holder::llm::RunnerRegistry* runner_registry
+) {
   nlohmann::json item;
   item["runner_id"] = runner.runner_id;
   item["name"] = runner.name;
   item["kind"] = runner.kind;
-  item["base_url"] = runner.base_url.has_value() ? nlohmann::json(runner.base_url.value()) : nlohmann::json(nullptr);
+  item["base_url"] = runner.base_url.has_value() ? nlohmann::json(runner.base_url.value())
+                                                 : nlohmann::json(nullptr);
   item["source"] = runner.source;
   item["enabled"] = runner.enabled;
   item["created_at"] = runner.created_at;
   item["updated_at"] = runner.updated_at;
   item["runtime"] = runner_runtime_to_json(
-      runner.runner_id, runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr);
+      runner.runner_id,
+      runner_registry ? runner_registry->get_client(runner.runner_id) : nullptr
+  );
   return item;
 } // LCOV_EXCL_LINE
 
-bool handle_ai_runner_crud_routes(const std::string& path,
-                                  const http::request<http::string_body>& req,
-                                  http::response<http::string_body>& res,
-                                  holder::platform::Db& db,
-                                  holder::llm::RunnerRegistry* runner_registry,
-                                  const std::function<std::string()>& uuid_v4) {
+bool handle_ai_runner_crud_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    holder::llm::RunnerRegistry* runner_registry,
+    const std::function<std::string()>& uuid_v4
+) {
   if (path == "/ai/runners" && req.method() == http::verb::get) {
     try {
       nlohmann::json runners = nlohmann::json::array();
@@ -156,18 +176,30 @@ bool handle_ai_runner_crud_routes(const std::string& path,
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("name") || !body.contains("kind") || body.at("name").is_null() ||
           body.at("kind").is_null()) {
-        res = support::error_response(http::status::bad_request, "bad_request", "Missing name or kind.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing name or kind."
+        );
         return true;
       }
 
       const std::string name = support::trim_ascii(body.at("name").get<std::string>());
       const std::string kind = support::trim_ascii(body.at("kind").get<std::string>());
       if (name.empty()) {
-        res = support::error_response(http::status::bad_request, "bad_request", "name cannot be empty.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "name cannot be empty."
+        );
         return true;
       }
       if (kind != "ollama") {
-        res = support::error_response(http::status::bad_request, "bad_request", "Unsupported runner kind.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Unsupported runner kind."
+        );
         return true;
       }
 
@@ -185,8 +217,9 @@ bool handle_ai_runner_crud_routes(const std::string& path,
       runner.kind = kind;
       runner.base_url = base_url;
       runner.source = "manual";
-      runner.enabled =
-          !body.contains("enabled") || body.at("enabled").is_null() ? true : body.at("enabled").get<bool>();
+      runner.enabled = !body.contains("enabled") || body.at("enabled").is_null()
+                           ? true
+                           : body.at("enabled").get<bool>(); // LCOV_EXCL_LINE
       runner.created_at = now;
       runner.updated_at = now;
 
@@ -216,7 +249,8 @@ bool handle_ai_runner_crud_routes(const std::string& path,
   }
   const auto slash = suffix.find('/');
   const std::string runner_id = slash == std::string::npos ? suffix : suffix.substr(0, slash);
-  const std::string subresource = slash == std::string::npos ? std::string() : suffix.substr(slash + 1);
+  const std::string subresource = slash == std::string::npos ? std::string()
+                                                             : suffix.substr(slash + 1);
   if (runner_id.empty()) {
     return false;
   }
@@ -230,7 +264,8 @@ bool handle_ai_runner_crud_routes(const std::string& path,
       auto* client = runner_registry->get_client(runner_id);
       const auto runner = runner_registry->get_runner(runner_id);
       if (!runner.has_value() || client == nullptr) {
-        res = support::error_response(http::status::not_found, "not_found", "Runner not configured.");
+        res =
+            support::error_response(http::status::not_found, "not_found", "Runner not configured.");
         return true;
       }
       spdlog::info("AI runner retry requested runner_id=" + runner_id);
@@ -277,7 +312,10 @@ bool handle_ai_runner_crud_routes(const std::string& path,
     try {
       if (runner_id == holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
         res = support::error_response(
-            http::status::bad_request, "bad_request", "auto-local runner is not editable.");
+            http::status::bad_request,
+            "bad_request",
+            "auto-local runner is not editable."
+        );
         return true;
       }
 
@@ -293,7 +331,11 @@ bool handle_ai_runner_crud_routes(const std::string& path,
       if (body.contains("name") && !body.at("name").is_null()) {
         runner.name = support::trim_ascii(body.at("name").get<std::string>());
         if (runner.name.empty()) {
-          res = support::error_response(http::status::bad_request, "bad_request", "name cannot be empty.");
+          res = support::error_response(
+              http::status::bad_request,
+              "bad_request",
+              "name cannot be empty."
+          );
           return true;
         }
       }
@@ -329,7 +371,10 @@ bool handle_ai_runner_crud_routes(const std::string& path,
     try {
       if (runner_id == holder::llm::RunnerRegistry::kAutoLocalRunnerId) {
         res = support::error_response(
-            http::status::bad_request, "bad_request", "auto-local runner is not deletable.");
+            http::status::bad_request,
+            "bad_request",
+            "auto-local runner is not deletable."
+        );
         return true;
       }
 
@@ -365,12 +410,19 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get) {
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (handle_ai_runner_crud_routes(path, req, res, db, runner_registry, uuid_v4)) {
     return {.handled = true, .streamed = false};
   }
-  if (const auto out =
-          ai::runner::handle_ai_runner_pull_event_routes(path, req, res, socket, runner_registry, param_get);
+  if (const auto out = ai::runner::handle_ai_runner_pull_event_routes(
+          path,
+          req,
+          res,
+          socket,
+          runner_registry,
+          param_get
+      );
       out.handled) {
     return out;
   }

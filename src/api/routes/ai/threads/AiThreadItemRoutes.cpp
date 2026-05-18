@@ -1,7 +1,7 @@
 #include "api/routes/ai/threads/AiThreadItemRoutes.h"
 
-#include "api/support/HttpResponses.h"
 #include "ai/AiThreadRepo.h"
+#include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -21,17 +21,19 @@ nlohmann::json ai_thread_to_json(const holder::model::AiThread& thread) {
   data["title"] = thread.title;
   data["created_at"] = thread.created_at;
   data["updated_at"] = thread.updated_at;
-  data["card_id"] =
-      thread.card_id.has_value() ? nlohmann::json(thread.card_id.value()) : nlohmann::json(nullptr);
+  data["card_id"] = thread.card_id.has_value() ? nlohmann::json(thread.card_id.value())
+                                               : nlohmann::json(nullptr);
   return data;
 } // LCOV_EXCL_LINE
 
 } // namespace
 
-bool handle_ai_thread_item_routes(const std::string& path,
-                                  const http::request<http::string_body>& req,
-                                  http::response<http::string_body>& res,
-                                  holder::platform::Db& db) {
+bool handle_ai_thread_item_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db
+) {
   if (path.rfind("/ai/threads/", 0) != 0) {
     return false;
   }
@@ -64,7 +66,11 @@ bool handle_ai_thread_item_routes(const std::string& path,
     try {
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("updated_at")) {
-        res = support::error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing updated_at."
+        );
       } else {
         std::optional<std::string> title;
         if (body.contains("title") && !body.at("title").is_null()) {

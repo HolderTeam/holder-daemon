@@ -1,7 +1,7 @@
 #include "ai/AiRunnerRepo.h"
 #include "http_test_helpers.h"
-#include "llm/LocalRunnerClient.h"
 #include "llm/LocalModelRunner.h"
+#include "llm/LocalRunnerClient.h"
 #include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 

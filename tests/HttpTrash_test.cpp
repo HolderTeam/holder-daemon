@@ -1,7 +1,7 @@
 #include "http_test_helpers.h"
 
-#include "model/AiThread.h"
 #include "ai/AiThreadRepo.h"
+#include "model/AiThread.h"
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -38,7 +38,9 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   nlohmann::json card_body = {
@@ -49,11 +51,15 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
       {"created_at", 10},
       {"updated_at", 10}
   };
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/cards",
-                    card_body,
-                    boost::beast::http::status::created);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      card_body,
+      boost::beast::http::status::created
+  );
 
   nlohmann::json msg_body = {
       {"message_id", "msg-1"},
@@ -63,64 +69,96 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
       {"content", "Hi"},
       {"created_at", 11}
   };
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/ai/messages",
-                    msg_body,
-                    boost::beast::http::status::created);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/messages",
+      msg_body,
+      boost::beast::http::status::created
+  );
 
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/cards/card-1",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/ai/messages/msg-1",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/cards/card-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/ai/messages/msg-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
 
-  const auto trash_list = http_json_request(bound.bind, bound.port, token,
-                                            boost::beast::http::verb::get,
-                                            "/trash?project_id=proj-1",
-                                            nlohmann::json::object(),
-                                            boost::beast::http::status::ok);
+  const auto trash_list = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/trash?project_id=proj-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(trash_list["ok"] == true);
   REQUIRE(trash_list["data"].is_array());
   REQUIRE(trash_list["data"].size() == 2);
 
-  const auto trash_cards = http_json_request(bound.bind, bound.port, token,
-                                             boost::beast::http::verb::get,
-                                             "/trash?project_id=proj-1&type=card",
-                                             nlohmann::json::object(),
-                                             boost::beast::http::status::ok);
+  const auto trash_cards = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/trash?project_id=proj-1&type=card",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(trash_cards["ok"] == true);
   REQUIRE(trash_cards["data"].is_array());
   REQUIRE(trash_cards["data"].size() == 1);
   REQUIRE(trash_cards["data"][0]["type"] == "card");
 
-  const auto trash_msgs = http_json_request(bound.bind, bound.port, token,
-                                            boost::beast::http::verb::get,
-                                            "/trash?project_id=proj-1&type=ai_message",
-                                            nlohmann::json::object(),
-                                            boost::beast::http::status::ok);
+  const auto trash_msgs = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/trash?project_id=proj-1&type=ai_message",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(trash_msgs["ok"] == true);
   REQUIRE(trash_msgs["data"].is_array());
   REQUIRE(trash_msgs["data"].size() == 1);
   REQUIRE(trash_msgs["data"][0]["type"] == "ai_message");
 
-  const auto hard_deleted = http_json_request(bound.bind, bound.port, token,
-                                              boost::beast::http::verb::delete_,
-                                              "/trash/card/card-1",
-                                              nlohmann::json::object(),
-                                              boost::beast::http::status::ok);
+  const auto hard_deleted = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/card/card-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(hard_deleted["ok"] == true);
 
-  const auto emptied = http_json_request(bound.bind, bound.port, token,
-                                         boost::beast::http::verb::delete_,
-                                         "/trash?project_id=proj-1",
-                                         nlohmann::json::object(),
-                                         boost::beast::http::status::ok);
+  const auto emptied = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash?project_id=proj-1",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(emptied["ok"] == true);
 
   std::raise(SIGTERM);
@@ -157,7 +195,9 @@ TEST_CASE("HTTP trash routes validate parameters and hard-delete variants", "[ht
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto mk_card = [&](const std::string& id) {
@@ -169,16 +209,24 @@ TEST_CASE("HTTP trash routes validate parameters and hard-delete variants", "[ht
         {"created_at", 10},
         {"updated_at", 10}
     };
-    http_json_request(bound.bind, bound.port, token,
-                      boost::beast::http::verb::post,
-                      "/cards",
-                      body,
-                      boost::beast::http::status::created);
-    http_json_request(bound.bind, bound.port, token,
-                      boost::beast::http::verb::delete_,
-                      "/cards/" + id,
-                      nlohmann::json::object(),
-                      boost::beast::http::status::ok);
+    http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/cards",
+        body,
+        boost::beast::http::status::created
+    );
+    http_json_request(
+        bound.bind,
+        bound.port,
+        token,
+        boost::beast::http::verb::delete_,
+        "/cards/" + id,
+        nlohmann::json::object(),
+        boost::beast::http::status::ok
+    );
   };
 
   mk_card("card-a");
@@ -192,71 +240,111 @@ TEST_CASE("HTTP trash routes validate parameters and hard-delete variants", "[ht
       {"content", "Hi"},
       {"created_at", 11}
   };
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::post,
-                    "/ai/messages",
-                    msg_body,
-                    boost::beast::http::status::created);
-  http_json_request(bound.bind, bound.port, token,
-                    boost::beast::http::verb::delete_,
-                    "/ai/messages/msg-a",
-                    nlohmann::json::object(),
-                    boost::beast::http::status::ok);
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/ai/messages",
+      msg_body,
+      boost::beast::http::status::created
+  );
+  http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/ai/messages/msg-a",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
 
-  auto bad_get = http_json_request(bound.bind, bound.port, token,
-                                   boost::beast::http::verb::get,
-                                   "/trash",
-                                   nlohmann::json::object(),
-                                   boost::beast::http::status::bad_request);
+  auto bad_get = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/trash",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(bad_get["error"]["code"] == "bad_request");
 
-  auto bad_delete = http_json_request(bound.bind, bound.port, token,
-                                      boost::beast::http::verb::delete_,
-                                      "/trash",
-                                      nlohmann::json::object(),
-                                      boost::beast::http::status::bad_request);
+  auto bad_delete = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(bad_delete["error"]["code"] == "bad_request");
 
-  auto not_found = http_json_request(bound.bind, bound.port, token,
-                                     boost::beast::http::verb::delete_,
-                                     "/trash/card",
-                                     nlohmann::json::object(),
-                                     boost::beast::http::status::not_found);
+  auto not_found = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/card",
+      nlohmann::json::object(),
+      boost::beast::http::status::not_found
+  );
   REQUIRE(not_found["error"]["code"] == "not_found");
 
-  auto missing_id = http_json_request(bound.bind, bound.port, token,
-                                      boost::beast::http::verb::delete_,
-                                      "/trash/card/",
-                                      nlohmann::json::object(),
-                                      boost::beast::http::status::bad_request);
+  auto missing_id = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/card/",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(missing_id["error"]["code"] == "bad_request");
 
-  auto unknown_type = http_json_request(bound.bind, bound.port, token,
-                                        boost::beast::http::verb::delete_,
-                                        "/trash/unknown/abc",
-                                        nlohmann::json::object(),
-                                        boost::beast::http::status::bad_request);
+  auto unknown_type = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/unknown/abc",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(unknown_type["error"]["code"] == "bad_request");
 
-  auto hard_delete_msg = http_json_request(bound.bind, bound.port, token,
-                                           boost::beast::http::verb::delete_,
-                                           "/trash/ai_message/msg-a",
-                                           nlohmann::json::object(),
-                                           boost::beast::http::status::ok);
+  auto hard_delete_msg = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/ai_message/msg-a",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(hard_delete_msg["ok"] == true);
 
-  auto card_only = http_json_request(bound.bind, bound.port, token,
-                                     boost::beast::http::verb::delete_,
-                                     "/trash?project_id=proj-1&type=card",
-                                     nlohmann::json::object(),
-                                     boost::beast::http::status::ok);
+  auto card_only = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash?project_id=proj-1&type=card",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
   REQUIRE(card_only["ok"] == true);
 
-  auto bad_card_delete = http_json_request(bound.bind, bound.port, token,
-                                           boost::beast::http::verb::delete_,
-                                           "/trash/card/no-such-card",
-                                           nlohmann::json::object(),
-                                           boost::beast::http::status::bad_request);
+  auto bad_card_delete = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/card/no-such-card",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(bad_card_delete["error"]["code"] == "bad_request");
 
   std::raise(SIGTERM);
@@ -280,14 +368,20 @@ TEST_CASE("HTTP trash card hard-delete reports not_implemented without CardStore
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto res = http_json_request(bound.bind, bound.port, token,
-                               boost::beast::http::verb::delete_,
-                               "/trash/card/abc",
-                               nlohmann::json::object(),
-                               boost::beast::http::status::not_implemented);
+  auto res = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash/card/abc",
+      nlohmann::json::object(),
+      boost::beast::http::status::not_implemented
+  );
   REQUIRE(res["error"]["code"] == "not_implemented");
 
   std::raise(SIGTERM);
@@ -315,21 +409,31 @@ TEST_CASE("HTTP trash top-level routes catch repository exceptions", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() { server.run(signals); });
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto list_fail = http_json_request(bound.bind, bound.port, token,
-                                     boost::beast::http::verb::get,
-                                     "/trash?project_id=proj-1&type=ai_message",
-                                     nlohmann::json::object(),
-                                     boost::beast::http::status::bad_request);
+  auto list_fail = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/trash?project_id=proj-1&type=ai_message",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(list_fail["error"]["code"] == "bad_request");
 
-  auto delete_fail = http_json_request(bound.bind, bound.port, token,
-                                       boost::beast::http::verb::delete_,
-                                       "/trash?project_id=proj-1&type=ai_message",
-                                       nlohmann::json::object(),
-                                       boost::beast::http::status::bad_request);
+  auto delete_fail = http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/trash?project_id=proj-1&type=ai_message",
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
   REQUIRE(delete_fail["error"]["code"] == "bad_request");
 
   std::raise(SIGTERM);

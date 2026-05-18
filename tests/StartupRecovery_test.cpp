@@ -4,6 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "card/CardRepo.h"
 #include "card/CardStore.h"
 #include "git/GitOps.h"
 #include "http_test_helpers.h"
@@ -13,7 +14,6 @@
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 #include "project/StartupRecovery.h"
-#include "card/CardRepo.h"
 
 #include <algorithm>
 #include <sstream>
@@ -38,7 +38,10 @@ std::string join_lines3_sr(const std::vector<std::string>& lines) {
 
 } // namespace
 
-TEST_CASE("Startup recovery rebuilds projects and cards from existing project roots", "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery rebuilds projects and cards from existing project roots",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto original_db_path = dir / "original.db";
@@ -67,7 +70,10 @@ TEST_CASE("Startup recovery rebuilds projects and cards from existing project ro
       project.root_path,
       project.project_key_id,
       project.updated_at,
-      []() { return std::string("generated-key"); });
+      []() {
+        return std::string("generated-key");
+      }
+  );
 
   holder::index::FtsIndexer original_fts(original_db);
   holder::card::CardStore original_store(original_db, &original_fts);
@@ -94,7 +100,10 @@ TEST_CASE("Startup recovery rebuilds projects and cards from existing project ro
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("recovered-proj"); });
+      []() {
+        return std::string("recovered-proj");
+      }
+  );
 
   REQUIRE(recovered.size() == 1);
   REQUIRE(recovered[0].project_id == "proj-1");
@@ -133,7 +142,10 @@ TEST_CASE("Startup recovery rebuilds projects and cards from existing project ro
   REQUIRE(saw_child);
 }
 
-TEST_CASE("Startup recovery defaults privacy metadata branches when files are missing fields", "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery defaults privacy metadata branches when files are missing fields",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto recovered_db_path = dir / "recovered.db";
@@ -145,17 +157,26 @@ TEST_CASE("Startup recovery defaults privacy metadata branches when files are mi
   std::filesystem::create_directories(no_key_root / ".holder");
 
   {
-    std::ofstream card(plain_root / "cards" / "ab" / "cd" / "abcd1234.md", std::ios::binary | std::ios::trunc);
+    std::ofstream card(
+        plain_root / "cards" / "ab" / "cd" / "abcd1234.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(card.is_open());
     card << "# Plain no metadata\n\nRecovered.\n";
   }
   {
-    std::ofstream privacy(no_key_root / ".holder" / "privacy.json", std::ios::binary | std::ios::trunc);
+    std::ofstream privacy(
+        no_key_root / ".holder" / "privacy.json",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(privacy.is_open());
     privacy << R"({"version":1,"project_id":"proj-nokey","mode":"encrypted_git"})";
   }
   {
-    std::ofstream card(no_key_root / "cards" / "de" / "f0" / "def01234.md", std::ios::binary | std::ios::trunc);
+    std::ofstream card(
+        no_key_root / "cards" / "de" / "f0" / "def01234.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(card.is_open());
     card << "# Plain from encrypted metadata\n\nRecovered.\n";
   }
@@ -166,7 +187,10 @@ TEST_CASE("Startup recovery defaults privacy metadata branches when files are mi
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("generated-recovery-id"); });
+      []() {
+        return std::string("generated-recovery-id");
+      }
+  );
 
   REQUIRE(recovered.size() == 2);
 
@@ -174,21 +198,26 @@ TEST_CASE("Startup recovery defaults privacy metadata branches when files are mi
   const auto projects = recovered_project_repo.list();
   REQUIRE(projects.size() == 2);
 
-  const auto plain =
-      std::find_if(projects.begin(), projects.end(), [&](const auto& p) { return p.root_path == plain_root.string(); });
+  const auto plain = std::find_if(projects.begin(), projects.end(), [&](const auto& p) {
+    return p.root_path == plain_root.string();
+  });
   REQUIRE(plain != projects.end());
   REQUIRE(plain->privacy_mode == "plain");
   REQUIRE_FALSE(plain->project_key_id.has_value());
 
-  const auto no_key =
-      std::find_if(projects.begin(), projects.end(), [&](const auto& p) { return p.root_path == no_key_root.string(); });
+  const auto no_key = std::find_if(projects.begin(), projects.end(), [&](const auto& p) {
+    return p.root_path == no_key_root.string();
+  });
   REQUIRE(no_key != projects.end());
   REQUIRE(no_key->project_id == "proj-nokey");
   REQUIRE(no_key->privacy_mode == "encrypted_git");
   REQUIRE_FALSE(no_key->project_key_id.has_value());
 }
 
-TEST_CASE("Startup recovery falls back to plain when privacy metadata is stale", "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery falls back to plain when privacy metadata is stale",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto recovered_db_path = dir / "recovered.db";
@@ -197,12 +226,19 @@ TEST_CASE("Startup recovery falls back to plain when privacy metadata is stale",
   std::filesystem::create_directories(project_root / ".holder");
 
   {
-    std::ofstream privacy(project_root / ".holder" / "privacy.json", std::ios::binary | std::ios::trunc);
+    std::ofstream privacy(
+        project_root / ".holder" / "privacy.json",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(privacy.is_open());
-    privacy << R"({"version":1,"project_id":"proj-plain","key_id":"stale-key","mode":"encrypted_git"})";
+    privacy
+        << R"({"version":1,"project_id":"proj-plain","key_id":"stale-key","mode":"encrypted_git"})";
   }
   {
-    std::ofstream card(project_root / "cards" / "ab" / "cd" / "abcd1234.md", std::ios::binary | std::ios::trunc);
+    std::ofstream card(
+        project_root / "cards" / "ab" / "cd" / "abcd1234.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(card.is_open());
     card << "# Plain card\n\nRecovered as plain.\n";
   }
@@ -213,7 +249,10 @@ TEST_CASE("Startup recovery falls back to plain when privacy metadata is stale",
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("generated"); });
+      []() {
+        return std::string("generated");
+      }
+  );
 
   REQUIRE(recovered.size() == 1);
   REQUIRE(recovered[0].project_id == "proj-plain");
@@ -234,7 +273,10 @@ TEST_CASE("Startup recovery falls back to plain when privacy metadata is stale",
   REQUIRE(content.value() == "# Plain card\n\nRecovered as plain.\n");
 }
 
-TEST_CASE("Startup recovery skips encrypted project when privacy error is not retryable", "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery skips encrypted project when privacy error is not retryable",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto original_db_path = dir / "original.db";
@@ -263,7 +305,10 @@ TEST_CASE("Startup recovery skips encrypted project when privacy error is not re
       project.root_path,
       project.project_key_id,
       project.updated_at,
-      []() { return std::string("generated-key"); });
+      []() {
+        return std::string("generated-key");
+      }
+  );
 
   holder::index::FtsIndexer original_fts(original_db);
   holder::card::CardStore original_store(original_db, &original_fts);
@@ -278,7 +323,10 @@ TEST_CASE("Startup recovery skips encrypted project when privacy error is not re
   const auto card_path = projects_root / "mismatch" / "cards" / "ca" / "rd" / "card-1.md";
   std::ifstream in(card_path, std::ios::binary);
   REQUIRE(in.is_open());
-  const std::string envelope((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const std::string envelope(
+      (std::istreambuf_iterator<char>(in)),
+      std::istreambuf_iterator<char>()
+  );
   auto lines = split_lines3_sr(envelope);
   auto meta = nlohmann::json::parse(lines[1]);
   meta["key_id"] = "wrong-key-id";
@@ -295,7 +343,10 @@ TEST_CASE("Startup recovery skips encrypted project when privacy error is not re
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("recovered-proj"); });
+      []() {
+        return std::string("recovered-proj");
+      }
+  );
 
   REQUIRE(recovered.empty());
 
@@ -303,8 +354,10 @@ TEST_CASE("Startup recovery skips encrypted project when privacy error is not re
   REQUIRE(recovered_project_repo.list().empty());
 }
 
-TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message files are malformed",
-          "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery keeps encrypted projects encrypted when ai message files are malformed",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto original_db_path = dir / "original.db";
@@ -333,7 +386,10 @@ TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message f
       project.root_path,
       project.project_key_id,
       project.updated_at,
-      []() { return std::string("generated-key"); });
+      []() {
+        return std::string("generated-key");
+      }
+  );
 
   holder::index::FtsIndexer original_fts(original_db);
   holder::card::CardStore original_store(original_db, &original_fts);
@@ -347,9 +403,11 @@ TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message f
 
   std::filesystem::create_directories(projects_root / "encrypted" / "ai_messages" / "aa" / "bb");
   {
-    std::ofstream bad_message(projects_root / "encrypted" / "ai_messages" / "aa" / "bb" /
-                                  "aabbccdd-eeff-0011-2233-445566778899.md",
-                              std::ios::binary | std::ios::trunc);
+    std::ofstream bad_message(
+        projects_root / "encrypted" / "ai_messages" / "aa" / "bb" /
+            "aabbccdd-eeff-0011-2233-445566778899.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(bad_message.is_open());
     bad_message << "";
   }
@@ -360,7 +418,10 @@ TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message f
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("recovered-proj"); });
+      []() {
+        return std::string("recovered-proj");
+      }
+  );
 
   REQUIRE(recovered.size() == 1);
   REQUIRE(recovered[0].project_id == "proj-enc");
@@ -378,7 +439,10 @@ TEST_CASE("Startup recovery keeps encrypted projects encrypted when ai message f
   REQUIRE(content.value() == "# Encrypted card\n\nRecovered body.\n");
 }
 
-TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails", "[startup][recovery]") {
+TEST_CASE(
+    "Startup recovery skips project when fallback plain rebuild also fails",
+    "[startup][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto projects_root = dir / "projects";
   const auto original_db_path = dir / "original.db";
@@ -407,7 +471,10 @@ TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails
       project.root_path,
       project.project_key_id,
       project.updated_at,
-      []() { return std::string("generated-key"); });
+      []() {
+        return std::string("generated-key");
+      }
+  );
 
   holder::index::FtsIndexer original_fts(original_db);
   holder::card::CardStore original_store(original_db, &original_fts);
@@ -422,7 +489,10 @@ TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails
   const auto card_path = projects_root / "fallback-fail" / "cards" / "ca" / "rd" / "card-1.md";
   std::ifstream in(card_path, std::ios::binary);
   REQUIRE(in.is_open());
-  const std::string envelope((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  const std::string envelope(
+      (std::istreambuf_iterator<char>(in)),
+      std::istreambuf_iterator<char>()
+  );
   auto lines = split_lines3_sr(envelope);
   auto meta = nlohmann::json::parse(lines[1]);
   meta["key_id"] = "wrong-key-id";
@@ -435,8 +505,10 @@ TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails
 
   std::filesystem::create_directories(projects_root / "fallback-fail" / "cards" / "zz" / "zz");
   {
-    std::ofstream bad_card(projects_root / "fallback-fail" / "cards" / "zz" / "zz" / "bad00001.md",
-                           std::ios::binary | std::ios::trunc);
+    std::ofstream bad_card(
+        projects_root / "fallback-fail" / "cards" / "zz" / "zz" / "bad00001.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(bad_card.is_open());
     bad_card << "# not decryptable as plain\n";
   }
@@ -447,7 +519,10 @@ TEST_CASE("Startup recovery skips project when fallback plain rebuild also fails
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("recovered-proj"); });
+      []() {
+        return std::string("recovered-proj");
+      }
+  );
 
   REQUIRE(recovered.empty());
 
@@ -463,7 +538,10 @@ TEST_CASE("Startup recovery skips malformed plain projects", "[startup][recovery
   std::filesystem::create_directories(project_root / "cards" / "xx" / "yy");
 
   {
-    std::ofstream card(project_root / "cards" / "xx" / "yy" / "abcd1234.md", std::ios::binary | std::ios::trunc);
+    std::ofstream card(
+        project_root / "cards" / "xx" / "yy" / "abcd1234.md",
+        std::ios::binary | std::ios::trunc
+    );
     REQUIRE(card.is_open());
     card << "# wrong path for card id\n";
   }
@@ -474,7 +552,10 @@ TEST_CASE("Startup recovery skips malformed plain projects", "[startup][recovery
       recovered_db,
       &recovered_fts,
       projects_root,
-      []() { return std::string("generated"); });
+      []() {
+        return std::string("generated");
+      }
+  );
 
   REQUIRE(recovered.empty());
 

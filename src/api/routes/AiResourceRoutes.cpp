@@ -16,16 +16,19 @@ namespace http = boost::beast::http;
 
 } // namespace
 
-bool handle_ai_resource_routes(const std::string& path,
-                               const http::request<http::string_body>& req,
-                               http::response<http::string_body>& res,
-                               holder::platform::Db& db,
-                               const std::function<std::string()>& uuid_v4,
-                               const std::function<std::string(const std::string&)>& param_get) {
+bool handle_ai_resource_routes(
+    const std::string& path,
+    const http::request<http::string_body>& req,
+    http::response<http::string_body>& res,
+    holder::platform::Db& db,
+    const std::function<std::string()>& uuid_v4,
+    const std::function<std::string(const std::string&)>& param_get
+) {
   if (path == "/resources" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
     } else {
       try {
         holder::resource::ResourceRepo repo(db);
@@ -38,8 +41,8 @@ bool handle_ai_resource_routes(const std::string& path,
           item["kind"] = resource.kind;
           item["uri"] = resource.uri;
           item["label"] = resource.label;
-          item["desc"] =
-              resource.desc.has_value() ? nlohmann::json(resource.desc.value()) : nlohmann::json(nullptr);
+          item["desc"] = resource.desc.has_value() ? nlohmann::json(resource.desc.value())
+                                                   : nlohmann::json(nullptr);
           item["created_at"] = resource.created_at;
           item["updated_at"] = resource.updated_at;
           data.push_back(std::move(item));
@@ -60,7 +63,11 @@ bool handle_ai_resource_routes(const std::string& path,
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("project_id") || !body.contains("kind") || !body.contains("uri") ||
           !body.contains("label")) {
-        res = support::error_response(http::status::bad_request, "bad_request", "Missing required fields.");
+        res = support::error_response(
+            http::status::bad_request,
+            "bad_request",
+            "Missing required fields."
+        );
       } else {
         holder::model::Resource resource;
         if (body.contains("resource_id") && !body.at("resource_id").is_null()) {
@@ -116,12 +123,20 @@ bool handle_ai_resource_routes(const std::string& path,
       try {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("updated_at")) {
-          res = support::error_response(http::status::bad_request, "bad_request", "Missing updated_at.");
+          res = support::error_response(
+              http::status::bad_request,
+              "bad_request",
+              "Missing updated_at."
+          );
         } else {
           holder::resource::ResourceRepo repo(db);
           const auto existing = repo.get(resource_id);
           if (!existing.has_value()) {
-            res = support::error_response(http::status::not_found, "not_found", "Resource not found.");
+            res = support::error_response(
+                http::status::not_found,
+                "not_found",
+                "Resource not found."
+            );
           } else {
             auto resource = existing.value();
             if (body.contains("kind") && !body.at("kind").is_null()) {

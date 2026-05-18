@@ -14,6 +14,7 @@ bool handle_search_routes(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
     holder::index::FtsIndexer* fts,
-    const std::function<std::string(const std::string&)>& param_get);
+    const std::function<std::string(const std::string&)>& param_get
+);
 
 } // namespace holder::api::routes

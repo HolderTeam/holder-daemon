@@ -91,22 +91,26 @@ int command_project(const holder::core::Paths& paths, int argc, char* argv[]) {
   }
 
   const auto options = parse_project_new_options(argc, argv);
+  // LCOV_EXCL_START
   nlohmann::json body = {
       {"name", options.name},
       {"privacy_mode", options.privacy_mode},
-      {"created_at", now_epoch_seconds()}, // LCOV_EXCL_LINE: gcov misattributes covered JSON initializer lines.
-      {"updated_at", now_epoch_seconds()}, // LCOV_EXCL_LINE
+      {"created_at", now_epoch_seconds()},
+      {"updated_at", now_epoch_seconds()},
   };
+  // LCOV_EXCL_STOP
   if (options.remote_url.has_value()) {
     body["git_remote_url"] = options.remote_url.value();
   }
 
   try {
-    const auto payload = card_api_request(paths,
-                                          boost::beast::http::verb::post,
-                                          "/projects",
-                                          body,
-                                          boost::beast::http::status::created);
+    const auto payload = card_api_request(
+        paths,
+        boost::beast::http::verb::post,
+        "/projects",
+        body,
+        boost::beast::http::status::created
+    );
     const auto& project = payload.at("data");
     if (options.use) {
       write_holderctl_config(paths, json_string(project, "project_id"));
@@ -161,11 +165,11 @@ int command_projects(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::cout << "PROJECT_ID\tNAME\tROOT\n";
     }
     for (const auto& project : projects) {
-      std::cout << json_string(project, "project_id") << "\t"
-                << json_string(project, "name") << "\t";
+      std::cout << json_string(project, "project_id") << "\t" << json_string(project, "name")
+                << "\t";
       if (include_count) {
-        std::cout << project.value("card_count", 0) << "\t"
-                  << project.value("root_card_count", 0) << "\t";
+        std::cout << project.value("card_count", 0) << "\t" << project.value("root_card_count", 0)
+                  << "\t";
       }
       std::cout << json_string(project, "root_path") << "\n";
     }
@@ -211,8 +215,8 @@ int command_current(const holder::core::Paths& paths, int argc) {
   const auto payload = list_projects_payload(paths, false);
   const auto project = find_project_by_id(payload.at("data"), current_project_id);
 
-  std::cout << "Current project: " << json_string(project, "name") << " ("
-            << current_project_id << ")\n"
+  std::cout << "Current project: " << json_string(project, "name") << " (" << current_project_id
+            << ")\n"
             << "Root: " << json_string(project, "root_path") << "\n";
   return 0;
 }

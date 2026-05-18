@@ -17,7 +17,10 @@ namespace {
 
 namespace http = boost::beast::http;
 
-nlohmann::json pull_job_to_json(const holder::llm::RunnerPullJob& job, const std::string& runner_id) {
+nlohmann::json pull_job_to_json(
+    const holder::llm::RunnerPullJob& job,
+    const std::string& runner_id
+) {
   nlohmann::json data;
   data["job_id"] = job.job_id;
   data["runner_id"] = runner_id;
@@ -49,15 +52,19 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string(const std::string&)>& param_get) {
+    const std::function<std::string(const std::string&)>& param_get
+) {
   RunnerRouteDispatchResult out{};
   const std::string runner_id = requested_runner_id(param_get);
   auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
 
   if (path.rfind("/ai/runner/pull/", 0) != 0 ||
       path.size() <= std::string("/ai/runner/pull/").size() + std::string("/events").size() ||
-      path.compare(path.size() - std::string("/events").size(), std::string("/events").size(), "/events") !=
-          0 ||
+      path.compare(
+          path.size() - std::string("/events").size(),
+          std::string("/events").size(),
+          "/events"
+      ) != 0 ||
       req.method() != http::verb::get) {
     return out;
   }
@@ -70,10 +77,13 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
 
   const std::string prefix = "/ai/runner/pull/";
   const std::string suffix = "/events";
-  const std::string job_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+  const std::string job_id =
+      path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
   if (job_id.empty()) {
-    res = support::error_response(http::status::not_found, "not_found", "Pull job not found."); // LCOV_EXCL_LINE
-    return out; // LCOV_EXCL_LINE
+    // LCOV_EXCL_START
+    res = support::error_response(http::status::not_found, "not_found", "Pull job not found.");
+    return out;
+    // LCOV_EXCL_STOP
   }
 
   out.streamed = true;
@@ -103,14 +113,17 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
   for (;;) {
     const auto job = runner->get_pull(job_id);
     if (!job.has_value()) {
-      send_event("failed",
-                 nlohmann::json{{"runner_id", runner_id},
-                                {"error", "Pull job not found."}});
+      send_event(
+          "failed",
+          nlohmann::json{{"runner_id", runner_id}, {"error", "Pull job not found."}}
+      );
       break;
     }
 
+    // LCOV_EXCL_START
     const bool changed = job->status != last_status || job->progress.completed != last_completed ||
-                         job->progress.total != last_total; // LCOV_EXCL_LINE
+                         job->progress.total != last_total;
+    // LCOV_EXCL_STOP
     if (changed) {
       const auto data = pull_job_to_json(job.value(), runner_id);
       if (!send_event("progress", data)) {
@@ -125,10 +138,12 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
         send_event("completed", data);
         break;
       }
-      if (job->status == "failed") { // LCOV_EXCL_LINE
-        send_event("failed", data); // LCOV_EXCL_LINE
-        break; // LCOV_EXCL_LINE
+      // LCOV_EXCL_START
+      if (job->status == "failed") {
+        send_event("failed", data);
+        break;
       }
+      // LCOV_EXCL_STOP
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200)); // LCOV_EXCL_LINE

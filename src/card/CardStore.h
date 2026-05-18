@@ -1,12 +1,12 @@
 #pragma once
 
-#include "platform/Fs.h"
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "model/Card.h"
-#include "card/CardRepo.h"
 #include "platform/Db.h"
-#include "card/LinkRepo.h"
+#include "platform/Fs.h"
 #include "project/ProjectRepo.h"
 
 #include <optional>
@@ -15,24 +15,32 @@
 namespace holder::card {
 
 class CardStore {
-public:
-  CardStore(holder::platform::Db& db,
-            holder::index::FtsIndexer* fts,
-            holder::core::Fs* fs = nullptr,
-            holder::git::GitOps* git = nullptr);
+ public:
+  CardStore(
+      holder::platform::Db& db,
+      holder::index::FtsIndexer* fts,
+      holder::core::Fs* fs = nullptr,
+      holder::git::GitOps* git = nullptr
+  );
 
-  void create(holder::model::Card card,
-              const std::string& content,
-              const std::optional<double>& explicit_sort_key = std::nullopt);
-  void update_content(const std::string& card_id,
-                      const std::string& content,
-                      const std::optional<std::string>& title,
-                      long long updated_at);
-  void move(const std::string& card_id,
-            bool has_parent_card_id,
-            const std::optional<std::string>& parent_card_id,
-            const std::optional<double>& sort_key,
-            long long updated_at);
+  void create(
+      holder::model::Card card,
+      const std::string& content,
+      const std::optional<double>& explicit_sort_key = std::nullopt
+  );
+  void update_content(
+      const std::string& card_id,
+      const std::string& content,
+      const std::optional<std::string>& title,
+      long long updated_at
+  );
+  void move(
+      const std::string& card_id,
+      bool has_parent_card_id,
+      const std::optional<std::string>& parent_card_id,
+      const std::optional<double>& sort_key,
+      long long updated_at
+  );
   void update_links(const std::string& card_id, long long updated_at);
   void trash(const std::string& card_id, long long deleted_at);
   void restore(const std::string& card_id, long long updated_at);
@@ -40,7 +48,7 @@ public:
   std::optional<holder::model::Card> get(const std::string& card_id) const;
   std::optional<std::string> get_content(const holder::model::Card& card);
 
-private:
+ private:
   holder::model::Project require_project(const std::string& project_id);
 
   holder::platform::Db& db_;

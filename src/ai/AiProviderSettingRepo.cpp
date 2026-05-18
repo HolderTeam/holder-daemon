@@ -28,13 +28,13 @@ holder::model::AiProviderSetting read_row(sqlite3_stmt* stmt) {
 
 } // namespace
 
-AiProviderSettingRepo::AiProviderSettingRepo(holder::platform::Db& db) : db_(db) {}
+AiProviderSettingRepo::AiProviderSettingRepo(holder::platform::Db& db)
+    : db_(db) {}
 
 std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() const {
-  static constexpr const char* SQL =
-      "SELECT provider, enabled, updated_at "
-      "FROM ai_provider_settings "
-      "ORDER BY provider ASC;";
+  static constexpr const char* SQL = "SELECT provider, enabled, updated_at "
+                                     "FROM ai_provider_settings "
+                                     "ORDER BY provider ASC;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -58,11 +58,11 @@ std::vector<holder::model::AiProviderSetting> AiProviderSettingRepo::list() cons
 } // LCOV_EXCL_LINE
 
 std::optional<holder::model::AiProviderSetting> AiProviderSettingRepo::get(
-    const std::string& provider) const {
-  static constexpr const char* SQL =
-      "SELECT provider, enabled, updated_at "
-      "FROM ai_provider_settings "
-      "WHERE provider = ?;";
+    const std::string& provider
+) const {
+  static constexpr const char* SQL = "SELECT provider, enabled, updated_at "
+                                     "FROM ai_provider_settings "
+                                     "WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -83,7 +83,11 @@ std::optional<holder::model::AiProviderSetting> AiProviderSettingRepo::get(
   return std::nullopt;
 }
 
-void AiProviderSettingRepo::upsert(const std::string& provider, bool enabled, long long updated_at) {
+void AiProviderSettingRepo::upsert(
+    const std::string& provider,
+    bool enabled,
+    long long updated_at
+) {
   static constexpr const char* SQL =
       "INSERT INTO ai_provider_settings(provider, enabled, updated_at) "
       "VALUES(?, ?, ?) "
@@ -106,8 +110,7 @@ void AiProviderSettingRepo::upsert(const std::string& provider, bool enabled, lo
 }
 
 void AiProviderSettingRepo::remove(const std::string& provider) {
-  static constexpr const char* SQL =
-      "DELETE FROM ai_provider_settings WHERE provider = ?;";
+  static constexpr const char* SQL = "DELETE FROM ai_provider_settings WHERE provider = ?;";
 
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db_.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {

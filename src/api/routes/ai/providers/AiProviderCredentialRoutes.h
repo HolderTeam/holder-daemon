@@ -14,6 +14,7 @@ bool handle_ai_provider_credential_routes(
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
     holder::platform::Db& db,
-    holder::privacy::SecretStore& secret_store);
+    holder::privacy::SecretStore& secret_store
+);
 
 } // namespace holder::api::routes::ai::providers
