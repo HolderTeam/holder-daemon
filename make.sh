@@ -127,6 +127,38 @@ coverage_all() {
   echo "Coverage report: ${report_dir}/index.html"
 }
 
+tidy_all() {
+  local build_dir="build-tidy"
+  local tidy_bin="clang-tidy"
+  local gcc_version gcc_major
+  local -a tidy_extra_args=()
+
+  if command -v clang-tidy-18 >/dev/null 2>&1; then
+    tidy_bin="clang-tidy-18"
+  fi
+  if command -v g++ >/dev/null 2>&1; then
+    gcc_version="$(g++ -dumpfullversion -dumpversion)"
+    gcc_major="${gcc_version%%.*}"
+    if [[ -d "/usr/include/c++/${gcc_major}" ]]; then
+      tidy_extra_args+=("-extra-arg=-isystem/usr/include/c++/${gcc_major}")
+    fi
+    if [[ -d "/usr/include/x86_64-linux-gnu/c++/${gcc_major}" ]]; then
+      tidy_extra_args+=("-extra-arg=-isystem/usr/include/x86_64-linux-gnu/c++/${gcc_major}")
+    fi
+  fi
+
+  cmake -S . -B "${build_dir}" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+  run-clang-tidy \
+    -clang-tidy-binary "${tidy_bin}" \
+    -p "${build_dir}" \
+    -quiet \
+    "${tidy_extra_args[@]}" \
+    '(^|.*/)(src|tests)/.*\.(cpp|cc|cxx|h|hpp)$'
+}
+
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
@@ -141,6 +173,9 @@ case "${MODE}" in
     ;;
   coverage)
     coverage_all
+    ;;
+  tidy)
+    tidy_all
     ;;
   *)
     # Backward-compatible: treat first arg as build type in default flow.

@@ -20,6 +20,7 @@ option(HOLDER_USE_SYSTEM_CASTE "Use packaged libcaste instead of third_party/cas
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Sensible defaults for a service-like binary
 if(NOT CMAKE_BUILD_TYPE)
