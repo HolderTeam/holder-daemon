@@ -11,7 +11,7 @@ std::optional<std::filesystem::path> installed_data_path(const std::filesystem::
   const std::filesystem::path root(HOLDER_INSTALL_DATADIR);
   if (root.empty()) return std::nullopt;
 
-  const std::filesystem::path candidate = root / rel_path;
+  std::filesystem::path candidate = root / rel_path;
   if (std::filesystem::exists(candidate)) return candidate;
 
   return std::nullopt;
