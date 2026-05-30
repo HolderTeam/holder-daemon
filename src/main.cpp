@@ -38,6 +38,8 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <utility>
 
 #ifndef CARD_SERVER_VERSION
 #define CARD_SERVER_VERSION "0.0.0"
@@ -46,6 +48,49 @@
 static void print_usage(std::ostream& out) {
   out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex]\n";
 }
+
+static void report_fatal_error(const char* message) noexcept {
+  const char* text = (message != nullptr && message[0] != '\0') ? message : "unknown fatal error";
+  try {
+    spdlog::critical("fatal error: {}", text);
+  } catch (...) { // NOLINT(bugprone-empty-catch)
+  }
+  try {
+    std::cerr << "fatal error: " << text << "\n";
+  } catch (...) { // NOLINT(bugprone-empty-catch)
+  }
+  try {
+    spdlog::shutdown();
+  } catch (...) { // NOLINT(bugprone-empty-catch)
+  }
+}
+
+class SyncThreadGuard {
+ public:
+  SyncThreadGuard(holder::core::SignalHandler& signals, std::thread thread) noexcept
+      : signals_(&signals),
+        thread_(std::move(thread)) {}
+
+  ~SyncThreadGuard() noexcept { stop_and_join(); }
+
+  SyncThreadGuard(const SyncThreadGuard&) = delete;
+  SyncThreadGuard& operator=(const SyncThreadGuard&) = delete;
+
+  void stop_and_join() noexcept {
+    if (!thread_.joinable()) return;
+    if (signals_ != nullptr) {
+      signals_->request_stop();
+    }
+    try {
+      thread_.join();
+    } catch (...) { // NOLINT(bugprone-empty-catch)
+    }
+  }
+
+ private:
+  holder::core::SignalHandler* signals_ = nullptr;
+  std::thread thread_;
+};
 
 static std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -165,7 +210,7 @@ static void ensure_default_welcome_card(
   spdlog::info("Bootstrapped welcome card ({}) in Home project", welcome.card_id);
 }
 
-int main(int argc, char* argv[]) {
+static int holder_main(int argc, char* argv[]) {
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--version") {
@@ -326,9 +371,10 @@ int main(int argc, char* argv[]) {
   const auto bound = server.start();
 
   holder::sync::ProjectSyncWorker sync_worker(paths.db_path());
-  std::thread sync_thread([&sync_worker, &signals]() { // LCOV_EXCL_LINE
+  std::thread sync_worker_thread([&sync_worker, &signals]() { // LCOV_EXCL_LINE
     sync_worker.run(signals);
   });
+  SyncThreadGuard sync_thread(signals, std::move(sync_worker_thread));
 
   info.pid = holder::core::current_pid();
   info.bind = bound.bind;
@@ -344,12 +390,11 @@ int main(int argc, char* argv[]) {
   );
 
   server.run(signals);
+  const bool shutdown_signal_received = signals.is_requested();
   runner.stop();
-  if (sync_thread.joinable()) {
-    sync_thread.join();
-  }
+  sync_thread.stop_and_join();
 
-  if (signals.is_requested()) {
+  if (shutdown_signal_received) {
     const int sig = signals.last_signal();
     const char* name = (sig == SIGINT) ? "SIGINT" : (sig == SIGTERM) ? "SIGTERM" : "unknown";
     spdlog::info("shutdown signal received: {}", name);
@@ -357,4 +402,16 @@ int main(int argc, char* argv[]) {
   spdlog::info("holder shutdown complete."); // LCOV_EXCL_LINE
   spdlog::shutdown(); // LCOV_EXCL_LINE
   return 0; // LCOV_EXCL_LINE
+}
+
+int main(int argc, char* argv[]) {
+  try {
+    return holder_main(argc, argv);
+  } catch (const std::exception& ex) { // LCOV_EXCL_LINE
+    report_fatal_error(ex.what()); // LCOV_EXCL_LINE
+    return 1; // LCOV_EXCL_LINE
+  } catch (...) { // LCOV_EXCL_LINE
+    report_fatal_error("unknown fatal error"); // LCOV_EXCL_LINE
+    return 1; // LCOV_EXCL_LINE
+  }
 }
