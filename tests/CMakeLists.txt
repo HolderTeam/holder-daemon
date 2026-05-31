@@ -90,6 +90,7 @@ add_executable(lockfile_tests
   HttpSearchFlow_test.cpp
   HttpSearchAiFlow_test.cpp
   Entrypoint_test.cpp
+  FatalError_test.cpp
   PrivacyCryptoService_test.cpp
   PrivacyError_test.cpp
   Router_test.cpp
@@ -135,6 +136,7 @@ add_executable(lockfile_tests
   Reindexer_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
+  ../src/app/FatalError.cpp
   ../src/platform/Paths.cpp
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
