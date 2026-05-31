@@ -91,6 +91,7 @@ add_executable(holderd
   src/main.cpp
   src/app/DaemonApp.cpp
   src/app/Bootstrap.cpp
+  src/app/Entrypoint.cpp
   src/app/FatalError.cpp
   src/platform/InstalledDataPath.cpp
   src/platform/Paths.cpp

@@ -25,8 +25,8 @@ class SyncThreadGuard {
     }
     try {
       thread_.join();
-    } catch (...) { // NOLINT(bugprone-empty-catch)
-    }
+    } catch (...) { // NOLINT(bugprone-empty-catch) LCOV_EXCL_LINE
+    } // LCOV_EXCL_LINE
   }
 
  private:
