@@ -23,10 +23,7 @@ class SyncThreadGuard {
     if (signals_ != nullptr) {
       signals_->request_stop();
     }
-    try {
-      thread_.join();
-    } catch (...) { // NOLINT(bugprone-empty-catch) LCOV_EXCL_LINE
-    } // LCOV_EXCL_LINE
+    thread_.join();
   }
 
  private:
