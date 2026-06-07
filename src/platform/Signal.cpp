@@ -30,6 +30,13 @@ bool SignalHandler::is_requested() const { return g_signal_requested.load(); }
 
 int SignalHandler::last_signal() const { return g_last_signal.load(); }
 
+void SignalHandler::request_stop(int signum) noexcept {
+  g_signal_requested.store(true);
+  if (signum != 0) {
+    g_last_signal.store(signum);
+  }
+}
+
 void SignalHandler::handle(int signum) {
   if (signum == SIGINT || signum == SIGTERM) {
     g_signal_requested.store(true);

@@ -14,6 +14,7 @@ class SignalHandler {
 
   bool is_requested() const;
   int last_signal() const;
+  void request_stop(int signum = 0) noexcept;
 
  private:
   static void handle(int signum);
