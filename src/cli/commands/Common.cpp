@@ -17,6 +17,12 @@
 #endif
 
 namespace holder::cli {
+namespace {
+
+template <typename T>
+void ignore_result(T&&) noexcept {}
+
+} // namespace
 
 void print_usage(std::ostream& out) {
   out << "Usage: holderctl <command>\n"
@@ -169,14 +175,14 @@ HttpJsonResponse http_json_request(
     req.prepare_payload();
   }
 
-  http::write(stream, req);
+  http::write(stream, req); // NOLINT(bugprone-unused-return-value)
 
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
-  http::read(stream, buffer, res);
+  http::read(stream, buffer, res); // NOLINT(bugprone-unused-return-value)
 
   boost::system::error_code ec;
-  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+  ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, ec)); // NOLINT(bugprone-unused-return-value)
 
   return {.status = res.result(), .payload = nlohmann::json::parse(res.body())};
 }

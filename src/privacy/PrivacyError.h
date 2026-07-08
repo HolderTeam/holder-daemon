@@ -1,11 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
 namespace holder::privacy {
 
-enum class PrivacyErrorCode {
+enum class PrivacyErrorCode : std::uint8_t {
   KeyMaterialMissing,
   KeyringUnavailable,
   RecoveryTokenInvalid,
@@ -18,8 +19,8 @@ enum class PrivacyErrorCode {
 
 class PrivacyError : public std::runtime_error {
  public:
-  PrivacyError(PrivacyErrorCode code, std::string message)
-      : std::runtime_error(std::move(message)),
+  PrivacyError(PrivacyErrorCode code, const std::string& message)
+      : std::runtime_error(message),
         code_(code) {}
 
   PrivacyErrorCode code() const noexcept { return code_; }

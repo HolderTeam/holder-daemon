@@ -1,10 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace holder::git {
 
-enum class PushStatus {
+enum class PushStatus : std::uint8_t {
   Pushed,
   UpToDate,
   AuthFailed,
