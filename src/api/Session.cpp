@@ -197,8 +197,8 @@ Session::Session(
 
 std::optional<Session::PreparedRequest> Session::prepare_request(
     tcp::socket socket,
-    SocketHook on_io_start,
-    SocketHook on_io_done
+    const SocketHook& on_io_start,
+    const SocketHook& on_io_done
 ) {
   const auto request_started = std::chrono::steady_clock::now();
   auto read_result = async_read_request(std::move(socket), on_io_start, on_io_done);
@@ -310,8 +310,8 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
 
 void Session::write_prepared_response(
     PreparedResponse prepared,
-    SocketHook on_io_start,
-    SocketHook on_io_done
+    const SocketHook& on_io_start,
+    const SocketHook& on_io_done
 ) {
   const auto method = std::string(prepared.req.method_string());
   const auto target = std::string(prepared.req.target());

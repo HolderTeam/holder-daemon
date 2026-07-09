@@ -35,12 +35,6 @@ namespace {
 
 namespace http = boost::beast::http;
 
-holder::llm::RunnerClient* resolve_auto_local_runner(holder::llm::RunnerRegistry* runner_registry) {
-  return runner_registry
-             ? runner_registry->get_client(holder::llm::RunnerRegistry::kAutoLocalRunnerId)
-             : nullptr;
-}
-
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
   return text.substr(0, max_bytes);
@@ -1452,7 +1446,7 @@ RouteDispatchResult handle_ai_runs_post_route(
   RouteDispatchResult out{};
   out.handled = true;
   try {
-    auto* runner = resolve_auto_local_runner(runner_registry);
+    holder::llm::RunnerClient* runner = nullptr;
     const auto parsed = parse_ai_run_post_input(req, res);
     if (!parsed.has_value()) {
       return out;

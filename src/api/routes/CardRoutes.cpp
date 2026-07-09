@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -275,7 +276,7 @@ std::optional<bool> parse_count_param(
   return std::nullopt;
 }
 
-enum class CardListOrder {
+enum class CardListOrder : std::uint8_t {
   TreeDefault,
   UpdatedDesc,
   TitleAsc,
@@ -939,7 +940,8 @@ bool handle_card_routes(
                     write_move_response(source);
                     return true;
                   }
-                  const auto& target = siblings_with_source[static_cast<size_t>(source_index + 1)];
+                  const auto& target =
+                      siblings_with_source[static_cast<size_t>(source_index) + 1];
                   const auto siblings = siblings_for_parent(next_parent, source.card_id);
                   next_sort_key = sort_key_around_target(siblings, target.card_id, true);
                 }

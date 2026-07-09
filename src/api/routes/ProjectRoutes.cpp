@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -367,7 +368,7 @@ bool handle_project_routes(
       if (limit > 1000) {
         limit = 1000;
       }
-      enum class OrderKey { UpdatedAt, CreatedAt, Name };
+      enum class OrderKey : std::uint8_t { UpdatedAt, CreatedAt, Name };
       OrderKey order_key = OrderKey::UpdatedAt;
       bool order_asc = false;
       if (!order_raw.empty()) {

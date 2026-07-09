@@ -26,7 +26,7 @@ std::optional<ParsedHttpsBaseUrl> parse_https_base_url(const std::string& base_u
   if (base_url.rfind(kPrefix, 0) != 0) return std::nullopt;
   std::string rest = base_url.substr(sizeof(kPrefix) - 1);
   std::string host_port = rest;
-  std::string base_path = "";
+  std::string base_path;
   const auto slash = rest.find('/');
   if (slash != std::string::npos) {
     host_port = rest.substr(0, slash);
@@ -456,7 +456,7 @@ std::optional<std::string> run_cloud_model(
     }
     return std::nullopt;
   }
-  return parsed.text.value();
+  return parsed.text;
 }
 
 void set_run_cloud_model_override_for_tests(CloudModelRunnerOverride fn) {

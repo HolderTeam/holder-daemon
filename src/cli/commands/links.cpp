@@ -40,7 +40,10 @@ LinkListOptions parse_link_list_options(
     } else if (arg == "--include-deleted") {
       options.include_deleted = true;
     } else if (arg.rfind("--", 0) == 0) {
-      throw std::runtime_error("Unknown " + command_name + " option: " + arg);
+      std::string message = "Unknown " + command_name;
+      message += " option: ";
+      message += arg;
+      throw std::runtime_error(message);
     } else if (options.card_id.empty()) {
       options.card_id = arg;
     } else {
