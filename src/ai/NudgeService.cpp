@@ -764,7 +764,7 @@ nlohmann::json NudgeService::build_nudge_meta_json(const NudgeCandidateInput& in
 }
 
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
-  const auto deterministic = build_nudge_body(input);
+  auto deterministic = build_nudge_body(input);
   if (input.kind == "card.title_suggestion") return deterministic;
   const auto target = pick_local_model_for_nudges();
   if (!target.has_value() || target->runner == nullptr) return deterministic;

@@ -758,7 +758,7 @@ bool handle_card_routes(
                   support::error_response(http::status::not_found, "not_found", "Card not found.");
               return true;
             }
-            const auto source = source_opt.value();
+            const auto& source = source_opt.value();
             if (source.project_id != project_id) {
               res = support::error_response(
                   http::status::unprocessable_entity,
@@ -1221,7 +1221,7 @@ bool handle_card_routes(
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       }
     } else {
-      const std::string card_id = rest;
+      const std::string& card_id = rest;
       if (card_id.empty()) {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else if (!card_store) {

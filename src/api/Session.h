@@ -112,7 +112,7 @@ class Session {
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
   Request req_;
-  std::chrono::steady_clock::time_point request_started_{};
+  std::chrono::steady_clock::time_point request_started_;
   std::string path_;
   std::string query_string_;
   bool has_loaded_request_ = false;

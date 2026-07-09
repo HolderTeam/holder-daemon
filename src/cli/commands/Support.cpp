@@ -103,7 +103,7 @@ std::optional<std::string> read_configured_project_id(const holder::core::Paths&
     return std::nullopt;
   }
   const auto config = nlohmann::json::parse(in);
-  const auto project_id = json_string(config, "current_project_id");
+  auto project_id = json_string(config, "current_project_id");
   if (project_id.empty()) {
     return std::nullopt;
   }

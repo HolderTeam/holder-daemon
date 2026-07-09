@@ -32,7 +32,7 @@ std::string lowercase_ascii(std::string s) {
 }
 
 std::string normalize_provider_name(const std::string& raw) {
-  const std::string key = lowercase_ascii(trim_ascii(raw));
+  std::string key = lowercase_ascii(trim_ascii(raw));
   if (key.empty()) return {};
   for (const char ch : key) {
     const unsigned char c = static_cast<unsigned char>(ch);

@@ -40,7 +40,7 @@ std::string requested_runner_id(
     const http::request<http::string_body>& req,
     const std::function<std::string(const std::string&)>& param_get
 ) {
-  const auto query_runner_id = param_get("runner_id");
+  auto query_runner_id = param_get("runner_id");
   if (!query_runner_id.empty()) {
     return query_runner_id;
   }

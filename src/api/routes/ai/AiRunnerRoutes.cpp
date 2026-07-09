@@ -31,8 +31,7 @@ std::optional<std::string> validated_runner_base_url(
     return std::nullopt;
   }
 
-  const std::string value = holder::api::support::trim_ascii(body.at("base_url").get<std::string>()
-  );
+  std::string value = holder::api::support::trim_ascii(body.at("base_url").get<std::string>());
   if (value.empty()) {
     if (error) *error = "base_url cannot be empty.";
     return std::nullopt;
@@ -41,7 +40,7 @@ std::optional<std::string> validated_runner_base_url(
     if (error) *error = "base_url must use http://host:port format.";
     return std::nullopt;
   }
-  const auto host_port = value.substr(std::string("http://").size());
+  auto host_port = value.substr(std::string("http://").size());
   const auto colon = host_port.rfind(':');
   if (colon == std::string::npos || colon == 0 || colon == host_port.size() - 1) {
     if (error) *error = "base_url must use http://host:port format.";
