@@ -11,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include <thread>
 
 namespace {
 
@@ -56,6 +55,18 @@ int count_table(holder::platform::Db& db, const std::string& table) {
   }
   sqlite3_finalize(stmt);
   return count;
+}
+
+struct InterruptAfter {
+  int remaining;
+};
+
+int sqlite_interrupt_after(void* data) {
+  auto* interrupt = static_cast<InterruptAfter*>(data);
+  if (interrupt == nullptr) return 0;
+  if (interrupt->remaining <= 0) return 1;
+  --interrupt->remaining;
+  return 0;
 }
 
 } // namespace
@@ -143,14 +154,11 @@ TEST_CASE("Reindexer throws when cards scan is interrupted", "[reindex]") {
     );
   }
 
+  InterruptAfter interrupt{1000};
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_after, &interrupt);
   holder::index::Reindexer reindexer(db);
-  std::thread interrupter([&db]() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    sqlite3_interrupt(db.handle());
-  });
-
   REQUIRE_THROWS(reindexer.run());
-  interrupter.join();
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
 
 TEST_CASE("Reindexer throws when ai messages scan is interrupted", "[reindex]") {
@@ -175,12 +183,9 @@ TEST_CASE("Reindexer throws when ai messages scan is interrupted", "[reindex]") 
     );
   }
 
+  InterruptAfter interrupt{5000};
+  sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_after, &interrupt);
   holder::index::Reindexer reindexer(db);
-  std::thread interrupter([&db]() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    sqlite3_interrupt(db.handle());
-  });
-
   REQUIRE_THROWS(reindexer.run());
-  interrupter.join();
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
 }
