@@ -28,7 +28,10 @@ class SyncWorkerHookGuard {
 
 void run_worker_for_seconds(const std::filesystem::path& db_path, int seconds) {
   holder::core::SignalHandler signals;
-  holder::sync::ProjectSyncWorker worker(db_path, 2000000000, 1, 1);
+  holder::sync::ProjectSyncWorker worker(
+      db_path,
+      {.push_interval_seconds = 2000000000, .pull_interval_seconds = 1, .poll_interval_seconds = 1}
+  );
   std::thread thread([&worker, &signals]() {
     worker.run(signals);
   });
@@ -45,8 +48,12 @@ void run_worker_with_intervals_for_seconds(
     int seconds
 ) {
   holder::core::SignalHandler signals;
-  holder::sync::ProjectSyncWorker
-      worker(db_path, push_interval_seconds, pull_interval_seconds, poll_interval_seconds);
+  holder::sync::ProjectSyncWorker worker(
+      db_path,
+      {.push_interval_seconds = push_interval_seconds,
+       .pull_interval_seconds = pull_interval_seconds,
+       .poll_interval_seconds = poll_interval_seconds}
+  );
   std::thread thread([&worker, &signals]() {
     worker.run(signals);
   });
@@ -347,7 +354,10 @@ TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[
   const auto bad_db_path = dir;
 
   holder::core::SignalHandler signals;
-  holder::sync::ProjectSyncWorker worker(bad_db_path, 0, 0, 1);
+  holder::sync::ProjectSyncWorker worker(
+      bad_db_path,
+      {.push_interval_seconds = 0, .pull_interval_seconds = 0, .poll_interval_seconds = 1}
+  );
   std::exception_ptr thread_error;
   std::thread thread([&worker, &signals, &thread_error]() {
     try {

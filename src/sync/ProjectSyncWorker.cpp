@@ -29,14 +29,12 @@ bool is_push_success(holder::git::PushStatus status) {
 
 ProjectSyncWorker::ProjectSyncWorker(
     std::filesystem::path db_path,
-    int push_interval_seconds,
-    int pull_interval_seconds,
-    int poll_interval_seconds
+    ProjectSyncWorkerIntervals intervals
 )
     : db_path_(std::move(db_path)),
-      push_interval_seconds_(push_interval_seconds),
-      pull_interval_seconds_(pull_interval_seconds),
-      poll_interval_seconds_(poll_interval_seconds) {}
+      push_interval_seconds_(intervals.push_interval_seconds),
+      pull_interval_seconds_(intervals.pull_interval_seconds),
+      poll_interval_seconds_(intervals.poll_interval_seconds) {}
 
 void ProjectSyncWorker::run(const holder::core::SignalHandler& signals) {
   try {
@@ -93,9 +91,9 @@ void ProjectSyncWorker::run_startup_pull_pass() {
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(
           project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
+          {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+           .unpushed_commits_count = metrics.unpushed_commits_count,
+           .updated_at = now}
       );
     } catch (const std::exception& ex) {
       spdlog::warn(
@@ -126,9 +124,9 @@ void ProjectSyncWorker::run_startup_pull_pass() {
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(
           project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
+          {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+           .unpushed_commits_count = metrics.unpushed_commits_count,
+           .updated_at = now}
       );
     } catch (const std::exception& ex) {
       spdlog::warn(
@@ -158,9 +156,9 @@ void ProjectSyncWorker::run_push_cycle() {
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(
           project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
+          {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+           .unpushed_commits_count = metrics.unpushed_commits_count,
+           .updated_at = now}
       );
     } catch (const std::exception& ex) {
       spdlog::warn("sync worker metrics refresh failed for {}: {}", project.project_id, ex.what());
@@ -197,9 +195,9 @@ void ProjectSyncWorker::run_push_cycle() {
         const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
         sync.update_activity_counts(
             project.project_id,
-            metrics.uncommitted_changes_count,
-            metrics.unpushed_commits_count,
-            now
+            {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+             .unpushed_commits_count = metrics.unpushed_commits_count,
+             .updated_at = now}
         );
       } catch (const std::exception& ex) {
         spdlog::warn(
@@ -250,9 +248,9 @@ void ProjectSyncWorker::run_push_cycle() {
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(
           project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
+          {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+           .unpushed_commits_count = metrics.unpushed_commits_count,
+           .updated_at = now}
       );
     } catch (const std::exception& ex) {
       spdlog::warn(

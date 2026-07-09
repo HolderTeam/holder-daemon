@@ -8,6 +8,12 @@
 
 namespace holder::project {
 
+struct ProjectSyncActivityUpdate {
+  int uncommitted_changes_count = 0;
+  int unpushed_commits_count = 0;
+  long long updated_at = 0;
+};
+
 class ProjectSyncRepo {
  public:
   explicit ProjectSyncRepo(holder::platform::Db& db);
@@ -30,9 +36,7 @@ class ProjectSyncRepo {
   );
   void update_activity_counts(
       const std::string& project_id,
-      int uncommitted_changes_count,
-      int unpushed_commits_count,
-      long long now
+      const ProjectSyncActivityUpdate& update
   );
   void remove(const std::string& project_id);
 

@@ -725,7 +725,9 @@ bool handle_card_routes(
       const std::string tail = rest.substr(slash);
       if (card_id.empty()) {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-      } else if (!card_store) {
+        return true;
+      }
+      if (!card_store) {
         res = support::error_response(
             http::status::not_implemented,
             "not_implemented",
@@ -1226,7 +1228,9 @@ bool handle_card_routes(
       const std::string& card_id = rest;
       if (card_id.empty()) {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-      } else if (!card_store) {
+        return true;
+      }
+      if (!card_store) {
         res = support::error_response(
             http::status::not_implemented,
             "not_implemented",
@@ -1354,8 +1358,6 @@ bool handle_card_routes(
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
-      } else if (req.method() == http::verb::post && rest.size() > 0) {
-        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       }

@@ -41,7 +41,8 @@ std::string generate_uuid_v4() {
       }
       boost::uuids::basic_random_generator<std::mt19937> gen(&rng);
       return boost::uuids::to_string(gen());
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
       // Fall through to random generator.
     }
   }
@@ -267,35 +268,33 @@ bool Session::ensure_request_loaded() {
 
 std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   Response res;
-  if (routes::handle_static_routes(path_, req_, res)) {
-    // handled
-  } else if (!support::is_authorized_bearer(req_, auth_token_)) {
-    res = support::error_response(
-        http::status::unauthorized,
-        "unauthorized",
-        "Missing or invalid token."
-    );
-  } else if (router_.dispatch(req_, res)) {
-    // handled
-  } else {
-    const auto route_result = routes::dispatch_authenticated_routes(
-        path_,
-        query_string_,
-        req_,
-        res,
-        socket_,
-        db_,
-        card_store_,
-        fts_,
-        nudge_service_,
-        secret_store_,
-        git_ops_,
-        runner_registry_,
-        [&]() { // LCOV_EXCL_LINE
-          return generate_uuid_v4();
-        }
-    );
-    if (route_result.streamed) return std::nullopt;
+  if (!routes::handle_static_routes(path_, req_, res)) {
+    if (!support::is_authorized_bearer(req_, auth_token_)) {
+      res = support::error_response(
+          http::status::unauthorized,
+          "unauthorized",
+          "Missing or invalid token."
+      );
+    } else if (!router_.dispatch(req_, res)) {
+      const auto route_result = routes::dispatch_authenticated_routes(
+          path_,
+          query_string_,
+          req_,
+          res,
+          socket_,
+          db_,
+          card_store_,
+          fts_,
+          nudge_service_,
+          secret_store_,
+          git_ops_,
+          runner_registry_,
+          [&]() { // LCOV_EXCL_LINE
+            return generate_uuid_v4();
+          }
+      );
+      if (route_result.streamed) return std::nullopt;
+    }
   }
 
   PreparedResponse prepared{

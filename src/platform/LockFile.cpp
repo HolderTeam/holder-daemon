@@ -33,11 +33,7 @@ LockFile::LockFile(std::filesystem::path path)
     : path_(std::move(path)) {}
 
 LockFile::~LockFile() {
-  try {
-    release();
-  } catch (...) {
-    // Destructors must not throw.
-  }
+  release_noexcept();
 }
 
 LockFile::LockFile(LockFile&& other) noexcept {
@@ -49,7 +45,7 @@ LockFile::LockFile(LockFile&& other) noexcept {
 
 LockFile& LockFile::operator=(LockFile&& other) noexcept {
   if (this != &other) {
-    release();
+    release_noexcept();
     path_ = std::move(other.path_);
     lock_ = std::move(other.lock_);
     locked_ = other.locked_;
@@ -103,11 +99,26 @@ void LockFile::release() {
           throw std::runtime_error("forced unlock failure");
         }
         lock_->unlock();
+      } catch (const std::exception& ex) {
+        (void)ex;
       } catch (...) {
+        const bool ignored = true;
+        (void)ignored;
       }
       locked_ = false;
     }
     lock_.reset();
+  }
+}
+
+void LockFile::release_noexcept() noexcept {
+  try {
+    release();
+  } catch (const std::exception& ex) {
+    (void)ex;
+  } catch (...) {
+    const bool ignored = true;
+    (void)ignored;
   }
 }
 

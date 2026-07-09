@@ -204,7 +204,8 @@ std::optional<std::string> classify_error_from_body(
         }
       }
     }
-  } catch (const std::exception&) {
+  } catch (const std::exception& ex) {
+    (void)ex;
     // Keep status-based fallback mapping.
   }
 

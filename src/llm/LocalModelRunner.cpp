@@ -389,7 +389,8 @@ bool LocalModelRunner::stream_generate(
             ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec)); // NOLINT(bugprone-unused-return-value)
             return true;
           }
-        } catch (const std::exception&) {
+        } catch (const std::exception& ex) {
+          (void)ex;
           // ignore malformed lines
         }
       }
@@ -704,7 +705,8 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
             finished = true;
             break;
           }
-        } catch (const std::exception&) {
+        } catch (const std::exception& ex) {
+          (void)ex;
           // Ignore malformed progress lines.
         }
       }

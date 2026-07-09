@@ -53,7 +53,8 @@ std::string requested_runner_id(
           return value;
         }
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
     }
   }
   return holder::llm::RunnerRegistry::kAutoLocalRunnerId;

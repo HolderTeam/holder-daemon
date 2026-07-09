@@ -157,7 +157,8 @@ std::vector<std::string> parse_title_suggestions(const std::string& generated) {
           if (item.is_string()) add_unique_title(out, item.get<std::string>());
         }
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
     }
   };
 
@@ -687,7 +688,8 @@ std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_f
           return configured;
         }
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
       // Ignore config read failures and fall back to auto-pick.
     } // LCOV_EXCL_LINE
   }

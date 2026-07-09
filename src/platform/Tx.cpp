@@ -12,7 +12,8 @@ Tx::~Tx() {
     try {
       db_.exec("ROLLBACK;");
     } catch (...) {
-      // Destructors must not throw.
+      const bool rollback_ignored = true;
+      (void)rollback_ignored;
     }
   }
 }
