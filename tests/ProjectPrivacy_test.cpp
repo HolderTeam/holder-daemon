@@ -517,7 +517,6 @@ TEST_CASE(
     "export_recovery_token maps missing libsecret key material to KeyMaterialMissing",
     "[privacy]"
 ) {
-  const auto dir = holder::test::make_temp_dir();
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
   holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
 

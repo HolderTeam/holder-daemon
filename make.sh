@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${1:-default}"
 BUILD_TYPE="${2:-RelWithDebInfo}"
 CASTE_DIR="third_party/caste"
-CASTE_COMMIT="4bd5d90075f1f2d26127fe0ba27fedd7bd450da9"
+CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
 
 download_caste_archive() {
@@ -129,9 +129,12 @@ coverage_all() {
 
 tidy_all() {
   local build_dir="build-tidy"
+  local source_regex
   local tidy_bin="clang-tidy"
   local gcc_version gcc_major
   local -a tidy_extra_args=()
+
+  source_regex="^${PWD}/(src|tests)/.*\\.(cpp|cc|cxx|h|hpp)$"
 
   if command -v clang-tidy-18 >/dev/null 2>&1; then
     tidy_bin="clang-tidy-18"
@@ -156,7 +159,7 @@ tidy_all() {
     -p "${build_dir}" \
     -quiet \
     "${tidy_extra_args[@]}" \
-    '(^|.*/)(src|tests)/.*\.(cpp|cc|cxx|h|hpp)$'
+    "${source_regex}"
 }
 
 case "${MODE}" in

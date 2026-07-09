@@ -27,8 +27,8 @@ class RecordingRunnerClient final : public holder::llm::RunnerClient {
   holder::llm::RunnerStatus status_result{};
   holder::llm::RunnerStatus retry_result{};
   holder::llm::RunnerPullJob pull_job{};
-  std::optional<holder::llm::RunnerPullJob> get_pull_result{};
-  std::vector<holder::llm::RunnerPullJob> list_pulls_result{};
+  std::optional<holder::llm::RunnerPullJob> get_pull_result;
+  std::vector<holder::llm::RunnerPullJob> list_pulls_result;
   bool stream_generate_result = true;
 
   void start_background_probe() override { background_probe_calls.fetch_add(1); }

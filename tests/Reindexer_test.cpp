@@ -147,11 +147,14 @@ TEST_CASE("Reindexer throws when cards scan is interrupted", "[reindex]") {
 
   for (int i = 0; i < 5000; ++i) {
     const std::string id = "card-" + std::to_string(i);
-    db.exec(
+    std::string insert =
         "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
-        "VALUES('" +
-        id + "', 'proj-1', 'Title', 'cards/aa/bb/" + id + ".md', 0.0, 1, 1);"
-    );
+        "VALUES('";
+    insert += id;
+    insert += "', 'proj-1', 'Title', 'cards/aa/bb/";
+    insert += id;
+    insert += ".md', 0.0, 1, 1);";
+    db.exec(insert);
   }
 
   InterruptAfter interrupt{1000};

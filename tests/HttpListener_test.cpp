@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <boost/asio.hpp>
+#include <cstddef>
 #include <future>
 
 using holder::test::create_project;
@@ -1017,7 +1018,8 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
 
   try {
     (void)foreground.get();
-  } catch (const std::exception&) {
+  } catch (const std::exception& ex) {
+    (void)ex;
     // Stop may cancel active non-save work as part of deterministic shutdown.
   }
 }
@@ -1039,7 +1041,7 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
         route_started.fetch_add(1);
         res.result(http::status::ok);
         res.set(http::field::content_type, "text/plain");
-        res.body() = std::string(32 * 1024 * 1024, 'x');
+        res.body() = std::string(std::size_t{32} * 1024 * 1024, 'x');
         res.prepare_payload();
       }
   );

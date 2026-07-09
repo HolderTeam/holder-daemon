@@ -36,6 +36,7 @@ TEST_CASE("Db move constructor transfers ownership", "[db]") {
   REQUIRE(original_handle != nullptr);
 
   holder::platform::Db moved(std::move(first));
+  // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
   REQUIRE(first.handle() == nullptr);
   REQUIRE(moved.handle() == original_handle);
   REQUIRE(moved.path() == db_path);
@@ -57,6 +58,7 @@ TEST_CASE("Db move assignment transfers ownership and allows self move", "[db]")
   REQUIRE(target.handle() != nullptr);
 
   target = std::move(source);
+  // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
   REQUIRE(source.handle() == nullptr);
   REQUIRE(target.handle() == source_handle);
   REQUIRE(target.path() == src_path);

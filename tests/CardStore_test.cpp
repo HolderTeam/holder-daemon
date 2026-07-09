@@ -447,7 +447,7 @@ TEST_CASE("CardStore encrypted project round-trips 5MB content", "[cardstore]") 
   card.created_at = 10;
   card.updated_at = 10;
 
-  const auto body = make_large_body(5 * 1024 * 1024);
+  const auto body = make_large_body(std::size_t{5} * 1024 * 1024);
   store.create(card, body);
 
   const auto saved = store.get(card.card_id);
@@ -532,10 +532,10 @@ TEST_CASE("CardStore encrypted project perf profile (manual)", "[perf][.]") {
   };
 
   const std::vector<std::size_t> sizes = {
-      10 * 1024,
-      100 * 1024,
-      1024 * 1024,
-      5 * 1024 * 1024,
+      std::size_t{10} * 1024,
+      std::size_t{100} * 1024,
+      std::size_t{1024} * 1024,
+      std::size_t{5} * 1024 * 1024,
   };
   std::vector<PerfRow> rows;
   rows.reserve(sizes.size());

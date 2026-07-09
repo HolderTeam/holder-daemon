@@ -351,7 +351,7 @@ TEST_CASE("ProjectSyncWorker skips project without remote URL", "[sync][worker]"
 TEST_CASE("ProjectSyncWorker run swallows startup and push-cycle exceptions", "[sync][worker]") {
   const auto dir = holder::test::make_temp_dir();
   // Point db_path at a directory so sqlite open fails in both startup and push cycle.
-  const auto bad_db_path = dir;
+  const auto& bad_db_path = dir;
 
   holder::core::SignalHandler signals;
   holder::sync::ProjectSyncWorker worker(
