@@ -481,13 +481,14 @@ std::string build_nudge_context_summary(
       out << "Current card title: " << title << "\n";
     }
 
-    const auto body = load_card_body(db, input.project_id, input.card_id.value());
-    const auto trimmed_body = body.has_value() ? trim_copy(body.value()) : std::string();
+    const auto& card_id = *input.card_id;
+    const auto body = load_card_body(db, input.project_id, card_id);
+    const auto trimmed_body = body.has_value() ? trim_copy(*body) : std::string();
     if (!trimmed_body.empty()) {
-      out << "Current card body:\n" << truncate_for_prompt(trim_copy(body.value()), 700) << "\n";
+      out << "Current card body:\n" << truncate_for_prompt(trimmed_body, 700) << "\n";
     }
 
-    const auto siblings = sibling_card_titles(db, input.project_id, input.card_id.value());
+    const auto siblings = sibling_card_titles(db, input.project_id, card_id);
     if (!siblings.empty()) {
       out << "Sibling cards: " << join_titles(siblings) << "\n";
     }

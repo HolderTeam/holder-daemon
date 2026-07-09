@@ -24,6 +24,13 @@ holder::git::GitOps& resolve_git(holder::git::GitOps* git) {
   return git ? *git : real_git;
 }
 
+const std::string& require_project_key_id(const holder::model::Project& project) {
+  if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
+    throw std::runtime_error("encrypted project missing project_key_id");
+  }
+  return *project.project_key_id;
+}
+
 void write_card_file(
     holder::git::GitOps& repo,
     const holder::model::Project& project,
@@ -33,16 +40,10 @@ void write_card_file(
 ) {
   const auto plain = holder::core::render_card_front_matter(card, links) + content;
   if (project.privacy_mode == "encrypted_git") {
-    if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
-      throw std::runtime_error("encrypted project missing project_key_id");
-    }
+    const auto& project_key_id = require_project_key_id(project);
     repo.write_file(
         card.rel_path,
-        holder::privacy::encrypt_project_blob(
-            project.project_id,
-            project.project_key_id.value(),
-            plain
-        )
+        holder::privacy::encrypt_project_blob(project.project_id, project_key_id, plain)
     );
     return;
   }
@@ -53,14 +54,8 @@ std::string decode_card_blob(const holder::model::Project& project, const std::s
   if (project.privacy_mode != "encrypted_git") {
     return blob;
   }
-  if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
-    throw std::runtime_error("encrypted project missing project_key_id");
-  }
-  return holder::privacy::decrypt_project_blob(
-      project.project_id,
-      project.project_key_id.value(),
-      blob
-  );
+  const auto& project_key_id = require_project_key_id(project);
+  return holder::privacy::decrypt_project_blob(project.project_id, project_key_id, blob);
 }
 
 void assert_project_staged_blobs_safe(
@@ -256,7 +251,7 @@ void CardStore::move(
   const auto updated_raw = (project.privacy_mode == "encrypted_git")
                                ? holder::privacy::encrypt_project_blob(
                                      project.project_id,
-                                     project.project_key_id.value(),
+                                     require_project_key_id(project),
                                      updated_plain
                                  )
                                : updated_plain;
@@ -303,7 +298,7 @@ void CardStore::update_links(const std::string& card_id, long long updated_at) {
   const auto updated_raw = (project.privacy_mode == "encrypted_git")
                                ? holder::privacy::encrypt_project_blob(
                                      project.project_id,
-                                     project.project_key_id.value(),
+                                     require_project_key_id(project),
                                      updated_plain
                                  )
                                : updated_plain;
