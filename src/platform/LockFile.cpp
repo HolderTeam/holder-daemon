@@ -32,9 +32,7 @@ void lockfile_set_force_release_throw_for_tests(bool enabled) {
 LockFile::LockFile(std::filesystem::path path)
     : path_(std::move(path)) {}
 
-LockFile::~LockFile() {
-  release_noexcept();
-}
+LockFile::~LockFile() { release_noexcept(); }
 
 LockFile::LockFile(LockFile&& other) noexcept {
   path_ = std::move(other.path_);

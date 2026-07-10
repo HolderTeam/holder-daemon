@@ -24,8 +24,7 @@ namespace {
 
 namespace http = boost::beast::http;
 
-template <typename T>
-void ignore_result(T&&) noexcept {}
+template <typename T> void ignore_result(T&&) noexcept {}
 
 std::string generate_uuid_v4() {
   if (const char* seed_env = std::getenv("HOLDER_UUID_SEED")) {
@@ -84,7 +83,8 @@ AsyncReadResult async_read_request(
     if (auto locked = weak_state.lock()) {
       boost::system::error_code ec;
       ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+      ); // NOLINT(bugprone-unused-return-value)
       ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
     }
   };
@@ -118,7 +118,8 @@ AsyncWriteResult async_write_response(
     if (auto locked = weak_state.lock()) {
       boost::system::error_code ec;
       ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+      ); // NOLINT(bugprone-unused-return-value)
       ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
     }
   };
@@ -205,12 +206,14 @@ std::optional<Session::PreparedRequest> Session::prepare_request(
   auto read_result = async_read_request(std::move(socket), on_io_start, on_io_done);
   auto& ec = read_result.ec;
   if (ec == http::error::end_of_stream) {
-    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)); // NOLINT(bugprone-unused-return-value)
+    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+    ); // NOLINT(bugprone-unused-return-value)
     return std::nullopt;
   }
   if (ec) {
     spdlog::warn("read failed: {}", ec.message());
-    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)); // NOLINT(bugprone-unused-return-value)
+    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+    ); // NOLINT(bugprone-unused-return-value)
     return std::nullopt;
   }
 
@@ -344,7 +347,8 @@ void Session::write_prepared_response(
       duration_ms
   );
 
-  ignore_result(write_result.socket.shutdown(tcp::socket::shutdown_send, ec)); // NOLINT(bugprone-unused-return-value)
+  ignore_result(write_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+  ); // NOLINT(bugprone-unused-return-value)
 }
 
 Session::RequestLane Session::classify_request_lane(const Request& req, const std::string& path) {

@@ -19,8 +19,7 @@
 namespace holder::cli {
 namespace {
 
-template <typename T>
-void ignore_result(T&&) noexcept {}
+template <typename T> void ignore_result(T&&) noexcept {}
 
 } // namespace
 
@@ -182,7 +181,8 @@ HttpJsonResponse http_json_request(
   http::read(stream, buffer, res); // NOLINT(bugprone-unused-return-value)
 
   boost::system::error_code ec;
-  ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, ec)); // NOLINT(bugprone-unused-return-value)
+  ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, ec)
+  ); // NOLINT(bugprone-unused-return-value)
 
   return {.status = res.result(), .payload = nlohmann::json::parse(res.body())};
 }

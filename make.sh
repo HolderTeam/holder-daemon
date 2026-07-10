@@ -162,6 +162,47 @@ tidy_all() {
     "${source_regex}"
 }
 
+format_files() {
+  local format_bin="clang-format"
+  local mode="${1:?}"
+  local -a format_args=()
+  local -a files=()
+
+  if command -v clang-format-18 >/dev/null 2>&1; then
+    format_bin="clang-format-18"
+  fi
+
+  case "${mode}" in
+    write)
+      format_args=(-i)
+      ;;
+    check)
+      format_args=(--dry-run --Werror)
+      ;;
+    *)
+      echo "Unknown format mode: ${mode}" >&2
+      exit 1
+      ;;
+  esac
+
+  if command -v rg >/dev/null 2>&1; then
+    while IFS= read -r -d '' file; do
+      files+=("${file}")
+    done < <(rg --files -0 src tests -g '*.cpp' -g '*.cc' -g '*.cxx' -g '*.h' -g '*.hpp')
+  else
+    while IFS= read -r -d '' file; do
+      files+=("${file}")
+    done < <(find src tests \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' \) -print0)
+  fi
+
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    echo "No C++ files found to format." >&2
+    return
+  fi
+
+  "${format_bin}" "${format_args[@]}" "${files[@]}"
+}
+
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
@@ -179,6 +220,12 @@ case "${MODE}" in
     ;;
   tidy)
     tidy_all
+    ;;
+  format)
+    format_files write
+    ;;
+  format-check)
+    format_files check
     ;;
   *)
     # Backward-compatible: treat first arg as build type in default flow.
