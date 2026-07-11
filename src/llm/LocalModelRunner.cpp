@@ -52,6 +52,7 @@ std::string trim(const std::string& input) {
 
 struct LocalModelRunner::RunnerProcess {
   std::mutex mu;
+  boost::asio::io_context ioc;
   std::optional<boost::process::v2::process::handle_type> handle;
 };
 
@@ -82,7 +83,16 @@ LocalModelRunner::LocalModelRunner(
   }
 }
 
-LocalModelRunner::~LocalModelRunner() = default;
+LocalModelRunner::~LocalModelRunner() {
+  if (!background_thread_.joinable()) {
+    return;
+  }
+  if (background_thread_.get_id() == std::this_thread::get_id()) {
+    background_thread_.detach(); // LCOV_EXCL_LINE
+    return;                      // LCOV_EXCL_LINE
+  }
+  background_thread_.join();
+}
 
 void LocalModelRunner::start_background_probe() {
   if (fake_mode_) {
@@ -103,9 +113,9 @@ void LocalModelRunner::start_background_probe() {
   if (!background_started_.compare_exchange_strong(expected, true)) {
     return;
   }
-  std::thread([this]() {
+  background_thread_ = std::thread([this]() {
     probe(true);
-  }).detach();
+  });
 }
 
 RunnerStatus LocalModelRunner::status() const {
@@ -430,12 +440,11 @@ bool LocalModelRunner::try_spawn(std::string* error) {
   }
 
   try {
-    boost::asio::io_context ioc;
-    boost::process::v2::process proc(ioc.get_executor(), exe_path, {"serve"});
-    auto handle = proc.detach();
     if (!process_) {
       process_ = std::make_unique<RunnerProcess>();
     }
+    boost::process::v2::process proc(process_->ioc.get_executor(), exe_path, {"serve"});
+    auto handle = proc.detach();
     {
       std::lock_guard<std::mutex> lock(process_->mu);
       process_->handle = std::move(handle);
