@@ -25,18 +25,27 @@ bool is_push_success(holder::git::PushStatus status) {
   return status == holder::git::PushStatus::Pushed || status == holder::git::PushStatus::UpToDate;
 }
 
+holder::project::ProjectSyncActivityUpdate activity_update_from_metrics(
+    const holder::git::RepoSyncMetrics& metrics,
+    long long now
+) {
+  return {
+      .uncommitted_changes_count = metrics.uncommitted_changes_count,
+      .unpushed_commits_count = metrics.unpushed_commits_count,
+      .updated_at = now
+  };
+}
+
 } // namespace
 
 ProjectSyncWorker::ProjectSyncWorker(
     std::filesystem::path db_path,
-    int push_interval_seconds,
-    int pull_interval_seconds,
-    int poll_interval_seconds
+    ProjectSyncWorkerIntervals intervals
 )
     : db_path_(std::move(db_path)),
-      push_interval_seconds_(push_interval_seconds),
-      pull_interval_seconds_(pull_interval_seconds),
-      poll_interval_seconds_(poll_interval_seconds) {}
+      push_interval_seconds_(intervals.push_interval_seconds),
+      pull_interval_seconds_(intervals.pull_interval_seconds),
+      poll_interval_seconds_(intervals.poll_interval_seconds) {}
 
 void ProjectSyncWorker::run(const holder::core::SignalHandler& signals) {
   try {
@@ -91,12 +100,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
       git.open_or_init(project.root_path);
       git.set_remote("origin", project.git_remote_url.value());
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(
-          project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
-      );
+      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {
       spdlog::warn(
           "sync worker startup metrics refresh failed for {}: {}",
@@ -124,12 +128,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
     }
     try {
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(
-          project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
-      );
+      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {
       spdlog::warn(
           "sync worker startup post-pull metrics refresh failed for {}: {}",
@@ -156,12 +155,7 @@ void ProjectSyncWorker::run_push_cycle() {
       git.open_or_init(project.root_path);
       git.set_remote("origin", project.git_remote_url.value());
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(
-          project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
-      );
+      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {
       spdlog::warn("sync worker metrics refresh failed for {}: {}", project.project_id, ex.what());
       continue;
@@ -195,12 +189,7 @@ void ProjectSyncWorker::run_push_cycle() {
           throw std::runtime_error("forced post-pull metrics failure for tests");
         }
         const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-        sync.update_activity_counts(
-            project.project_id,
-            metrics.uncommitted_changes_count,
-            metrics.unpushed_commits_count,
-            now
-        );
+        sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
       } catch (const std::exception& ex) {
         spdlog::warn(
             "sync worker post-pull metrics refresh failed for {}: {}",
@@ -248,12 +237,7 @@ void ProjectSyncWorker::run_push_cycle() {
         throw std::runtime_error("forced post-push metrics failure for tests");
       }
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(
-          project.project_id,
-          metrics.uncommitted_changes_count,
-          metrics.unpushed_commits_count,
-          now
-      );
+      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {
       spdlog::warn(
           "sync worker post-push metrics refresh failed for {}: {}",

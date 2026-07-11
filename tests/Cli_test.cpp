@@ -39,9 +39,9 @@ int run_command(const std::string& cmd) {
 
 class CwdGuard {
  public:
-  explicit CwdGuard(std::filesystem::path next)
+  explicit CwdGuard(const std::filesystem::path& next)
       : prev_(std::filesystem::current_path()) {
-    std::filesystem::current_path(std::move(next));
+    std::filesystem::current_path(next);
   }
   ~CwdGuard() { std::filesystem::current_path(prev_); }
 

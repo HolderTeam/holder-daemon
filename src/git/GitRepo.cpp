@@ -153,10 +153,10 @@ static std::string local_head_symbolic_branch_name(git_repository* repo) {
 static std::string resolve_branch_name(git_repository* repo, const std::string& requested_branch) {
   if (!requested_branch.empty()) return requested_branch;
 
-  const auto head_branch = local_head_symbolic_branch_name(repo);
+  auto head_branch = local_head_symbolic_branch_name(repo);
   if (!head_branch.empty()) return head_branch;
 
-  const auto configured = configured_default_branch_name();
+  auto configured = configured_default_branch_name();
   if (!configured.empty()) return configured;
 
   // Holder fallback branch when no local/default Git branch is discoverable.

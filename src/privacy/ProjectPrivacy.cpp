@@ -276,12 +276,12 @@ DecryptedRecoveryTokenPayload decrypt_recovery_payload(
     throw std::runtime_error("unsupported recovery token version");
   }
 
-  const auto kdf = token.at("kdf");
+  const auto& kdf = token.at("kdf");
   const int iterations = kdf.at("iterations").get<int>();
   const auto salt = b64_decode(kdf.at("salt_b64").get<std::string>());
   const auto wrap_key = derive_wrap_key(pin, salt, iterations);
 
-  const auto cipher = token.at("cipher");
+  const auto& cipher = token.at("cipher");
   const auto wrapped = cipher.at("wrapped").get<std::string>();
   const auto decrypted_payload =
       holder::privacy::decrypt_envelope_v1(wrapped, wrap_key, kRecoveryTokenWrapKeyIdV1);

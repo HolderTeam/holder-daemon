@@ -19,6 +19,8 @@ constexpr auto kPollDelay = std::chrono::milliseconds(50);
 constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
+template <typename T> void ignore_result(T&&) noexcept {}
+
 // Queue contract:
 // - accepted sockets wait here for request read/parse/classification
 // - save_queue: highest priority card-write work only
@@ -42,7 +44,7 @@ bool client_disconnected(Session::tcp::socket& socket) {
 
   boost::system::error_code ec;
   const bool was_non_blocking = socket.non_blocking();
-  socket.non_blocking(true, ec);
+  ignore_result(socket.non_blocking(true, ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) {
     return false; // LCOV_EXCL_LINE
   }
@@ -52,7 +54,8 @@ bool client_disconnected(Session::tcp::socket& socket) {
       socket.receive(boost::asio::buffer(buf), boost::asio::socket_base::message_peek, ec);
 
   boost::system::error_code restore_ec;
-  socket.non_blocking(was_non_blocking, restore_ec);
+  ignore_result(socket.non_blocking(was_non_blocking, restore_ec)
+  ); // NOLINT(bugprone-unused-return-value)
 
   if (!ec) {
     return received == 0; // LCOV_EXCL_LINE
@@ -79,8 +82,9 @@ void reject_prepared_request(
 ) {
   boost::system::error_code ec;
   auto res = support::error_response(status, code, message);
-  http::write(prepared.socket, res, ec);
-  prepared.socket.shutdown(Session::tcp::socket::shutdown_send, ec);
+  http::write(prepared.socket, res, ec); // NOLINT(bugprone-unused-return-value)
+  ignore_result(prepared.socket.shutdown(Session::tcp::socket::shutdown_send, ec)
+  ); // NOLINT(bugprone-unused-return-value)
 }
 
 struct WorkerContext {
@@ -193,19 +197,21 @@ Listener::BoundInfo Listener::start() {
   }
 
   tcp::endpoint endpoint(address, port_);
-  acceptor_.open(endpoint.protocol(), ec);
+  ignore_result(acceptor_.open(endpoint.protocol(), ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.open failed: " + ec.message());
 
-  acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec);
+  ignore_result(acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec)
+  ); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.set_option failed: " + ec.message());
 
-  acceptor_.bind(endpoint, ec);
+  ignore_result(acceptor_.bind(endpoint, ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.bind failed: " + ec.message());
 
-  acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec);
+  ignore_result(acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec)
+  ); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.listen failed: " + ec.message());
 
-  acceptor_.non_blocking(true, ec);
+  ignore_result(acceptor_.non_blocking(true, ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.non_blocking failed: " + ec.message());
 
   const auto bound = acceptor_.local_endpoint(ec);
@@ -329,7 +335,7 @@ void Listener::stop() {
   lane_queue_cv_.notify_all();
   response_queue_cv_.notify_all();
   boost::system::error_code ec;
-  acceptor_.close(ec);
+  ignore_result(acceptor_.close(ec)); // NOLINT(bugprone-unused-return-value)
 }
 
 std::size_t Listener::active_read_socket_count() const {
@@ -383,8 +389,10 @@ void Listener::start_accept_loop() {
 
     if (stop_requested_.load()) {
       boost::system::error_code close_ec; // LCOV_EXCL_LINE
-      socket.shutdown(tcp::socket::shutdown_both, close_ec); // LCOV_EXCL_LINE
-      socket.close(close_ec); // LCOV_EXCL_LINE
+      ignore_result(socket.shutdown(tcp::socket::shutdown_both, close_ec)
+      ); // NOLINT(bugprone-unused-return-value) // LCOV_EXCL_LINE
+      ignore_result(socket.close(close_ec)
+      ); // NOLINT(bugprone-unused-return-value) // LCOV_EXCL_LINE
       return; // LCOV_EXCL_LINE
     }
 
@@ -393,8 +401,9 @@ void Listener::start_accept_loop() {
       if (pending_sockets_.size() >= kMaxPendingAcceptedSockets) {
         spdlog::warn("accepted socket queue full; dropping socket");
         boost::system::error_code close_ec;
-        socket.shutdown(tcp::socket::shutdown_both, close_ec);
-        socket.close(close_ec);
+        ignore_result(socket.shutdown(tcp::socket::shutdown_both, close_ec)
+        ); // NOLINT(bugprone-unused-return-value)
+        ignore_result(socket.close(close_ec)); // NOLINT(bugprone-unused-return-value)
       } else {
         pending_sockets_.emplace_back(std::move(socket));
         ingress_queue_cv_.notify_one();
@@ -586,8 +595,9 @@ void Listener::run_general_worker() {
           std::string(prepared.req.target())
       );
       boost::system::error_code close_ec;
-      prepared.socket.shutdown(tcp::socket::shutdown_both, close_ec);
-      prepared.socket.close(close_ec);
+      ignore_result(prepared.socket.shutdown(tcp::socket::shutdown_both, close_ec)
+      ); // NOLINT(bugprone-unused-return-value)
+      ignore_result(prepared.socket.close(close_ec)); // NOLINT(bugprone-unused-return-value)
       continue;
     }
 
@@ -650,9 +660,10 @@ void Listener::run_writer_worker() {
 
 void Listener::close_socket(tcp::socket& socket) {
   boost::system::error_code ec;
-  socket.cancel(ec);
-  socket.shutdown(tcp::socket::shutdown_both, ec);
-  socket.close(ec);
+  ignore_result(socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
+  ignore_result(socket.shutdown(tcp::socket::shutdown_both, ec)
+  ); // NOLINT(bugprone-unused-return-value)
+  ignore_result(socket.close(ec)); // NOLINT(bugprone-unused-return-value)
 }
 
 void Listener::shutdown_queued_work() {

@@ -18,10 +18,10 @@ namespace http = boost::beast::http;
 http::response<http::string_body> text_response(
     http::status status,
     std::string body,
-    std::string content_type
+    const std::string& content_type
 ) {
   http::response<http::string_body> res{status, 11};
-  res.set(http::field::content_type, std::move(content_type));
+  res.set(http::field::content_type, content_type);
   res.keep_alive(false);
   res.body() = std::move(body);
   res.prepare_payload();
@@ -33,7 +33,7 @@ nlohmann::json yaml_to_json(const YAML::Node& node) {
     return nullptr;
   }
   if (node.IsScalar()) {
-    const std::string value = node.Scalar();
+    std::string value = node.Scalar();
     if (value == "true") return true;
     if (value == "false") return false;
     char* end = nullptr;

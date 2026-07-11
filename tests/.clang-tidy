@@ -1,0 +1,5 @@
+InheritParentConfig: true
+Checks: >
+  -bugprone-chained-comparison,
+  -bugprone-unchecked-optional-access,
+  -bugprone-unused-return-value

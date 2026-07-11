@@ -157,7 +157,8 @@ std::vector<std::string> parse_title_suggestions(const std::string& generated) {
           if (item.is_string()) add_unique_title(out, item.get<std::string>());
         }
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
     }
   };
 
@@ -481,13 +482,14 @@ std::string build_nudge_context_summary(
       out << "Current card title: " << title << "\n";
     }
 
-    const auto body = load_card_body(db, input.project_id, input.card_id.value());
-    const auto trimmed_body = body.has_value() ? trim_copy(body.value()) : std::string();
+    const auto& card_id = *input.card_id;
+    const auto body = load_card_body(db, input.project_id, card_id);
+    const auto trimmed_body = body.has_value() ? trim_copy(*body) : std::string();
     if (!trimmed_body.empty()) {
-      out << "Current card body:\n" << truncate_for_prompt(trim_copy(body.value()), 700) << "\n";
+      out << "Current card body:\n" << truncate_for_prompt(trimmed_body, 700) << "\n";
     }
 
-    const auto siblings = sibling_card_titles(db, input.project_id, input.card_id.value());
+    const auto siblings = sibling_card_titles(db, input.project_id, card_id);
     if (!siblings.empty()) {
       out << "Sibling cards: " << join_titles(siblings) << "\n";
     }
@@ -686,7 +688,8 @@ std::optional<holder::llm::ResolvedRunnerModel> NudgeService::pick_local_model_f
           return configured;
         }
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
       // Ignore config read failures and fall back to auto-pick.
     } // LCOV_EXCL_LINE
   }
@@ -763,7 +766,7 @@ nlohmann::json NudgeService::build_nudge_meta_json(const NudgeCandidateInput& in
 }
 
 std::string NudgeService::build_nudge_body_with_runner(const NudgeCandidateInput& input) const {
-  const auto deterministic = build_nudge_body(input);
+  auto deterministic = build_nudge_body(input);
   if (input.kind == "card.title_suggestion") return deterministic;
   const auto target = pick_local_model_for_nudges();
   if (!target.has_value() || target->runner == nullptr) return deterministic;

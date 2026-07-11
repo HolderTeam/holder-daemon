@@ -31,7 +31,7 @@ std::filesystem::path make_temp_dir(const std::string& prefix) {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value)
+  EnvGuard(const char* key, const std::string& value)
       : key_(key) {
     if (const char* current = std::getenv(key_)) {
       old_ = current;

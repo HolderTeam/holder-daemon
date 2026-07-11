@@ -26,6 +26,7 @@ class LockFile {
 
  private:
   void ensure_lock();
+  void release_noexcept() noexcept;
 
   std::filesystem::path path_;
   std::unique_ptr<boost::interprocess::file_lock> lock_;

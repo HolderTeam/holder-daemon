@@ -9,7 +9,7 @@ Checks: >
   modernize-use-override,
   readability-redundant-*
 WarningsAsErrors: ''
-HeaderFilterRegex: '^.*/src/.*'
+HeaderFilterRegex: '^.*/holder-daemon/(src|tests)/.*'
 SystemHeaders: false
 CheckOptions:
   - key: bugprone-easily-swappable-parameters.MinimumLength

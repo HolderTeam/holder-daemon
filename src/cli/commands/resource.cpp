@@ -56,7 +56,7 @@ std::string strip_url_query_fragment(std::string value) {
 }
 
 std::string uri_basename(const std::string& uri) {
-  const auto stripped = strip_url_query_fragment(uri);
+  auto stripped = strip_url_query_fragment(uri);
   const auto slash_pos = stripped.find_last_of("/\\");
   if (slash_pos == std::string::npos) {
     return stripped;

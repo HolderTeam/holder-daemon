@@ -19,6 +19,8 @@
 namespace holder::llm {
 namespace {
 
+template <typename T> void ignore_result(T&&) noexcept {}
+
 long long now_epoch_seconds() {
   return std::chrono::duration_cast<std::chrono::seconds>(
              std::chrono::system_clock::now().time_since_epoch()
@@ -257,14 +259,15 @@ bool LocalModelRunner::http_get_json(
     req.set(http::field::host, host_);
     req.set(http::field::user_agent, "holder/model-runner");
 
-    http::write(stream, req);
+    http::write(stream, req); // NOLINT(bugprone-unused-return-value)
 
     boost::beast::flat_buffer buffer;
     http::response<http::string_body> res;
-    http::read(stream, buffer, res);
+    http::read(stream, buffer, res); // NOLINT(bugprone-unused-return-value)
 
     boost::system::error_code ec;
-    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+    ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, ec)
+    ); // NOLINT(bugprone-unused-return-value)
 
     if (res.result() != http::status::ok) {
       if (error) {
@@ -383,10 +386,12 @@ bool LocalModelRunner::stream_generate(
           }
           if (payload.contains("done") && payload["done"].get<bool>()) {
             boost::system::error_code shutdown_ec;
-            stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+            ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec)
+            ); // NOLINT(bugprone-unused-return-value)
             return true;
           }
-        } catch (const std::exception&) {
+        } catch (const std::exception& ex) {
+          (void)ex;
           // ignore malformed lines
         }
       }
@@ -394,7 +399,8 @@ bool LocalModelRunner::stream_generate(
     // LCOV_EXCL_STOP
 
     boost::system::error_code shutdown_ec;
-    stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+    ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec)
+    ); // NOLINT(bugprone-unused-return-value)
     return true;
   } catch (const std::exception& ex) {
     if (error) {
@@ -701,7 +707,8 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
             finished = true;
             break;
           }
-        } catch (const std::exception&) {
+        } catch (const std::exception& ex) {
+          (void)ex;
           // Ignore malformed progress lines.
         }
       }
@@ -710,7 +717,8 @@ void LocalModelRunner::run_pull(const std::string& job_id, const std::string& mo
     // LCOV_EXCL_STOP
 
     boost::system::error_code shutdown_ec;
-    stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec);
+    ignore_result(stream.socket().shutdown(tcp::socket::shutdown_both, shutdown_ec)
+    ); // NOLINT(bugprone-unused-return-value)
     if (completed) {
       probe(false);
     }

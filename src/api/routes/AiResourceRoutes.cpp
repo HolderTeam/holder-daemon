@@ -119,7 +119,9 @@ bool handle_ai_resource_routes(
     const std::string resource_id = path.substr(std::string("/resources/").size());
     if (resource_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-    } else if (req.method() == http::verb::patch) {
+      return true;
+    }
+    if (req.method() == http::verb::patch) {
       try {
         const auto body = nlohmann::json::parse(req.body());
         if (!body.contains("updated_at")) {

@@ -18,7 +18,7 @@ namespace {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value)
+  EnvGuard(const char* key, const std::string& value)
       : key_(key) {
     const char* current = std::getenv(key_);
     if (current) {

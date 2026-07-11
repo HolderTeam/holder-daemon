@@ -13,6 +13,7 @@
 #include <boost/beast/http.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -31,7 +32,7 @@ class Session {
   using IoHandlePtr = std::shared_ptr<IoHandle>;
   using SocketHook = std::function<void(const IoHandlePtr&)>;
 
-  enum class RequestLane {
+  enum class RequestLane : std::uint8_t {
     Save,
     Foreground,
     Background,
@@ -84,14 +85,14 @@ class Session {
   void run();
   static std::optional<PreparedRequest> prepare_request(
       tcp::socket socket,
-      SocketHook on_io_start = {},
-      SocketHook on_io_done = {}
+      const SocketHook& on_io_start = {},
+      const SocketHook& on_io_done = {}
   );
   std::optional<PreparedResponse> execute();
   static void write_prepared_response(
       PreparedResponse prepared,
-      SocketHook on_io_start = {},
-      SocketHook on_io_done = {}
+      const SocketHook& on_io_start = {},
+      const SocketHook& on_io_done = {}
   );
   static const char* lane_name(RequestLane lane);
 
@@ -112,7 +113,7 @@ class Session {
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
   Request req_;
-  std::chrono::steady_clock::time_point request_started_{};
+  std::chrono::steady_clock::time_point request_started_;
   std::string path_;
   std::string query_string_;
   bool has_loaded_request_ = false;

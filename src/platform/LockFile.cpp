@@ -32,13 +32,7 @@ void lockfile_set_force_release_throw_for_tests(bool enabled) {
 LockFile::LockFile(std::filesystem::path path)
     : path_(std::move(path)) {}
 
-LockFile::~LockFile() {
-  try {
-    release();
-  } catch (...) {
-    // Destructors must not throw.
-  }
-}
+LockFile::~LockFile() { release_noexcept(); }
 
 LockFile::LockFile(LockFile&& other) noexcept {
   path_ = std::move(other.path_);
@@ -49,7 +43,7 @@ LockFile::LockFile(LockFile&& other) noexcept {
 
 LockFile& LockFile::operator=(LockFile&& other) noexcept {
   if (this != &other) {
-    release();
+    release_noexcept();
     path_ = std::move(other.path_);
     lock_ = std::move(other.lock_);
     locked_ = other.locked_;
@@ -103,12 +97,27 @@ void LockFile::release() {
           throw std::runtime_error("forced unlock failure");
         }
         lock_->unlock();
-      } catch (...) {
-      }
+      } catch (const std::exception& ex) {
+        (void)ex;
+      } catch (...) { // LCOV_EXCL_LINE
+        const bool ignored = true; // LCOV_EXCL_LINE
+        (void)ignored; // LCOV_EXCL_LINE
+      } // LCOV_EXCL_LINE
       locked_ = false;
     }
     lock_.reset();
   }
+}
+
+void LockFile::release_noexcept() noexcept {
+  try {
+    release();
+  } catch (const std::exception& ex) {
+    (void)ex;
+  } catch (...) { // LCOV_EXCL_LINE
+    const bool ignored = true; // LCOV_EXCL_LINE
+    (void)ignored; // LCOV_EXCL_LINE
+  } // LCOV_EXCL_LINE
 }
 
 } // namespace holder::core

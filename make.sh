@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${1:-default}"
 BUILD_TYPE="${2:-RelWithDebInfo}"
 CASTE_DIR="third_party/caste"
-CASTE_COMMIT="4bd5d90075f1f2d26127fe0ba27fedd7bd450da9"
+CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
 
 download_caste_archive() {
@@ -129,9 +129,12 @@ coverage_all() {
 
 tidy_all() {
   local build_dir="build-tidy"
+  local source_regex
   local tidy_bin="clang-tidy"
   local gcc_version gcc_major
   local -a tidy_extra_args=()
+
+  source_regex="^${PWD}/(src|tests)/.*\\.(cpp|cc|cxx|h|hpp)$"
 
   if command -v clang-tidy-18 >/dev/null 2>&1; then
     tidy_bin="clang-tidy-18"
@@ -156,7 +159,48 @@ tidy_all() {
     -p "${build_dir}" \
     -quiet \
     "${tidy_extra_args[@]}" \
-    '(^|.*/)(src|tests)/.*\.(cpp|cc|cxx|h|hpp)$'
+    "${source_regex}"
+}
+
+format_files() {
+  local format_bin="clang-format"
+  local mode="${1:?}"
+  local -a format_args=()
+  local -a files=()
+
+  if command -v clang-format-18 >/dev/null 2>&1; then
+    format_bin="clang-format-18"
+  fi
+
+  case "${mode}" in
+    write)
+      format_args=(-i)
+      ;;
+    check)
+      format_args=(--dry-run --Werror)
+      ;;
+    *)
+      echo "Unknown format mode: ${mode}" >&2
+      exit 1
+      ;;
+  esac
+
+  if command -v rg >/dev/null 2>&1; then
+    while IFS= read -r -d '' file; do
+      files+=("${file}")
+    done < <(rg --files -0 src tests -g '*.cpp' -g '*.cc' -g '*.cxx' -g '*.h' -g '*.hpp')
+  else
+    while IFS= read -r -d '' file; do
+      files+=("${file}")
+    done < <(find src tests \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' \) -print0)
+  fi
+
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    echo "No C++ files found to format." >&2
+    return
+  fi
+
+  "${format_bin}" "${format_args[@]}" "${files[@]}"
 }
 
 case "${MODE}" in
@@ -176,6 +220,12 @@ case "${MODE}" in
     ;;
   tidy)
     tidy_all
+    ;;
+  format)
+    format_files write
+    ;;
+  format-check)
+    format_files check
     ;;
   *)
     # Backward-compatible: treat first arg as build type in default flow.

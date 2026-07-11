@@ -1,10 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace holder::git {
 
-enum class RemoteProbeStatus {
+enum class RemoteProbeStatus : std::uint8_t {
   Reachable,
   AuthFailed,
   NotFound,

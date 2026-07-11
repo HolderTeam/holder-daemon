@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -292,13 +293,14 @@ bool handle_project_routes(
                 holder::git::inspect_repo_sync_metrics(refreshed->root_path, "origin");
             sync_repo.update_activity_counts(
                 metadata.project_id,
-                metrics.uncommitted_changes_count,
-                metrics.unpushed_commits_count,
-                now
+                {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+                 .unpushed_commits_count = metrics.unpushed_commits_count,
+                 .updated_at = now}
             );
             // Best-effort only; metrics refresh failure does not fail import.
             // LCOV_EXCL_START
-          } catch (const std::exception&) {
+          } catch (const std::exception& ex) {
+            (void)ex;
             // Best-effort only.
           }
           // LCOV_EXCL_STOP
@@ -367,7 +369,7 @@ bool handle_project_routes(
       if (limit > 1000) {
         limit = 1000;
       }
-      enum class OrderKey { UpdatedAt, CreatedAt, Name };
+      enum class OrderKey : std::uint8_t { UpdatedAt, CreatedAt, Name };
       OrderKey order_key = OrderKey::UpdatedAt;
       bool order_asc = false;
       if (!order_raw.empty()) {
@@ -636,7 +638,9 @@ bool handle_project_routes(
     const std::string subpath = slash_pos == std::string::npos ? "" : suffix.substr(slash_pos);
     if (project_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-    } else if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
+      return true;
+    }
+    if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
       try {
         const auto body = req.body().empty() ? nlohmann::json::object()
                                              : nlohmann::json::parse(req.body());
@@ -755,13 +759,14 @@ bool handle_project_routes(
           const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
           sync_repo.update_activity_counts(
               project_id,
-              metrics.uncommitted_changes_count,
-              metrics.unpushed_commits_count,
-              support::now_epoch_seconds()
+              {.uncommitted_changes_count = metrics.uncommitted_changes_count,
+               .unpushed_commits_count = metrics.unpushed_commits_count,
+               .updated_at = support::now_epoch_seconds()}
           );
           // Best-effort only; metrics refresh failure does not fail push response.
           // LCOV_EXCL_START
-        } catch (const std::exception&) {
+        } catch (const std::exception& ex) {
+          (void)ex;
           // Best-effort only.
         }
         // LCOV_EXCL_STOP

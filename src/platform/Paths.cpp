@@ -25,7 +25,7 @@ void restrict_owner_access(const fs::path& path) {
 
 } // namespace
 
-Paths Paths::resolve(std::string app_id) {
+Paths Paths::resolve(const std::string& app_id) {
   Paths p{};
   p.data_dir = fs::path(XdgUtils::BaseDir::XdgDataHome()) / app_id;
   p.config_dir = fs::path(XdgUtils::BaseDir::XdgConfigHome()) / app_id;

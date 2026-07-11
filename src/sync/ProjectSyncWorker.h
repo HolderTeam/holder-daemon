@@ -6,13 +6,17 @@
 
 namespace holder::sync {
 
+struct ProjectSyncWorkerIntervals {
+  int push_interval_seconds = 1200;
+  int pull_interval_seconds = 300;
+  int poll_interval_seconds = 30;
+};
+
 class ProjectSyncWorker {
  public:
   explicit ProjectSyncWorker(
       std::filesystem::path db_path,
-      int push_interval_seconds = 1200,
-      int pull_interval_seconds = 300,
-      int poll_interval_seconds = 30
+      ProjectSyncWorkerIntervals intervals = {}
   );
 
   void run(const holder::core::SignalHandler& signals);

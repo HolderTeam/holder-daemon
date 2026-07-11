@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <boost/asio.hpp>
+#include <cstddef>
 #include <future>
 
 using holder::test::create_project;
@@ -554,28 +555,12 @@ TEST_CASE("Listener test hook can enqueue a pending socket", "[listener]") {
       nullptr,
       concurrency
   );
-  holder::api::Listener::BoundInfo bound;
-  try {
-    bound = listener.start();
-  } catch (const std::exception& ex) {
-    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
-  }
-
-  holder::core::SignalHandler signals;
-  auto run_future = std::async(std::launch::async, [&listener, &signals]() {
-    listener.run(signals);
-  });
-  REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   listener.enqueue_pending_socket_for_test();
-  for (int i = 0; i < 50 && listener.pending_socket_count() < 1; ++i) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  REQUIRE(listener.pending_socket_count() >= 1);
+  REQUIRE(listener.pending_socket_count() == 1);
 
   listener.stop();
-  REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
-  run_future.get();
+  REQUIRE(listener.pending_socket_count() == 0);
 }
 
 TEST_CASE("Listener drops accepted sockets when ingress queue is full", "[listener]") {
@@ -1017,7 +1002,8 @@ TEST_CASE("Listener stop drops queued background work and returns promptly", "[l
 
   try {
     (void)foreground.get();
-  } catch (const std::exception&) {
+  } catch (const std::exception& ex) {
+    (void)ex;
     // Stop may cancel active non-save work as part of deterministic shutdown.
   }
 }
@@ -1039,7 +1025,7 @@ TEST_CASE("Listener stop cancels in-flight writer response and returns promptly"
         route_started.fetch_add(1);
         res.result(http::status::ok);
         res.set(http::field::content_type, "text/plain");
-        res.body() = std::string(32 * 1024 * 1024, 'x');
+        res.body() = std::string(std::size_t{32} * 1024 * 1024, 'x');
         res.prepare_payload();
       }
   );

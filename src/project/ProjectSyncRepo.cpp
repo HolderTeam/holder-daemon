@@ -238,16 +238,14 @@ void ProjectSyncRepo::upsert(const holder::model::ProjectSyncState& state) {
 
 void ProjectSyncRepo::update_activity_counts(
     const std::string& project_id,
-    int uncommitted_changes_count,
-    int unpushed_commits_count,
-    long long now
+    const ProjectSyncActivityUpdate& update
 ) {
   holder::model::ProjectSyncState state =
       get(project_id).value_or(holder::model::ProjectSyncState{});
   state.project_id = project_id;
-  state.uncommitted_changes_count = uncommitted_changes_count;
-  state.unpushed_commits_count = unpushed_commits_count;
-  state.updated_at = now;
+  state.uncommitted_changes_count = update.uncommitted_changes_count;
+  state.unpushed_commits_count = update.unpushed_commits_count;
+  state.updated_at = update.updated_at;
   upsert(state);
 }
 

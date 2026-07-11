@@ -112,7 +112,7 @@ std::string lowercase_ascii(std::string s) {
 }
 
 std::string normalize_caste_name(const std::string& raw) {
-  const std::string key = lowercase_ascii(trim_ascii(raw));
+  std::string key = lowercase_ascii(trim_ascii(raw));
   if (key.empty()) return {};
   if (key == "mini" || key == "user" || key == "developer" || key == "workstation" ||
       key == "rig") {

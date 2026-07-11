@@ -168,7 +168,8 @@ inline bool wait_for_http_health_ready(
       if (res.result() == http::status::ok) {
         return true;
       }
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
     }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -261,7 +262,7 @@ struct HttpResult {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::string value)
+  EnvGuard(const char* key, const std::string& value)
       : key_(key) {
     const char* current = std::getenv(key_);
     if (current) {

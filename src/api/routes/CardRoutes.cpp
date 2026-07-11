@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -275,7 +276,7 @@ std::optional<bool> parse_count_param(
   return std::nullopt;
 }
 
-enum class CardListOrder {
+enum class CardListOrder : std::uint8_t {
   TreeDefault,
   UpdatedDesc,
   TitleAsc,
@@ -449,16 +450,20 @@ bool handle_card_routes(
       std::unordered_map<std::string, int> child_count_by_parent;
       for (const auto& [card_id, card] : cards_by_id) {
         const auto parent = normalize_parent_id(card.parent_card_id);
-        if (parent.has_value() && cards_by_id.find(parent.value()) != cards_by_id.end()) {
-          child_count_by_parent[parent.value()] += 1;
+        if (parent.has_value()) {
+          const auto& parent_id = *parent;
+          if (cards_by_id.find(parent_id) != cards_by_id.end()) {
+            child_count_by_parent[parent_id] += 1;
+          }
         }
       }
 
       std::vector<holder::model::Card> level_cards;
+      const std::string parent_card_id_value = parent_card_id.value_or(std::string());
       if (!parent_card_id.has_value()) {
         level_cards = card_repo.list_roots(project_id);
       } else {
-        level_cards = card_repo.list_children(project_id, parent_card_id.value());
+        level_cards = card_repo.list_children(project_id, parent_card_id_value);
       }
       const auto order = parse_card_order_param(order_raw, CardListOrder::TreeDefault, res);
       if (!order.has_value()) {
@@ -468,7 +473,9 @@ bool handle_card_routes(
       if (!include_count.has_value()) {
         return true;
       }
-      sort_cards_by_order(level_cards, order.value());
+      const auto selected_order = *order;
+      const bool should_include_count = *include_count;
+      sort_cards_by_order(level_cards, selected_order);
 
       nlohmann::json cards_json = nlohmann::json::array();
       for (const auto& card : level_cards) {
@@ -484,10 +491,10 @@ bool handle_card_routes(
         item["created_at"] = card.created_at;
         item["updated_at"] = card.updated_at;
         item["parent_card_id"] = card.parent_card_id.has_value()
-                                     ? nlohmann::json(card.parent_card_id.value())
+                                     ? nlohmann::json(*card.parent_card_id)
                                      : nlohmann::json(nullptr);
         item["deleted_at"] = nlohmann::json(nullptr);
-        if (include_count.value()) {
+        if (should_include_count) {
           const auto child_it = child_count_by_parent.find(card.card_id);
           item["child_count"] = child_it == child_count_by_parent.end() ? 0 : child_it->second;
         }
@@ -506,7 +513,8 @@ bool handle_card_routes(
         std::optional<std::string> cursor = parent_card_id;
         int guard = 0;
         while (cursor.has_value() && guard < 1024) {
-          const auto it = cards_by_id.find(cursor.value());
+          const std::string cursor_id = cursor.value_or(std::string());
+          const auto it = cards_by_id.find(cursor_id);
           if (it == cards_by_id.end()) {
             break;
           }
@@ -530,7 +538,7 @@ bool handle_card_routes(
           {"name", project_opt->name},
       };
       data["current_parent_card_id"] = parent_card_id.has_value()
-                                           ? nlohmann::json(parent_card_id.value())
+                                           ? nlohmann::json(parent_card_id_value)
                                            : nlohmann::json(nullptr);
       data["breadcrumbs"] = std::move(breadcrumbs);
       data["cards"] = std::move(cards_json);
@@ -717,7 +725,9 @@ bool handle_card_routes(
       const std::string tail = rest.substr(slash);
       if (card_id.empty()) {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-      } else if (!card_store) {
+        return true;
+      }
+      if (!card_store) {
         res = support::error_response(
             http::status::not_implemented,
             "not_implemented",
@@ -751,7 +761,7 @@ bool handle_card_routes(
                   support::error_response(http::status::not_found, "not_found", "Card not found.");
               return true;
             }
-            const auto source = source_opt.value();
+            const auto& source = source_opt.value();
             if (source.project_id != project_id) {
               res = support::error_response(
                   http::status::unprocessable_entity,
@@ -932,7 +942,7 @@ bool handle_card_routes(
                     write_move_response(source);
                     return true;
                   }
-                  const auto& target = siblings_with_source[static_cast<size_t>(source_index + 1)];
+                  const auto& target = siblings_with_source[static_cast<size_t>(source_index) + 1];
                   const auto siblings = siblings_for_parent(next_parent, source.card_id);
                   next_sort_key = sort_key_around_target(siblings, target.card_id, true);
                 }
@@ -1214,10 +1224,12 @@ bool handle_card_routes(
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       }
     } else {
-      const std::string card_id = rest;
+      const std::string& card_id = rest;
       if (card_id.empty()) {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
-      } else if (!card_store) {
+        return true;
+      }
+      if (!card_store) {
         res = support::error_response(
             http::status::not_implemented,
             "not_implemented",
@@ -1345,8 +1357,6 @@ bool handle_card_routes(
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }
-      } else if (req.method() == http::verb::post && rest.size() > 0) {
-        res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       } else {
         res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       }

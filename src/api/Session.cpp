@@ -24,6 +24,8 @@ namespace {
 
 namespace http = boost::beast::http;
 
+template <typename T> void ignore_result(T&&) noexcept {}
+
 std::string generate_uuid_v4() {
   if (const char* seed_env = std::getenv("HOLDER_UUID_SEED")) {
     try {
@@ -38,7 +40,8 @@ std::string generate_uuid_v4() {
       }
       boost::uuids::basic_random_generator<std::mt19937> gen(&rng);
       return boost::uuids::to_string(gen());
-    } catch (const std::exception&) {
+    } catch (const std::exception& ex) {
+      (void)ex;
       // Fall through to random generator.
     }
   }
@@ -79,9 +82,10 @@ AsyncReadResult async_read_request(
   io_handle->cancel = [weak_state = std::weak_ptr<State>(state)]() {
     if (auto locked = weak_state.lock()) {
       boost::system::error_code ec;
-      locked->socket.cancel(ec);
-      locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec);
-      locked->socket.close(ec);
+      ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+      ); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
     }
   };
   if (on_io_start) {
@@ -113,9 +117,10 @@ AsyncWriteResult async_write_response(
   io_handle->cancel = [weak_state = std::weak_ptr<Session::PreparedResponse>(state)]() {
     if (auto locked = weak_state.lock()) {
       boost::system::error_code ec;
-      locked->socket.cancel(ec);
-      locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec);
-      locked->socket.close(ec);
+      ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+      ); // NOLINT(bugprone-unused-return-value)
+      ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
     }
   };
 
@@ -194,19 +199,21 @@ Session::Session(
 
 std::optional<Session::PreparedRequest> Session::prepare_request(
     tcp::socket socket,
-    SocketHook on_io_start,
-    SocketHook on_io_done
+    const SocketHook& on_io_start,
+    const SocketHook& on_io_done
 ) {
   const auto request_started = std::chrono::steady_clock::now();
   auto read_result = async_read_request(std::move(socket), on_io_start, on_io_done);
   auto& ec = read_result.ec;
   if (ec == http::error::end_of_stream) {
-    read_result.socket.shutdown(tcp::socket::shutdown_send, ec);
+    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+    ); // NOLINT(bugprone-unused-return-value)
     return std::nullopt;
   }
   if (ec) {
     spdlog::warn("read failed: {}", ec.message());
-    read_result.socket.shutdown(tcp::socket::shutdown_send, ec);
+    ignore_result(read_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+    ); // NOLINT(bugprone-unused-return-value)
     return std::nullopt;
   }
 
@@ -264,35 +271,33 @@ bool Session::ensure_request_loaded() {
 
 std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   Response res;
-  if (routes::handle_static_routes(path_, req_, res)) {
-    // handled
-  } else if (!support::is_authorized_bearer(req_, auth_token_)) {
-    res = support::error_response(
-        http::status::unauthorized,
-        "unauthorized",
-        "Missing or invalid token."
-    );
-  } else if (router_.dispatch(req_, res)) {
-    // handled
-  } else {
-    const auto route_result = routes::dispatch_authenticated_routes(
-        path_,
-        query_string_,
-        req_,
-        res,
-        socket_,
-        db_,
-        card_store_,
-        fts_,
-        nudge_service_,
-        secret_store_,
-        git_ops_,
-        runner_registry_,
-        [&]() { // LCOV_EXCL_LINE
-          return generate_uuid_v4();
-        }
-    );
-    if (route_result.streamed) return std::nullopt;
+  if (!routes::handle_static_routes(path_, req_, res)) {
+    if (!support::is_authorized_bearer(req_, auth_token_)) {
+      res = support::error_response(
+          http::status::unauthorized,
+          "unauthorized",
+          "Missing or invalid token."
+      );
+    } else if (!router_.dispatch(req_, res)) {
+      const auto route_result = routes::dispatch_authenticated_routes(
+          path_,
+          query_string_,
+          req_,
+          res,
+          socket_,
+          db_,
+          card_store_,
+          fts_,
+          nudge_service_,
+          secret_store_,
+          git_ops_,
+          runner_registry_,
+          [&]() { // LCOV_EXCL_LINE
+            return generate_uuid_v4();
+          }
+      );
+      if (route_result.streamed) return std::nullopt;
+    }
   }
 
   PreparedResponse prepared{
@@ -307,8 +312,8 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
 
 void Session::write_prepared_response(
     PreparedResponse prepared,
-    SocketHook on_io_start,
-    SocketHook on_io_done
+    const SocketHook& on_io_start,
+    const SocketHook& on_io_done
 ) {
   const auto method = std::string(prepared.req.method_string());
   const auto target = std::string(prepared.req.target());
@@ -342,7 +347,8 @@ void Session::write_prepared_response(
       duration_ms
   );
 
-  write_result.socket.shutdown(tcp::socket::shutdown_send, ec);
+  ignore_result(write_result.socket.shutdown(tcp::socket::shutdown_send, ec)
+  ); // NOLINT(bugprone-unused-return-value)
 }
 
 Session::RequestLane Session::classify_request_lane(const Request& req, const std::string& path) {

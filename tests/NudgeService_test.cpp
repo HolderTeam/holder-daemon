@@ -594,6 +594,7 @@ TEST_CASE("NudgeService can use local runner wording with deterministic fallback
     status.models.push_back({.name = "fake-echo", .digest = "", .size = 1, .modified_at = ""});
     runner.set_status_override_for_tests(status);
     runner.set_stream_generate_override_for_tests(
+        // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
         [](const std::string& model,
            const std::string& prompt,
            const std::string& options_json,

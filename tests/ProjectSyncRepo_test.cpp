@@ -133,7 +133,10 @@ TEST_CASE("ProjectSyncRepo stores uncommitted and unpushed counters", "[sync][re
   projects.create(project);
 
   holder::project::ProjectSyncRepo sync(db);
-  sync.update_activity_counts("proj-1", 3, 7, 500);
+  sync.update_activity_counts(
+      "proj-1",
+      {.uncommitted_changes_count = 3, .unpushed_commits_count = 7, .updated_at = 500}
+  );
 
   const auto state = sync.get("proj-1");
   REQUIRE(state.has_value());
@@ -279,7 +282,10 @@ TEST_CASE("ProjectSyncRepo throws when sqlite handle is closed", "[sync][repo]")
   db.close();
 
   REQUIRE_THROWS(sync.get("proj-1"));
-  REQUIRE_THROWS(sync.update_activity_counts("proj-1", 1, 1, 1));
+  REQUIRE_THROWS(sync.update_activity_counts(
+      "proj-1",
+      {.uncommitted_changes_count = 1, .unpushed_commits_count = 1, .updated_at = 1}
+  ));
   REQUIRE_THROWS(sync.remove("proj-1"));
 }
 
@@ -299,7 +305,10 @@ TEST_CASE("ProjectSyncRepo read/write/delete throw on interrupted sqlite step", 
 
   holder::project::ProjectSyncRepo sync(db);
 
-  sync.update_activity_counts("proj-1", 1, 1, 1);
+  sync.update_activity_counts(
+      "proj-1",
+      {.uncommitted_changes_count = 1, .unpushed_commits_count = 1, .updated_at = 1}
+  );
 
   int interrupt_on = 1;
   sqlite3_progress_handler(db.handle(), 1, sqlite_interrupt_cb, &interrupt_on);

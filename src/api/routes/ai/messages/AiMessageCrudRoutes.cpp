@@ -173,7 +173,7 @@ bool handle_ai_message_crud_routes(
     }
     return true;
   }
-  const std::string message_id = rest;
+  const std::string& message_id = rest;
 
   if (req.method() == http::verb::delete_) {
     try {

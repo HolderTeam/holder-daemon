@@ -6,6 +6,8 @@
 
 #include "privacy/PrivacyError.h"
 
+#include <cstdint>
+#include <limits>
 #include <string>
 
 TEST_CASE("PrivacyError stores code and message", "[privacy]") {
@@ -56,6 +58,9 @@ TEST_CASE("privacy_error_code_name maps all known codes", "[privacy]") {
 }
 
 TEST_CASE("privacy_error_code_name falls back for unknown values", "[privacy]") {
-  auto unknown = static_cast<holder::privacy::PrivacyErrorCode>(-1);
+  // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+  auto unknown = static_cast<holder::privacy::PrivacyErrorCode>(
+      std::numeric_limits<std::uint8_t>::max()
+  );
   REQUIRE(std::string(holder::privacy::privacy_error_code_name(unknown)) == "privacy_error");
 }

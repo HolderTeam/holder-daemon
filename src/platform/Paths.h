@@ -18,7 +18,7 @@ struct Paths {
   // For unix sockets, you may later prefer XDG_RUNTIME_DIR, but this is fine for now.
   std::filesystem::path socket_path() const { return server_dir() / "holder.sock"; }
 
-  static Paths resolve(std::string app_id = "holder");
+  static Paths resolve(const std::string& app_id = "holder");
   void ensure_dirs() const;
 };
 

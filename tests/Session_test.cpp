@@ -11,6 +11,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <future>
 #include <mutex>
 #include <string>
@@ -183,7 +184,7 @@ TEST_CASE("Session write_prepared_response cancel hook terminates in-flight writ
   res.version(11);
   res.set(http::field::content_type, "text/plain");
   res.keep_alive(false);
-  res.body() = std::string(8 * 1024 * 1024, 'x');
+  res.body() = std::string(std::size_t{8} * 1024 * 1024, 'x');
   res.prepare_payload();
 
   holder::api::Session::PreparedResponse prepared{

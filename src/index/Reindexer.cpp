@@ -38,14 +38,11 @@ void Reindexer::run() {
         const auto* card_id = sqlite3_column_text(stmt, 0);
         const auto* project_id = sqlite3_column_text(stmt, 1);
         const auto* title = sqlite3_column_text(stmt, 2);
-        const auto* rel_path = sqlite3_column_text(stmt, 3);
 
         const std::string card_id_str = card_id ? reinterpret_cast<const char*>(card_id) : "";
         const std::string project_id_str = project_id ? reinterpret_cast<const char*>(project_id)
                                                       : "";
         const std::string title_str = title ? reinterpret_cast<const char*>(title) : "";
-        const std::string rel_path_str = rel_path ? reinterpret_cast<const char*>(rel_path) : "";
-
         fts.upsert_card(card_id_str, project_id_str, title_str, "");
         continue;
       }

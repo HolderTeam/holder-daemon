@@ -32,7 +32,7 @@ std::string lowercase_ascii(std::string s) {
 }
 
 std::string normalize_provider_name(const std::string& raw) {
-  const std::string key = lowercase_ascii(trim_ascii(raw));
+  std::string key = lowercase_ascii(trim_ascii(raw));
   if (key.empty()) return {};
   for (const char ch : key) {
     const unsigned char c = static_cast<unsigned char>(ch);
@@ -416,15 +416,17 @@ std::optional<CloudProvidersConfig> load_cloudproviders_config() {
         }
       }
 
-      bool replaced = false;
-      for (auto& existing : provider.models) {
-        if (existing.id == model.id) {
-          existing = std::move(model);
-          replaced = true;
-          break;
-        }
-      }
-      if (!replaced) {
+      const std::string model_id = model.id;
+      const auto existing_model = std::find_if(
+          provider.models.begin(),
+          provider.models.end(),
+          [&](const CloudModelConfig& existing) {
+            return existing.id == model_id;
+          }
+      );
+      if (existing_model != provider.models.end()) {
+        *existing_model = std::move(model);
+      } else {
         provider.models.push_back(std::move(model));
       }
     }
