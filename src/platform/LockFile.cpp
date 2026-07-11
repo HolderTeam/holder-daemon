@@ -99,10 +99,10 @@ void LockFile::release() {
         lock_->unlock();
       } catch (const std::exception& ex) {
         (void)ex;
-      } catch (...) {
-        const bool ignored = true;
-        (void)ignored;
-      }
+      } catch (...) { // LCOV_EXCL_LINE
+        const bool ignored = true; // LCOV_EXCL_LINE
+        (void)ignored; // LCOV_EXCL_LINE
+      } // LCOV_EXCL_LINE
       locked_ = false;
     }
     lock_.reset();
@@ -114,10 +114,10 @@ void LockFile::release_noexcept() noexcept {
     release();
   } catch (const std::exception& ex) {
     (void)ex;
-  } catch (...) {
-    const bool ignored = true;
-    (void)ignored;
-  }
+  } catch (...) { // LCOV_EXCL_LINE
+    const bool ignored = true; // LCOV_EXCL_LINE
+    (void)ignored; // LCOV_EXCL_LINE
+  } // LCOV_EXCL_LINE
 }
 
 } // namespace holder::core
