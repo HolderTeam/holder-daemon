@@ -80,6 +80,7 @@ san_all() {
   local sanitizers="${1:-address}"
   local build_type="${2:-Debug}"
   local san_flags="-fsanitize=${sanitizers} -fno-omit-frame-pointer -O1 -g"
+  local detect_leaks="${HOLDER_SAN_DETECT_LEAKS:-0}"
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
@@ -91,9 +92,11 @@ san_all() {
   else
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
-  cmake --build "${build_dir}" -- -j "${JOBS}"
+  ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
+    UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
+    cmake --build "${build_dir}" -- -j "${JOBS}"
 
-  ASAN_OPTIONS="detect_leaks=1:halt_on_error=1" \
+  ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
     test_build "${build_dir}"
 }

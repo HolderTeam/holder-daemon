@@ -82,6 +82,7 @@ Will need portability plan and testing, mainly around secrets since we need libs
 ./make.sh perf-privacy Debug
 ./make.sh coverage        # build + run tests + generate HTML coverage report
 ./make.sh san             # ASan build + tests
+HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san  # ASan + LSan build + tests
 ./make.sh san address,undefined  # ASan + UBSan build + tests
 ./build/holderd --help
 ./build/holderd --reindex
