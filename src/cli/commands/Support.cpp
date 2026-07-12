@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -242,8 +243,13 @@ nlohmann::json recovery_token_request(
     const nlohmann::json& body
 ) {
   const auto connection = read_secure_daemon_connection(paths);
-  const auto response =
-      http_json_request(connection, method, target, std::chrono::seconds(30), body);
+  const auto response = http_json_request(
+      connection,
+      method,
+      target,
+      std::chrono::seconds(30),
+      std::optional<nlohmann::json>{body}
+  );
 
   if ((response.status != boost::beast::http::status::ok &&
        response.status != boost::beast::http::status::created) ||
@@ -269,15 +275,20 @@ nlohmann::json card_api_request(
     boost::beast::http::status success
 ) {
   const auto connection = read_secure_daemon_connection(paths);
-  const auto response =
-      method == boost::beast::http::verb::get
-          ? http_json_request(
-                connection,
-                method,
-                target,
-                std::chrono::seconds(10) // LCOV_EXCL_LINE
-            )
-          : http_json_request(connection, method, target, std::chrono::seconds(30), body);
+  const auto response = method == boost::beast::http::verb::get
+                            ? http_json_request(
+                                  connection,
+                                  method,
+                                  target,
+                                  std::chrono::seconds(10) // LCOV_EXCL_LINE
+                              )
+                            : http_json_request(
+                                  connection,
+                                  method,
+                                  target,
+                                  std::chrono::seconds(30),
+                                  std::optional<nlohmann::json>{body}
+                              );
 
   if (response.status != success || !response.payload.value("ok", false)) {
     const auto fallback = "HTTP " +

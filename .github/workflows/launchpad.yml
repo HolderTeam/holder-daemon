@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Optional upstream version override, for example 0.1.6"
+        description: "Optional upstream version override, for example 0.1.7"
         required: false
 
 jobs:
