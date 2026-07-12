@@ -66,6 +66,67 @@ build_all() {
   cmake --build build -- -j "${JOBS}"
 }
 
+warnings_all() {
+  local build_dir="build-warnings"
+  local build_type="${1:-Debug}"
+
+  cmake -S . -B "${build_dir}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${build_type}" \
+    -DHOLDER_WARNINGS_AS_ERRORS=ON
+
+  if command -v nproc >/dev/null 2>&1; then
+    JOBS="$(nproc)"
+  else
+    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  fi
+  cmake --build "${build_dir}" --target holderd holderctl -- -j "${JOBS}"
+}
+
+memcheck_all() {
+  local build_dir="build-memcheck"
+  local build_type="${HOLDER_MEMCHECK_BUILD_TYPE:-Debug}"
+  local test_regex="${1:-}"
+  local valgrind_bin
+  local valgrind_options
+  local suppression_file
+  local memcheck_skip_regex
+  local -a ctest_args
+
+  if ! valgrind_bin="$(command -v valgrind)"; then
+    echo "Missing dependency: valgrind is required for ./make.sh memcheck." >&2
+    exit 1
+  fi
+
+  valgrind_options="--leak-check=full --show-leak-kinds=definite,possible --errors-for-leak-kinds=definite,possible --track-origins=yes"
+  suppression_file="${PWD}/tools/valgrind/holder.supp"
+  memcheck_skip_regex="Slow background route does not block foreground route|Slow background route does not block save lane route|Multiple configured runners do not block card save path under background saturation|Queued save request jumps ahead of queued non-save work at dispatch time"
+
+  cmake -S . -B "${build_dir}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${build_type}" \
+    -DMEMORYCHECK_COMMAND="${valgrind_bin}" \
+    -DMEMORYCHECK_COMMAND_OPTIONS="${valgrind_options}" \
+    -DMEMORYCHECK_SUPPRESSIONS_FILE="${suppression_file}"
+
+  if command -v nproc >/dev/null 2>&1; then
+    JOBS="$(nproc)"
+  else
+    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  fi
+  cmake --build "${build_dir}" -- -j "${JOBS}"
+
+  ctest_args=(
+    --test-dir "${build_dir}"
+    -T memcheck
+    --output-on-failure
+    --timeout 300
+    -E "${memcheck_skip_regex}"
+  )
+  if [[ -n "${test_regex}" ]]; then
+    ctest_args+=(-R "${test_regex}")
+  fi
+  ctest "${ctest_args[@]}"
+}
+
 test_build() {
   local build_dir="${1:?}"
   local mode="${2:-split}"
@@ -269,6 +330,12 @@ case "${MODE}" in
     ;;
   coverage)
     coverage_all
+    ;;
+  warnings)
+    warnings_all "${2:-Debug}"
+    ;;
+  memcheck)
+    memcheck_all "${2:-}"
     ;;
   san)
     san_all "${2:-address}" "${3:-Debug}"

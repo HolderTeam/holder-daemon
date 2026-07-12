@@ -1,0 +1,41 @@
+{
+  cuda-driver-thread-tls
+  Memcheck:Leak
+  match-leak-kinds: possible
+  fun:calloc
+  ...
+  fun:allocate_dtv
+  fun:_dl_allocate_tls
+  fun:allocate_stack
+  fun:pthread_create*
+  obj:*libcuda.so*
+}
+
+{
+  glib-worker-thread-tls
+  Memcheck:Leak
+  match-leak-kinds: possible
+  fun:calloc
+  ...
+  fun:allocate_dtv
+  fun:_dl_allocate_tls
+  fun:allocate_stack
+  fun:pthread_create*
+  ...
+  obj:*libglib-2.0.so*
+}
+
+{
+  local-model-runner-child-probe-thread-tls
+  Memcheck:Leak
+  match-leak-kinds: possible
+  fun:calloc
+  fun:calloc
+  fun:allocate_dtv
+  fun:_dl_allocate_tls
+  fun:allocate_stack
+  fun:pthread_create@@GLIBC_2.34
+  fun:_ZNSt6thread15_M_start_threadESt10unique_ptrINS_6_StateESt14default_deleteIS1_EEPFvvE
+  fun:_ZNSt6threadC1IZN6holder3llm16LocalModelRunner22start_background_probeEvEUlvE_JEvEEOT_DpOT0_
+  fun:_ZN6holder3llm16LocalModelRunner22start_background_probeEv
+}
