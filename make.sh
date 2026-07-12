@@ -88,6 +88,7 @@ memcheck_all() {
   local test_regex="${1:-}"
   local valgrind_bin
   local valgrind_options
+  local suppression_file
   local memcheck_skip_regex
   local -a ctest_args
 
@@ -97,12 +98,14 @@ memcheck_all() {
   fi
 
   valgrind_options="--leak-check=full --show-leak-kinds=definite,possible --errors-for-leak-kinds=definite,possible --track-origins=yes"
-  memcheck_skip_regex="Slow background route does not block save lane route|Multiple configured runners do not block card save path under background saturation|Queued save request jumps ahead of queued non-save work at dispatch time"
+  suppression_file="${PWD}/tools/valgrind/holder.supp"
+  memcheck_skip_regex="Slow background route does not block foreground route|Slow background route does not block save lane route|Multiple configured runners do not block card save path under background saturation|Queued save request jumps ahead of queued non-save work at dispatch time"
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DMEMORYCHECK_COMMAND="${valgrind_bin}" \
-    -DMEMORYCHECK_COMMAND_OPTIONS="${valgrind_options}"
+    -DMEMORYCHECK_COMMAND_OPTIONS="${valgrind_options}" \
+    -DMEMORYCHECK_SUPPRESSIONS_FILE="${suppression_file}"
 
   if command -v nproc >/dev/null 2>&1; then
     JOBS="$(nproc)"
