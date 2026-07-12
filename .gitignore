@@ -3,4 +3,5 @@ build
 scripts/__pycache__
 build-coverage
 build-tidy
+build-san
 

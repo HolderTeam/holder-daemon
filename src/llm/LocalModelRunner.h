@@ -8,6 +8,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -66,6 +67,7 @@ class LocalModelRunner {
   RunnerStatus status_;
   std::optional<RunnerStatus> status_override_for_tests_;
   StreamGenerateOverride stream_generate_override_for_tests_;
+  std::thread background_thread_;
   struct RunnerProcess;
   std::unique_ptr<RunnerProcess> process_;
 

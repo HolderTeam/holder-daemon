@@ -66,6 +66,41 @@ build_all() {
   cmake --build build -- -j "${JOBS}"
 }
 
+test_build() {
+  local build_dir="${1:?}"
+  local serial_test_regex
+
+  serial_test_regex="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
+  ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout 30 -E "${serial_test_regex}"
+  ctest --test-dir "${build_dir}" --output-on-failure --timeout 30 -R "${serial_test_regex}"
+}
+
+san_all() {
+  local build_dir="build-san"
+  local sanitizers="${1:-address}"
+  local build_type="${2:-Debug}"
+  local san_flags="-fsanitize=${sanitizers} -fno-omit-frame-pointer -O1 -g"
+  local detect_leaks="${HOLDER_SAN_DETECT_LEAKS:-0}"
+
+  cmake -S . -B "${build_dir}" -G Ninja \
+    -DCMAKE_BUILD_TYPE="${build_type}" \
+    -DCMAKE_CXX_FLAGS="${san_flags}" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}"
+
+  if command -v nproc >/dev/null 2>&1; then
+    JOBS="$(nproc)"
+  else
+    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
+  fi
+  ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
+    UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
+    cmake --build "${build_dir}" -- -j "${JOBS}"
+
+  ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
+    UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
+    test_build "${build_dir}"
+}
+
 coverage_all() {
   local build_dir="build-coverage"
   local report_dir="${build_dir}/coverage"
@@ -206,9 +241,7 @@ format_files() {
 case "${MODE}" in
   default)
     build_all "RelWithDebInfo"
-    SERIAL_TEST_REGEX="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
-    ctest --test-dir build --output-on-failure -j 8 --timeout 30 -E "${SERIAL_TEST_REGEX}"
-    ctest --test-dir build --output-on-failure --timeout 30 -R "${SERIAL_TEST_REGEX}"
+    test_build build
     ./build/holderd
     ;;
   perf-privacy)
@@ -217,6 +250,9 @@ case "${MODE}" in
     ;;
   coverage)
     coverage_all
+    ;;
+  san)
+    san_all "${2:-address}" "${3:-Debug}"
     ;;
   tidy)
     tidy_all
