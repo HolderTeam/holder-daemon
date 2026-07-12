@@ -68,7 +68,13 @@ build_all() {
 
 test_build() {
   local build_dir="${1:?}"
+  local mode="${2:-split}"
   local serial_test_regex
+
+  if [[ "${mode}" == "single" ]]; then
+    ctest --test-dir "${build_dir}" --output-on-failure --timeout 300
+    return
+  fi
 
   serial_test_regex="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
   ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout 30 -E "${serial_test_regex}"
@@ -81,11 +87,23 @@ san_all() {
   local build_type="${2:-Debug}"
   local san_flags="-fsanitize=${sanitizers} -fno-omit-frame-pointer -O1 -g"
   local detect_leaks="${HOLDER_SAN_DETECT_LEAKS:-0}"
+  local catch_discovery="ON"
+  local test_mode="split"
+  local tsan_use_setarch="OFF"
+
+  if [[ ",${sanitizers}," == *",thread,"* ]]; then
+    catch_discovery="OFF"
+    test_mode="single"
+    tsan_use_setarch="ON"
+  fi
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DCMAKE_CXX_FLAGS="${san_flags}" \
-    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}"
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=${sanitizers}" \
+    -DHOLDER_CATCH_DISCOVER_TESTS="${catch_discovery}" \
+    -DHOLDER_TSAN_USE_SETARCH="${tsan_use_setarch}"
 
   if command -v nproc >/dev/null 2>&1; then
     JOBS="$(nproc)"
@@ -98,7 +116,8 @@ san_all() {
 
   ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
-    test_build "${build_dir}"
+    TSAN_OPTIONS="halt_on_error=1:second_deadlock_stack=1" \
+    test_build "${build_dir}" "${test_mode}"
 }
 
 coverage_all() {

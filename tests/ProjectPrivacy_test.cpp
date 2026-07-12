@@ -67,6 +67,8 @@ class EnvUnsetGuard {
   std::string old_;
 };
 
+bool is_thread_sanitizer_run() { return std::getenv("TSAN_OPTIONS") != nullptr; }
+
 } // namespace
 
 TEST_CASE("Privacy safety check passes when cards directory is missing", "[privacy]") {
@@ -484,6 +486,10 @@ TEST_CASE(
     "ensure_project_key_material reports keyring unavailable when libsecret cannot be reached",
     "[privacy]"
 ) {
+  if (is_thread_sanitizer_run()) {
+    SKIP("Real libsecret failure path starts GLib/GDBus helper threads that are noisy under TSan");
+  }
+
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
@@ -517,6 +523,10 @@ TEST_CASE(
     "export_recovery_token maps missing libsecret key material to KeyMaterialMissing",
     "[privacy]"
 ) {
+  if (is_thread_sanitizer_run()) {
+    SKIP("Real libsecret failure path starts GLib/GDBus helper threads that are noisy under TSan");
+  }
+
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
   holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
 
@@ -534,6 +544,10 @@ TEST_CASE(
 #endif
 
 TEST_CASE("import_recovery_token rethrows non-token privacy errors", "[privacy]") {
+  if (is_thread_sanitizer_run()) {
+    SKIP("Real libsecret failure path starts GLib/GDBus helper threads that are noisy under TSan");
+  }
+
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);

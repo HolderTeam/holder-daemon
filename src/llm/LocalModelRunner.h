@@ -68,6 +68,8 @@ class LocalModelRunner {
   std::optional<RunnerStatus> status_override_for_tests_;
   StreamGenerateOverride stream_generate_override_for_tests_;
   std::thread background_thread_;
+  std::mutex pull_threads_mu_;
+  std::vector<std::thread> pull_threads_;
   struct RunnerProcess;
   std::unique_ptr<RunnerProcess> process_;
 

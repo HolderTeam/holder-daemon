@@ -84,14 +84,23 @@ LocalModelRunner::LocalModelRunner(
 }
 
 LocalModelRunner::~LocalModelRunner() {
-  if (!background_thread_.joinable()) {
-    return;
+  {
+    std::lock_guard<std::mutex> lock(pull_threads_mu_);
+    for (auto& thread : pull_threads_) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
+    pull_threads_.clear();
   }
-  if (background_thread_.get_id() == std::this_thread::get_id()) {
-    background_thread_.detach(); // LCOV_EXCL_LINE
-    return;                      // LCOV_EXCL_LINE
+
+  if (background_thread_.joinable()) {
+    if (background_thread_.get_id() == std::this_thread::get_id()) {
+      background_thread_.detach(); // LCOV_EXCL_LINE
+      return; // LCOV_EXCL_LINE
+    }
+    background_thread_.join();
   }
-  background_thread_.join();
 }
 
 void LocalModelRunner::start_background_probe() {
@@ -204,9 +213,10 @@ LocalModelRunner::PullJob LocalModelRunner::start_pull(const std::string& model)
     return job;
   }
 
-  std::thread([this, job_id = job.job_id, model]() {
+  std::lock_guard<std::mutex> lock(pull_threads_mu_);
+  pull_threads_.emplace_back([this, job_id = job.job_id, model]() {
     run_pull(job_id, model);
-  }).detach();
+  });
   return job;
 }
 

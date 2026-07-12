@@ -16,6 +16,8 @@ option(CARD_SERVER_ENABLE_MD4C "Enable markdown parsing via md4c" ON)
 option(CARD_SERVER_ENABLE_LIBGIT2 "Enable git support via libgit2" ON)
 option(HOLDER_ENABLE_ENCRYPTED_GIT "Enable encrypted_git feature paths" ON)
 option(HOLDER_USE_SYSTEM_CASTE "Use packaged libcaste instead of third_party/caste" OFF)
+option(HOLDER_CATCH_DISCOVER_TESTS "Discover Catch2 tests as individual CTest tests" ON)
+option(HOLDER_TSAN_USE_SETARCH "Run tests through setarch -R for GCC ThreadSanitizer" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
