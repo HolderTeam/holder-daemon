@@ -84,6 +84,7 @@ Will need portability plan and testing, mainly around secrets since we need libs
 ./make.sh san             # ASan build + tests
 HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san  # ASan + LSan build + tests
 ./make.sh san address,undefined  # ASan + UBSan build + tests
+./make.sh san thread      # TSan build + tests
 ./build/holderd --help
 ./build/holderd --reindex
 ./scripts/cloud-smoke.sh --provider switchyard --token "$HOLDER_TOKEN" --api-key "$SWITCHYARD_API_KEY"

@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -139,12 +140,15 @@ void write_fake_editor(const std::filesystem::path& path) {
 
 class HolderCtlProjectGitOps final : public holder::git::GitOps {
  public:
-  int open_count = 0;
-  std::string remote_name;
-  std::string remote_url;
-  std::filesystem::path opened_repo;
+  struct Snapshot {
+    int open_count = 0;
+    std::string remote_name;
+    std::string remote_url;
+    std::filesystem::path opened_repo;
+  };
 
   void open_or_init(const std::filesystem::path& repo_dir) override {
+    std::scoped_lock lock(mu_);
     ++open_count;
     opened_repo = repo_dir;
   }
@@ -153,6 +157,7 @@ class HolderCtlProjectGitOps final : public holder::git::GitOps {
   void remove_path(const std::filesystem::path&) override {}
   void commit(const std::string&) override {}
   void set_remote(const std::string& name, const std::string& url) override {
+    std::scoped_lock lock(mu_);
     remote_name = name;
     remote_url = url;
   }
@@ -174,7 +179,27 @@ class HolderCtlProjectGitOps final : public holder::git::GitOps {
         .error_message = {}
     };
   }
-  std::filesystem::path repo_dir() const override { return opened_repo; }
+  std::filesystem::path repo_dir() const override {
+    std::scoped_lock lock(mu_);
+    return opened_repo;
+  }
+
+  Snapshot snapshot() const {
+    std::scoped_lock lock(mu_);
+    return {
+        .open_count = open_count,
+        .remote_name = remote_name,
+        .remote_url = remote_url,
+        .opened_repo = opened_repo
+    };
+  }
+
+ private:
+  mutable std::mutex mu_;
+  int open_count = 0;
+  std::string remote_name;
+  std::string remote_url;
+  std::filesystem::path opened_repo;
 };
 
 } // namespace
@@ -635,10 +660,11 @@ TEST_CASE("holderctl project new creates a project and can select it", "[holderc
   REQUIRE_FALSE(project_id.empty());
   REQUIRE_FALSE(root_path.empty());
 
-  REQUIRE(git.open_count == 1);
-  REQUIRE(git.remote_name == "origin");
-  REQUIRE(git.remote_url == "https://example.com/repo.git");
-  REQUIRE(git.opened_repo == std::filesystem::path(root_path));
+  const auto git_snapshot = git.snapshot();
+  REQUIRE(git_snapshot.open_count == 1);
+  REQUIRE(git_snapshot.remote_name == "origin");
+  REQUIRE(git_snapshot.remote_url == "https://example.com/repo.git");
+  REQUIRE(git_snapshot.opened_repo == std::filesystem::path(root_path));
 
   const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
   REQUIRE(nlohmann::json::parse(read_text(config_path))["current_project_id"] == project_id);

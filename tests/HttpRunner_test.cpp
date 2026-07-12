@@ -4,6 +4,11 @@
 #include "http_test_helpers.h"
 #include "privacy/SecretStore.h"
 
+#include <filesystem>
+#include <string>
+#include <thread>
+#include <vector>
+
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
@@ -31,6 +36,34 @@ void seed_provider_credential(
   holder::ai::AiProviderCredentialRepo cred_repo(db);
   secret_store.set(kSecretService, provider, api_key, preview, created_at, updated_at);
   cred_repo.upsert(provider, preview, created_at, updated_at);
+}
+
+void insert_project(
+    holder::platform::Db& db,
+    const std::string& project_id,
+    const std::filesystem::path& root_path
+) {
+  db.exec(
+      "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+      "VALUES('" +
+      project_id + "', 'Project', '" + root_path.string() + "', 1, 1);"
+  );
+}
+
+std::vector<holder::model::AiRun> wait_for_project_run_to_finish(
+    holder::platform::Db& db,
+    const std::string& project_id
+) {
+  holder::ai::AiRunRepo run_repo(db);
+  std::vector<holder::model::AiRun> runs;
+  for (int i = 0; i < 200; ++i) {
+    runs = run_repo.list_by_project(project_id);
+    if (runs.size() == 1 && runs[0].status != "started") {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return runs;
 }
 
 } // namespace
@@ -307,8 +340,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  insert_project(db, "proj-1", dir / "project");
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
 
@@ -359,10 +391,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   REQUIRE(res.body().find("\"provider\":\"switchyard\"") != std::string::npos);
   socket.shutdown(tcp::socket::shutdown_both);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  holder::ai::AiRunRepo run_repo(db);
-  const auto runs = run_repo.list_by_project("proj-1");
+  const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
   REQUIRE(runs[0].chosen_model == std::optional<std::string>("switchyard:openrouter/auto"));
@@ -434,8 +463,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  insert_project(db, "proj-1", dir / "project");
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   seed_provider_credential(db, *secret_store, "chadjeopardy", "test-key", 1, 1);
 
@@ -486,10 +514,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   REQUIRE(res.body().find("\"provider\":\"chadjeopardy\"") != std::string::npos);
   socket.shutdown(tcp::socket::shutdown_both);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  holder::ai::AiRunRepo run_repo(db);
-  const auto runs = run_repo.list_by_project("proj-1");
+  const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
   REQUIRE(runs[0].chosen_model == std::optional<std::string>("chadjeopardy:gpt-5.2"));
@@ -560,8 +585,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   holder::test::EnvGuard cloud_cfg_env("HOLDER_AI_CATALOG_PATH", cloud_cfg_path.string());
 
   auto db = open_db_with_schema(db_path);
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  insert_project(db, "proj-1", dir / "project");
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
   seed_provider_credential(db, *secret_store, "mechatropic", "test-key", 1, 1);
 
@@ -612,10 +636,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   REQUIRE(res.body().find("\"provider\":\"mechatropic\"") != std::string::npos);
   socket.shutdown(tcp::socket::shutdown_both);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  holder::ai::AiRunRepo run_repo(db);
-  const auto runs = run_repo.list_by_project("proj-1");
+  const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);
   REQUIRE(runs[0].status == "completed");
   REQUIRE(runs[0].chosen_model == std::optional<std::string>("mechatropic:claude-opus-4-6"));

@@ -328,7 +328,11 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 }
 
 void Listener::stop() {
-  stop_requested_.store(true);
+  bool expected = false;
+  if (!stop_requested_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
   shutdown_queued_work();
   shutdown_active_sockets();
   ingress_queue_cv_.notify_all();

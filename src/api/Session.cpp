@@ -4,6 +4,9 @@
 #include "api/support/HttpAuth.h"
 #include "api/support/HttpResponses.h"
 
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -71,8 +74,13 @@ AsyncReadResult async_read_request(
 
   struct State {
     explicit State(Session::tcp::socket s)
-        : socket(std::move(s)) {}
+        : socket(std::move(s)),
+          strand(boost::asio::make_strand(socket.get_executor())) {}
+    std::mutex mu;
+    bool done = false;
+    bool cancel_requested = false;
     Session::tcp::socket socket;
+    boost::asio::strand<boost::asio::any_io_executor> strand;
     beast::flat_buffer buffer;
     Session::Request req;
   };
@@ -81,27 +89,56 @@ AsyncReadResult async_read_request(
   auto io_handle = std::make_shared<Session::IoHandle>();
   io_handle->cancel = [weak_state = std::weak_ptr<State>(state)]() {
     if (auto locked = weak_state.lock()) {
-      boost::system::error_code ec;
-      ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
-      ); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
+      boost::asio::strand<boost::asio::any_io_executor> strand(locked->strand);
+      {
+        std::lock_guard<std::mutex> lock(locked->mu);
+        if (locked->done) {
+          return;
+        }
+        locked->cancel_requested = true;
+      }
+      boost::asio::post(strand, [weak_state]() {
+        if (auto posted = weak_state.lock()) {
+          std::lock_guard<std::mutex> lock(posted->mu);
+          if (posted->done) {
+            return;
+          }
+          boost::system::error_code ec;
+          ignore_result(posted->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
+          ignore_result(posted->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+          ); // NOLINT(bugprone-unused-return-value)
+          ec.clear();
+          ignore_result(posted->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
+        }
+      });
     }
   };
   if (on_io_start) {
     on_io_start(io_handle);
   }
-  http::async_read(
-      state->socket,
-      state->buffer,
-      state->req,
-      [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
-        if (on_io_done) {
-          on_io_done(io_handle);
-        }
-        promise->set_value(AsyncReadResult{ec, std::move(state->socket), std::move(state->req)});
-      }
-  );
+  boost::asio::post(state->strand, [state, promise, on_io_done, io_handle]() mutable {
+    http::async_read(
+        state->socket,
+        state->buffer,
+        state->req,
+        boost::asio::bind_executor(
+            state->strand,
+            [state,
+             promise,
+             on_io_done,
+             io_handle](boost::system::error_code ec, std::size_t) mutable {
+              std::unique_lock<std::mutex> lock(state->mu);
+              state->done = true;
+              AsyncReadResult result{ec, std::move(state->socket), std::move(state->req)};
+              lock.unlock();
+              if (on_io_done) {
+                on_io_done(io_handle);
+              }
+              promise->set_value(std::move(result));
+            }
+        )
+    );
+  });
   return future.get();
 }
 
@@ -112,31 +149,71 @@ AsyncWriteResult async_write_response(
 ) {
   auto promise = std::make_shared<std::promise<AsyncWriteResult>>();
   auto future = promise->get_future();
-  auto state = std::make_shared<Session::PreparedResponse>(std::move(prepared));
+  struct State {
+    explicit State(Session::PreparedResponse prepared_response)
+        : response(std::move(prepared_response)),
+          strand(boost::asio::make_strand(response.socket.get_executor())) {}
+    std::mutex mu;
+    bool done = false;
+    bool cancel_requested = false;
+    Session::PreparedResponse response;
+    boost::asio::strand<boost::asio::any_io_executor> strand;
+  };
+
+  auto state = std::make_shared<State>(std::move(prepared));
   auto io_handle = std::make_shared<Session::IoHandle>();
-  io_handle->cancel = [weak_state = std::weak_ptr<Session::PreparedResponse>(state)]() {
+  io_handle->cancel = [weak_state = std::weak_ptr<State>(state)]() {
     if (auto locked = weak_state.lock()) {
-      boost::system::error_code ec;
-      ignore_result(locked->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.shutdown(Session::tcp::socket::shutdown_both, ec)
-      ); // NOLINT(bugprone-unused-return-value)
-      ignore_result(locked->socket.close(ec)); // NOLINT(bugprone-unused-return-value)
+      boost::asio::strand<boost::asio::any_io_executor> strand(locked->strand);
+      {
+        std::lock_guard<std::mutex> lock(locked->mu);
+        if (locked->done) {
+          return;
+        }
+        locked->cancel_requested = true;
+      }
+      boost::asio::post(strand, [weak_state]() {
+        if (auto posted = weak_state.lock()) {
+          std::lock_guard<std::mutex> lock(posted->mu);
+          if (posted->done) {
+            return;
+          }
+          boost::system::error_code ec;
+          ignore_result(posted->response.socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
+          ignore_result(posted->response.socket.shutdown(Session::tcp::socket::shutdown_both, ec)
+          ); // NOLINT(bugprone-unused-return-value)
+          ec.clear();
+          ignore_result(posted->response.socket.close(ec)); // NOLINT(bugprone-unused-return-value)
+        }
+      });
     }
   };
 
   if (on_io_start) {
     on_io_start(io_handle);
   }
-  http::async_write(
-      state->socket,
-      state->res,
-      [state, promise, on_io_done, io_handle](boost::system::error_code ec, std::size_t) mutable {
-        if (on_io_done) {
-          on_io_done(io_handle);
-        }
-        promise->set_value(AsyncWriteResult{ec, std::move(state->socket)});
-      }
-  );
+  boost::asio::post(state->strand, [state, promise, on_io_done, io_handle]() mutable {
+    http::async_write(
+        state->response.socket,
+        state->response.res,
+        boost::asio::bind_executor(
+            state->strand,
+            [state,
+             promise,
+             on_io_done,
+             io_handle](boost::system::error_code ec, std::size_t) mutable {
+              std::unique_lock<std::mutex> lock(state->mu);
+              state->done = true;
+              AsyncWriteResult result{ec, std::move(state->response.socket)};
+              lock.unlock();
+              if (on_io_done) {
+                on_io_done(io_handle);
+              }
+              promise->set_value(std::move(result));
+            }
+        )
+    );
+  });
   return future.get();
 }
 
