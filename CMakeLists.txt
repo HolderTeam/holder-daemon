@@ -39,7 +39,7 @@ find_package(OpenSSL REQUIRED)
 # Boost: Beast/Asio/System are header-only for our usage; Filesystem still
 # needs a compiled component. Boost.Process is header-only on Noble but is a
 # split compiled component on newer Ubuntu, so link it when its config exists.
-find_package(Boost 1.83.0 REQUIRED COMPONENTS filesystem)
+find_package(Boost 1.83.0 CONFIG REQUIRED COMPONENTS filesystem)
 find_package(boost_process CONFIG QUIET)
 
 # JSON + logging (apt-friendly)
@@ -49,9 +49,6 @@ find_package(boost_process CONFIG QUIET)
 find_package(nlohmann_json 3.6.0 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
-
-# XDG base dirs helper (apt: xdg-utils-cxx-dev)
-find_package(XdgUtils CONFIG REQUIRED COMPONENTS BaseDir)
 
 # sqlite3 via pkg-config (robust on Linux)
 pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
@@ -96,6 +93,7 @@ add_executable(holderd
   src/app/Bootstrap.cpp
   src/app/Entrypoint.cpp
   src/app/FatalError.cpp
+  src/platform/BaseDir.cpp
   src/platform/InstalledDataPath.cpp
   src/platform/Paths.cpp
   src/platform/LockFile.cpp
@@ -234,7 +232,6 @@ target_link_libraries(holderd PRIVATE
   PkgConfig::SODIUM
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  XdgUtils::BaseDir
   yaml-cpp
   ${HOLDER_CASTE_TARGET}
 )
@@ -280,6 +277,7 @@ add_executable(holderctl
   src/cli/commands/resource.cpp
   src/cli/commands/trash.cpp
   src/cli/commands/SystemCommands.cpp
+  src/platform/BaseDir.cpp
   src/platform/Paths.cpp
 )
 target_include_directories(holderctl PRIVATE
@@ -301,7 +299,6 @@ endif()
 target_link_libraries(holderctl PRIVATE
   Boost::filesystem
   nlohmann_json::nlohmann_json
-  XdgUtils::BaseDir
 )
 if(TARGET Boost::process)
   target_link_libraries(holderctl PRIVATE Boost::process)

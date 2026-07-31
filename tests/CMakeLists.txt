@@ -137,6 +137,7 @@ add_executable(lockfile_tests
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
+  ../src/platform/BaseDir.cpp
   ../src/platform/Paths.cpp
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
@@ -266,7 +267,6 @@ target_link_libraries(lockfile_tests PRIVATE
   PkgConfig::SODIUM
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  XdgUtils::BaseDir
   yaml-cpp
   caste
 )
