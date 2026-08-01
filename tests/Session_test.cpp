@@ -33,14 +33,18 @@ struct SocketPair {
         client(ioc),
         server(ioc) {
     tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), 0));
+    client.connect(acceptor.local_endpoint());
+    server = acceptor.accept();
     io_thread = std::thread([this]() {
       ioc.run();
     });
-    client.connect(acceptor.local_endpoint());
-    server = acceptor.accept();
   }
 
   ~SocketPair() {
+    boost::system::error_code ec;
+    client.close(ec);
+    ec.clear();
+    server.close(ec);
     work_guard.reset();
     ioc.stop();
     if (io_thread.joinable()) {
