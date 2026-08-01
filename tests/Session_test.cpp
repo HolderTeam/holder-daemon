@@ -32,7 +32,7 @@ struct SocketPair {
       : work_guard(boost::asio::make_work_guard(ioc)),
         client(ioc),
         server(ioc) {
-    tcp::acceptor acceptor(ioc, tcp::endpoint(tcp::v4(), 0));
+    tcp::acceptor acceptor(ioc, tcp::endpoint(boost::asio::ip::address_v4::loopback(), 0));
     client.connect(acceptor.local_endpoint());
     server = acceptor.accept();
     io_thread = std::thread([this]() {
