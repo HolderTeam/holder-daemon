@@ -42,7 +42,7 @@ int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
     return 0;
   }
 
-#if defined(__linux__)
+#if !defined(_WIN32)
   const auto opener = boost::process::v2::environment::find_executable("xdg-open");
   if (opener.empty()) {
     std::cout << url << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.

@@ -2397,6 +2397,7 @@ TEST_CASE("holderctl openapi rejects unknown options", "[holderctl]") {
   REQUIRE(run_command(bin + " openapi --bad >/dev/null 2>/dev/null") == 1);
 }
 
+#if defined(__linux__)
 TEST_CASE("holderctl restart invokes the Linux user service", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   const auto fake_bin = xdg_root / "bin";
@@ -2435,6 +2436,7 @@ TEST_CASE("holderctl restart reports service manager failure", "[holderctl]") {
   REQUIRE(run_command(bin + " restart >/dev/null 2>/dev/null") == 1);
   REQUIRE(read_text(args_path) == "--user\nrestart\nholder-daemon.service\n");
 }
+#endif
 
 TEST_CASE("holderctl logs follow invokes tail", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
