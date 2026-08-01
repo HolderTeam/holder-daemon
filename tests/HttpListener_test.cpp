@@ -269,6 +269,7 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   create_project(db, "proj-1", (dir / "project").string());
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
+  holder::test::EnvGuard fake_runner_env("HOLDER_MODEL_RUNNER_FAKE", "1");
   holder::llm::RunnerRegistry runner_registry(&db, nullptr);
 
   holder::api::Router router;
