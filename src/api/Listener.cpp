@@ -391,14 +391,15 @@ void Listener::start_accept_loop() {
       return; // LCOV_EXCL_LINE
     }
 
+    // LCOV_EXCL_START: stop-after-accept depends on shutdown timing.
     if (stop_requested_.load()) {
-      boost::system::error_code close_ec; // LCOV_EXCL_LINE
+      boost::system::error_code close_ec;
       ignore_result(socket.shutdown(tcp::socket::shutdown_both, close_ec)
-      ); // NOLINT(bugprone-unused-return-value) // LCOV_EXCL_LINE
-      ignore_result(socket.close(close_ec)
-      ); // NOLINT(bugprone-unused-return-value) // LCOV_EXCL_LINE
-      return; // LCOV_EXCL_LINE
+      ); // NOLINT(bugprone-unused-return-value)
+      ignore_result(socket.close(close_ec)); // NOLINT(bugprone-unused-return-value)
+      return;
     }
+    // LCOV_EXCL_STOP
 
     {
       std::lock_guard<std::mutex> lock(ingress_queue_mutex_);

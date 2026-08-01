@@ -86,6 +86,7 @@ Will need portability plan and testing, mainly around secrets since we need libs
 ## Useful Commands
 
 ```bash
+./make.sh --help          # list supported build/test commands
 ./make.sh                 # configure + build + tests + run holder
 ./make.sh Debug           # debug build
 ./make.sh perf-privacy    # run encrypted-card perf profile table

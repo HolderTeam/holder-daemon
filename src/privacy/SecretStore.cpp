@@ -197,6 +197,7 @@ class TestDirSecretBackend final : public RawSecretBackend {
 };
 
 #if HOLDER_HAVE_LIBSECRET
+// LCOV_EXCL_START: direct libsecret schema/backend calls depend on host keyring services.
 const SecretSchema* holder_secret_schema() {
   static const SecretSchema schema = {
       "org.holder.SecretStore",
@@ -217,6 +218,7 @@ const SecretSchema* holder_secret_schema() {
   };
   return &schema;
 }
+// LCOV_EXCL_STOP
 
 LibsecretApiLookupHook& libsecret_api_lookup_hook_storage() {
   static LibsecretApiLookupHook hook = nullptr;
@@ -285,6 +287,7 @@ class LibsecretSecretBackend final : public RawSecretBackend {
     return result.secret;
   }
 
+  // LCOV_EXCL_START: direct libsecret store depends on host keyring services.
   void set(const std::string& service, const std::string& account, const std::string& secret)
       override {
     GError* error = nullptr;
@@ -301,7 +304,6 @@ class LibsecretSecretBackend final : public RawSecretBackend {
         account.c_str(),
         nullptr
     );
-    // LCOV_EXCL_START: libsecret store failures are external keyring behaviour, not Holder logic.
     if (!ok) {
       std::string message = "failed to store secret in libsecret";
       if (error && error->message) {
@@ -313,9 +315,10 @@ class LibsecretSecretBackend final : public RawSecretBackend {
       }
       throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
     }
-    // LCOV_EXCL_STOP
   }
+  // LCOV_EXCL_STOP
 
+  // LCOV_EXCL_START: direct libsecret clear depends on host keyring services.
   void remove(const std::string& service, const std::string& account) override {
     GError* error = nullptr;
     const bool ok = secret_password_clear_sync(
@@ -328,7 +331,6 @@ class LibsecretSecretBackend final : public RawSecretBackend {
         account.c_str(),
         nullptr
     );
-    // LCOV_EXCL_START: libsecret clear failures are external keyring behaviour, not Holder logic.
     if (!ok && error) {
       std::string message = "failed to remove secret from libsecret";
       if (error->message) {
@@ -338,8 +340,8 @@ class LibsecretSecretBackend final : public RawSecretBackend {
       g_error_free(error);
       throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
     }
-    // LCOV_EXCL_STOP
   }
+  // LCOV_EXCL_STOP
 };
 #endif
 

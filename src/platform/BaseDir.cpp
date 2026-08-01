@@ -27,7 +27,7 @@ std::string home_from_system() {
   if (passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_dir != nullptr) {
     return pw->pw_dir;
   }
-  return {};
+  return {}; // LCOV_EXCL_LINE: requires system user database failure.
 #endif
 }
 
@@ -38,7 +38,7 @@ std::string home_dir() {
   home = home_from_system();
   if (!home.empty()) return home;
 
-  return ".";
+  return "."; // LCOV_EXCL_LINE: requires missing HOME and system user database failure.
 }
 
 std::string absolute_env_or_default(const char* key, const char* suffix) {

@@ -7,6 +7,47 @@ CASTE_DIR="third_party/caste"
 CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
 
+print_usage() {
+  cat <<'EOF'
+Usage:
+  ./make.sh [command] [args...]
+  ./make.sh [BuildType]
+
+Commands:
+  help, -h, --help              Show this help
+  default                       Configure, build, run tests, then run holderd
+  [BuildType]                   Run the default flow with this CMAKE_BUILD_TYPE
+  perf-privacy [BuildType]      Run the encrypted-card perf profile table
+  coverage                      Build, run tests, and generate coverage reports
+  warnings [BuildType]          Build holderd and holderctl with warnings as errors
+  memcheck [test-regex]         Run Valgrind memcheck tests
+  san [sanitizers] [BuildType]  Run sanitizer build and tests
+  tidy                          Run clang-tidy through run-clang-tidy
+  format                        Format C++ source and test files
+  format-check                  Check C++ source and test formatting
+
+Examples:
+  ./make.sh
+  ./make.sh Debug
+  ./make.sh coverage
+  ./make.sh warnings Debug
+  ./make.sh san address,undefined
+  HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san
+
+Environment:
+  HOLDER_CTEST_TIMEOUT          Per-test timeout for normal split CTest runs
+  HOLDER_MEMCHECK_BUILD_TYPE    Build type for memcheck, default Debug
+  HOLDER_SAN_DETECT_LEAKS       Set to 1 to enable ASan leak detection
+EOF
+}
+
+case "${MODE}" in
+  help|-h|--help)
+    print_usage
+    exit 0
+    ;;
+esac
+
 download_caste_archive() {
   local tmp_dir archive_path
   tmp_dir="$(mktemp -d)"
