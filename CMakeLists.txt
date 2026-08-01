@@ -35,6 +35,7 @@ endif()
 # ----------------------------
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Boost: Beast/Asio/System are header-only for our usage; Filesystem still
 # needs a compiled component. Boost.Process is header-only on Noble but is a
@@ -49,6 +50,11 @@ find_package(boost_process CONFIG QUIET)
 find_package(nlohmann_json 3.6.0 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
+if(TARGET yaml-cpp::yaml-cpp)
+  set(HOLDER_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+else()
+  set(HOLDER_YAML_CPP_TARGET yaml-cpp)
+endif()
 
 # sqlite3 via pkg-config (robust on Linux)
 pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
@@ -230,9 +236,10 @@ target_link_libraries(holderd PRIVATE
   OpenSSL::Crypto
   PkgConfig::SQLITE3
   PkgConfig::SODIUM
+  Threads::Threads
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  yaml-cpp
+  ${HOLDER_YAML_CPP_TARGET}
   ${HOLDER_CASTE_TARGET}
 )
 if(TARGET Boost::system)
@@ -298,6 +305,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 target_link_libraries(holderctl PRIVATE
   Boost::filesystem
+  Threads::Threads
   nlohmann_json::nlohmann_json
 )
 if(TARGET Boost::process)

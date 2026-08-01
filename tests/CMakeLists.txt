@@ -14,6 +14,9 @@ add_executable(lock_helper
 target_include_directories(lock_helper PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
+target_link_libraries(lock_helper PRIVATE
+  Boost::filesystem
+)
 
 add_executable(lockfile_tests
   LockFile_test.cpp
@@ -265,9 +268,10 @@ target_link_libraries(lockfile_tests PRIVATE
   OpenSSL::Crypto
   PkgConfig::SQLITE3
   PkgConfig::SODIUM
+  Threads::Threads
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  yaml-cpp
+  ${HOLDER_YAML_CPP_TARGET}
   caste
 )
 if(TARGET Boost::system)
