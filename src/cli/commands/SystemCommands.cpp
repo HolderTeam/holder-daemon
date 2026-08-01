@@ -127,7 +127,7 @@ int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {
   }
 
   if (follow) {
-#if defined(__linux__)
+#if !defined(_WIN32)
     const auto tail = boost::process::v2::environment::find_executable("tail");
     if (tail.empty()) {
       // LCOV_EXCL_START

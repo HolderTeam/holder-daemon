@@ -133,15 +133,16 @@ test_build() {
   local build_dir="${1:?}"
   local mode="${2:-split}"
   local serial_test_regex
+  local test_timeout="${HOLDER_CTEST_TIMEOUT:-30}"
 
   if [ "${mode}" = "single" ]; then
-    ctest --test-dir "${build_dir}" --output-on-failure --timeout 300
+    ctest --test-dir "${build_dir}" --output-on-failure --timeout "${HOLDER_CTEST_TIMEOUT:-300}"
     return
   fi
 
   serial_test_regex="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
-  ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout 30 -E "${serial_test_regex}"
-  ctest --test-dir "${build_dir}" --output-on-failure --timeout 30 -R "${serial_test_regex}"
+  ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout "${test_timeout}" -E "${serial_test_regex}"
+  ctest --test-dir "${build_dir}" --output-on-failure --timeout "${test_timeout}" -R "${serial_test_regex}"
 }
 
 san_all() {
