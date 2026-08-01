@@ -277,6 +277,9 @@ target_link_libraries(lockfile_tests PRIVATE
 if(TARGET Boost::system)
   target_link_libraries(lockfile_tests PRIVATE Boost::system)
 endif()
+if(TARGET Boost::process)
+  target_link_libraries(lockfile_tests PRIVATE Boost::process)
+endif()
 
 if(TARGET PkgConfig::LIBGIT2)
   target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBGIT2)
