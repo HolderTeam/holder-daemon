@@ -371,11 +371,13 @@ class DefaultSecretStore final : public SecretStore {
     }
     if (platform_keyring_supported()) {
       backend_ = std::make_unique<PlatformKeyringSecretBackend>();
-    } else {
+    } else { // LCOV_EXCL_LINE: exercised by no-platform-keyring builds.
+      // LCOV_EXCL_START
       backend_ = std::make_unique<EncryptedFileSecretBackend>(
           server_dir / kFallbackSecretsFilename,
           server_dir / kFallbackMasterKeyFilename
       );
+      // LCOV_EXCL_STOP
     }
   } // LCOV_EXCL_LINE
 

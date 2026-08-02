@@ -106,6 +106,21 @@ holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_error(
   };
 }
 
+holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_missing(
+    const holder::privacy::PlatformKeyringSecretRef&
+) {
+  return {.secret = std::nullopt, .error_message = std::nullopt};
+}
+
+holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_success(
+    const holder::privacy::PlatformKeyringSecretRef&
+) {
+  return {
+      .secret = holder::privacy::key_to_base64(holder::privacy::generate_random_key()),
+      .error_message = std::nullopt
+  };
+}
+
 bool is_thread_sanitizer_run() { return std::getenv("TSAN_OPTIONS") != nullptr; }
 
 } // namespace
@@ -571,6 +586,30 @@ TEST_CASE(
   } catch (const holder::privacy::PrivacyError& ex) {
     REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
   }
+}
+
+TEST_CASE(
+    "export_recovery_token maps platform keyring miss to KeyMaterialMissing",
+    "[privacy]"
+) {
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  PlatformKeyringLookupHookGuard hook_guard(&forced_keyring_lookup_missing);
+
+  try {
+    (void)holder::privacy::export_recovery_token("proj-platform-miss", "key-platform-miss", "1234");
+    FAIL("Expected missing key material error");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing);
+  }
+}
+
+TEST_CASE("export_recovery_token can read key material from platform keyring", "[privacy]") {
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  PlatformKeyringLookupHookGuard hook_guard(&forced_keyring_lookup_success);
+
+  const auto token =
+      holder::privacy::export_recovery_token("proj-platform-success", "key-platform-success", "1234");
+  REQUIRE_FALSE(token.empty());
 }
 #endif
 

@@ -151,11 +151,13 @@ std::string load_key_material(const std::string& project_id, const std::string& 
     return buffer.str();
   }
 
-  if (!platform_keyring_supported()) {
+  if (!platform_keyring_supported()) { // LCOV_EXCL_LINE: exercised by no-platform-keyring builds.
+    // LCOV_EXCL_START
     throw PrivacyError(
         PrivacyErrorCode::KeyringUnavailable,
         "platform keyring support not available and HOLDER_TEST_KEYSTORE_DIR not set"
     );
+    // LCOV_EXCL_STOP
   }
 
   const auto result = platform_keyring_lookup_secret(project_key_ref(project_id, key_id));

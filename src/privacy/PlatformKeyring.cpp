@@ -135,11 +135,11 @@ PlatformKeyringLookupResult libsecret_lookup_generic(
   // LCOV_EXCL_STOP
 }
 
+// LCOV_EXCL_START: direct libsecret lookup depends on host keyring services.
 PlatformKeyringLookupResult libsecret_lookup_project_key(
     const std::string& project_id,
     const std::string& key_id
 ) {
-  // LCOV_EXCL_START: direct libsecret lookup depends on host keyring services.
   GError* error = nullptr;
   gchar* secret = secret_password_lookup_sync(
       holder_project_key_schema(),
@@ -165,8 +165,8 @@ PlatformKeyringLookupResult libsecret_lookup_project_key(
   std::string out(secret);
   secret_password_free(secret);
   return {.secret = std::move(out), .error_message = std::nullopt};
-  // LCOV_EXCL_STOP
 }
+// LCOV_EXCL_STOP
 
 PlatformKeyringLookupResult libsecret_lookup_secret(const PlatformKeyringSecretRef& ref) {
   if (ref.kind == PlatformKeyringSecretKind::GenericSecret) {
@@ -180,7 +180,7 @@ PlatformKeyringLookupResult libsecret_lookup_secret(const PlatformKeyringSecretR
   if (!ref.project_id.has_value()) {
     return {.secret = std::nullopt, .error_message = missing_project_id_message()};
   }
-  return libsecret_lookup_project_key(ref.project_id.value(), ref.account);
+  return libsecret_lookup_project_key(ref.project_id.value(), ref.account); // LCOV_EXCL_LINE
 }
 
 // LCOV_EXCL_START: direct libsecret store/remove depends on host keyring services.
@@ -558,7 +558,7 @@ void platform_keyring_store_secret(
     return;
   }
 #if HOLDER_HAVE_LIBSECRET
-  libsecret_store_secret(ref, label, secret);
+  libsecret_store_secret(ref, label, secret); // LCOV_EXCL_LINE
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
   keychain_store_secret(ref, label, secret);
 #else
@@ -580,7 +580,7 @@ void platform_keyring_remove_secret(const PlatformKeyringSecretRef& ref) {
     return;
   }
 #if HOLDER_HAVE_LIBSECRET
-  libsecret_remove_secret(ref);
+  libsecret_remove_secret(ref); // LCOV_EXCL_LINE
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
   keychain_remove_secret(ref);
 #else
