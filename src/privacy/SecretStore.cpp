@@ -224,14 +224,12 @@ class PlatformKeyringSecretBackend final : public RawSecretBackend {
   }
 
   void remove(const std::string& service, const std::string& account) override {
-    platform_keyring_remove_secret(
-        PlatformKeyringSecretRef{
-            .kind = PlatformKeyringSecretKind::GenericSecret,
-            .service = service,
-            .account = account,
-            .project_id = std::nullopt,
-        }
-    );
+    platform_keyring_remove_secret(PlatformKeyringSecretRef{
+        .kind = PlatformKeyringSecretKind::GenericSecret,
+        .service = service,
+        .account = account,
+        .project_id = std::nullopt,
+    });
   }
 };
 

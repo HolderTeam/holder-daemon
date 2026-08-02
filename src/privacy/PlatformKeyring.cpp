@@ -280,8 +280,7 @@ void libsecret_remove_secret(const PlatformKeyringSecretRef& ref) {
 
 #if HOLDER_HAVE_MACOS_KEYCHAIN
 // LCOV_EXCL_START: direct Keychain calls depend on the host login keychain.
-template <typename T>
-class CfRef {
+template <typename T> class CfRef {
  public:
   explicit CfRef(T value = nullptr)
       : value_(value) {}

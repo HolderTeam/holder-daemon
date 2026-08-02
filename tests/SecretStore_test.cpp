@@ -84,9 +84,7 @@ std::optional<std::string> record_platform_remove(
   return std::nullopt;
 }
 
-std::optional<std::string> fail_platform_remove(
-    const holder::privacy::PlatformKeyringSecretRef&
-) {
+std::optional<std::string> fail_platform_remove(const holder::privacy::PlatformKeyringSecretRef&) {
   return std::string("forced remove failure");
 }
 #endif
@@ -319,14 +317,8 @@ TEST_CASE("SecretStore default platform backend stores and removes through keyri
   PlatformKeyringRemoveHookGuard remove_hook(&record_platform_remove);
 
   auto store = holder::privacy::make_default_secret_store(dir / "server");
-  store->set(
-      "holder.ai_provider_credentials",
-      "platform-provider",
-      "secret-value",
-      "sec****",
-      1,
-      2
-  );
+  store
+      ->set("holder.ai_provider_credentials", "platform-provider", "secret-value", "sec****", 1, 2);
 
   REQUIRE(recorded_store_ref.has_value());
   REQUIRE(recorded_store_ref->kind == holder::privacy::PlatformKeyringSecretKind::GenericSecret);

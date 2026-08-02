@@ -39,8 +39,7 @@
 
 namespace holder::test {
 
-template <typename Socket>
-inline void close_http_socket(Socket& socket) {
+template <typename Socket> inline void close_http_socket(Socket& socket) {
   boost::system::error_code ec;
   socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
   socket.close(ec);
@@ -48,10 +47,7 @@ inline void close_http_socket(Socket& socket) {
 
 class HttpServerThreadGuard {
  public:
-  HttpServerThreadGuard(
-      holder::api::HttpServer& server,
-      holder::core::SignalHandler& signals
-  )
+  HttpServerThreadGuard(holder::api::HttpServer& server, holder::core::SignalHandler& signals)
       : server_(server),
         signals_(signals),
         thread_([this]() {

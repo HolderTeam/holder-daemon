@@ -2,8 +2,8 @@
 
 using holder::test::ensure_uuid_seeded;
 using holder::test::EnvGuard;
-using holder::test::HttpServerThreadGuard;
 using holder::test::http_json_request;
+using holder::test::HttpServerThreadGuard;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
 using holder::test::wait_for_http_health_ready;

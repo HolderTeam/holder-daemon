@@ -90,31 +90,23 @@ class PlatformKeyringLookupHookGuard {
   }
 };
 
-std::optional<std::string> forced_keyring_store_error(
-    const holder::privacy::PlatformKeyringSecretRef&,
-    const std::string&
-) {
+std::optional<std::string>
+forced_keyring_store_error(const holder::privacy::PlatformKeyringSecretRef&, const std::string&) {
   return std::string("forced keyring store failure");
 }
 
-holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_error(
-    const holder::privacy::PlatformKeyringSecretRef&
-) {
-  return {
-      .secret = std::nullopt,
-      .error_message = std::string("forced keyring lookup failure")
-  };
+holder::privacy::PlatformKeyringLookupResult
+forced_keyring_lookup_error(const holder::privacy::PlatformKeyringSecretRef&) {
+  return {.secret = std::nullopt, .error_message = std::string("forced keyring lookup failure")};
 }
 
-holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_missing(
-    const holder::privacy::PlatformKeyringSecretRef&
-) {
+holder::privacy::PlatformKeyringLookupResult
+forced_keyring_lookup_missing(const holder::privacy::PlatformKeyringSecretRef&) {
   return {.secret = std::nullopt, .error_message = std::nullopt};
 }
 
-holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_success(
-    const holder::privacy::PlatformKeyringSecretRef&
-) {
+holder::privacy::PlatformKeyringLookupResult
+forced_keyring_lookup_success(const holder::privacy::PlatformKeyringSecretRef&) {
   return {
       .secret = holder::privacy::key_to_base64(holder::privacy::generate_random_key()),
       .error_message = std::nullopt
@@ -588,10 +580,7 @@ TEST_CASE(
   }
 }
 
-TEST_CASE(
-    "export_recovery_token maps platform keyring miss to KeyMaterialMissing",
-    "[privacy]"
-) {
+TEST_CASE("export_recovery_token maps platform keyring miss to KeyMaterialMissing", "[privacy]") {
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
   PlatformKeyringLookupHookGuard hook_guard(&forced_keyring_lookup_missing);
 
@@ -607,8 +596,11 @@ TEST_CASE("export_recovery_token can read key material from platform keyring", "
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
   PlatformKeyringLookupHookGuard hook_guard(&forced_keyring_lookup_success);
 
-  const auto token =
-      holder::privacy::export_recovery_token("proj-platform-success", "key-platform-success", "1234");
+  const auto token = holder::privacy::export_recovery_token(
+      "proj-platform-success",
+      "key-platform-success",
+      "1234"
+  );
   REQUIRE_FALSE(token.empty());
 }
 #endif
