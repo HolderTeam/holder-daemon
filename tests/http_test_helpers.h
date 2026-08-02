@@ -46,6 +46,38 @@ inline void close_http_socket(Socket& socket) {
   socket.close(ec);
 }
 
+class HttpServerThreadGuard {
+ public:
+  HttpServerThreadGuard(
+      holder::api::HttpServer& server,
+      holder::core::SignalHandler& signals
+  )
+      : server_(server),
+        signals_(signals),
+        thread_([this]() {
+          server_.run(signals_);
+        }) {}
+
+  ~HttpServerThreadGuard() { stop(); }
+
+  HttpServerThreadGuard(const HttpServerThreadGuard&) = delete;
+  HttpServerThreadGuard& operator=(const HttpServerThreadGuard&) = delete;
+
+  void stop() {
+    if (!thread_.joinable()) {
+      return;
+    }
+    signals_.request_stop(SIGTERM);
+    server_.stop();
+    thread_.join();
+  }
+
+ private:
+  holder::api::HttpServer& server_;
+  holder::core::SignalHandler& signals_;
+  std::thread thread_;
+};
+
 inline std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   auto pattern = (base / "holder_http_test_XXXXXX").string();
@@ -253,6 +285,8 @@ inline nlohmann::json http_json_request(
 
   close_http_socket(stream.socket());
 
+  INFO("HTTP " << method << " " << target << " returned " << res.result());
+  INFO("HTTP response body: " << res.body());
   REQUIRE(res.result() == expected);
   return nlohmann::json::parse(res.body());
 }

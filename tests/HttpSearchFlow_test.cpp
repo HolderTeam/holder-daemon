@@ -2,9 +2,11 @@
 
 using holder::test::ensure_uuid_seeded;
 using holder::test::EnvGuard;
+using holder::test::HttpServerThreadGuard;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
+using holder::test::wait_for_http_health_ready;
 
 TEST_CASE("HTTP search flow finds card and opens it", "[http]") {
   const auto dir = make_temp_dir();
@@ -30,13 +32,13 @@ TEST_CASE("HTTP search flow finds card and opens it", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-  nlohmann::json project_body = {{"name", "Search Project"}};
+  nlohmann::json project_body = {
+      {"name", "Search Project"},
+      {"privacy_mode", "plain"},
+  };
 
   const auto created_project = http_json_request(
       bound.bind,
@@ -112,6 +114,5 @@ TEST_CASE("HTTP search flow finds card and opens it", "[http]") {
   REQUIRE(fetched["data"]["title"] == "Searchable Card");
   REQUIRE(fetched["data"]["content"] == "unique search term");
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }
