@@ -389,7 +389,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects switchyard when configured", "[ht
   http::read(socket, buffer, res);
   REQUIRE(res.result() == http::status::ok);
   REQUIRE(res.body().find("\"provider\":\"switchyard\"") != std::string::npos);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);
@@ -512,7 +512,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects chadjeopardy when configured", "[
   http::read(socket, buffer, res);
   REQUIRE(res.result() == http::status::ok);
   REQUIRE(res.body().find("\"provider\":\"chadjeopardy\"") != std::string::npos);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);
@@ -634,7 +634,7 @@ TEST_CASE("HTTP ai runs cloud fallback selects mechatropic when configured", "[h
   http::read(socket, buffer, res);
   REQUIRE(res.result() == http::status::ok);
   REQUIRE(res.body().find("\"provider\":\"mechatropic\"") != std::string::npos);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   const auto runs = wait_for_project_run_to_finish(db, "proj-1");
   REQUIRE(runs.size() == 1);

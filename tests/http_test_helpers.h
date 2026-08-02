@@ -39,6 +39,13 @@
 
 namespace holder::test {
 
+template <typename Socket>
+inline void close_http_socket(Socket& socket) {
+  boost::system::error_code ec;
+  socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+  socket.close(ec);
+}
+
 inline std::filesystem::path make_temp_dir() {
   const auto base = std::filesystem::temp_directory_path();
   auto pattern = (base / "holder_http_test_XXXXXX").string();
@@ -97,8 +104,7 @@ inline nlohmann::json get_health(
   http::response<http::string_body> res;
   http::read(stream, buffer, res);
 
-  boost::system::error_code ec;
-  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+  close_http_socket(stream.socket());
 
   REQUIRE(res.result() == http::status::ok);
   return nlohmann::json::parse(res.body());
@@ -121,8 +127,7 @@ inline bool wait_for_http_listener(
       boost::beast::tcp_stream stream(ioc);
       stream.expires_after(std::chrono::milliseconds(200));
       stream.connect(endpoints);
-      boost::system::error_code ec;
-      stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+      close_http_socket(stream.socket());
       return true;
     } catch (const std::exception&) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -163,8 +168,7 @@ inline bool wait_for_http_health_ready(
       http::response<http::string_body> res;
       http::read(stream, buffer, res);
 
-      boost::system::error_code ec;
-      stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+      close_http_socket(stream.socket());
       if (res.result() == http::status::ok) {
         return true;
       }
@@ -247,8 +251,7 @@ inline nlohmann::json http_json_request(
   http::response<http::string_body> res;
   http::read(stream, buffer, res);
 
-  boost::system::error_code ec;
-  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+  close_http_socket(stream.socket());
 
   REQUIRE(res.result() == expected);
   return nlohmann::json::parse(res.body());
@@ -334,8 +337,7 @@ inline HttpResult http_request_raw(
   http::response<http::string_body> res;
   http::read(stream, buffer, res);
 
-  boost::system::error_code ec;
-  stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+  close_http_socket(stream.socket());
 
   HttpResult result;
   result.status = res.result();

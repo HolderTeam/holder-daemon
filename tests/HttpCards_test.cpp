@@ -1469,7 +1469,7 @@ TEST_CASE("HTTP card endpoints handle bad JSON and missing cards", "[http]") {
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
 
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   REQUIRE(res.result() == http::status::bad_request);
   const auto error = nlohmann::json::parse(res.body());

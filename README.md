@@ -23,10 +23,12 @@ Runtime/build dependencies used by this repo:
 - libsecret (required on Ubuntu for encryption/recovery flows and full test pass)
 
 `./make.sh` also handles the `caste` dependency:
+
 - Git clone: initializes submodule automatically.
 - ZIP download: fetches pinned `caste` archive (requires `curl` or `wget`).
 
 Coverage tooling (optional):
+
 - lcov (`lcov`, `genhtml`)
 
 Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
@@ -61,6 +63,8 @@ sudo apt install -y \
 ./make.sh
 ```
 
+Server will start at `127.0.0.1:11499` by default and print docs URL + auth token in the terminal log.
+
 ## Quick Start (FreeBSD)
 
 ```sh
@@ -72,7 +76,13 @@ sudo pkg install \
 ./make.sh
 ```
 
-Server will start at `127.0.0.1:11499` by default and print docs URL + auth token in the terminal log.
+## Quick Start (Mac OS)
+
+```sh
+brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c libsodium lcov
+
+./make.sh
+```
 
 ## macOS / Windows
 
