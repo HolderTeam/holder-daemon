@@ -5,9 +5,12 @@
 
 using holder::test::create_project;
 using holder::test::ensure_uuid_seeded;
+using holder::test::EnvGuard;
+using holder::test::HttpServerThreadGuard;
 using holder::test::http_json_request;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
+using holder::test::wait_for_http_health_ready;
 
 TEST_CASE("HTTP card create/get/patch", "[http]") {
   const auto dir = make_temp_dir();
@@ -326,6 +329,7 @@ TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[
 
   auto db = open_db_with_schema(db_path);
   ensure_uuid_seeded();
+  EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
@@ -340,10 +344,8 @@ TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 
   const auto project_root = dir / "enc_project_repo";
   const auto created_project = http_json_request(
@@ -400,8 +402,7 @@ TEST_CASE("HTTP card content stays plaintext over API for encrypted project", "[
   REQUIRE(raw.rfind("HolderPriv1\n", 0) == 0);
   REQUIRE(raw.find("this is secret plaintext") == std::string::npos);
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }
 
 TEST_CASE("HTTP card move intent endpoint", "[http]") {
