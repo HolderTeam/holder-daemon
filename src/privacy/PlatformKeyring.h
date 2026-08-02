@@ -2,12 +2,13 @@
 
 #include "privacy/PrivacyError.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
 namespace holder::privacy {
 
-enum class PlatformKeyringSecretKind {
+enum class PlatformKeyringSecretKind : std::uint8_t {
   GenericSecret,
   ProjectKey,
 };
