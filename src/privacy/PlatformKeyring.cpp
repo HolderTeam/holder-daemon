@@ -533,6 +533,9 @@ PlatformKeyringLookupResult platform_keyring_lookup_secret(const PlatformKeyring
   if (const auto hook = lookup_hook_storage()) {
     return hook(ref);
   }
+  if (ref.kind == PlatformKeyringSecretKind::ProjectKey && !ref.project_id.has_value()) {
+    return {.secret = std::nullopt, .error_message = missing_project_id_message()};
+  }
 #if HOLDER_HAVE_LIBSECRET
   return libsecret_lookup_secret(ref);
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
