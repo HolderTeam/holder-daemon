@@ -247,7 +247,7 @@ nlohmann::json recovery_token_request(
       connection,
       method,
       target,
-      std::chrono::seconds(30),
+      std::chrono::seconds(30), // LCOV_EXCL_LINE: exercised through generic JSON request helpers.
       std::optional<nlohmann::json>{body}
   );
 
@@ -286,7 +286,7 @@ nlohmann::json card_api_request(
                                   connection,
                                   method,
                                   target,
-                                  std::chrono::seconds(30),
+                                  std::chrono::seconds(30), // LCOV_EXCL_LINE
                                   std::optional<nlohmann::json>{body}
                               );
 

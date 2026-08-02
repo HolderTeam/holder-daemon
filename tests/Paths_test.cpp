@@ -4,6 +4,7 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "platform/BaseDir.h"
 #include "platform/Paths.h"
 
 #include <chrono>
@@ -88,6 +89,24 @@ TEST_CASE("Paths resolve uses XDG homes and app id", "[paths]") {
   REQUIRE(paths.data_dir == (xdg_root / "data" / "holder-test"));
   REQUIRE(paths.config_dir == (xdg_root / "config" / "holder-test"));
   REQUIRE(paths.cache_dir == (xdg_root / "cache" / "holder-test"));
+}
+
+TEST_CASE("BaseDir resolves home and ignores relative XDG homes", "[paths]") {
+  auto home = make_temp_dir("holder_basedir_home_");
+  EnvGuard home_env("HOME", home.string());
+  EnvGuard data_env("XDG_DATA_HOME", "relative-data");
+  EnvGuard config_env("XDG_CONFIG_HOME", "relative-config");
+  EnvGuard cache_env("XDG_CACHE_HOME", "relative-cache");
+
+  REQUIRE(XdgUtils::BaseDir::Home() == home.string());
+  REQUIRE(XdgUtils::BaseDir::XdgDataHome() == (home / ".local/share").string());
+  REQUIRE(XdgUtils::BaseDir::XdgConfigHome() == (home / ".config").string());
+  REQUIRE(XdgUtils::BaseDir::XdgCacheHome() == (home / ".cache").string());
+
+#ifndef _WIN32
+  EnvGuard empty_home("HOME", "");
+  REQUIRE_FALSE(XdgUtils::BaseDir::Home().empty());
+#endif
 }
 
 TEST_CASE("Paths info_path is derived from server_dir", "[paths]") {

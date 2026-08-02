@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <system_error>
 
-#include <XdgUtils/BaseDir/BaseDir.h>
+#include "platform/BaseDir.h"
 
 #ifndef _WIN32
 #include <sys/stat.h>

@@ -17,7 +17,6 @@ Runtime/build dependencies used by this repo:
 - nlohmann-json
 - spdlog
 - yaml-cpp
-- XdgUtils BaseDir
 - libgit2
 - md4c
 - libsodium
@@ -55,9 +54,20 @@ sudo apt install -y \
   libboost-system-dev libboost-filesystem-dev \
   libssl-dev \
   libsqlite3-dev nlohmann-json3-dev libspdlog-dev libyaml-cpp-dev \
-  libgit2-dev libmd4c-dev xdg-utils-cxx-dev catch2 libsodium-dev \
+  libgit2-dev libmd4c-dev catch2 libsodium-dev \
   libsecret-1-dev \
   lcov
+
+./make.sh
+```
+
+## Quick Start (FreeBSD)
+
+```sh
+sudo pkg install \
+  cmake ninja pkgconf git curl \
+  boost-libs openssl sqlite3 nlohmann-json spdlog yaml-cpp \
+  libgit2 md4c catch2 libsodium
 
 ./make.sh
 ```
@@ -76,6 +86,7 @@ Will need portability plan and testing, mainly around secrets since we need libs
 ## Useful Commands
 
 ```bash
+./make.sh --help          # list supported build/test commands
 ./make.sh                 # configure + build + tests + run holder
 ./make.sh Debug           # debug build
 ./make.sh perf-privacy    # run encrypted-card perf profile table

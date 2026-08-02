@@ -1,11 +1,52 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 MODE="${1:-default}"
 BUILD_TYPE="${2:-RelWithDebInfo}"
 CASTE_DIR="third_party/caste"
 CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
+
+print_usage() {
+  cat <<'EOF'
+Usage:
+  ./make.sh [command] [args...]
+  ./make.sh [BuildType]
+
+Commands:
+  help, -h, --help              Show this help
+  default                       Configure, build, run tests, then run holderd
+  [BuildType]                   Run the default flow with this CMAKE_BUILD_TYPE
+  perf-privacy [BuildType]      Run the encrypted-card perf profile table
+  coverage                      Build, run tests, and generate coverage reports
+  warnings [BuildType]          Build holderd and holderctl with warnings as errors
+  memcheck [test-regex]         Run Valgrind memcheck tests
+  san [sanitizers] [BuildType]  Run sanitizer build and tests
+  tidy                          Run clang-tidy through run-clang-tidy
+  format                        Format C++ source and test files
+  format-check                  Check C++ source and test formatting
+
+Examples:
+  ./make.sh
+  ./make.sh Debug
+  ./make.sh coverage
+  ./make.sh warnings Debug
+  ./make.sh san address,undefined
+  HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san
+
+Environment:
+  HOLDER_CTEST_TIMEOUT          Per-test timeout for normal split CTest runs
+  HOLDER_MEMCHECK_BUILD_TYPE    Build type for memcheck, default Debug
+  HOLDER_SAN_DETECT_LEAKS       Set to 1 to enable ASan leak detection
+EOF
+}
+
+case "${MODE}" in
+  help|-h|--help)
+    print_usage
+    exit 0
+    ;;
+esac
 
 download_caste_archive() {
   local tmp_dir archive_path
@@ -34,14 +75,14 @@ if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; th
   is_git_repo=true
 fi
 
-if [[ -f ".gitmodules" ]] && grep -q "third_party/caste" ".gitmodules"; then
-  if [[ "${is_git_repo}" == "true" ]]; then
+if [ -f ".gitmodules" ] && grep -q "third_party/caste" ".gitmodules"; then
+  if [ "${is_git_repo}" = "true" ]; then
     git submodule update --init --recursive -- third_party/caste
   fi
 fi
 
-if [[ ! -f "${CASTE_DIR}/CMakeLists.txt" ]]; then
-  if [[ "${is_git_repo}" == "true" ]]; then
+if [ ! -f "${CASTE_DIR}/CMakeLists.txt" ]; then
+  if [ "${is_git_repo}" = "true" ]; then
     echo "Missing dependency: ${CASTE_DIR}" >&2
     echo "Run: git submodule update --init --recursive -- third_party/caste" >&2
     exit 1
@@ -51,7 +92,7 @@ if [[ ! -f "${CASTE_DIR}/CMakeLists.txt" ]]; then
   download_caste_archive
 fi
 
-if [[ ! -f "${CASTE_DIR}/CMakeLists.txt" ]]; then
+if [ ! -f "${CASTE_DIR}/CMakeLists.txt" ]; then
   echo "Failed to prepare dependency at ${CASTE_DIR}" >&2
   exit 1
 fi
@@ -90,7 +131,6 @@ memcheck_all() {
   local valgrind_options
   local suppression_file
   local memcheck_skip_regex
-  local -a ctest_args
 
   if ! valgrind_bin="$(command -v valgrind)"; then
     echo "Missing dependency: valgrind is required for ./make.sh memcheck." >&2
@@ -114,32 +154,33 @@ memcheck_all() {
   fi
   cmake --build "${build_dir}" -- -j "${JOBS}"
 
-  ctest_args=(
-    --test-dir "${build_dir}"
-    -T memcheck
-    --output-on-failure
-    --timeout 300
-    -E "${memcheck_skip_regex}"
-  )
-  if [[ -n "${test_regex}" ]]; then
-    ctest_args+=(-R "${test_regex}")
+  if [ -n "${test_regex}" ]; then
+    ctest --test-dir "${build_dir}" \
+      -T memcheck \
+      --output-on-failure \
+      --timeout 300 \
+      -E "${memcheck_skip_regex}" \
+      -R "${test_regex}"
+  else
+    ctest --test-dir "${build_dir}" \
+      -T memcheck \
+      --output-on-failure \
+      --timeout 300 \
+      -E "${memcheck_skip_regex}"
   fi
-  ctest "${ctest_args[@]}"
 }
 
 test_build() {
   local build_dir="${1:?}"
   local mode="${2:-split}"
-  local serial_test_regex
+  local test_timeout="${HOLDER_CTEST_TIMEOUT:-30}"
 
-  if [[ "${mode}" == "single" ]]; then
-    ctest --test-dir "${build_dir}" --output-on-failure --timeout 300
+  if [ "${mode}" = "single" ]; then
+    ctest --test-dir "${build_dir}" --output-on-failure --timeout "${HOLDER_CTEST_TIMEOUT:-300}"
     return
   fi
 
-  serial_test_regex="HTTP /health returns ok with valid token|HTTP /health reports db_ok false when DB is closed|Listener serves card nudge and ai status routes without regression|Listener worker-owned DB handles support concurrent mixed request load"
-  ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout 30 -E "${serial_test_regex}"
-  ctest --test-dir "${build_dir}" --output-on-failure --timeout 30 -R "${serial_test_regex}"
+  ctest --test-dir "${build_dir}" --output-on-failure -j 8 --timeout "${test_timeout}"
 }
 
 san_all() {
@@ -152,11 +193,13 @@ san_all() {
   local test_mode="split"
   local tsan_use_setarch="OFF"
 
-  if [[ ",${sanitizers}," == *",thread,"* ]]; then
+  case ",${sanitizers}," in
+  *",thread,"*)
     catch_discovery="OFF"
     test_mode="single"
     tsan_use_setarch="ON"
-  fi
+    ;;
+  esac
 
   cmake -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
@@ -188,10 +231,6 @@ coverage_all() {
   local info_tests="${build_dir}/coverage-tests.info"
   local info_total="${build_dir}/coverage.info"
   local coverage_json="${report_dir}/coverage.json"
-  local -a lcov_capture_flags=(
-    --ignore-errors gcov,gcov
-    --rc geninfo_unexecuted_blocks=1
-  )
   local gcov_executable="gcov"
   if command -v gcov-13 >/dev/null 2>&1; then
     gcov_executable="gcov-13"
@@ -209,9 +248,13 @@ coverage_all() {
   cmake --build "${build_dir}" -- -j "${JOBS}"
 
   lcov --directory "${build_dir}" --zerocounters
-  lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}" "${lcov_capture_flags[@]}"
+  lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}" \
+    --ignore-errors gcov,gcov \
+    --rc geninfo_unexecuted_blocks=1
   ctest --test-dir "${build_dir}" --output-on-failure
-  lcov --capture --directory "${build_dir}" --output-file "${info_tests}" "${lcov_capture_flags[@]}"
+  lcov --capture --directory "${build_dir}" --output-file "${info_tests}" \
+    --ignore-errors gcov,gcov \
+    --rc geninfo_unexecuted_blocks=1
   lcov --add-tracefile "${info_base}" --add-tracefile "${info_tests}" --output-file "${info_total}"
   lcov --remove "${info_total}" \
     '/usr/*' \
@@ -247,7 +290,7 @@ tidy_all() {
   local source_regex
   local tidy_bin="clang-tidy"
   local gcc_version gcc_major
-  local -a tidy_extra_args=()
+  local tidy_extra_args=""
 
   source_regex="^${PWD}/(src|tests)/.*\\.(cpp|cc|cxx|h|hpp)$"
 
@@ -257,11 +300,11 @@ tidy_all() {
   if command -v g++ >/dev/null 2>&1; then
     gcc_version="$(g++ -dumpfullversion -dumpversion)"
     gcc_major="${gcc_version%%.*}"
-    if [[ -d "/usr/include/c++/${gcc_major}" ]]; then
-      tidy_extra_args+=("-extra-arg=-isystem/usr/include/c++/${gcc_major}")
+    if [ -d "/usr/include/c++/${gcc_major}" ]; then
+      tidy_extra_args="${tidy_extra_args} -extra-arg=-isystem/usr/include/c++/${gcc_major}"
     fi
-    if [[ -d "/usr/include/x86_64-linux-gnu/c++/${gcc_major}" ]]; then
-      tidy_extra_args+=("-extra-arg=-isystem/usr/include/x86_64-linux-gnu/c++/${gcc_major}")
+    if [ -d "/usr/include/x86_64-linux-gnu/c++/${gcc_major}" ]; then
+      tidy_extra_args="${tidy_extra_args} -extra-arg=-isystem/usr/include/x86_64-linux-gnu/c++/${gcc_major}"
     fi
   fi
 
@@ -273,15 +316,15 @@ tidy_all() {
     -clang-tidy-binary "${tidy_bin}" \
     -p "${build_dir}" \
     -quiet \
-    "${tidy_extra_args[@]}" \
+    ${tidy_extra_args} \
     "${source_regex}"
 }
 
 format_files() {
   local format_bin="clang-format"
   local mode="${1:?}"
-  local -a format_args=()
-  local -a files=()
+  local file_list
+  local status
 
   if command -v clang-format-18 >/dev/null 2>&1; then
     format_bin="clang-format-18"
@@ -289,10 +332,10 @@ format_files() {
 
   case "${mode}" in
     write)
-      format_args=(-i)
+      format_args="-i"
       ;;
     check)
-      format_args=(--dry-run --Werror)
+      format_args="--dry-run --Werror"
       ;;
     *)
       echo "Unknown format mode: ${mode}" >&2
@@ -300,22 +343,26 @@ format_files() {
       ;;
   esac
 
+  file_list="$(mktemp)"
   if command -v rg >/dev/null 2>&1; then
-    while IFS= read -r -d '' file; do
-      files+=("${file}")
-    done < <(rg --files -0 src tests -g '*.cpp' -g '*.cc' -g '*.cxx' -g '*.h' -g '*.hpp')
+    rg --files -0 src tests -g '*.cpp' -g '*.cc' -g '*.cxx' -g '*.h' -g '*.hpp' >"${file_list}" || true
   else
-    while IFS= read -r -d '' file; do
-      files+=("${file}")
-    done < <(find src tests \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' \) -print0)
+    find src tests \( -name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.h' -o -name '*.hpp' \) -print0 >"${file_list}"
   fi
 
-  if [[ "${#files[@]}" -eq 0 ]]; then
+  if [ ! -s "${file_list}" ]; then
+    rm -f "${file_list}"
     echo "No C++ files found to format." >&2
     return
   fi
 
-  "${format_bin}" "${format_args[@]}" "${files[@]}"
+  if xargs -0 "${format_bin}" ${format_args} <"${file_list}"; then
+    status=0
+  else
+    status=$?
+  fi
+  rm -f "${file_list}"
+  return "${status}"
 }
 
 case "${MODE}" in

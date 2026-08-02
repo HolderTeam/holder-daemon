@@ -308,7 +308,7 @@ void print_resource_row(const nlohmann::json& resource) {
 }
 
 void open_resource_uri(const std::string& uri) {
-#if defined(__linux__)
+#if !defined(_WIN32)
   const auto opener = boost::process::v2::environment::find_executable("xdg-open");
   if (opener.empty()) {
     std::cout << uri << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.

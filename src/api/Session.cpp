@@ -93,7 +93,7 @@ AsyncReadResult async_read_request(
       {
         std::lock_guard<std::mutex> lock(locked->mu);
         if (locked->done) {
-          return;
+          return; // LCOV_EXCL_LINE: defensive late-cancel race.
         }
         locked->cancel_requested = true;
       }
@@ -101,7 +101,7 @@ AsyncReadResult async_read_request(
         if (auto posted = weak_state.lock()) {
           std::lock_guard<std::mutex> lock(posted->mu);
           if (posted->done) {
-            return;
+            return; // LCOV_EXCL_LINE: defensive late-cancel race.
           }
           boost::system::error_code ec;
           ignore_result(posted->socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)
@@ -168,7 +168,7 @@ AsyncWriteResult async_write_response(
       {
         std::lock_guard<std::mutex> lock(locked->mu);
         if (locked->done) {
-          return;
+          return; // LCOV_EXCL_LINE: defensive late-cancel race.
         }
         locked->cancel_requested = true;
       }
@@ -176,7 +176,7 @@ AsyncWriteResult async_write_response(
         if (auto posted = weak_state.lock()) {
           std::lock_guard<std::mutex> lock(posted->mu);
           if (posted->done) {
-            return;
+            return; // LCOV_EXCL_LINE: defensive late-cancel race.
           }
           boost::system::error_code ec;
           ignore_result(posted->response.socket.cancel(ec)); // NOLINT(bugprone-unused-return-value)

@@ -14,6 +14,9 @@ add_executable(lock_helper
 target_include_directories(lock_helper PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
+target_link_libraries(lock_helper PRIVATE
+  Boost::filesystem
+)
 
 add_executable(lockfile_tests
   LockFile_test.cpp
@@ -137,6 +140,7 @@ add_executable(lockfile_tests
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
+  ../src/platform/BaseDir.cpp
   ../src/platform/Paths.cpp
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
@@ -264,14 +268,17 @@ target_link_libraries(lockfile_tests PRIVATE
   OpenSSL::Crypto
   PkgConfig::SQLITE3
   PkgConfig::SODIUM
+  Threads::Threads
   nlohmann_json::nlohmann_json
   spdlog::spdlog
-  XdgUtils::BaseDir
-  yaml-cpp
+  ${HOLDER_YAML_CPP_TARGET}
   caste
 )
 if(TARGET Boost::system)
   target_link_libraries(lockfile_tests PRIVATE Boost::system)
+endif()
+if(TARGET Boost::process)
+  target_link_libraries(lockfile_tests PRIVATE Boost::process)
 endif()
 
 if(TARGET PkgConfig::LIBGIT2)
