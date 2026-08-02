@@ -1,12 +1,9 @@
 #include "privacy/SecretStore.h"
 
 #include "privacy/CryptoService.h"
+#include "privacy/PlatformKeyring.h"
 
 #include <nlohmann/json.hpp>
-
-#if HOLDER_HAVE_LIBSECRET
-#include <libsecret/secret.h>
-#endif
 
 #include <array>
 #include <cctype>
@@ -196,154 +193,47 @@ class TestDirSecretBackend final : public RawSecretBackend {
   std::filesystem::path dir_;
 };
 
-#if HOLDER_HAVE_LIBSECRET
-// LCOV_EXCL_START: direct libsecret schema/backend calls depend on host keyring services.
-const SecretSchema* holder_secret_schema() {
-  static const SecretSchema schema = {
-      "org.holder.SecretStore",
-      SECRET_SCHEMA_NONE,
-      {
-          {"service", SECRET_SCHEMA_ATTRIBUTE_STRING},
-          {"account", SECRET_SCHEMA_ATTRIBUTE_STRING},
-          {nullptr, static_cast<SecretSchemaAttributeType>(0)},
-      },
-      0,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr
-  };
-  return &schema;
-}
-// LCOV_EXCL_STOP
-
-LibsecretApiLookupHook& libsecret_api_lookup_hook_storage() {
-  static LibsecretApiLookupHook hook = nullptr;
-  return hook;
-}
-
-LibsecretLookupResult default_libsecret_lookup(
-    const std::string& service,
-    const std::string& account
-) {
-  if (const auto hook = libsecret_api_lookup_hook_storage(); hook != nullptr) {
-    const auto result = hook(service, account);
-    return {.secret = result.secret, .error_message = result.error_message};
-  }
-  // LCOV_EXCL_START: exercised via low-level seam tests; real libsecret calls depend on host
-  // keyring state.
-  GError* error = nullptr;
-  gchar* secret = secret_password_lookup_sync(
-      holder_secret_schema(),
-      nullptr,
-      &error,
-      "service",
-      service.c_str(),
-      "account",
-      account.c_str(),
-      nullptr
-  );
-  if (!secret) {
-    std::optional<std::string> message;
-    if (error) {
-      message = "secret lookup failed in libsecret";
-      if (error->message) {
-        *message += ": ";
-        *message += error->message;
-      }
-      g_error_free(error);
-    }
-    return {.secret = std::nullopt, .error_message = std::move(message)};
-  }
-  std::string out(secret);
-  secret_password_free(secret);
-  return {.secret = std::move(out), .error_message = std::nullopt};
-  // LCOV_EXCL_STOP
-}
-
-LibsecretLookupHook& libsecret_lookup_hook_storage() {
-  static LibsecretLookupHook hook = nullptr;
-  return hook;
-}
-
-LibsecretLookupResult run_libsecret_lookup(const std::string& service, const std::string& account) {
-  if (const auto hook = libsecret_lookup_hook_storage()) {
-    return hook(service, account);
-  }
-  return default_libsecret_lookup(service, account);
-}
-
-class LibsecretSecretBackend final : public RawSecretBackend {
+class PlatformKeyringSecretBackend final : public RawSecretBackend {
  public:
   std::optional<std::string> get(const std::string& service, const std::string& account)
       const override {
-    const auto result = run_libsecret_lookup(service, account);
+    const auto result = platform_keyring_lookup_secret(PlatformKeyringSecretRef{
+        .kind = PlatformKeyringSecretKind::GenericSecret,
+        .service = service,
+        .account = account,
+        .project_id = std::nullopt,
+    });
     if (result.error_message.has_value()) {
       throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, *result.error_message);
     }
     return result.secret;
   }
 
-  // LCOV_EXCL_START: direct libsecret store depends on host keyring services.
   void set(const std::string& service, const std::string& account, const std::string& secret)
       override {
-    GError* error = nullptr;
-    const bool ok = secret_password_store_sync(
-        holder_secret_schema(),
-        SECRET_COLLECTION_DEFAULT,
-        ("Holder secret " + service + "/" + account).c_str(),
-        secret.c_str(),
-        nullptr,
-        &error,
-        "service",
-        service.c_str(),
-        "account",
-        account.c_str(),
-        nullptr
+    platform_keyring_store_secret(
+        PlatformKeyringSecretRef{
+            .kind = PlatformKeyringSecretKind::GenericSecret,
+            .service = service,
+            .account = account,
+            .project_id = std::nullopt,
+        },
+        "Holder secret " + service + "/" + account,
+        secret
     );
-    if (!ok) {
-      std::string message = "failed to store secret in libsecret";
-      if (error && error->message) {
-        message += ": ";
-        message += error->message;
-      }
-      if (error) {
-        g_error_free(error);
-      }
-      throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
-    }
   }
-  // LCOV_EXCL_STOP
 
-  // LCOV_EXCL_START: direct libsecret clear depends on host keyring services.
   void remove(const std::string& service, const std::string& account) override {
-    GError* error = nullptr;
-    const bool ok = secret_password_clear_sync(
-        holder_secret_schema(),
-        nullptr,
-        &error,
-        "service",
-        service.c_str(),
-        "account",
-        account.c_str(),
-        nullptr
+    platform_keyring_remove_secret(
+        PlatformKeyringSecretRef{
+            .kind = PlatformKeyringSecretKind::GenericSecret,
+            .service = service,
+            .account = account,
+            .project_id = std::nullopt,
+        }
     );
-    if (!ok && error) {
-      std::string message = "failed to remove secret from libsecret";
-      if (error->message) {
-        message += ": ";
-        message += error->message;
-      }
-      g_error_free(error);
-      throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
-    }
   }
-  // LCOV_EXCL_STOP
 };
-#endif
 
 std::array<unsigned char, kPrivacyKeyBytes> load_or_create_master_key(
     const std::filesystem::path& key_path
@@ -479,14 +369,14 @@ class DefaultSecretStore final : public SecretStore {
       backend_ = std::make_unique<TestDirSecretBackend>(std::filesystem::path(test_dir));
       return;
     }
-#if HOLDER_HAVE_LIBSECRET
-    backend_ = std::make_unique<LibsecretSecretBackend>();
-#else
-    backend_ = std::make_unique<EncryptedFileSecretBackend>(
-        server_dir / kFallbackSecretsFilename,
-        server_dir / kFallbackMasterKeyFilename
-    );
-#endif
+    if (platform_keyring_supported()) {
+      backend_ = std::make_unique<PlatformKeyringSecretBackend>();
+    } else {
+      backend_ = std::make_unique<EncryptedFileSecretBackend>(
+          server_dir / kFallbackSecretsFilename,
+          server_dir / kFallbackMasterKeyFilename
+      );
+    }
   } // LCOV_EXCL_LINE
 
   std::optional<StoredSecret> get(const std::string& service, const std::string& account)
@@ -545,15 +435,5 @@ std::unique_ptr<SecretStore> make_encrypted_file_secret_store_for_tests(
       )
   );
 }
-
-#if HOLDER_HAVE_LIBSECRET
-void secret_store_set_libsecret_lookup_hook_for_tests(LibsecretLookupHook hook) {
-  libsecret_lookup_hook_storage() = hook;
-}
-
-void secret_store_set_libsecret_api_lookup_hook_for_tests(LibsecretApiLookupHook hook) {
-  libsecret_api_lookup_hook_storage() = hook;
-}
-#endif
 
 } // namespace holder::privacy

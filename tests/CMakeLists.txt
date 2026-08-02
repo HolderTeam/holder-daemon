@@ -212,6 +212,7 @@ add_executable(lockfile_tests
   ../src/git/ExecutorGitOps.cpp
   ../src/git/RepoSyncMetrics.cpp
   ../src/privacy/ProjectPrivacy.cpp
+  ../src/privacy/PlatformKeyring.cpp
   ../src/privacy/SecretStore.cpp
   ../src/privacy/CryptoService.cpp
   ../src/sync/ProjectSyncPolicy.cpp
@@ -293,6 +294,15 @@ if(TARGET PkgConfig::LIBSECRET)
   target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=1)
 else()
   target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=0)
+endif()
+target_compile_definitions(lockfile_tests PRIVATE
+  HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
+)
+if(HOLDER_HAVE_MACOS_KEYCHAIN)
+  target_link_libraries(lockfile_tests PRIVATE
+    "${HOLDER_SECURITY_FRAMEWORK}"
+    "${HOLDER_COREFOUNDATION_FRAMEWORK}"
+  )
 endif()
 
 set(HOLDER_TEST_ENVIRONMENT

@@ -2,6 +2,7 @@
 #include "http_test_helpers.h"
 #include "model/Project.h"
 #include "privacy/CryptoService.h"
+#include "privacy/PlatformKeyring.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 
@@ -66,6 +67,44 @@ class EnvUnsetGuard {
   bool had_old_ = false;
   std::string old_;
 };
+
+class PlatformKeyringStoreHookGuard {
+ public:
+  explicit PlatformKeyringStoreHookGuard(holder::privacy::PlatformKeyringStoreHook hook) {
+    holder::privacy::platform_keyring_set_store_hook_for_tests(hook);
+  }
+
+  ~PlatformKeyringStoreHookGuard() {
+    holder::privacy::platform_keyring_set_store_hook_for_tests(nullptr);
+  }
+};
+
+class PlatformKeyringLookupHookGuard {
+ public:
+  explicit PlatformKeyringLookupHookGuard(holder::privacy::PlatformKeyringLookupHook hook) {
+    holder::privacy::platform_keyring_set_lookup_hook_for_tests(hook);
+  }
+
+  ~PlatformKeyringLookupHookGuard() {
+    holder::privacy::platform_keyring_set_lookup_hook_for_tests(nullptr);
+  }
+};
+
+std::optional<std::string> forced_keyring_store_error(
+    const holder::privacy::PlatformKeyringSecretRef&,
+    const std::string&
+) {
+  return std::string("forced keyring store failure");
+}
+
+holder::privacy::PlatformKeyringLookupResult forced_keyring_lookup_error(
+    const holder::privacy::PlatformKeyringSecretRef&
+) {
+  return {
+      .secret = std::nullopt,
+      .error_message = std::string("forced keyring lookup failure")
+  };
+}
 
 bool is_thread_sanitizer_run() { return std::getenv("TSAN_OPTIONS") != nullptr; }
 
@@ -483,13 +522,9 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "ensure_project_key_material reports keyring unavailable when libsecret cannot be reached",
+    "ensure_project_key_material reports keyring unavailable when platform keyring store fails",
     "[privacy]"
 ) {
-  if (is_thread_sanitizer_run()) {
-    SKIP("Real libsecret failure path starts GLib/GDBus helper threads that are noisy under TSan");
-  }
-
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
@@ -505,7 +540,7 @@ TEST_CASE(
   repo.create(project);
 
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
-  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+  PlatformKeyringStoreHookGuard hook_guard(&forced_keyring_store_error);
 
   try {
     (void
@@ -518,22 +553,18 @@ TEST_CASE(
   }
 }
 
-#if HOLDER_HAVE_LIBSECRET
+#if HOLDER_HAVE_LIBSECRET || HOLDER_HAVE_MACOS_KEYCHAIN
 TEST_CASE(
-    "export_recovery_token maps missing libsecret key material to KeyMaterialMissing",
+    "export_recovery_token maps platform keyring lookup failure to KeyMaterialMissing",
     "[privacy]"
 ) {
-  if (is_thread_sanitizer_run()) {
-    SKIP("Real libsecret failure path starts GLib/GDBus helper threads that are noisy under TSan");
-  }
-
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
-  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+  PlatformKeyringLookupHookGuard hook_guard(&forced_keyring_lookup_error);
 
   try {
     (void)holder::privacy::export_recovery_token(
-        "proj-libsecret-missing",
-        "key-libsecret-missing",
+        "proj-platform-missing",
+        "key-platform-missing",
         "1234"
     );
     FAIL("Expected missing key material error");
@@ -589,10 +620,10 @@ TEST_CASE("import_recovery_token rethrows non-token privacy errors", "[privacy]"
     );
   }
 
-  // Import with libsecret path forced and unreachable so store_key_material throws
+  // Import with platform keyring storage forced to fail so store_key_material throws
   // KeyringUnavailable.
   EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
-  holder::test::EnvGuard bad_bus("DBUS_SESSION_BUS_ADDRESS", "unix:path=/tmp/holder-no-such-bus");
+  PlatformKeyringStoreHookGuard hook_guard(&forced_keyring_store_error);
 
   try {
     holder::privacy::import_recovery_token(repo, project.project_id, "1234", token, 3);
