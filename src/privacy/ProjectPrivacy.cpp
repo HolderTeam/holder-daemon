@@ -173,6 +173,7 @@ void store_key_material(
     throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
   }
 #else
+  (void)project_id;
   throw PrivacyError(
       PrivacyErrorCode::KeyringUnavailable,
       "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"
@@ -222,6 +223,7 @@ std::string load_key_material(const std::string& project_id, const std::string& 
   secret_password_free(secret); // LCOV_EXCL_LINE
   return out; // LCOV_EXCL_LINE
 #else
+  (void)project_id;
   throw PrivacyError(
       PrivacyErrorCode::KeyringUnavailable,
       "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"

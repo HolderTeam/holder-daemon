@@ -223,7 +223,9 @@ static int git_credential_acquire_cb(
 }
 
 static git_remote_callbacks make_remote_callbacks() {
-  git_remote_callbacks callbacks = GIT_REMOTE_CALLBACKS_INIT;
+  git_remote_callbacks callbacks{};
+  const int rc = git_remote_init_callbacks(&callbacks, GIT_REMOTE_CALLBACKS_VERSION);
+  if (rc != 0) throw git_err("git_remote_init_callbacks failed", rc); // LCOV_EXCL_LINE
   callbacks.credentials = git_credential_acquire_cb;
   return callbacks;
 }
@@ -270,7 +272,9 @@ static void checkout_commit_oid(git_repository* repo, const git_oid& oid) {
   int rc = git_object_lookup(&commit_obj, repo, &oid, GIT_OBJECT_COMMIT);
   if (rc != 0) throw git_err("git_object_lookup failed", rc);
 
-  git_checkout_options checkout_opts = GIT_CHECKOUT_OPTIONS_INIT;
+  git_checkout_options checkout_opts{};
+  rc = git_checkout_options_init(&checkout_opts, GIT_CHECKOUT_OPTIONS_VERSION);
+  if (rc != 0) throw git_err("git_checkout_options_init failed", rc); // LCOV_EXCL_LINE
   checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE | GIT_CHECKOUT_RECREATE_MISSING;
   rc = git_checkout_tree(repo, commit_obj, &checkout_opts);
   git_object_free(commit_obj);
@@ -316,7 +320,9 @@ void GitRepo::open_or_init(const fs::path& repo_dir) {
   }
 
   // Otherwise init
-  git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+  git_repository_init_options opts{};
+  rc = git_repository_init_options_init(&opts, GIT_REPOSITORY_INIT_OPTIONS_VERSION);
+  if (rc != 0) throw git_err("git_repository_init_options_init failed", rc); // LCOV_EXCL_LINE
   opts.flags = GIT_REPOSITORY_INIT_MKPATH; // make dirs
   opts.mode = GIT_REPOSITORY_INIT_SHARED_UMASK;
 
@@ -678,7 +684,9 @@ PushResult GitRepo::push_branch(
   const std::string refspec_text = "HEAD:refs/heads/" + resolved_branch;
   char* strings[] = {const_cast<char*>(refspec_text.c_str())};
   git_strarray refspecs{strings, 1};
-  git_push_options push_opts = GIT_PUSH_OPTIONS_INIT;
+  git_push_options push_opts{};
+  rc = git_push_options_init(&push_opts, GIT_PUSH_OPTIONS_VERSION);
+  if (rc != 0) throw git_err("git_push_options_init failed", rc); // LCOV_EXCL_LINE
   push_opts.callbacks = make_remote_callbacks();
   rc = git_remote_push(remote, &refspecs, &push_opts);
   if (rc != 0) {
@@ -722,7 +730,9 @@ void GitRepo::pull_remote_ff_only(const std::string& name) {
   int rc = git_remote_lookup(&remote, repo, name.c_str());
   if (rc != 0) throw git_err("git_remote_lookup failed", rc);
 
-  git_fetch_options fetch_opts = GIT_FETCH_OPTIONS_INIT;
+  git_fetch_options fetch_opts{};
+  rc = git_fetch_options_init(&fetch_opts, GIT_FETCH_OPTIONS_VERSION);
+  if (rc != 0) throw git_err("git_fetch_options_init failed", rc); // LCOV_EXCL_LINE
   fetch_opts.callbacks = make_remote_callbacks();
   rc = git_remote_fetch(remote, nullptr, &fetch_opts, nullptr);
   if (rc != 0) {
