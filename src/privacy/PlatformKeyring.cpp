@@ -177,9 +177,6 @@ PlatformKeyringLookupResult libsecret_lookup_secret(const PlatformKeyringSecretR
     return libsecret_lookup_generic(ref.service, ref.account);
   }
 
-  if (!ref.project_id.has_value()) {
-    return {.secret = std::nullopt, .error_message = missing_project_id_message()};
-  }
   return libsecret_lookup_project_key(ref.project_id.value(), ref.account); // LCOV_EXCL_LINE
 }
 
