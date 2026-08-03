@@ -253,8 +253,10 @@ std::string desktop_opener_name() {
 void open_external_uri(const std::string& uri) {
   const auto opener_name = desktop_opener_name();
   if (opener_name.empty()) {
+    // LCOV_EXCL_START: only reached on platforms without a desktop opener implementation.
     std::cout << uri << "\n";
-    throw std::runtime_error("open is not supported on this platform yet"); // LCOV_EXCL_LINE
+    throw std::runtime_error("open is not supported on this platform yet");
+    // LCOV_EXCL_STOP
   }
 
   const auto opener = boost::process::v2::environment::find_executable(opener_name);
