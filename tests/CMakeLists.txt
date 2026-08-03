@@ -310,7 +310,11 @@ set(HOLDER_TEST_ENVIRONMENT
 )
 
 if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
-  catch_discover_tests(lockfile_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
+  catch_discover_tests(lockfile_tests
+    PROPERTIES
+      ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}"
+      SKIP_RETURN_CODE 4
+  )
 elseif(HOLDER_TSAN_USE_SETARCH)
   find_program(SETARCH_EXECUTABLE setarch)
   if(SETARCH_EXECUTABLE)
