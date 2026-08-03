@@ -70,7 +70,7 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
     boost::beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(socket, buffer, res);
-    socket.shutdown(tcp::socket::shutdown_both);
+    holder::test::close_http_socket(socket);
 
     return res.result();
   };
@@ -109,7 +109,7 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
     boost::beast::flat_buffer buffer;
     http::response<http::string_body> res;
     http::read(socket, buffer, res);
-    socket.shutdown(tcp::socket::shutdown_both);
+    holder::test::close_http_socket(socket);
 
     return res.result();
   };

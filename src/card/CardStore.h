@@ -51,7 +51,6 @@ class CardStore {
  private:
   holder::model::Project require_project(const std::string& project_id);
 
-  holder::platform::Db& db_;
   holder::core::Fs* fs_ = nullptr;
   holder::git::GitOps* git_ = nullptr;
   CardRepo card_repo_;

@@ -29,7 +29,9 @@ void init_bare_repo(const std::filesystem::path& repo_path) {
   git_libgit2_init();
   std::filesystem::create_directories(repo_path.parent_path());
   git_repository* repo = nullptr;
-  git_repository_init_options opts = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+  git_repository_init_options opts{};
+  const int init_rc = git_repository_init_options_init(&opts, GIT_REPOSITORY_INIT_OPTIONS_VERSION);
+  REQUIRE(init_rc == 0);
   opts.flags = GIT_REPOSITORY_INIT_BARE | GIT_REPOSITORY_INIT_MKPATH;
   const int rc = git_repository_init_ext(&repo, repo_path.string().c_str(), &opts);
   INFO("git_repository_init rc=" << rc);

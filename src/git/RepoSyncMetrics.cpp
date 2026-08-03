@@ -99,7 +99,9 @@ RepoSyncMetrics inspect_repo_sync_metrics(
     throw git_err("git_repository_open failed", rc);
   }
 
-  git_status_options status_opts = GIT_STATUS_OPTIONS_INIT;
+  git_status_options status_opts{};
+  rc = git_status_options_init(&status_opts, GIT_STATUS_OPTIONS_VERSION);
+  if (rc != 0) throw git_err("git_status_options_init failed", rc); // LCOV_EXCL_LINE
   status_opts.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
   status_opts.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS |
                       GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX;

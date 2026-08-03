@@ -1,6 +1,7 @@
 #include "cli/commands/Commands.h"
 
 #include "cli/commands/Common.h"
+#include "cli/commands/Support.h"
 
 #include <boost/asio.hpp>
 #include <boost/process/v2/environment.hpp>
@@ -42,32 +43,8 @@ int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]) {
     return 0;
   }
 
-#if !defined(_WIN32)
-  const auto opener = boost::process::v2::environment::find_executable("xdg-open");
-  if (opener.empty()) {
-    std::cout << url << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.
-    throw std::runtime_error("xdg-open not found"); // LCOV_EXCL_LINE
-  }
-
-  boost::asio::io_context ioc;
-  boost::process::v2::process proc(ioc.get_executor(), opener, {url});
-
-  boost::system::error_code ec;
-  const int exit_code = proc.wait(ec);
-  if (ec) {
-    std::cout << url << "\n"; // LCOV_EXCL_LINE: requires process wait syscall failure.
-    throw std::runtime_error("Failed to run xdg-open: " + ec.message()); // LCOV_EXCL_LINE
-  }
-  if (exit_code != 0) {
-    std::cout << url << "\n";
-    throw std::runtime_error("xdg-open failed with exit code " + std::to_string(exit_code));
-  }
+  open_external_uri(url);
   return 0;
-#else
-  std::cout << url << "\n";
-  throw std::runtime_error("openapi browser launch is not supported on this platform yet"
-  ); // LCOV_EXCL_LINE
-#endif
 }
 
 int command_restart() {

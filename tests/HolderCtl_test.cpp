@@ -126,6 +126,14 @@ void write_fake_xdg_open(const std::filesystem::path& path) {
   ::chmod(path.c_str(), S_IRWXU);
 }
 
+std::string desktop_opener_name_for_tests() {
+#if defined(__APPLE__)
+  return "open";
+#else
+  return "xdg-open";
+#endif
+}
+
 void write_fake_editor(const std::filesystem::path& path) {
   std::ofstream out(path);
   out << "#!/bin/sh\n"
@@ -2260,7 +2268,7 @@ TEST_CASE("holderctl logs rejects unknown options", "[holderctl]") {
 }
 
 #ifndef _WIN32
-TEST_CASE("holderctl resource open invokes xdg-open for resource URI", "[holderctl]") {
+TEST_CASE("holderctl resource open invokes desktop opener for resource URI", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -2299,7 +2307,7 @@ TEST_CASE("holderctl resource open invokes xdg-open for resource URI", "[holderc
 
   const auto fake_bin = xdg_root / "bin";
   std::filesystem::create_directories(fake_bin);
-  write_fake_xdg_open(fake_bin / "xdg-open");
+  write_fake_xdg_open(fake_bin / desktop_opener_name_for_tests());
 
   const auto args_path = xdg_root / "xdg-open.args";
   const char* old_path = std::getenv("PATH");
@@ -2336,7 +2344,7 @@ TEST_CASE("holderctl resource open invokes xdg-open for resource URI", "[holderc
   server_thread.join();
 }
 
-TEST_CASE("holderctl openapi opens Swagger docs with xdg-open", "[holderctl]") {
+TEST_CASE("holderctl openapi opens Swagger docs with desktop opener", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -2348,7 +2356,7 @@ TEST_CASE("holderctl openapi opens Swagger docs with xdg-open", "[holderctl]") {
 
   const auto fake_bin = xdg_root / "bin";
   std::filesystem::create_directories(fake_bin);
-  write_fake_xdg_open(fake_bin / "xdg-open");
+  write_fake_xdg_open(fake_bin / desktop_opener_name_for_tests());
 
   const auto args_path = xdg_root / "xdg-open.args";
   const char* old_path = std::getenv("PATH");
@@ -2363,7 +2371,7 @@ TEST_CASE("holderctl openapi opens Swagger docs with xdg-open", "[holderctl]") {
   REQUIRE(read_text(args_path) == "http://127.0.0.1:12345/docs\n");
 }
 
-TEST_CASE("holderctl openapi reports xdg-open failure", "[holderctl]") {
+TEST_CASE("holderctl openapi reports desktop opener failure", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -2371,7 +2379,7 @@ TEST_CASE("holderctl openapi reports xdg-open failure", "[holderctl]") {
 
   const auto fake_bin = xdg_root / "bin";
   std::filesystem::create_directories(fake_bin);
-  write_fake_xdg_open(fake_bin / "xdg-open");
+  write_fake_xdg_open(fake_bin / desktop_opener_name_for_tests());
 
   const auto args_path = xdg_root / "xdg-open.args";
   const char* old_path = std::getenv("PATH");

@@ -3,8 +3,10 @@
 using holder::test::ensure_uuid_seeded;
 using holder::test::EnvGuard;
 using holder::test::http_json_request;
+using holder::test::HttpServerThreadGuard;
 using holder::test::make_temp_dir;
 using holder::test::open_db_with_schema;
+using holder::test::wait_for_http_health_ready;
 
 TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   const auto dir = make_temp_dir();
@@ -30,11 +32,8 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(wait_for_http_health_ready(bound.bind, bound.port, token));
 
   const auto initial_projects = http_json_request(
       bound.bind,
@@ -48,7 +47,10 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   REQUIRE(initial_projects["ok"] == true);
   REQUIRE(initial_projects["data"].is_array());
 
-  nlohmann::json project_body = {{"name", "First Project"}};
+  nlohmann::json project_body = {
+      {"name", "First Project"},
+      {"privacy_mode", "plain"},
+  };
 
   const auto created_project = http_json_request(
       bound.bind,
@@ -108,6 +110,5 @@ TEST_CASE("HTTP first-run flow creates project and card", "[http]") {
   REQUIRE(fetched["data"]["title"] == "First Card");
   REQUIRE(fetched["data"]["content"] == "hello");
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }

@@ -2,6 +2,7 @@
 #include "ai/AiProviderCredentialRepo.h"
 #include "http_test_helpers.h"
 #include "platform/Db.h"
+#include "privacy/PlatformKeyring.h"
 #include "privacy/SecretStore.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -9,6 +10,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <string>
 
 namespace {
 
@@ -37,6 +40,54 @@ class EnvUnsetGuard {
   bool had_old_ = false;
   std::string old_;
 };
+
+#if HOLDER_HAVE_LIBSECRET || HOLDER_HAVE_MACOS_KEYCHAIN
+class PlatformKeyringStoreHookGuard {
+ public:
+  explicit PlatformKeyringStoreHookGuard(holder::privacy::PlatformKeyringStoreHook hook) {
+    holder::privacy::platform_keyring_set_store_hook_for_tests(hook);
+  }
+
+  ~PlatformKeyringStoreHookGuard() {
+    holder::privacy::platform_keyring_set_store_hook_for_tests(nullptr);
+  }
+};
+
+class PlatformKeyringRemoveHookGuard {
+ public:
+  explicit PlatformKeyringRemoveHookGuard(holder::privacy::PlatformKeyringRemoveHook hook) {
+    holder::privacy::platform_keyring_set_remove_hook_for_tests(hook);
+  }
+
+  ~PlatformKeyringRemoveHookGuard() {
+    holder::privacy::platform_keyring_set_remove_hook_for_tests(nullptr);
+  }
+};
+
+std::optional<holder::privacy::PlatformKeyringSecretRef> recorded_store_ref;
+std::optional<holder::privacy::PlatformKeyringSecretRef> recorded_remove_ref;
+std::string recorded_store_secret;
+
+std::optional<std::string> record_platform_store(
+    const holder::privacy::PlatformKeyringSecretRef& ref,
+    const std::string& secret
+) {
+  recorded_store_ref = ref;
+  recorded_store_secret = secret;
+  return std::nullopt;
+}
+
+std::optional<std::string> record_platform_remove(
+    const holder::privacy::PlatformKeyringSecretRef& ref
+) {
+  recorded_remove_ref = ref;
+  return std::nullopt;
+}
+
+std::optional<std::string> fail_platform_remove(const holder::privacy::PlatformKeyringSecretRef&) {
+  return std::string("forced remove failure");
+}
+#endif
 
 } // namespace
 
@@ -254,6 +305,65 @@ TEST_CASE(
       store_again->get("holder.ai_provider_credentials", "fallback-metadata-only").has_value()
   );
 }
+
+#if HOLDER_HAVE_LIBSECRET || HOLDER_HAVE_MACOS_KEYCHAIN
+TEST_CASE("SecretStore default platform backend stores and removes through keyring", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  recorded_store_ref.reset();
+  recorded_remove_ref.reset();
+  recorded_store_secret.clear();
+  PlatformKeyringStoreHookGuard store_hook(&record_platform_store);
+  PlatformKeyringRemoveHookGuard remove_hook(&record_platform_remove);
+
+  auto store = holder::privacy::make_default_secret_store(dir / "server");
+  store
+      ->set("holder.ai_provider_credentials", "platform-provider", "secret-value", "sec****", 1, 2);
+
+  REQUIRE(recorded_store_ref.has_value());
+  REQUIRE(recorded_store_ref->kind == holder::privacy::PlatformKeyringSecretKind::GenericSecret);
+  REQUIRE(recorded_store_ref->service == "holder.ai_provider_credentials");
+  REQUIRE(recorded_store_ref->account == "platform-provider");
+  REQUIRE_FALSE(recorded_store_ref->project_id.has_value());
+  REQUIRE(recorded_store_secret == "secret-value");
+  REQUIRE(store->list("holder.ai_provider_credentials").size() == 1);
+
+  store->remove("holder.ai_provider_credentials", "platform-provider");
+  REQUIRE(recorded_remove_ref.has_value());
+  REQUIRE(recorded_remove_ref->kind == holder::privacy::PlatformKeyringSecretKind::GenericSecret);
+  REQUIRE(recorded_remove_ref->service == "holder.ai_provider_credentials");
+  REQUIRE(recorded_remove_ref->account == "platform-provider");
+  REQUIRE(store->list("holder.ai_provider_credentials").empty());
+}
+
+TEST_CASE("SecretStore platform backend remove maps keyring failure", "[privacy]") {
+  const auto dir = holder::test::make_temp_dir();
+  EnvUnsetGuard unset_test_keystore("HOLDER_TEST_KEYSTORE_DIR");
+  PlatformKeyringRemoveHookGuard remove_hook(&fail_platform_remove);
+
+  auto store = holder::privacy::make_default_secret_store(dir / "server");
+  try {
+    store->remove("holder.ai_provider_credentials", "platform-provider");
+    FAIL("Expected platform remove failure");
+  } catch (const holder::privacy::PrivacyError& ex) {
+    REQUIRE(ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable);
+  }
+}
+
+TEST_CASE("PlatformKeyring project key lookup reports missing project id", "[privacy]") {
+  const auto result = holder::privacy::platform_keyring_lookup_secret(
+      holder::privacy::PlatformKeyringSecretRef{
+          .kind = holder::privacy::PlatformKeyringSecretKind::ProjectKey,
+          .service = "org.holder.ProjectKey",
+          .account = "key-without-project",
+          .project_id = std::nullopt,
+      }
+  );
+
+  REQUIRE_FALSE(result.secret.has_value());
+  REQUIRE(result.error_message.has_value());
+}
+#endif
 
 #if HOLDER_HAVE_LIBSECRET
 namespace {

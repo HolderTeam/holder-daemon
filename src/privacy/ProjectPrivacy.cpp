@@ -1,6 +1,7 @@
 #include "privacy/ProjectPrivacy.h"
 
 #include "privacy/CryptoService.h"
+#include "privacy/PlatformKeyring.h"
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -8,10 +9,6 @@
 
 #if CARD_SERVER_HAVE_LIBGIT2
 #include <git2.h>
-#endif
-
-#if HOLDER_HAVE_LIBSECRET
-#include <libsecret/secret.h>
 #endif
 
 #include <nlohmann/json.hpp>
@@ -113,28 +110,14 @@ void store_key_test_override(
   out << key_material_b64;
 }
 
-#if HOLDER_HAVE_LIBSECRET
-const SecretSchema* holder_project_key_schema() {
-  static const SecretSchema schema = {
-      "org.holder.ProjectKey",
-      SECRET_SCHEMA_NONE,
-      {
-          {"key_id", SECRET_SCHEMA_ATTRIBUTE_STRING},
-          {"project_id", SECRET_SCHEMA_ATTRIBUTE_STRING},
-          {nullptr, static_cast<SecretSchemaAttributeType>(0)},
-      },
-      0,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr,
-      nullptr
+PlatformKeyringSecretRef project_key_ref(const std::string& project_id, const std::string& key_id) {
+  return PlatformKeyringSecretRef{
+      .kind = PlatformKeyringSecretKind::ProjectKey,
+      .service = "org.holder.ProjectKey",
+      .account = key_id,
+      .project_id = project_id,
   };
-  return &schema;
 }
-#endif
 
 void store_key_material(
     const std::string& project_id,
@@ -146,38 +129,11 @@ void store_key_material(
     return;
   }
 
-#if HOLDER_HAVE_LIBSECRET
-  GError* error = nullptr;
-  const bool ok = secret_password_store_sync(
-      holder_project_key_schema(),
-      SECRET_COLLECTION_DEFAULT,
-      ("Holder project key " + key_id).c_str(),
-      key_material_b64.c_str(),
-      nullptr,
-      &error,
-      "key_id",
-      key_id.c_str(),
-      "project_id",
-      project_id.c_str(),
-      nullptr
+  platform_keyring_store_secret(
+      project_key_ref(project_id, key_id),
+      "Holder project key " + key_id,
+      key_material_b64
   );
-  if (!ok) {
-    std::string message = "failed to store project key in libsecret";
-    if (error && error->message) {
-      message += ": ";
-      message += error->message;
-    }
-    if (error) {
-      g_error_free(error);
-    }
-    throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, message);
-  }
-#else
-  throw PrivacyError(
-      PrivacyErrorCode::KeyringUnavailable,
-      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"
-  );
-#endif
 }
 
 std::string load_key_material(const std::string& project_id, const std::string& key_id) {
@@ -195,38 +151,26 @@ std::string load_key_material(const std::string& project_id, const std::string& 
     return buffer.str();
   }
 
-#if HOLDER_HAVE_LIBSECRET
-  GError* error = nullptr;
-  gchar* secret = secret_password_lookup_sync(
-      holder_project_key_schema(),
-      nullptr,
-      &error,
-      "key_id",
-      key_id.c_str(),
-      "project_id",
-      project_id.c_str(),
-      nullptr
-  );
-  if (!secret) {
-    std::string message = "project key material not found in libsecret";
-    if (error && error->message) {
-      message += ": ";
-      message += error->message;
-    }
-    if (error) {
-      g_error_free(error);
-    }
-    throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, message);
+  if (!platform_keyring_supported()) { // LCOV_EXCL_LINE: exercised by no-platform-keyring builds.
+    // LCOV_EXCL_START
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        "platform keyring support not available and HOLDER_TEST_KEYSTORE_DIR not set"
+    );
+    // LCOV_EXCL_STOP
   }
-  std::string out(secret); // LCOV_EXCL_LINE: real libsecret success depends on host keyring.
-  secret_password_free(secret); // LCOV_EXCL_LINE
-  return out; // LCOV_EXCL_LINE
-#else
-  throw PrivacyError(
-      PrivacyErrorCode::KeyringUnavailable,
-      "libsecret support not available and HOLDER_TEST_KEYSTORE_DIR not set"
-  );
-#endif
+
+  const auto result = platform_keyring_lookup_secret(project_key_ref(project_id, key_id));
+  if (result.error_message.has_value()) {
+    throw PrivacyError(PrivacyErrorCode::KeyMaterialMissing, *result.error_message);
+  }
+  if (!result.secret.has_value()) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyMaterialMissing,
+        "project key material not found in platform keyring"
+    );
+  }
+  return result.secret.value();
 } // LCOV_EXCL_LINE
 
 bool has_envelope_header(const std::filesystem::path& path) {

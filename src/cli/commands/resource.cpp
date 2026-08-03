@@ -2,9 +2,6 @@
 
 #include "cli/commands/Support.h"
 
-#include <boost/asio.hpp>
-#include <boost/process/v2/environment.hpp>
-#include <boost/process/v2/process.hpp>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
@@ -308,30 +305,7 @@ void print_resource_row(const nlohmann::json& resource) {
 }
 
 void open_resource_uri(const std::string& uri) {
-#if !defined(_WIN32)
-  const auto opener = boost::process::v2::environment::find_executable("xdg-open");
-  if (opener.empty()) {
-    std::cout << uri << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.
-    throw std::runtime_error("xdg-open not found"); // LCOV_EXCL_LINE
-  }
-
-  boost::asio::io_context ioc;
-  boost::process::v2::process proc(ioc.get_executor(), opener, {uri});
-
-  boost::system::error_code ec;
-  const int exit_code = proc.wait(ec);
-  if (ec) {
-    std::cout << uri << "\n"; // LCOV_EXCL_LINE: requires process wait syscall failure.
-    throw std::runtime_error("Failed to run xdg-open: " + ec.message()); // LCOV_EXCL_LINE
-  }
-  if (exit_code != 0) {
-    std::cout << uri << "\n";
-    throw std::runtime_error("xdg-open failed with exit code " + std::to_string(exit_code));
-  }
-#else
-  std::cout << uri << "\n";
-  throw std::runtime_error("resource open is not supported on this platform yet"); // LCOV_EXCL_LINE
-#endif
+  open_external_uri(uri);
 }
 
 } // namespace

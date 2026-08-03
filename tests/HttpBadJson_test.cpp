@@ -54,7 +54,7 @@ TEST_CASE("HTTP endpoints reject invalid JSON bodies", "[http]") {
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   REQUIRE(res.result() == http::status::bad_request);
 

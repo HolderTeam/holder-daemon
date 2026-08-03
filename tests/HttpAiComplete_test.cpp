@@ -3566,7 +3566,7 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
     FAIL(res.body());
   }
   REQUIRE(res.result() == http::status::ok);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -3692,7 +3692,7 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   if (res.result() != http::status::ok) {
     FAIL(res.body());
   }
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -3764,7 +3764,7 @@ TEST_CASE("HTTP ai runs rejects bad input payloads", "[http]") {
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
   REQUIRE(res.result() == http::status::bad_request);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   const auto missing_prompt = holder::test::http_json_request(
       bound.bind,
@@ -3841,7 +3841,7 @@ TEST_CASE("HTTP ai runs auto-creates thread with 80-char title cap", "[http]") {
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
   REQUIRE(res.result() == http::status::ok);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   holder::ai::AiThreadRepo thread_repo(db);
@@ -4062,7 +4062,7 @@ TEST_CASE(
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   if (res.result() != http::status::ok) {
     FAIL(res.body());
@@ -4216,7 +4216,7 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   boost::beast::flat_buffer buffer;
   http::response<http::string_body> res;
   http::read(socket, buffer, res);
-  socket.shutdown(tcp::socket::shutdown_both);
+  holder::test::close_http_socket(socket);
 
   if (res.result() != http::status::ok) {
     FAIL(res.body());

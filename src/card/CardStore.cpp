@@ -76,8 +76,7 @@ CardStore::CardStore(
     holder::core::Fs* fs,
     holder::git::GitOps* git
 )
-    : db_(db),
-      fs_(&resolve_fs(fs)),
+    : fs_(&resolve_fs(fs)),
       git_(&resolve_git(git)),
       card_repo_(db),
       link_repo_(db),

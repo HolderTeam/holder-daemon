@@ -71,7 +71,23 @@ if(CARD_SERVER_ENABLE_MD4C)
 endif()
 
 # optional keyring integration (apt: libsecret-1-dev)
-pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+if(NOT APPLE)
+  pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+else()
+  set(LIBSECRET_FOUND 0)
+endif()
+if(APPLE)
+  find_library(HOLDER_SECURITY_FRAMEWORK Security)
+  find_library(HOLDER_COREFOUNDATION_FRAMEWORK CoreFoundation)
+  if(HOLDER_SECURITY_FRAMEWORK AND HOLDER_COREFOUNDATION_FRAMEWORK)
+    set(HOLDER_HAVE_MACOS_KEYCHAIN 1)
+  else()
+    message(WARNING "macOS Keychain frameworks not found; using non-keyring secret fallback")
+    set(HOLDER_HAVE_MACOS_KEYCHAIN 0)
+  endif()
+else()
+  set(HOLDER_HAVE_MACOS_KEYCHAIN 0)
+endif()
 
 # Holder depends on caste for hardware capability classification.
 if(HOLDER_USE_SYSTEM_CASTE)
@@ -189,6 +205,7 @@ add_executable(holderd
   src/git/ExecutorGitOps.cpp
   src/git/RepoSyncMetrics.cpp
   src/privacy/ProjectPrivacy.cpp
+  src/privacy/PlatformKeyring.cpp
   src/privacy/SecretStore.cpp
   src/privacy/CryptoService.cpp
   src/sync/ProjectSyncPolicy.cpp
@@ -269,6 +286,15 @@ if(LIBSECRET_FOUND)
   target_compile_definitions(holderd PRIVATE HOLDER_HAVE_LIBSECRET=1)
 else()
   target_compile_definitions(holderd PRIVATE HOLDER_HAVE_LIBSECRET=0)
+endif()
+target_compile_definitions(holderd PRIVATE
+  HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
+)
+if(HOLDER_HAVE_MACOS_KEYCHAIN)
+  target_link_libraries(holderd PRIVATE
+    "${HOLDER_SECURITY_FRAMEWORK}"
+    "${HOLDER_COREFOUNDATION_FRAMEWORK}"
+  )
 endif()
 
 add_executable(holderctl

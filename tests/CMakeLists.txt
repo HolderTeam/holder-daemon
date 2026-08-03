@@ -212,6 +212,7 @@ add_executable(lockfile_tests
   ../src/git/ExecutorGitOps.cpp
   ../src/git/RepoSyncMetrics.cpp
   ../src/privacy/ProjectPrivacy.cpp
+  ../src/privacy/PlatformKeyring.cpp
   ../src/privacy/SecretStore.cpp
   ../src/privacy/CryptoService.cpp
   ../src/sync/ProjectSyncPolicy.cpp
@@ -294,13 +295,26 @@ if(TARGET PkgConfig::LIBSECRET)
 else()
   target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
+target_compile_definitions(lockfile_tests PRIVATE
+  HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
+)
+if(HOLDER_HAVE_MACOS_KEYCHAIN)
+  target_link_libraries(lockfile_tests PRIVATE
+    "${HOLDER_SECURITY_FRAMEWORK}"
+    "${HOLDER_COREFOUNDATION_FRAMEWORK}"
+  )
+endif()
 
 set(HOLDER_TEST_ENVIRONMENT
   "HOLDER_TEST_KEYSTORE_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-keystore"
 )
 
 if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
-  catch_discover_tests(lockfile_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
+  catch_discover_tests(lockfile_tests
+    PROPERTIES
+      ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}"
+      SKIP_RETURN_CODE 4
+  )
 elseif(HOLDER_TSAN_USE_SETARCH)
   find_program(SETARCH_EXECUTABLE setarch)
   if(SETARCH_EXECUTABLE)

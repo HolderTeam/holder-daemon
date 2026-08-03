@@ -1615,8 +1615,7 @@ TEST_CASE(
                                 "Connection: close\r\n"
                                 "\r\n";
     boost::asio::write(socket, boost::asio::buffer(request));
-    socket.shutdown(tcp::socket::shutdown_both);
-    socket.close();
+    holder::test::close_http_socket(socket);
   }
 
   REQUIRE(slow1.get().status == http::status::ok);
