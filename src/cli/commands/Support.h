@@ -33,6 +33,8 @@ void trim_trailing_line_breaks(std::string& text);
 long long now_epoch_seconds();
 std::string lower_ascii(std::string value);
 bool contains_case_insensitive(const std::string& haystack, const std::string& needle);
+std::string desktop_opener_name();
+void open_external_uri(const std::string& uri);
 
 nlohmann::json recovery_token_request(
     const holder::core::Paths& paths,

@@ -1,5 +1,9 @@
 #include "cli/commands/Support.h"
 
+#include <boost/asio.hpp>
+#include <boost/process/v2/environment.hpp>
+#include <boost/process/v2/process.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -234,6 +238,46 @@ std::string lower_ascii(std::string value) {
 
 bool contains_case_insensitive(const std::string& haystack, const std::string& needle) {
   return lower_ascii(haystack).find(lower_ascii(needle)) != std::string::npos;
+}
+
+std::string desktop_opener_name() {
+#if defined(__APPLE__)
+  return "open";
+#elif !defined(_WIN32)
+  return "xdg-open";
+#else
+  return "";
+#endif
+}
+
+void open_external_uri(const std::string& uri) {
+  const auto opener_name = desktop_opener_name();
+  if (opener_name.empty()) {
+    std::cout << uri << "\n";
+    throw std::runtime_error("open is not supported on this platform yet"); // LCOV_EXCL_LINE
+  }
+
+  const auto opener = boost::process::v2::environment::find_executable(opener_name);
+  if (opener.empty()) {
+    std::cout << uri << "\n"; // LCOV_EXCL_LINE: depends on host PATH contents.
+    throw std::runtime_error(opener_name + " not found"); // LCOV_EXCL_LINE
+  }
+
+  boost::asio::io_context ioc;
+  boost::process::v2::process proc(ioc.get_executor(), opener, {uri});
+
+  boost::system::error_code ec;
+  const int exit_code = proc.wait(ec);
+  if (ec) {
+    // LCOV_EXCL_START: requires process wait syscall failure.
+    std::cout << uri << "\n";
+    throw std::runtime_error("Failed to run " + opener_name + ": " + ec.message());
+    // LCOV_EXCL_STOP
+  }
+  if (exit_code != 0) {
+    std::cout << uri << "\n";
+    throw std::runtime_error(opener_name + " failed with exit code " + std::to_string(exit_code));
+  }
 }
 
 nlohmann::json recovery_token_request(
