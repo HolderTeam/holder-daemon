@@ -20,7 +20,7 @@ Runtime/build dependencies used by this repo:
 - libgit2
 - md4c
 - libsodium
-- libsecret (required on Ubuntu for encryption/recovery flows and full test pass)
+- platform keyring support: libsecret on Linux, Keychain on macOS, Credential Manager on Windows
 
 `./make.sh` also handles the `caste` dependency:
 
@@ -84,14 +84,15 @@ brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c l
 ./make.sh
 ```
 
-## macOS / Windows
+## Quick Start (Windows)
 
-Holder is intended to be cross-platform, but Ubuntu has the smoothest setup today.
+Use Visual Studio with CMake and vcpkg manifest mode. Install vcpkg, set `VCPKG_ROOT`, then choose
+the `windows-vcpkg-debug` CMake preset in Visual Studio or run:
 
-- macOS: use Homebrew equivalents for the dependencies above, then run `./make.sh`.
-- Windows: use Visual Studio to build, or use WSL (Ubuntu) and follow the Ubuntu instructions.
-
-Will need portability plan and testing, mainly around secrets since we need libsecret at the moment.
+```powershell
+cmake --preset windows-vcpkg-debug
+cmake --build --preset windows-vcpkg-debug
+```
 
 ## Useful Commands
 

@@ -33,7 +33,15 @@ endif()
 # ----------------------------
 # Dependencies
 # ----------------------------
-find_package(PkgConfig REQUIRED)
+if(WIN32)
+  set(HOLDER_USE_PKG_CONFIG_DEPS OFF)
+else()
+  set(HOLDER_USE_PKG_CONFIG_DEPS ON)
+endif()
+
+if(HOLDER_USE_PKG_CONFIG_DEPS)
+  find_package(PkgConfig REQUIRED)
+endif()
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -56,22 +64,75 @@ else()
   set(HOLDER_YAML_CPP_TARGET yaml-cpp)
 endif()
 
-# sqlite3 via pkg-config (robust on Linux)
-pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
-pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+# sqlite3 + libsodium
+if(WIN32)
+  find_package(unofficial-sqlite3 CONFIG QUIET)
+  if(TARGET unofficial::sqlite3::sqlite3)
+    set(HOLDER_SQLITE3_TARGET unofficial::sqlite3::sqlite3)
+  else()
+    find_package(SQLite3 REQUIRED)
+    set(HOLDER_SQLITE3_TARGET SQLite::SQLite3)
+  endif()
 
-# libgit2 via pkg-config
+  find_package(unofficial-sodium CONFIG REQUIRED)
+  if(TARGET unofficial-sodium::sodium)
+    set(HOLDER_SODIUM_TARGET unofficial-sodium::sodium)
+  else()
+    message(FATAL_ERROR "unofficial-sodium package did not provide unofficial-sodium::sodium")
+  endif()
+else()
+  pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
+  pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+  set(HOLDER_SQLITE3_TARGET PkgConfig::SQLITE3)
+  set(HOLDER_SODIUM_TARGET PkgConfig::SODIUM)
+endif()
+
+# libgit2
 if(CARD_SERVER_ENABLE_LIBGIT2)
-  pkg_check_modules(LIBGIT2 REQUIRED IMPORTED_TARGET libgit2)
+  if(WIN32)
+    find_package(unofficial-libgit2 CONFIG QUIET)
+    find_package(libgit2 CONFIG QUIET)
+    if(TARGET unofficial::libgit2::libgit2)
+      set(HOLDER_LIBGIT2_TARGET unofficial::libgit2::libgit2)
+    elseif(TARGET libgit2::libgit2)
+      set(HOLDER_LIBGIT2_TARGET libgit2::libgit2)
+    elseif(TARGET libgit2package)
+      set(HOLDER_LIBGIT2_TARGET libgit2package)
+    elseif(TARGET libgit2)
+      set(HOLDER_LIBGIT2_TARGET libgit2)
+    else()
+      message(FATAL_ERROR "Could not find a usable libgit2 CMake target")
+    endif()
+  else()
+    pkg_check_modules(LIBGIT2 REQUIRED IMPORTED_TARGET libgit2)
+    set(HOLDER_LIBGIT2_TARGET PkgConfig::LIBGIT2)
+  endif()
 endif()
 
 # markdown parsing via md4c (apt: libmd4c-dev)
 if(CARD_SERVER_ENABLE_MD4C)
-  pkg_check_modules(MD4C REQUIRED IMPORTED_TARGET md4c)
+  if(WIN32)
+    find_package(unofficial-md4c CONFIG QUIET)
+    find_package(md4c CONFIG QUIET)
+    if(TARGET md4c::md4c)
+      set(HOLDER_MD4C_TARGET md4c::md4c)
+    elseif(TARGET unofficial::md4c::md4c)
+      set(HOLDER_MD4C_TARGET unofficial::md4c::md4c)
+    elseif(TARGET unofficial-md4c::md4c)
+      set(HOLDER_MD4C_TARGET unofficial-md4c::md4c)
+    elseif(TARGET md4c)
+      set(HOLDER_MD4C_TARGET md4c)
+    else()
+      message(FATAL_ERROR "Could not find a usable md4c CMake target")
+    endif()
+  else()
+    pkg_check_modules(MD4C REQUIRED IMPORTED_TARGET md4c)
+    set(HOLDER_MD4C_TARGET PkgConfig::MD4C)
+  endif()
 endif()
 
 # optional keyring integration (apt: libsecret-1-dev)
-if(NOT APPLE)
+if(HOLDER_USE_PKG_CONFIG_DEPS AND NOT APPLE)
   pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
 else()
   set(LIBSECRET_FOUND 0)
@@ -87,6 +148,11 @@ if(APPLE)
   endif()
 else()
   set(HOLDER_HAVE_MACOS_KEYCHAIN 0)
+endif()
+if(WIN32)
+  set(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER 1)
+else()
+  set(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER 0)
 endif()
 
 # Holder depends on caste for hardware capability classification.
@@ -251,8 +317,8 @@ target_link_libraries(holderd PRIVATE
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
-  PkgConfig::SQLITE3
-  PkgConfig::SODIUM
+  ${HOLDER_SQLITE3_TARGET}
+  ${HOLDER_SODIUM_TARGET}
   Threads::Threads
   nlohmann_json::nlohmann_json
   spdlog::spdlog
@@ -268,14 +334,14 @@ endif()
 
 # Feature-linked deps
 if(CARD_SERVER_ENABLE_LIBGIT2)
-  target_link_libraries(holderd PRIVATE PkgConfig::LIBGIT2)
+  target_link_libraries(holderd PRIVATE ${HOLDER_LIBGIT2_TARGET})
   target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
 else()
   target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
 endif()
 
 if(CARD_SERVER_ENABLE_MD4C)
-  target_link_libraries(holderd PRIVATE PkgConfig::MD4C)
+  target_link_libraries(holderd PRIVATE ${HOLDER_MD4C_TARGET})
   target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_MD4C=1)
 else()
   target_compile_definitions(holderd PRIVATE CARD_SERVER_HAVE_MD4C=0)
@@ -289,12 +355,16 @@ else()
 endif()
 target_compile_definitions(holderd PRIVATE
   HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
+  HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER=${HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER}
 )
 if(HOLDER_HAVE_MACOS_KEYCHAIN)
   target_link_libraries(holderd PRIVATE
     "${HOLDER_SECURITY_FRAMEWORK}"
     "${HOLDER_COREFOUNDATION_FRAMEWORK}"
   )
+endif()
+if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
+  target_link_libraries(holderd PRIVATE Advapi32)
 endif()
 
 add_executable(holderctl
@@ -357,6 +427,9 @@ install(DIRECTORY assets/swagger-ui DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-
 # ----------------------------
 # Tests
 # ----------------------------
+if(WIN32 AND NOT DEFINED BUILD_TESTING)
+  set(BUILD_TESTING OFF CACHE BOOL "Build tests")
+endif()
 include(CTest)
 if(BUILD_TESTING)
   enable_testing()

@@ -1,0 +1,21 @@
+{
+  "name": "holder-daemon",
+  "version-string": "0.1.7",
+  "dependencies": [
+    "boost-asio",
+    "boost-beast",
+    "boost-filesystem",
+    "boost-interprocess",
+    "boost-process",
+    "boost-uuid",
+    "catch2",
+    "libgit2",
+    "libsodium",
+    "md4c",
+    "nlohmann-json",
+    "openssl",
+    "spdlog",
+    "sqlite3",
+    "yaml-cpp"
+  ]
+}
