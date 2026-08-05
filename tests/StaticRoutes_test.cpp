@@ -56,6 +56,7 @@ TEST_CASE("StaticRoutes openapi not-found variants", "[static-routes]") {
   REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", req, res));
   REQUIRE(res.result() == http::status::not_found);
 
+#ifndef _WIN32
   const auto unreadable_openapi = dir / "openapi-unreadable.yaml";
   {
     std::ofstream out(unreadable_openapi);
@@ -71,6 +72,7 @@ TEST_CASE("StaticRoutes openapi not-found variants", "[static-routes]") {
   http::response<http::string_body> res2;
   REQUIRE(holder::api::routes::handle_static_routes("/openapi.yaml", req, res2));
   REQUIRE(res2.result() == http::status::not_found);
+#endif
 }
 
 TEST_CASE("StaticRoutes serves docs and openapi success cases", "[static-routes]") {
@@ -124,6 +126,7 @@ TEST_CASE("StaticRoutes ai_catalog json handles not-found and parse errors", "[s
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", req, missing_res));
   REQUIRE(missing_res.result() == http::status::not_found);
 
+#ifndef _WIN32
   const auto ai_unreadable = dir / "ai-unreadable.yaml";
   {
     std::ofstream out(ai_unreadable);
@@ -139,6 +142,7 @@ TEST_CASE("StaticRoutes ai_catalog json handles not-found and parse errors", "[s
   http::response<http::string_body> unreadable_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.json", req, unreadable_res));
   REQUIRE(unreadable_res.result() == http::status::not_found);
+#endif
 
   const auto bad_yaml = dir / "bad-ai.yaml";
   {
@@ -222,6 +226,7 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
   );
   REQUIRE(miss_json_res.result() == http::status::not_found);
 
+#ifndef _WIN32
   const auto git_unreadable = dir / "git-unreadable.yaml";
   {
     std::ofstream out(git_unreadable);
@@ -244,6 +249,7 @@ TEST_CASE("StaticRoutes git_providers missing and parse errors", "[static-routes
       holder::api::routes::handle_static_routes("/git_providers.json", json_req, miss_json_read_res)
   );
   REQUIRE(miss_json_read_res.result() == http::status::not_found);
+#endif
 
   const auto bad_yaml = dir / "bad-git.yaml";
   {
@@ -309,6 +315,7 @@ TEST_CASE("StaticRoutes ai_catalog yaml handles missing and unreadable path", "[
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, missing_res));
   REQUIRE(missing_res.result() == http::status::not_found);
 
+#ifndef _WIN32
   const auto ai_unreadable = dir / "ai-catalog-unreadable.yaml";
   {
     std::ofstream out(ai_unreadable);
@@ -324,6 +331,7 @@ TEST_CASE("StaticRoutes ai_catalog yaml handles missing and unreadable path", "[
   http::response<http::string_body> unreadable_res;
   REQUIRE(holder::api::routes::handle_static_routes("/ai_catalog.yaml", req, unreadable_res));
   REQUIRE(unreadable_res.result() == http::status::not_found);
+#endif
 }
 
 TEST_CASE(

@@ -242,11 +242,11 @@ if(MSVC)
   target_compile_options(lockfile_tests PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/WinEnvCompat.h")
 endif()
 
-if(TARGET Catch2::Catch2WithMain)
-  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
-else()
+if(TARGET Catch2::Catch2)
   target_sources(lockfile_tests PRIVATE catch_main.cpp)
   target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2)
+elseif(TARGET Catch2::Catch2WithMain)
+  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
 endif()
 
 target_compile_definitions(lockfile_tests PRIVATE
