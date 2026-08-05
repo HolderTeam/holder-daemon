@@ -16,7 +16,13 @@
     "nlohmann-json",
     "openssl",
     "spdlog",
-    "sqlite3",
+    {
+      "name": "sqlite3",
+      "features": [
+        "fts5",
+        "json1"
+      ]
+    },
     "yaml-cpp"
   ]
 }
