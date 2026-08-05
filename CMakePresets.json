@@ -19,6 +19,17 @@
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       }
+    },
+    {
+      "name": "windows-vcpkg-tests-debug",
+      "displayName": "Windows vcpkg Debug Tests",
+      "inherits": "windows-vcpkg-debug",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "HOLDER_CATCH_DISCOVER_TESTS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -29,6 +40,22 @@
         "holderd",
         "holderctl"
       ]
+    },
+    {
+      "name": "windows-vcpkg-tests-debug",
+      "configurePreset": "windows-vcpkg-tests-debug",
+      "targets": [
+        "lockfile_tests"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-vcpkg-tests-debug",
+      "configurePreset": "windows-vcpkg-tests-debug",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }
