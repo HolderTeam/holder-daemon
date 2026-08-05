@@ -456,7 +456,11 @@ TEST_CASE("GitRepo push_branch uses git config init.defaultBranch when HEAD deta
   detach_head_to_current_commit(local_dir);
 
   EnvGuard empty_env_branch("GIT_DEFAULT_BRANCH", "");
+  EnvGuard global_config_guard("GIT_CONFIG_GLOBAL", (fake_home / ".gitconfig").string());
   EnvGuard home_guard("HOME", fake_home.string());
+#ifdef _WIN32
+  EnvGuard user_profile_guard("USERPROFILE", fake_home.string());
+#endif
   EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
 
   const auto result = local_repo.push_branch("origin", "", false);

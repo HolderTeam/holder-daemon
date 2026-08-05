@@ -390,6 +390,10 @@ std::size_t Listener::background_queue_count() const {
   return background_queue_.size();
 }
 
+std::size_t Listener::dropped_socket_count_for_test() const {
+  return dropped_socket_count_for_test_.load();
+}
+
 void Listener::enqueue_pending_socket_for_test() {
   std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
   pending_sockets_.emplace_back(ioc_);
@@ -428,6 +432,7 @@ void Listener::start_accept_loop() {
       std::lock_guard<std::mutex> lock(ingress_queue_mutex_);
       if (pending_sockets_.size() >= kMaxPendingAcceptedSockets) {
         spdlog::warn("accepted socket queue full; dropping socket");
+        dropped_socket_count_for_test_.fetch_add(1);
         boost::system::error_code close_ec;
         ignore_result(socket.shutdown(tcp::socket::shutdown_both, close_ec)
         ); // NOLINT(bugprone-unused-return-value)

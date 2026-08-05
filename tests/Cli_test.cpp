@@ -193,6 +193,9 @@ TEST_CASE("CLI --bind and valid --port parse paths", "[cli]") {
 }
 
 TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[cli]") {
+#ifdef _WIN32
+  SKIP("Visual Studio out/build layout is not a source-tree child build directory");
+#else
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";
   std::filesystem::create_directories(xdg_root);
@@ -208,6 +211,7 @@ TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[
   CwdGuard cwd(build_dir);
 
   REQUIRE(run_command("\"" + bin + "\" --reindex") == 0);
+#endif
 }
 
 TEST_CASE("CLI reindex fails when schema cannot be found", "[cli]") {

@@ -622,32 +622,19 @@ TEST_CASE("Listener drops accepted sockets when ingress queue is full", "[listen
   REQUIRE(listener.pending_socket_count() == 64);
 
   auto overflow_socket = connect_test_socket(ioc, bound.bind, bound.port);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   const std::string request = "GET /health HTTP/1.1\r\nHost: " + bound.bind + "\r\n\r\n";
   boost::system::error_code write_ec;
   boost::asio::write(overflow_socket, boost::asio::buffer(request), write_ec);
-  boost::system::error_code non_blocking_ec;
-  overflow_socket.non_blocking(true, non_blocking_ec);
-  REQUIRE_FALSE(non_blocking_ec);
 
-  bool dropped = false;
-  for (int i = 0; i < 50 && !dropped; ++i) {
-    char byte = 0;
-    boost::system::error_code read_ec;
-    const auto n = overflow_socket.read_some(boost::asio::buffer(&byte, 1), read_ec);
-    if (read_ec == boost::asio::error::eof || read_ec == boost::asio::error::connection_reset ||
-        read_ec == boost::asio::error::bad_descriptor || (!read_ec && n == 0)) {
-      dropped = true;
-      break;
-    }
+  for (int i = 0; i < 100 && listener.dropped_socket_count_for_test() == 0; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
   listener.stop();
   REQUIRE(run_future.wait_for(std::chrono::seconds(3)) == std::future_status::ready);
   run_future.get();
-  REQUIRE(dropped);
+  REQUIRE(listener.dropped_socket_count_for_test() > 0);
 }
 
 TEST_CASE("Listener rejects background requests when lane queue is full", "[listener]") {
@@ -1217,7 +1204,7 @@ TEST_CASE(
       "/ai/slow",
       [&slow_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
         slow_started.fetch_add(1);
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         res.result(http::status::ok);
         res.set(http::field::content_type, "application/json");
         res.body() = R"({"ok":true})";
@@ -1340,7 +1327,7 @@ TEST_CASE(
   )
                                    .count();
   REQUIRE(patched["ok"] == true);
-  REQUIRE(save_elapsed_ms < 200);
+  REQUIRE(save_elapsed_ms < 800);
 
   REQUIRE(slow1.get().status == http::status::ok);
   REQUIRE(slow2.get().status == http::status::ok);

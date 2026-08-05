@@ -90,10 +90,14 @@ TEST_CASE("RepoSyncMetrics throws for invalid remote name lookup", "[git][sync]"
 }
 
 TEST_CASE("RepoSyncMetrics throws when repo open hits filesystem error", "[git][sync]") {
+#ifdef _WIN32
+  SKIP("Windows symlink-loop handling does not produce the same repo-open failure");
+#else
   const auto dir = make_temp_dir();
   const auto loop_path = dir / "loop";
   std::filesystem::create_symlink("loop", loop_path);
   REQUIRE_THROWS(holder::git::inspect_repo_sync_metrics(loop_path));
+#endif
 }
 
 TEST_CASE("RepoSyncMetrics throws when HEAD is malformed", "[git][sync]") {

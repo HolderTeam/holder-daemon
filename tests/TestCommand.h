@@ -17,9 +17,29 @@ inline void replace_all(std::string& value, const std::string& from, const std::
   }
 }
 
+inline std::string translate_single_quoted_args_for_windows(const std::string& cmd) {
+  std::string out;
+  out.reserve(cmd.size());
+  bool in_single_quote = false;
+  for (const char ch : cmd) {
+    if (ch == '\'') {
+      in_single_quote = !in_single_quote;
+      out.push_back('"');
+      continue;
+    }
+    if (in_single_quote && ch == '"') {
+      out += "\\\"";
+      continue;
+    }
+    out.push_back(ch);
+  }
+  return out;
+}
+
 inline std::string normalize_system_command(std::string cmd) {
 #ifdef _WIN32
   replace_all(cmd, "/dev/null", "NUL");
+  cmd = translate_single_quoted_args_for_windows(cmd);
   if (!cmd.empty() && cmd.front() == '"') {
     cmd = "\"" + cmd + "\"";
   }
