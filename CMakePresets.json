@@ -24,7 +24,11 @@
   "buildPresets": [
     {
       "name": "windows-vcpkg-debug",
-      "configurePreset": "windows-vcpkg-debug"
+      "configurePreset": "windows-vcpkg-debug",
+      "targets": [
+        "holderd",
+        "holderctl"
+      ]
     }
   ]
 }
