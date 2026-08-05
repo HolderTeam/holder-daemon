@@ -1,4 +1,6 @@
 build
+out
+.vcpkg
 .vscode
 scripts/__pycache__
 build-coverage
