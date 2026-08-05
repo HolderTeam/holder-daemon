@@ -238,6 +238,9 @@ add_executable(lockfile_tests
 target_include_directories(lockfile_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
+if(MSVC)
+  target_compile_options(lockfile_tests PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/WinEnvCompat.h")
+endif()
 
 if(TARGET Catch2::Catch2WithMain)
   target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
