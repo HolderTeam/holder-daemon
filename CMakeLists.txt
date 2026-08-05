@@ -419,6 +419,9 @@ target_link_libraries(holderctl PRIVATE
 if(TARGET Boost::process)
   target_link_libraries(holderctl PRIVATE Boost::process)
 endif()
+if(WIN32)
+  target_link_libraries(holderctl PRIVATE Shell32)
+endif()
 
 # ----------------------------
 # Install

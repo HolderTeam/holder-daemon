@@ -4,6 +4,17 @@
 #include <boost/process/v2/environment.hpp>
 #include <boost/process/v2/process.hpp>
 
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <shellapi.h>
+#include <windows.h>
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -240,6 +251,48 @@ bool contains_case_insensitive(const std::string& haystack, const std::string& n
   return lower_ascii(haystack).find(lower_ascii(needle)) != std::string::npos;
 }
 
+#if defined(_WIN32)
+namespace {
+
+std::wstring utf8_to_wide_for_shell(const std::string& value) {
+  const int required =
+      MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, nullptr, 0);
+  if (required <= 0) {
+    throw std::runtime_error("Failed to convert URI to UTF-16 for ShellExecuteW");
+  }
+
+  std::wstring out(static_cast<std::size_t>(required), L'\0');
+  const int written = MultiByteToWideChar(
+      CP_UTF8,
+      MB_ERR_INVALID_CHARS,
+      value.c_str(),
+      -1,
+      out.data(),
+      required
+  );
+  if (written != required) {
+    throw std::runtime_error("Failed to write UTF-16 URI for ShellExecuteW");
+  }
+  if (!out.empty() && out.back() == L'\0') {
+    out.pop_back();
+  }
+  return out;
+}
+
+void open_external_uri_windows(const std::string& uri) {
+  const auto wide_uri = utf8_to_wide_for_shell(uri);
+  const HINSTANCE result =
+      ShellExecuteW(nullptr, L"open", wide_uri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+  const auto code = reinterpret_cast<INT_PTR>(result);
+  if (code <= 32) {
+    std::cout << uri << "\n";
+    throw std::runtime_error("ShellExecuteW failed with code " + std::to_string(code));
+  }
+}
+
+} // namespace
+#endif
+
 std::string desktop_opener_name() {
 #if defined(__APPLE__)
   return "open";
@@ -251,6 +304,9 @@ std::string desktop_opener_name() {
 }
 
 void open_external_uri(const std::string& uri) {
+#if defined(_WIN32)
+  open_external_uri_windows(uri);
+#else
   const auto opener_name = desktop_opener_name();
   if (opener_name.empty()) {
     // LCOV_EXCL_START: only reached on platforms without a desktop opener implementation.
@@ -280,6 +336,7 @@ void open_external_uri(const std::string& uri) {
     std::cout << uri << "\n";
     throw std::runtime_error(opener_name + " failed with exit code " + std::to_string(exit_code));
   }
+#endif
 }
 
 nlohmann::json recovery_token_request(
