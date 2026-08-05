@@ -445,6 +445,14 @@ TEST_CASE("GitRepo push_branch uses git config init.defaultBranch when HEAD deta
     cfg << "[init]\n\tdefaultBranch = zebra\n";
   }
 
+  EnvGuard empty_env_branch("GIT_DEFAULT_BRANCH", "");
+  EnvGuard global_config_guard("GIT_CONFIG_GLOBAL", (fake_home / ".gitconfig").string());
+  EnvGuard home_guard("HOME", fake_home.string());
+#ifdef _WIN32
+  EnvGuard user_profile_guard("USERPROFILE", fake_home.string());
+#endif
+  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
+
   init_bare_repo(remote_dir);
 
   holder::git::GitRepo local_repo;
@@ -454,14 +462,6 @@ TEST_CASE("GitRepo push_branch uses git config init.defaultBranch when HEAD deta
   local_repo.commit("seed");
   local_repo.set_remote("origin", remote_dir.string());
   detach_head_to_current_commit(local_dir);
-
-  EnvGuard empty_env_branch("GIT_DEFAULT_BRANCH", "");
-  EnvGuard global_config_guard("GIT_CONFIG_GLOBAL", (fake_home / ".gitconfig").string());
-  EnvGuard home_guard("HOME", fake_home.string());
-#ifdef _WIN32
-  EnvGuard user_profile_guard("USERPROFILE", fake_home.string());
-#endif
-  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
 
   const auto result = local_repo.push_branch("origin", "", false);
   REQUIRE(result.status == holder::git::PushStatus::Pushed);

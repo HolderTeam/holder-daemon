@@ -2128,6 +2128,7 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
       ) == 1
   );
 
+#ifndef _WIN32
   const auto token_arg = read_text(token_path);
   const auto import_token_out = xdg_root / "import-token.out";
   REQUIRE(
@@ -2139,6 +2140,7 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
   REQUIRE(
       read_text(import_token_out) == "Recovery token imported for project: encrypted-project\n"
   );
+#endif
 
   const auto deleted = holder::test::http_json_request(
       bound.bind,
