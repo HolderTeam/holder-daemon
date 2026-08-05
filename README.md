@@ -105,6 +105,8 @@ cmake --preset windows-vcpkg-debug
 cmake --build --preset windows-vcpkg-debug
 ```
 
+The executables will be under `out/build/windows-vcpkg-debug/`
+
 #### Test run:
 
 ```powershell
@@ -121,7 +123,7 @@ failure behavior, or Unix-style build-directory discovery.
 Install classic Visual Studio and choose "Desktop Development with C++" and
 accept all the options it preselects (the desktop/CMake tools).
 
-Check out the repo with Git. Visual Studio will automatically configure it with cmake.
+Check out the repo with Git. Visual Studio will automatically configure it with CMake.
 
 The first configure will take a while because vcpkg builds dependencies.
 
@@ -142,7 +144,7 @@ Run them using F5 or just run them in the command line.
 
 ### Running the test suite.
 
-Under the configurations drop-down, choose. `windows-vcpkg-tests-debug`
+Under the configurations drop-down, choose `windows-vcpkg-tests-debug`
 
 Then under the "Build" menu choose "Build All".
 
