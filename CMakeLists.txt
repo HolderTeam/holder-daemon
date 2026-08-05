@@ -25,6 +25,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(WIN32)
+  add_compile_definitions(
+    _WIN32_WINNT=0x0A00
+    WINVER=0x0A00
+  )
+endif()
+
 # Sensible defaults for a service-like binary
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "" FORCE)
