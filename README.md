@@ -86,13 +86,21 @@ brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c l
 
 ## Quick Start (Windows)
 
+I compiled it using Visual Studio (below), but there is a command line way
+if you are an established dev on Windows and know what you are doing.
+
 ### Command line version
 
-For established Windows devs, you probably already have everything.
+You may need this:
+
+```powershell
+$env:VCPKG_ROOT = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\vcpkg"
+```
 
 #### Build
 
 ```powershell
+
 cmake --preset windows-vcpkg-debug
 cmake --build --preset windows-vcpkg-debug
 ```
