@@ -1,4 +1,5 @@
 #include "http_test_helpers.h"
+#include "TestCommand.h"
 
 #include "git/GitOps.h"
 #include "model/Resource.h"
@@ -15,21 +16,13 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
 namespace {
 
 int run_command(const std::string& cmd) {
-  const int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc;
-#else
-  if (rc == -1) return rc;
-  if (WIFEXITED(rc)) return WEXITSTATUS(rc);
-  return -1;
-#endif
+  return holder::test::run_system_command(cmd);
 }
 
 std::string read_text(const std::filesystem::path& path) {
@@ -286,6 +279,9 @@ TEST_CASE("holderctl token refuses non-regular server info", "[holderctl]") {
 }
 
 TEST_CASE("holderctl token refuses loose token file permissions", "[holderctl]") {
+#ifdef _WIN32
+  SKIP("POSIX permission-bit token-file test is not meaningful on Windows");
+#else
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -301,6 +297,7 @@ TEST_CASE("holderctl token refuses loose token file permissions", "[holderctl]")
 
   const std::string cmd = std::string("\"") + HOLDER_CTL_PATH + "\" token";
   REQUIRE(run_command(cmd) == 1);
+#endif
 }
 
 TEST_CASE("holderctl token refuses loose token directory permissions", "[holderctl]") {

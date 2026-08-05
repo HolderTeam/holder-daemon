@@ -200,8 +200,13 @@ Listener::BoundInfo Listener::start() {
   ignore_result(acceptor_.open(endpoint.protocol(), ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.open failed: " + ec.message());
 
+#ifdef _WIN32
+  ignore_result(acceptor_.set_option(boost::asio::socket_base::exclusive_address_use(true), ec)
+  ); // NOLINT(bugprone-unused-return-value)
+#else
   ignore_result(acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec)
   ); // NOLINT(bugprone-unused-return-value)
+#endif
   if (ec) throw std::runtime_error("acceptor.set_option failed: " + ec.message());
 
   ignore_result(acceptor_.bind(endpoint, ec)); // NOLINT(bugprone-unused-return-value)

@@ -402,6 +402,9 @@ TEST_CASE("inspect_recovery_token maps malformed token JSON to RecoveryTokenInva
 }
 
 TEST_CASE("privacy safety check treats unreadable card file as unsafe", "[privacy]") {
+#ifdef _WIN32
+  SKIP("POSIX permission-bit unreadable-file test is not meaningful on Windows");
+#else
   const auto root = make_temp_dir_local();
   const auto path = root / "cards" / "ab" / "locked.md";
   write_file(path, "HolderPriv1\n{}\nAA==\n");
@@ -415,6 +418,7 @@ TEST_CASE("privacy safety check treats unreadable card file as unsafe", "[privac
   REQUIRE(check.ok == false);
   REQUIRE(check.checked_files == 1);
   REQUIRE(check.unsafe_paths.size() == 1);
+#endif
 }
 
 TEST_CASE("index safety check ignores non-card paths and missing staged card paths", "[privacy]") {

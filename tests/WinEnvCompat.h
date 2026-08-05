@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <process.h>
 
 inline int setenv(const char* name, const char* value, int overwrite) {
   if (name == nullptr || name[0] == '\0' || value == nullptr) {
@@ -23,5 +24,7 @@ inline int unsetenv(const char* name) {
   }
   return _putenv_s(name, "");
 }
+
+inline int getpid() { return _getpid(); }
 
 #endif

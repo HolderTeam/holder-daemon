@@ -5,6 +5,7 @@
 #endif
 
 #include "platform/LockFile.h"
+#include "TestCommand.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -13,10 +14,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#ifndef _WIN32
-#include <sys/wait.h>
-#endif
 
 namespace holder::core {
 void lockfile_set_force_try_lock_throw_for_tests(bool enabled);
@@ -54,13 +51,7 @@ int run_helper(
     cmd += "\"";
   }
 
-  const int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc;
-#else
-  if (rc == -1) return rc;
-  return WEXITSTATUS(rc);
-#endif
+  return holder::test::run_system_command(cmd);
 }
 
 class LockHooksGuard {

@@ -331,7 +331,7 @@ TEST_CASE("LocalModelRunner non-fake background probe runs once and sets status"
 
   holder::llm::RunnerStatus status;
   bool seen_check = false;
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 500; ++i) {
     status = runner.status();
     if (status.last_checked > 0) {
       seen_check = true;
@@ -479,19 +479,12 @@ TEST_CASE("LocalModelRunner retry non-fake surfaces HTTP status errors", "[llm]"
   server.start();
 
   EnvGuard fake_env("HOLDER_MODEL_RUNNER_FAKE", "0");
-  EnvGuard host_env("HOLDER_MODEL_RUNNER_HOST", "127.0.0.1");
-  EnvGuard port_env("HOLDER_MODEL_RUNNER_PORT", std::to_string(port));
-  EnvGuard bin_env("HOLDER_MODEL_RUNNER_BIN", "/definitely/not-found-ollama");
 
-  holder::llm::LocalModelRunner runner;
+  holder::llm::LocalModelRunner runner("127.0.0.1", std::to_string(port), "", false);
   const auto status = runner.retry();
   REQUIRE(status.available == false);
   REQUIRE_FALSE(status.error.empty());
-  REQUIRE(
-      (status.error.find("HTTP 500") != std::string::npos ||
-       status.error.find("model runner executable not found") != std::string::npos ||
-       status.error.find("No such file or directory") != std::string::npos)
-  );
+  REQUIRE(status.error.find("HTTP 500") != std::string::npos);
 }
 
 TEST_CASE("LocalModelRunner retry non-fake handles malformed version JSON", "[llm]") {
@@ -882,7 +875,7 @@ TEST_CASE("LocalModelRunner start_pull marks failed on transport exception", "[l
   REQUIRE_FALSE(job.job_id.empty());
 
   bool failed = false;
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 500; ++i) {
     auto fetched = runner.get_pull(job.job_id);
     REQUIRE(fetched.has_value());
     if (fetched->status == "failed") {

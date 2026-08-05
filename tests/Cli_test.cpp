@@ -1,4 +1,5 @@
 #include "http_test_helpers.h"
+#include "TestCommand.h"
 
 #include "api/HttpServer.h"
 #include "card/CardRepo.h"
@@ -20,21 +21,13 @@
 
 #ifndef _WIN32
 #include <csignal>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
 namespace {
 
 int run_command(const std::string& cmd) {
-  const int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc;
-#else
-  if (rc == -1) return rc;
-  if (WIFEXITED(rc)) return WEXITSTATUS(rc);
-  return -1;
-#endif
+  return holder::test::run_system_command(cmd);
 }
 
 class CwdGuard {
@@ -236,6 +229,9 @@ TEST_CASE("CLI reindex fails when schema cannot be found", "[cli]") {
 }
 
 TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be opened", "[cli]") {
+#ifdef _WIN32
+  SKIP("POSIX permission-bit unreadable-file test is not meaningful on Windows");
+#else
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";
   std::filesystem::create_directories(xdg_root);
@@ -268,6 +264,7 @@ TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be ope
 
   const std::string bin = HOLDER_BIN_PATH;
   REQUIRE(run_command("\"" + bin + "\" --reindex") != 0);
+#endif
 }
 
 TEST_CASE("CLI reindex fails when schema exists but welcome markdown is missing", "[cli]") {
