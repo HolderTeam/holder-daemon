@@ -10,6 +10,10 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif
+
 namespace holder::api {
 namespace {
 
@@ -20,6 +24,26 @@ constexpr std::size_t kMaxPendingAcceptedSockets = 64;
 constexpr std::size_t kMaxPreparedRequestsPerLane = 64;
 
 template <typename T> void ignore_result(T&&) noexcept {}
+
+void set_bind_options(boost::asio::ip::tcp::acceptor& acceptor, boost::system::error_code& ec) {
+#ifdef _WIN32
+  const int enabled = 1;
+  if (::setsockopt(
+          acceptor.native_handle(),
+          SOL_SOCKET,
+          SO_EXCLUSIVEADDRUSE,
+          reinterpret_cast<const char*>(&enabled),
+          sizeof(enabled)
+      ) == SOCKET_ERROR) {
+    ec = boost::system::error_code(::WSAGetLastError(), boost::asio::error::get_system_category());
+    return;
+  }
+  ec.clear();
+#else
+  ignore_result(acceptor.set_option(boost::asio::socket_base::reuse_address(true), ec)
+  ); // NOLINT(bugprone-unused-return-value)
+#endif
+}
 
 // Queue contract:
 // - accepted sockets wait here for request read/parse/classification
@@ -200,13 +224,7 @@ Listener::BoundInfo Listener::start() {
   ignore_result(acceptor_.open(endpoint.protocol(), ec)); // NOLINT(bugprone-unused-return-value)
   if (ec) throw std::runtime_error("acceptor.open failed: " + ec.message());
 
-#ifdef _WIN32
-  ignore_result(acceptor_.set_option(boost::asio::socket_base::exclusive_address_use(true), ec)
-  ); // NOLINT(bugprone-unused-return-value)
-#else
-  ignore_result(acceptor_.set_option(boost::asio::socket_base::reuse_address(true), ec)
-  ); // NOLINT(bugprone-unused-return-value)
-#endif
+  set_bind_options(acceptor_, ec);
   if (ec) throw std::runtime_error("acceptor.set_option failed: " + ec.message());
 
   ignore_result(acceptor_.bind(endpoint, ec)); // NOLINT(bugprone-unused-return-value)
