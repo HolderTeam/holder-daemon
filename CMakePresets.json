@@ -28,7 +28,7 @@
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
         "BUILD_TESTING": "ON",
-        "HOLDER_CATCH_DISCOVER_TESTS": "ON"
+        "HOLDER_CATCH_DISCOVER_TESTS": "OFF"
       }
     }
   ],
