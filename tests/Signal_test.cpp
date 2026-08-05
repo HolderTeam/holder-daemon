@@ -7,6 +7,7 @@
 #include "platform/Signal.h"
 
 #include <csignal>
+#include <string>
 
 TEST_CASE("SignalHandler sets flag on SIGTERM", "[signal]") {
   holder::core::SignalHandler handler;
@@ -14,6 +15,7 @@ TEST_CASE("SignalHandler sets flag on SIGTERM", "[signal]") {
 
   std::raise(SIGTERM);
   REQUIRE(handler.is_requested());
+  REQUIRE(std::string(holder::core::signal_name(handler.last_signal())) == "SIGTERM");
 }
 
 TEST_CASE("SignalHandler records last signal", "[signal]") {
@@ -22,4 +24,6 @@ TEST_CASE("SignalHandler records last signal", "[signal]") {
   std::raise(SIGINT);
   REQUIRE(handler.is_requested());
   REQUIRE(handler.last_signal() == SIGINT);
+  REQUIRE(std::string(holder::core::signal_name(handler.last_signal())) == "SIGINT");
+  REQUIRE(std::string(holder::core::signal_name(0)) == "unknown");
 }

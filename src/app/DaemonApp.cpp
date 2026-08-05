@@ -256,9 +256,7 @@ int run_daemon(int argc, char* argv[]) {
   sync_thread.stop_and_join();
 
   if (shutdown_signal_received) {
-    const int sig = signals.last_signal();
-    const char* name = (sig == SIGINT) ? "SIGINT" : (sig == SIGTERM) ? "SIGTERM" : "unknown";
-    spdlog::info("shutdown signal received: {}", name);
+    spdlog::info("shutdown signal received: {}", holder::core::signal_name(signals.last_signal()));
   }
   spdlog::info("holder shutdown complete."); // LCOV_EXCL_LINE
   spdlog::shutdown(); // LCOV_EXCL_LINE
