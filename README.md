@@ -120,14 +120,21 @@ failure behavior, or Unix-style build-directory discovery.
 
 ### Visual Studio version
 
-Install classic Visual Studio and choose "Desktop Development with C++" and
+Install classic Visual Studio.
+
+The following instructions are for the "Visual Studio Community" not "Visual Studio Code".
+The one with the purple logo not the blue logo.
+You probably can do it with the blue one but not with these instructions.
+
+The installer gives you a choice of "Workloads".
+Choose "Desktop Development with C++" and
 accept all the options it preselects (the desktop/CMake tools).
 
-Check out the repo with Git. Visual Studio will automatically configure it with CMake.
+Check out this repo with Git. Visual Studio will automatically configure it with CMake.
 
 The first configure will take a while because vcpkg builds dependencies.
 
-It doesn't really say a lot while it does this, but open the Windows Task Manager and you will see it is busy.
+It doesn't say anything as it does this, but open the Windows Task Manager and you will see it is busy.
 
 You can also look at the installed dependency tree at `../.vcpkg-holder-daemon` and see it filling up with the
 best of the last forty years of open source. It will take about 2GB. It is like npm.
@@ -140,7 +147,7 @@ Then under the "Build" menu choose "Build All".
 
 This builds the local server `holderd.exe` and the command line interface `holderctl.exe`.
 
-Run them using F5 or just run them in the command line.
+Run them by selecting them as debug targets and using the Debug menu (or F5) or just run them in the command line.
 
 ### Running the test suite.
 
