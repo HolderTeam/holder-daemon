@@ -405,6 +405,45 @@ TEST_CASE("GitRepo push_branch uses GIT_DEFAULT_BRANCH when HEAD is detached", "
   git_repository_free(remote);
 }
 
+TEST_CASE("GitRepo push_branch falls back to cards when HEAD and git config have no branch", "[git]") {
+  const auto dir = make_temp_dir();
+  const auto remote_dir = dir / "remote";
+  const auto local_dir = dir / "local";
+  const auto fake_home = dir / "home";
+  const auto fake_xdg = dir / "xdg";
+  std::filesystem::create_directories(fake_home);
+  std::filesystem::create_directories(fake_xdg);
+
+  EnvGuard empty_env_branch("GIT_DEFAULT_BRANCH", "");
+  EnvGuard global_config_guard("GIT_CONFIG_GLOBAL", (fake_home / ".gitconfig").string());
+  EnvGuard home_guard("HOME", fake_home.string());
+#ifdef _WIN32
+  EnvGuard user_profile_guard("USERPROFILE", fake_home.string());
+#endif
+  EnvGuard xdg_guard("XDG_CONFIG_HOME", fake_xdg.string());
+
+  init_bare_repo(remote_dir);
+
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.write_file("cards/a.md", "v1");
+  local_repo.stage_path("cards/a.md");
+  local_repo.commit("seed");
+  local_repo.set_remote("origin", remote_dir.string());
+
+  detach_head_to_current_commit(local_dir);
+
+  const auto result = local_repo.push_branch("origin", "", false);
+  REQUIRE(result.status == holder::git::PushStatus::Pushed);
+
+  git_repository* remote = nullptr;
+  REQUIRE(git_repository_open(&remote, remote_dir.string().c_str()) == 0);
+  git_reference* cards_ref = nullptr;
+  REQUIRE(git_reference_lookup(&cards_ref, remote, "refs/heads/cards") == 0);
+  git_reference_free(cards_ref);
+  git_repository_free(remote);
+}
+
 TEST_CASE("GitRepo probe_remote reports reachable for local remote with commits", "[git]") {
   const auto dir = make_temp_dir();
   const auto remote_dir = dir / "remote";
