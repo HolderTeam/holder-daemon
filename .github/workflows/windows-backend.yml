@@ -41,18 +41,18 @@ jobs:
       - name: Configure CMake
         run: cmake --preset windows-vcpkg-tests-debug
 
-      - name: Save vcpkg binary package cache
-        if: success()
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
-
       - name: Build backend executables and tests
         run: cmake --build --preset windows-vcpkg-tests-debug --target holderd holderctl holder_daemon_tests --parallel
 
       - name: Run tests
         run: ctest --preset windows-vcpkg-tests-debug
+
+      - name: Save vcpkg binary package cache
+        if: success() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Stage backend artifact
         shell: pwsh
@@ -78,9 +78,16 @@ jobs:
 
           Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath -Force
 
+      - name: Smoke-test staged executables
+        shell: pwsh
+        run: |
+          & "out\artifacts\windows-backend\holderd.exe" --help
+          & "out\artifacts\windows-backend\holderctl.exe" --help
+
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
           name: holder-daemon-windows-backend
           path: out/artifacts/holder-daemon-windows-backend.zip
           if-no-files-found: error
+          retention-days: 7
