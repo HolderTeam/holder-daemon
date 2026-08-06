@@ -11,6 +11,18 @@
 #include <Security/Security.h>
 #endif
 
+#if HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <wincred.h>
+#endif
+
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -514,8 +526,228 @@ void keychain_remove_secret(const PlatformKeyringSecretRef& ref) {
 // LCOV_EXCL_STOP
 #endif
 
+#if HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
+// LCOV_EXCL_START: direct Credential Manager calls depend on the host Windows profile.
+std::size_t checked_int_size(std::size_t size, const std::string& value_name) {
+  const auto max_int = static_cast<std::size_t>(std::numeric_limits<int>::max());
+  if (size > max_int) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        value_name + " is too large for Windows Credential Manager"
+    );
+  }
+  return size;
+}
+
+DWORD checked_credential_blob_size(std::size_t size, const std::string& value_name) {
+  const auto max_dword = static_cast<std::size_t>(std::numeric_limits<DWORD>::max());
+  if (size > max_dword) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        value_name + " is too large for Windows Credential Manager"
+    );
+  }
+#ifdef CRED_MAX_CREDENTIAL_BLOB_SIZE
+  if (size > CRED_MAX_CREDENTIAL_BLOB_SIZE) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        value_name + " exceeds the Windows Credential Manager blob size limit"
+    );
+  }
+#endif
+  return static_cast<DWORD>(size);
+}
+
+std::wstring utf8_to_wide(const std::string& value, const std::string& value_name) {
+  if (value.empty()) {
+    return {};
+  }
+  checked_int_size(value.size(), value_name);
+  const int input_size = static_cast<int>(value.size());
+  const int required = MultiByteToWideChar(
+      CP_UTF8,
+      MB_ERR_INVALID_CHARS,
+      value.data(),
+      input_size,
+      nullptr,
+      0
+  );
+  if (required <= 0) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        "failed to encode " + value_name + " for Windows Credential Manager"
+    );
+  }
+
+  std::wstring out(static_cast<std::size_t>(required), L'\0');
+  const int written = MultiByteToWideChar(
+      CP_UTF8,
+      MB_ERR_INVALID_CHARS,
+      value.data(),
+      input_size,
+      out.data(),
+      required
+  );
+  if (written != required) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        "failed to encode " + value_name + " for Windows Credential Manager"
+    );
+  }
+  return out;
+}
+
+std::string wide_to_utf8(const wchar_t* value) {
+  if (value == nullptr || value[0] == L'\0') {
+    return {};
+  }
+  const int required = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+  if (required <= 1) {
+    return {};
+  }
+
+  std::string out(static_cast<std::size_t>(required - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value, -1, out.data(), required, nullptr, nullptr);
+  return out;
+}
+
+std::string windows_error_message(DWORD code, const std::string& action) {
+  LPWSTR raw_message = nullptr;
+  const DWORD flags =
+      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
+  const DWORD length = FormatMessageW(
+      flags,
+      nullptr,
+      code,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      reinterpret_cast<LPWSTR>(&raw_message),
+      0,
+      nullptr
+  );
+
+  std::string message = action + " in Windows Credential Manager";
+  if (length > 0 && raw_message != nullptr) {
+    std::string detail = wide_to_utf8(raw_message);
+    while (!detail.empty() && (detail.back() == '\n' || detail.back() == '\r' ||
+                               detail.back() == ' ' || detail.back() == '\t')) {
+      detail.pop_back();
+    }
+    if (!detail.empty()) {
+      message += ": ";
+      message += detail;
+    }
+  } else {
+    message += ": Windows error ";
+    message += std::to_string(code);
+  }
+  if (raw_message != nullptr) {
+    LocalFree(raw_message);
+  }
+  return message;
+}
+
+std::wstring credential_target_name(const PlatformKeyringSecretRef& ref) {
+  std::string target = "Holder/";
+  if (ref.kind == PlatformKeyringSecretKind::ProjectKey) {
+    if (!ref.project_id.has_value()) {
+      throw PrivacyError(PrivacyErrorCode::KeyringUnavailable, missing_project_id_message());
+    }
+    target += kProjectKeyService;
+    target += "/";
+    target += ref.project_id.value();
+  } else {
+    target += ref.service;
+  }
+  target += "/";
+  target += ref.account;
+  return utf8_to_wide(target, "credential target name");
+}
+
+class CredentialHandle {
+ public:
+  explicit CredentialHandle(PCREDENTIALW value = nullptr)
+      : value_(value) {}
+  ~CredentialHandle() {
+    if (value_ != nullptr) {
+      CredFree(value_);
+    }
+  }
+  CredentialHandle(const CredentialHandle&) = delete;
+  CredentialHandle& operator=(const CredentialHandle&) = delete;
+  PCREDENTIALW get() const { return value_; }
+
+ private:
+  PCREDENTIALW value_;
+};
+
+PlatformKeyringLookupResult credential_manager_lookup_secret(const PlatformKeyringSecretRef& ref) {
+  const auto target_name = credential_target_name(ref);
+  PCREDENTIALW raw_credential = nullptr;
+  if (!CredReadW(target_name.c_str(), CRED_TYPE_GENERIC, 0, &raw_credential)) {
+    const DWORD error = GetLastError();
+    if (error == ERROR_NOT_FOUND || error == ERROR_NO_SUCH_LOGON_SESSION) {
+      return {.secret = std::nullopt, .error_message = std::nullopt};
+    }
+    return {
+        .secret = std::nullopt,
+        .error_message = windows_error_message(error, "secret lookup failed")
+    };
+  }
+
+  const CredentialHandle credential(raw_credential);
+  if (credential.get()->CredentialBlobSize == 0) {
+    return {.secret = std::string(), .error_message = std::nullopt};
+  }
+  const auto* bytes = reinterpret_cast<const char*>(credential.get()->CredentialBlob);
+  return {
+      .secret = std::string(bytes, bytes + credential.get()->CredentialBlobSize),
+      .error_message = std::nullopt
+  };
+}
+
+void credential_manager_store_secret(
+    const PlatformKeyringSecretRef& ref,
+    const std::string& label,
+    const std::string& secret
+) {
+  auto target_name = credential_target_name(ref);
+  auto comment = utf8_to_wide(label, "credential label");
+  CREDENTIALW credential{};
+  credential.Type = CRED_TYPE_GENERIC;
+  credential.TargetName = target_name.data();
+  credential.Comment = comment.empty() ? nullptr : comment.data();
+  credential.CredentialBlobSize = checked_credential_blob_size(secret.size(), "secret");
+  credential.CredentialBlob = secret.empty()
+                                  ? nullptr
+                                  : reinterpret_cast<LPBYTE>(const_cast<char*>(secret.data()));
+  credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+
+  if (!CredWriteW(&credential, 0)) {
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        windows_error_message(GetLastError(), "failed to store secret")
+    );
+  }
+}
+
+void credential_manager_remove_secret(const PlatformKeyringSecretRef& ref) {
+  const auto target_name = credential_target_name(ref);
+  if (!CredDeleteW(target_name.c_str(), CRED_TYPE_GENERIC, 0)) {
+    const DWORD error = GetLastError();
+    if (error == ERROR_NOT_FOUND || error == ERROR_NO_SUCH_LOGON_SESSION) {
+      return;
+    }
+    throw PrivacyError(
+        PrivacyErrorCode::KeyringUnavailable,
+        windows_error_message(error, "failed to remove secret")
+    );
+  }
+}
+// LCOV_EXCL_STOP
+#endif
+
 bool compiled_platform_keyring_supported() {
-#if HOLDER_HAVE_LIBSECRET || HOLDER_HAVE_MACOS_KEYCHAIN
+#if HOLDER_HAVE_LIBSECRET || HOLDER_HAVE_MACOS_KEYCHAIN || HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
   return true;
 #else
   return false;
@@ -537,6 +769,8 @@ PlatformKeyringLookupResult platform_keyring_lookup_secret(const PlatformKeyring
   return libsecret_lookup_secret(ref);
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
   return keychain_lookup_secret(ref);
+#elif HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
+  return credential_manager_lookup_secret(ref);
 #else
   return {
       .secret = std::nullopt,
@@ -560,6 +794,8 @@ void platform_keyring_store_secret(
   libsecret_store_secret(ref, label, secret); // LCOV_EXCL_LINE
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
   keychain_store_secret(ref, label, secret);
+#elif HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
+  credential_manager_store_secret(ref, label, secret);
 #else
   (void)ref;
   (void)label;
@@ -582,6 +818,8 @@ void platform_keyring_remove_secret(const PlatformKeyringSecretRef& ref) {
   libsecret_remove_secret(ref); // LCOV_EXCL_LINE
 #elif HOLDER_HAVE_MACOS_KEYCHAIN
   keychain_remove_secret(ref);
+#elif HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER
+  credential_manager_remove_secret(ref);
 #else
   (void)ref;
   throw PrivacyError(

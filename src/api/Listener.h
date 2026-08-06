@@ -59,6 +59,7 @@ class Listener {
   std::size_t save_queue_count() const;
   std::size_t response_queue_count() const;
   std::size_t background_queue_count() const;
+  std::size_t dropped_socket_count_for_test() const;
   void enqueue_pending_socket_for_test();
 
  private:
@@ -100,6 +101,7 @@ class Listener {
   std::unordered_set<Session::IoHandlePtr> active_read_sockets_;
   std::unordered_set<Session::IoHandlePtr> active_write_sockets_;
   std::atomic<bool> stop_requested_{false};
+  std::atomic<std::size_t> dropped_socket_count_for_test_{0};
   std::vector<std::thread> ingress_workers_;
   std::vector<std::thread> save_workers_;
   std::vector<std::thread> general_workers_;

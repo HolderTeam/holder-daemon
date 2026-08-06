@@ -20,7 +20,7 @@ Runtime/build dependencies used by this repo:
 - libgit2
 - md4c
 - libsodium
-- libsecret (required on Ubuntu for encryption/recovery flows and full test pass)
+- platform keyring support: libsecret on Linux, Keychain on macOS, Credential Manager on Windows
 
 `./make.sh` also handles the `caste` dependency:
 
@@ -84,16 +84,81 @@ brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c l
 ./make.sh
 ```
 
-## macOS / Windows
+## Quick Start (Windows)
 
-Holder is intended to be cross-platform, but Ubuntu has the smoothest setup today.
+I compiled it using Visual Studio (below), but there is a command line way
+if you are an established dev on Windows and know what you are doing.
 
-- macOS: use Homebrew equivalents for the dependencies above, then run `./make.sh`.
-- Windows: use Visual Studio to build, or use WSL (Ubuntu) and follow the Ubuntu instructions.
+### Command line version
 
-Will need portability plan and testing, mainly around secrets since we need libsecret at the moment.
+You may need this:
 
-## Useful Commands
+```powershell
+$env:VCPKG_ROOT = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\vcpkg"
+```
+
+#### Build
+
+```powershell
+
+cmake --preset windows-vcpkg-debug
+cmake --build --preset windows-vcpkg-debug
+```
+
+The executables will be under `out/build/windows-vcpkg-debug/`
+
+#### Test run:
+
+```powershell
+cmake --preset windows-vcpkg-tests-debug
+cmake --build --preset windows-vcpkg-tests-debug
+ctest --preset windows-vcpkg-tests-debug
+```
+
+Some tests are skipped on Windows because they specifically check POSIX permission bits, symlink
+failure behavior, or Unix-style build-directory discovery.
+
+### Visual Studio version
+
+Install classic Visual Studio.
+
+The following instructions are for the "Visual Studio Community" not "Visual Studio Code".
+The one with the purple logo not the blue logo.
+You probably can do it with the blue one but not with these instructions.
+
+The installer gives you a choice of "Workloads".
+Choose "Desktop Development with C++" and
+accept all the options it preselects (the desktop/CMake tools).
+
+Check out this repo with Git. Visual Studio will automatically configure it with CMake.
+
+The first configure will take a while because vcpkg builds dependencies.
+
+It doesn't say anything as it does this, but open the Windows Task Manager and you will see it is busy.
+
+You can also look at the installed dependency tree at `../.vcpkg-holder-daemon` and see it filling up with the
+best of the last forty years of open source. It will take about 2GB. It is like npm.
+
+### Building the application
+
+Under the configurations drop-down choose `windows-vcpkg-debug`.
+
+Then under the "Build" menu choose "Build All".
+
+This builds the local server `holderd.exe` and the command line interface `holderctl.exe`.
+
+Run them by selecting them as debug targets and using the Debug menu (or F5) or just run them in the command line.
+
+### Running the test suite.
+
+Under the configurations drop-down, choose `windows-vcpkg-tests-debug`
+
+Then under the "Build" menu choose "Build All".
+
+Then under the "Test" menu, go to the submenu "Run Test Preset for windows-vcpkg-tests-debug"
+then click on "windows-vcpkg-tests-debug"
+
+## Useful Commands (Linux/BSD/Mac)
 
 ```bash
 ./make.sh --help          # list supported build/test commands

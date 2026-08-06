@@ -192,7 +192,8 @@ void write_card_markdown(
 
 std::string current_head_commit(const std::filesystem::path& repo_path) {
   git_repository* repo = nullptr;
-  REQUIRE(git_repository_open(&repo, repo_path.c_str()) == 0);
+  const auto repo_path_string = repo_path.string();
+  REQUIRE(git_repository_open(&repo, repo_path_string.c_str()) == 0);
   git_reference* head = nullptr;
   REQUIRE(git_repository_head(&head, repo) == 0);
   const git_oid* oid = git_reference_target(head);

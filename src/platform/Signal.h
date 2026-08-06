@@ -22,4 +22,6 @@ class SignalHandler {
   bool installed_ = false;
 };
 
+const char* signal_name(int signum) noexcept;
+
 } // namespace holder::core

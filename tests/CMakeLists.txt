@@ -238,12 +238,15 @@ add_executable(lockfile_tests
 target_include_directories(lockfile_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
+if(MSVC)
+  target_compile_options(lockfile_tests PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/WinEnvCompat.h")
+endif()
 
-if(TARGET Catch2::Catch2WithMain)
-  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
-else()
+if(TARGET Catch2::Catch2)
   target_sources(lockfile_tests PRIVATE catch_main.cpp)
   target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2)
+elseif(TARGET Catch2::Catch2WithMain)
+  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
 endif()
 
 target_compile_definitions(lockfile_tests PRIVATE
@@ -267,8 +270,8 @@ target_link_libraries(lockfile_tests PRIVATE
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
-  PkgConfig::SQLITE3
-  PkgConfig::SODIUM
+  ${HOLDER_SQLITE3_TARGET}
+  ${HOLDER_SODIUM_TARGET}
   Threads::Threads
   nlohmann_json::nlohmann_json
   spdlog::spdlog
@@ -282,8 +285,8 @@ if(TARGET Boost::process)
   target_link_libraries(lockfile_tests PRIVATE Boost::process)
 endif()
 
-if(TARGET PkgConfig::LIBGIT2)
-  target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBGIT2)
+if(CARD_SERVER_ENABLE_LIBGIT2)
+  target_link_libraries(lockfile_tests PRIVATE ${HOLDER_LIBGIT2_TARGET})
   target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
 else()
   target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
@@ -297,12 +300,16 @@ else()
 endif()
 target_compile_definitions(lockfile_tests PRIVATE
   HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
+  HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER=${HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER}
 )
 if(HOLDER_HAVE_MACOS_KEYCHAIN)
   target_link_libraries(lockfile_tests PRIVATE
     "${HOLDER_SECURITY_FRAMEWORK}"
     "${HOLDER_COREFOUNDATION_FRAMEWORK}"
   )
+endif()
+if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
+  target_link_libraries(lockfile_tests PRIVATE Advapi32)
 endif()
 
 set(HOLDER_TEST_ENVIRONMENT

@@ -1,4 +1,5 @@
 #include "http_test_helpers.h"
+#include "TestCommand.h"
 
 #include "git/GitOps.h"
 #include "model/Resource.h"
@@ -15,21 +16,13 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
 namespace {
 
 int run_command(const std::string& cmd) {
-  const int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc;
-#else
-  if (rc == -1) return rc;
-  if (WIFEXITED(rc)) return WEXITSTATUS(rc);
-  return -1;
-#endif
+  return holder::test::run_system_command(cmd);
 }
 
 std::string read_text(const std::filesystem::path& path) {
@@ -286,6 +279,9 @@ TEST_CASE("holderctl token refuses non-regular server info", "[holderctl]") {
 }
 
 TEST_CASE("holderctl token refuses loose token file permissions", "[holderctl]") {
+#ifdef _WIN32
+  SKIP("POSIX permission-bit token-file test is not meaningful on Windows");
+#else
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -301,9 +297,13 @@ TEST_CASE("holderctl token refuses loose token file permissions", "[holderctl]")
 
   const std::string cmd = std::string("\"") + HOLDER_CTL_PATH + "\" token";
   REQUIRE(run_command(cmd) == 1);
+#endif
 }
 
 TEST_CASE("holderctl token refuses loose token directory permissions", "[holderctl]") {
+#ifdef _WIN32
+  SKIP("POSIX permission-bit token-directory test is not meaningful on Windows");
+#else
   const auto xdg_root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
@@ -312,13 +312,12 @@ TEST_CASE("holderctl token refuses loose token directory permissions", "[holderc
   const auto server_dir = xdg_root / "data" / "holder" / "server";
   const auto info_path = server_dir / "holder.json";
   write_server_info(info_path);
-#ifndef _WIN32
   ::chmod(server_dir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP);
   ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
-#endif
 
   const std::string cmd = std::string("\"") + HOLDER_CTL_PATH + "\" token >/dev/null 2>/dev/null";
   REQUIRE(run_command(cmd) == 1);
+#endif
 }
 
 TEST_CASE("holderctl token requires auth token field", "[holderctl]") {
@@ -1728,11 +1727,15 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   );
   REQUIRE(read_text(first_card_out) == "Revise long division\n");
 
+  const auto stdin_new_input = xdg_root / "stdin-new.in";
+  {
+    std::ofstream out(stdin_new_input);
+    out << "Piped title\nbody line\n";
+  }
   const auto stdin_new_out = xdg_root / "stdin-new.out";
   REQUIRE(
       run_command(
-          "printf 'Piped title\\nbody line\\n' | " + bin + " new > \"" + stdin_new_out.string() +
-          "\""
+          bin + " new < \"" + stdin_new_input.string() + "\" > \"" + stdin_new_out.string() + "\""
       ) == 0
   );
   const auto second_card_id = created_card_id_from_output(read_text(stdin_new_out));
@@ -1743,10 +1746,15 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   );
   REQUIRE(read_text(second_card_out) == "Piped title\nbody line\n");
 
+  const auto append_input = xdg_root / "append.in";
+  {
+    std::ofstream out(append_input);
+    out << "extra line\n";
+  }
   const auto append_out = xdg_root / "append.out";
   REQUIRE(
       run_command(
-          "printf 'extra line\\n' | " + bin + " append " + first_card_id + " > \"" +
+          bin + " append " + first_card_id + " < \"" + append_input.string() + "\" > \"" +
           append_out.string() + "\""
       ) == 0
   );
@@ -2120,6 +2128,7 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
       ) == 1
   );
 
+#ifndef _WIN32
   const auto token_arg = read_text(token_path);
   const auto import_token_out = xdg_root / "import-token.out";
   REQUIRE(
@@ -2131,6 +2140,7 @@ TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens
   REQUIRE(
       read_text(import_token_out) == "Recovery token imported for project: encrypted-project\n"
   );
+#endif
 
   const auto deleted = holder::test::http_json_request(
       bound.bind,
