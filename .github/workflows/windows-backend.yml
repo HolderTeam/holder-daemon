@@ -20,6 +20,11 @@ jobs:
     steps:
       - name: Check out holder-daemon
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Restore vcpkg binary package cache
         uses: actions/cache/restore@v4
