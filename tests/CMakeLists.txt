@@ -18,7 +18,7 @@ target_link_libraries(lock_helper PRIVATE
   Boost::filesystem
 )
 
-add_executable(lockfile_tests
+add_executable(holder_daemon_tests
   LockFile_test.cpp
   ServerInfo_test.cpp
   Signal_test.cpp
@@ -235,38 +235,38 @@ add_executable(lockfile_tests
   ../src/platform/Tx.cpp
   ../src/platform/Db.cpp
 )
-target_include_directories(lockfile_tests PRIVATE
+target_include_directories(holder_daemon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 if(MSVC)
-  target_compile_options(lockfile_tests PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/WinEnvCompat.h")
+  target_compile_options(holder_daemon_tests PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/WinEnvCompat.h")
 endif()
 
 if(TARGET Catch2::Catch2)
-  target_sources(lockfile_tests PRIVATE catch_main.cpp)
-  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2)
+  target_sources(holder_daemon_tests PRIVATE catch_main.cpp)
+  target_link_libraries(holder_daemon_tests PRIVATE Catch2::Catch2)
 elseif(TARGET Catch2::Catch2WithMain)
-  target_link_libraries(lockfile_tests PRIVATE Catch2::Catch2WithMain)
+  target_link_libraries(holder_daemon_tests PRIVATE Catch2::Catch2WithMain)
 endif()
 
-target_compile_definitions(lockfile_tests PRIVATE
+target_compile_definitions(holder_daemon_tests PRIVATE
   LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
   CARD_SERVER_VERSION="${PROJECT_VERSION}"
   SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
   HOLDER_BIN_PATH="$<TARGET_FILE:holderd>"
   HOLDER_CTL_PATH="$<TARGET_FILE:holderctl>"
 )
-add_dependencies(lockfile_tests lock_helper holderd holderctl)
+add_dependencies(holder_daemon_tests lock_helper holderd holderctl)
 
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
-  target_compile_definitions(lockfile_tests PRIVATE
+  target_compile_definitions(holder_daemon_tests PRIVATE
     HOLDER_ENABLE_ENCRYPTED_GIT=1
   )
 else()
-  target_compile_definitions(lockfile_tests PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
+  target_compile_definitions(holder_daemon_tests PRIVATE HOLDER_ENABLE_ENCRYPTED_GIT=0)
 endif()
 
-target_link_libraries(lockfile_tests PRIVATE
+target_link_libraries(holder_daemon_tests PRIVATE
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -279,37 +279,37 @@ target_link_libraries(lockfile_tests PRIVATE
   caste
 )
 if(TARGET Boost::system)
-  target_link_libraries(lockfile_tests PRIVATE Boost::system)
+  target_link_libraries(holder_daemon_tests PRIVATE Boost::system)
 endif()
 if(TARGET Boost::process)
-  target_link_libraries(lockfile_tests PRIVATE Boost::process)
+  target_link_libraries(holder_daemon_tests PRIVATE Boost::process)
 endif()
 
 if(CARD_SERVER_ENABLE_LIBGIT2)
-  target_link_libraries(lockfile_tests PRIVATE ${HOLDER_LIBGIT2_TARGET})
-  target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
+  target_link_libraries(holder_daemon_tests PRIVATE ${HOLDER_LIBGIT2_TARGET})
+  target_compile_definitions(holder_daemon_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=1)
 else()
-  target_compile_definitions(lockfile_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
+  target_compile_definitions(holder_daemon_tests PRIVATE CARD_SERVER_HAVE_LIBGIT2=0)
 endif()
 
 if(TARGET PkgConfig::LIBSECRET)
-  target_link_libraries(lockfile_tests PRIVATE PkgConfig::LIBSECRET)
-  target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=1)
+  target_link_libraries(holder_daemon_tests PRIVATE PkgConfig::LIBSECRET)
+  target_compile_definitions(holder_daemon_tests PRIVATE HOLDER_HAVE_LIBSECRET=1)
 else()
-  target_compile_definitions(lockfile_tests PRIVATE HOLDER_HAVE_LIBSECRET=0)
+  target_compile_definitions(holder_daemon_tests PRIVATE HOLDER_HAVE_LIBSECRET=0)
 endif()
-target_compile_definitions(lockfile_tests PRIVATE
+target_compile_definitions(holder_daemon_tests PRIVATE
   HOLDER_HAVE_MACOS_KEYCHAIN=${HOLDER_HAVE_MACOS_KEYCHAIN}
   HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER=${HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER}
 )
 if(HOLDER_HAVE_MACOS_KEYCHAIN)
-  target_link_libraries(lockfile_tests PRIVATE
+  target_link_libraries(holder_daemon_tests PRIVATE
     "${HOLDER_SECURITY_FRAMEWORK}"
     "${HOLDER_COREFOUNDATION_FRAMEWORK}"
   )
 endif()
 if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
-  target_link_libraries(lockfile_tests PRIVATE Advapi32)
+  target_link_libraries(holder_daemon_tests PRIVATE Advapi32)
 endif()
 
 set(HOLDER_TEST_ENVIRONMENT
@@ -317,7 +317,7 @@ set(HOLDER_TEST_ENVIRONMENT
 )
 
 if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
-  catch_discover_tests(lockfile_tests
+  catch_discover_tests(holder_daemon_tests
     PROPERTIES
       ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}"
       SKIP_RETURN_CODE 4
@@ -325,13 +325,13 @@ if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
 elseif(HOLDER_TSAN_USE_SETARCH)
   find_program(SETARCH_EXECUTABLE setarch)
   if(SETARCH_EXECUTABLE)
-    add_test(NAME lockfile_tests COMMAND ${SETARCH_EXECUTABLE} x86_64 -R $<TARGET_FILE:lockfile_tests>)
+    add_test(NAME holder_daemon_tests COMMAND ${SETARCH_EXECUTABLE} x86_64 -R $<TARGET_FILE:holder_daemon_tests>)
   else()
     message(WARNING "setarch not found; TSan test may fail before running tests")
-    add_test(NAME lockfile_tests COMMAND lockfile_tests)
+    add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
   endif()
-  set_tests_properties(lockfile_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
+  set_tests_properties(holder_daemon_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
 else()
-  add_test(NAME lockfile_tests COMMAND lockfile_tests)
-  set_tests_properties(lockfile_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
+  add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
+  set_tests_properties(holder_daemon_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
 endif()

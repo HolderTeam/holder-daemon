@@ -45,7 +45,7 @@
       "name": "windows-vcpkg-tests-debug",
       "configurePreset": "windows-vcpkg-tests-debug",
       "targets": [
-        "lockfile_tests"
+        "holder_daemon_tests"
       ]
     }
   ],
