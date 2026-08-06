@@ -1,0 +1,86 @@
+name: Windows backend
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_ROOT: ${{ runner.temp }}\vcpkg
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out holder-daemon
+        uses: actions/checkout@v4
+
+      - name: Restore vcpkg binary package cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-
+            vcpkg-${{ runner.os }}-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg "$env:VCPKG_ROOT"
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+          New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
+
+      - name: Configure CMake
+        run: cmake --preset windows-vcpkg-tests-debug
+
+      - name: Save vcpkg binary package cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Build backend executables and tests
+        run: cmake --build --preset windows-vcpkg-tests-debug --target holderd holderctl holder_daemon_tests --parallel
+
+      - name: Run tests
+        run: ctest --preset windows-vcpkg-tests-debug
+
+      - name: Stage backend artifact
+        shell: pwsh
+        run: |
+          $buildDir = "out\build\windows-vcpkg-tests-debug"
+          $stageDir = "out\artifacts\windows-backend"
+          $zipPath = "out\artifacts\holder-daemon-windows-backend.zip"
+
+          New-Item -ItemType Directory -Force $stageDir | Out-Null
+          Copy-Item "$buildDir\holderd.exe", "$buildDir\holderctl.exe" -Destination $stageDir
+
+          $dllDirs = @(
+            $buildDir,
+            "..\.vcpkg-holder-daemon\x64-windows\debug\bin",
+            "..\.vcpkg-holder-daemon\x64-windows\bin"
+          )
+
+          foreach ($dir in $dllDirs) {
+            if (Test-Path $dir) {
+              Get-ChildItem $dir -Filter "*.dll" | Copy-Item -Destination $stageDir -Force
+            }
+          }
+
+          Compress-Archive -Path "$stageDir\*" -DestinationPath $zipPath -Force
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: holder-daemon-windows-backend
+          path: out/artifacts/holder-daemon-windows-backend.zip
+          if-no-files-found: error
