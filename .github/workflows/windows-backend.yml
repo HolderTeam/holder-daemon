@@ -13,9 +13,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\.vcpkg
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-binary-cache
 
     steps:
       - name: Check out holder-daemon
@@ -25,6 +22,12 @@ jobs:
 
       - name: Set up MSVC developer environment
         uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Set vcpkg paths
+        shell: pwsh
+        run: |
+          "VCPKG_ROOT=${{ github.workspace }}\.vcpkg" >> $env:GITHUB_ENV
+          "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}\.vcpkg-binary-cache" >> $env:GITHUB_ENV
 
       - name: Restore vcpkg binary package cache
         uses: actions/cache/restore@v4
