@@ -48,18 +48,18 @@ jobs:
       - name: Configure CMake
         run: cmake --preset windows-vcpkg-tests-debug
 
-      - name: Build backend executables and tests
-        run: cmake --build --preset windows-vcpkg-tests-debug --target holderd holderctl holder_daemon_tests --parallel
-
-      - name: Run tests
-        run: ctest --preset windows-vcpkg-tests-debug
-
       - name: Save vcpkg binary package cache
         if: success() && github.event_name != 'pull_request'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
           key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Build backend executables and tests
+        run: cmake --build --preset windows-vcpkg-tests-debug --target holderd holderctl holder_daemon_tests --parallel
+
+      - name: Run tests
+        run: ctest --preset windows-vcpkg-tests-debug
 
       - name: Stage backend artifact
         shell: pwsh
