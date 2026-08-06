@@ -10,13 +10,12 @@ on:
 permissions:
   contents: read
 
-env:
-  VCPKG_ROOT: ${{ runner.temp }}\vcpkg
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
-
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      VCPKG_ROOT: ${{ runner.temp }}\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
 
     steps:
       - name: Check out holder-daemon
