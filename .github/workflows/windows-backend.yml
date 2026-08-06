@@ -14,8 +14,8 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      VCPKG_ROOT: ${{ runner.temp }}\vcpkg
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ runner.temp }}\vcpkg-binary-cache
+      VCPKG_ROOT: ${{ github.workspace }}\.vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\.vcpkg-binary-cache
 
     steps:
       - name: Check out holder-daemon
