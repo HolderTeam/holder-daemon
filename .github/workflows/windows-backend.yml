@@ -69,6 +69,8 @@ jobs:
 
           New-Item -ItemType Directory -Force $stageDir | Out-Null
           Copy-Item "$buildDir\holderd.exe", "$buildDir\holderctl.exe" -Destination $stageDir
+          Copy-Item "$buildDir\schema", "$buildDir\config", "$buildDir\assets" -Destination $stageDir -Recurse
+          Copy-Item "$buildDir\openapi.yaml" -Destination $stageDir
 
           $dllDirs = @(
             $buildDir,
@@ -84,8 +86,11 @@ jobs:
       - name: Smoke-test staged executables
         shell: pwsh
         run: |
-          & "out\artifacts\windows-backend\holderd.exe" --help
-          & "out\artifacts\windows-backend\holderctl.exe" --help
+          Push-Location "out\artifacts\windows-backend"
+          & ".\holderd.exe" --help
+          & ".\holderd.exe" --version
+          & ".\holderctl.exe" --help
+          Pop-Location
 
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4

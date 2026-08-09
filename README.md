@@ -132,12 +132,12 @@ accept all the options it preselects (the desktop/CMake tools).
 
 Check out this repo with Git. Visual Studio will automatically configure it with CMake.
 
-The first configure will take a while because vcpkg builds dependencies.
+The first configure will take a long time as vcpkg builds the dependencies and their dependencies and so on down to the centre of the Earth (think npm or pip).
 
-It doesn't say anything as it does this, but open the Windows Task Manager and you will see it is busy.
+It is not as verbose as some other build tools, but if it looks frozen at any point, open the Windows Task Manager and you will see if it's busy or not.
 
 You can also look at the installed dependency tree at `../.vcpkg-holder-daemon` and see it filling up with the
-best of the last forty years of open source. It will take about 2GB. It is like npm.
+best of the last forty years of open source. It will take about 2GB.
 
 ### Building the application
 
