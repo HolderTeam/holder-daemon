@@ -379,6 +379,31 @@ if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
   target_link_libraries(holderd PRIVATE Advapi32)
 endif()
 
+if(WIN32)
+  add_custom_target(holder_runtime_data
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "${CMAKE_CURRENT_BINARY_DIR}/schema"
+      "${CMAKE_CURRENT_BINARY_DIR}/config"
+      "${CMAKE_CURRENT_BINARY_DIR}/assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql"
+      "${CMAKE_CURRENT_BINARY_DIR}/schema/schema.sql"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/ai_catalog.yaml"
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/git_providers.yaml"
+      "${CMAKE_CURRENT_BINARY_DIR}/config"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/openapi.yaml"
+      "${CMAKE_CURRENT_BINARY_DIR}/openapi.yaml"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/swagger-ui"
+      "${CMAKE_CURRENT_BINARY_DIR}/assets/swagger-ui"
+    VERBATIM
+  )
+  add_dependencies(holderd holder_runtime_data)
+endif()
+
 add_executable(holderctl
   src/cli/holderctl.cpp
   src/cli/commands/Common.cpp
