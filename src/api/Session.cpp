@@ -52,6 +52,23 @@ std::string generate_uuid_v4() {
   return boost::uuids::to_string(gen());
 }
 
+Session::Response ping_response(const Session::Request& req) {
+  if (req.method() != http::verb::get) {
+    return support::error_response(
+        http::status::method_not_allowed,
+        "method_not_allowed",
+        "Use GET for /ping."
+    );
+  }
+
+  Session::Response res{http::status::ok, 11};
+  res.set(http::field::content_type, "text/plain");
+  res.keep_alive(false);
+  res.body() = "pong";
+  res.prepare_payload();
+  return res;
+}
+
 struct AsyncReadResult {
   boost::system::error_code ec;
   Session::tcp::socket socket;
@@ -348,7 +365,9 @@ bool Session::ensure_request_loaded() {
 
 std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   Response res;
-  if (!routes::handle_static_routes(path_, req_, res)) {
+  if (path_ == "/ping") {
+    res = ping_response(req_);
+  } else if (!routes::handle_static_routes(path_, req_, res)) {
     if (!support::is_authorized_bearer(req_, auth_token_)) {
       res = support::error_response(
           http::status::unauthorized,

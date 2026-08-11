@@ -41,6 +41,16 @@ TEST_CASE("HTTP endpoints require auth token", "[http]") {
       http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/health");
   REQUIRE(health.status == boost::beast::http::status::unauthorized);
 
+  const auto ping =
+      http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/ping");
+  REQUIRE(ping.status == boost::beast::http::status::ok);
+  REQUIRE(ping.content_type == "text/plain");
+  REQUIRE(ping.body == "pong");
+
+  const auto ping_post =
+      http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::post, "/ping");
+  REQUIRE(ping_post.status == boost::beast::http::status::method_not_allowed);
+
   const auto projects =
       http_request_raw(bound.bind, bound.port, "", boost::beast::http::verb::get, "/projects");
   REQUIRE(projects.status == boost::beast::http::status::unauthorized);
