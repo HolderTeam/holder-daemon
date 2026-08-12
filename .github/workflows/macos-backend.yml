@@ -72,10 +72,10 @@ jobs:
 
           cp "${build_dir}/holderd" "${stage_dir}/bin/"
           cp "${build_dir}/holderctl" "${stage_dir}/bin/"
-          cp -a "${build_dir}/schema" "${stage_dir}/"
-          cp -a "${build_dir}/config" "${stage_dir}/"
-          cp -a "${build_dir}/assets" "${stage_dir}/"
-          cp "${build_dir}/openapi.yaml" "${stage_dir}/"
+          cp -a schema "${stage_dir}/"
+          cp -a config "${stage_dir}/"
+          cp -a assets "${stage_dir}/"
+          cp openapi.yaml "${stage_dir}/"
 
           (
             cd "${stage_dir}"
