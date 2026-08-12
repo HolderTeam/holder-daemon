@@ -79,7 +79,7 @@ sudo pkg install \
 ## Quick Start (Mac OS)
 
 ```sh
-brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c libsodium lcov
+brew install boost openssl@3 sqlite nlohmann-json spdlog yaml-cpp libgit2 md4c catch2 libsodium lcov
 
 ./make.sh
 ```

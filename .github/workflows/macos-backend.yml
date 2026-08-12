@@ -1,0 +1,105 @@
+name: macOS backend
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out holder-daemon
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          brew update
+          brew install \
+            cmake \
+            ninja \
+            pkg-config \
+            boost \
+            catch2 \
+            nlohmann-json \
+            yaml-cpp \
+            spdlog \
+            sqlite \
+            libsodium \
+            libgit2 \
+            md4c \
+            openssl@3
+
+      - name: Configure CMake
+        run: |
+          brew_prefix="$(brew --prefix)"
+          openssl_prefix="$(brew --prefix openssl@3)"
+
+          cmake \
+            -S . \
+            -B build-macos \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="${brew_prefix};${openssl_prefix}" \
+            -DOPENSSL_ROOT_DIR="${openssl_prefix}" \
+            -DBUILD_TESTING=ON
+
+      - name: Build backend executables and tests
+        run: cmake --build build-macos --target holderd holderctl holder_daemon_tests --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build-macos --output-on-failure
+
+      - name: Stage backend artifact
+        run: |
+          set -euo pipefail
+
+          build_dir="build-macos"
+          stage_dir="out/artifacts/macos-backend"
+
+          rm -rf "${stage_dir}"
+          mkdir -p "${stage_dir}/bin"
+
+          cp "${build_dir}/holderd" "${stage_dir}/bin/"
+          cp "${build_dir}/holderctl" "${stage_dir}/bin/"
+          cp -a schema "${stage_dir}/"
+          cp -a config "${stage_dir}/"
+          cp -a assets "${stage_dir}/"
+          cp openapi.yaml "${stage_dir}/"
+
+          (
+            cd "${stage_dir}"
+            find . -type f \
+              | sed 's#^\./##' \
+              | sort \
+              > manifest.txt
+          )
+
+          find "${stage_dir}" -type f | sort
+
+      - name: Smoke-test staged executables
+        run: |
+          set -euo pipefail
+
+          cd out/artifacts/macos-backend
+          ./bin/holderd --help
+          ./bin/holderd --version
+          ./bin/holderctl --help
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: holder-daemon-macos-backend
+          path: out/artifacts/macos-backend/**
+          if-no-files-found: error
+          retention-days: 7
