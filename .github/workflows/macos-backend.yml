@@ -30,6 +30,7 @@ jobs:
             ninja \
             pkg-config \
             boost \
+            catch2 \
             nlohmann-json \
             yaml-cpp \
             spdlog \
