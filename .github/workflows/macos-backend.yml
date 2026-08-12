@@ -1,0 +1,124 @@
+name: macOS backend
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Check out holder-daemon
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install MacPorts
+        run: |
+          set -euo pipefail
+
+          os_major="$(sw_vers -productVersion | awk -F. '{ print $1 }')"
+          case "${os_major}" in
+            15) os_version="15-Sequoia" ;;
+            14) os_version="14-Sonoma" ;;
+            13) os_version="13-Ventura" ;;
+            *) echo "Unsupported macOS major version: ${os_major}" >&2; exit 1 ;;
+          esac
+          macports_version="2.11.5"
+          pkg="MacPorts-${macports_version}-${os_version}.pkg"
+          url="https://github.com/macports/macports-base/releases/download/v${macports_version}/${pkg}"
+
+          curl -L -o "${pkg}" "${url}"
+          sudo installer -pkg "${pkg}" -target /
+
+          {
+            echo "/opt/local/bin"
+            echo "/opt/local/sbin"
+          } >> "${GITHUB_PATH}"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          sudo /opt/local/bin/port -N selfupdate
+          sudo /opt/local/bin/port -N install \
+            cmake \
+            ninja \
+            pkgconfig \
+            boost \
+            nlohmann-json \
+            yaml-cpp \
+            spdlog \
+            sqlite3 \
+            libsodium \
+            libgit2 \
+            md4c \
+            openssl3
+
+      - name: Configure CMake
+        run: |
+          cmake \
+            -S . \
+            -B build-macos \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH=/opt/local \
+            -DOPENSSL_ROOT_DIR=/opt/local \
+            -DBUILD_TESTING=ON
+
+      - name: Build backend executables and tests
+        run: cmake --build build-macos --target holderd holderctl holder_daemon_tests --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build-macos --output-on-failure
+
+      - name: Stage backend artifact
+        run: |
+          set -euo pipefail
+
+          build_dir="build-macos"
+          stage_dir="out/artifacts/macos-backend"
+
+          rm -rf "${stage_dir}"
+          mkdir -p "${stage_dir}/bin"
+
+          cp "${build_dir}/holderd" "${stage_dir}/bin/"
+          cp "${build_dir}/holderctl" "${stage_dir}/bin/"
+          cp -a "${build_dir}/schema" "${stage_dir}/"
+          cp -a "${build_dir}/config" "${stage_dir}/"
+          cp -a "${build_dir}/assets" "${stage_dir}/"
+          cp "${build_dir}/openapi.yaml" "${stage_dir}/"
+
+          (
+            cd "${stage_dir}"
+            find . -type f \
+              | sed 's#^\./##' \
+              | sort \
+              > manifest.txt
+          )
+
+          find "${stage_dir}" -type f | sort
+
+      - name: Smoke-test staged executables
+        run: |
+          set -euo pipefail
+
+          cd out/artifacts/macos-backend
+          ./bin/holderd --help
+          ./bin/holderd --version
+          ./bin/holderctl --help
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: holder-daemon-macos-backend
+          path: out/artifacts/macos-backend/**
+          if-no-files-found: error
+          retention-days: 7
