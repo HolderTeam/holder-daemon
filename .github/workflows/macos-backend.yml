@@ -20,57 +20,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install MacPorts
-        run: |
-          set -euo pipefail
-
-          os_major="$(sw_vers -productVersion | awk -F. '{ print $1 }')"
-          case "${os_major}" in
-            15) os_version="15-Sequoia" ;;
-            14) os_version="14-Sonoma" ;;
-            13) os_version="13-Ventura" ;;
-            *) echo "Unsupported macOS major version: ${os_major}" >&2; exit 1 ;;
-          esac
-          macports_version="2.11.5"
-          pkg="MacPorts-${macports_version}-${os_version}.pkg"
-          url="https://github.com/macports/macports-base/releases/download/v${macports_version}/${pkg}"
-
-          curl -L -o "${pkg}" "${url}"
-          sudo installer -pkg "${pkg}" -target /
-
-          {
-            echo "/opt/local/bin"
-            echo "/opt/local/sbin"
-          } >> "${GITHUB_PATH}"
-
       - name: Install dependencies
         run: |
           set -euo pipefail
 
-          sudo /opt/local/bin/port -N selfupdate
-          sudo /opt/local/bin/port -N install \
+          brew update
+          brew install \
             cmake \
             ninja \
-            pkgconfig \
+            pkg-config \
             boost \
             nlohmann-json \
             yaml-cpp \
             spdlog \
-            sqlite3 \
+            sqlite \
             libsodium \
             libgit2 \
             md4c \
-            openssl3
+            openssl@3
 
       - name: Configure CMake
         run: |
+          brew_prefix="$(brew --prefix)"
+          openssl_prefix="$(brew --prefix openssl@3)"
+
           cmake \
             -S . \
             -B build-macos \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_PREFIX_PATH=/opt/local \
-            -DOPENSSL_ROOT_DIR=/opt/local \
+            -DCMAKE_PREFIX_PATH="${brew_prefix};${openssl_prefix}" \
+            -DOPENSSL_ROOT_DIR="${openssl_prefix}" \
             -DBUILD_TESTING=ON
 
       - name: Build backend executables and tests
