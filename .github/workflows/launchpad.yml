@@ -9,6 +9,10 @@ on:
       version:
         description: "Optional upstream version override, for example 0.1.7"
         required: false
+      package_revision:
+        description: "Debian package revision, for example 2 to build 0.1.7-2~noble1"
+        required: false
+        default: "1"
 
 jobs:
   upload:
@@ -62,6 +66,7 @@ jobs:
         env:
           SERIES: ${{ matrix.series }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          PACKAGE_REVISION: ${{ github.event.inputs.package_revision || '1' }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           rm -rf debian build
@@ -70,6 +75,10 @@ jobs:
           VERSION="$(tr -d '[:space:]' < VERSION)"
           if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "VERSION must contain a semantic version like 0.1.0; got '$VERSION'" >&2
+            exit 1
+          fi
+          if ! echo "$PACKAGE_REVISION" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "package_revision must be a positive integer; got '$PACKAGE_REVISION'" >&2
             exit 1
           fi
 
@@ -86,10 +95,11 @@ jobs:
             fi
           fi
 
+          PACKAGE_VERSION="${VERSION}-${PACKAGE_REVISION}~${SERIES}1"
           cat > debian/changelog <<EOF
-          holder-daemon (${VERSION}~${SERIES}1) ${SERIES}; urgency=medium
+          holder-daemon (${PACKAGE_VERSION}) ${SERIES}; urgency=medium
 
-            * Build for ${SERIES}
+            * Build package revision ${PACKAGE_REVISION} for ${SERIES}
 
            -- Holder Team <holdercardteam@gmail.com>  $(date -R)
           EOF
