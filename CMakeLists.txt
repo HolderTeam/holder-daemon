@@ -418,6 +418,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   endif()
 endif()
 target_link_libraries(holderctl PRIVATE
+  Holder::Core
   Boost::filesystem
   Threads::Threads
   nlohmann_json::nlohmann_json

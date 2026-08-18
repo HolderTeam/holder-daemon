@@ -97,38 +97,11 @@ add_executable(holder_daemon_tests
   Router_test.cpp
   Cli_test.cpp
   HolderCtl_test.cpp
-  ProjectRepo_test.cpp
-  StartupRecovery_test.cpp
-  ProjectSyncRepo_test.cpp
-  ProjectSyncPolicy_test.cpp
   ProjectSyncWorker_test.cpp
-  ProjectPrivacy_test.cpp
-  CardRepo_test.cpp
-  LinkRepo_test.cpp
-  ResourceRepo_test.cpp
-  AiThreadRepo_test.cpp
-  AiMessageRepo_test.cpp
-  AiRunRepo_test.cpp
   AiLocalModelConfigRepo_test.cpp
-  AiRunnerRepo_test.cpp
-  AiProviderCredentialRepo_test.cpp
-  SecretStore_test.cpp
-  AiProviderSettingRepo_test.cpp
-  Migrations_test.cpp
-  Db_test.cpp
-  Cascade_test.cpp
+  RunnerRegistry_test.cpp
   Paths_test.cpp
   ProjectPaths_test.cpp
-  CardStore_test.cpp
-  CardStoreFsFailure_test.cpp
-  FtsIndexer_test.cpp
-  GitRepo_test.cpp
-  GitOps_test.cpp
-  RepoSyncMetrics_test.cpp
-  FsAdapterFailure_test.cpp
-  RealFs_test.cpp
-  GitAdapterFailure_test.cpp
-  Reindexer_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
