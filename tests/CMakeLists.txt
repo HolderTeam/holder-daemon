@@ -101,7 +101,6 @@ add_executable(holder_daemon_tests
   AiLocalModelConfigRepo_test.cpp
   RunnerRegistry_test.cpp
   Paths_test.cpp
-  ProjectPaths_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
@@ -114,7 +113,6 @@ add_executable(holder_daemon_tests
   ../src/ai/AiNudgeRepo.cpp
   ../src/ai/NudgeService.cpp
   ../src/ai/AiLocalModelConfigRepo.cpp
-  ../src/project/ProjectPaths.cpp
   ../src/llm/LocalModelRunner.cpp
   ../src/llm/LocalRunnerClient.cpp
   ../src/llm/ExecutorRunnerClient.cpp

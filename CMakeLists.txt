@@ -217,7 +217,6 @@ add_executable(holderd
   src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
   src/ai/AiLocalModelConfigRepo.cpp
-  src/project/ProjectPaths.cpp
   src/llm/LocalModelRunner.cpp
   src/llm/LocalRunnerClient.cpp
   src/llm/ExecutorRunnerClient.cpp

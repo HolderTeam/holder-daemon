@@ -6,7 +6,6 @@
 #include "app/RuntimeGuards.h"
 #include "card/CardStore.h"
 #include "core/ConcurrencyProfilePolicy.h"
-#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
 #include "llm/LocalModelRunner.h"
@@ -19,9 +18,7 @@
 #include "platform/Paths.h"
 #include "platform/ServerInfo.h"
 #include "platform/Signal.h"
-#include "privacy/ProjectPrivacy.h"
 #include "privacy/SecretStore.h"
-#include "project/ProjectPaths.h"
 #include "project/ProjectRepo.h"
 #include "project/StartupRecovery.h"
 #include "sync/ProjectSyncWorker.h"
@@ -166,7 +163,7 @@ int run_daemon(int argc, char* argv[]) {
     );
   }
   holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
-  const auto bootstrapped_home = ensure_default_home_project(db);
+  holder::app::bootstrap_default_home_project(db, &fts);
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
@@ -180,20 +177,6 @@ int run_daemon(int argc, char* argv[]) {
   spdlog::info("holder boot complete.");
 
   holder::card::CardStore card_store(db, &fts);
-  if (bootstrapped_home.has_value()) {
-    holder::project::ProjectRepo repo(db);
-    holder::git::RealGitOps git;
-    holder::privacy::ensure_encrypted_project_ready(
-        git,
-        repo,
-        bootstrapped_home->project_id,
-        bootstrapped_home->root_path,
-        bootstrapped_home->project_key_id,
-        bootstrapped_home->updated_at,
-        generate_uuid_v4
-    );
-    ensure_default_welcome_card(card_store, bootstrapped_home.value());
-  }
   if (reindex_only) {
     spdlog::info("Running full reindex...");
     holder::index::Reindexer reindexer(db);

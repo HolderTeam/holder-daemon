@@ -4,9 +4,11 @@
 
 #include "card/CardRepo.h"
 #include "git/RepoSyncMetrics.h"
+#include "platform/Paths.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectPaths.h"
 #include "project/ProjectRepo.h"
+#include "project/ProjectStore.h"
 #include "project/ProjectSyncRepo.h"
 
 #include <boost/beast/http.hpp>
@@ -564,41 +566,10 @@ bool handle_project_routes(
             project.project_key_id = body.at("project_key_id").get<std::string>();
           }
         }
-        if (project.created_at <= 0) {
-          project.created_at = support::now_epoch_seconds();
-        }
-        if (project.updated_at <= 0) {
-          project.updated_at = project.created_at;
-        }
-
-        holder::project::ProjectRepo repo(db);
         holder::project::ProjectSyncRepo sync_repo(db);
-        if (project.root_path.empty()) {
-          const auto base_root = holder::core::default_projects_root();
-          const auto slug = holder::core::slugify(project.name);
-          project.root_path = holder::core::unique_project_root(base_root, slug, repo.list());
-        }
-        repo.create(project);
 
-        auto& git = resolve_git(git_ops);
-        if (project.git_remote_url.has_value()) {
-          git.open_or_init(project.root_path);
-          git.set_remote("origin", project.git_remote_url.value());
-        }
-        if (project.privacy_mode == "encrypted_git") {
-          holder::privacy::ensure_encrypted_project_ready(
-              git,
-              repo,
-              project.project_id,
-              project.root_path,
-              project.project_key_id,
-              project.updated_at,
-              uuid_v4
-          );
-        }
-        if (const auto persisted = repo.get(project.project_id); persisted.has_value()) {
-          project = persisted.value();
-        }
+        holder::project::ProjectStore store(db, git_ops);
+        project = store.create(std::move(project), uuid_v4, holder::core::default_projects_root());
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
