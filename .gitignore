@@ -9,3 +9,5 @@ build-tidy
 build-san
 build-warnings
 build-memcheck
+# Generated from holder-core/resources/WELCOME.md by CMake (configure_file).
+/config/WELCOME.md

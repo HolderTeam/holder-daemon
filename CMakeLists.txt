@@ -197,6 +197,16 @@ if(NOT HOLDER_CORE_SOURCE_DIR)
 endif()
 add_subdirectory("${HOLDER_CORE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/holder-core")
 
+# config/WELCOME.md is authored in holder-core (shared with other libholder
+# consumers); keep this source-tree copy in sync so find_welcome_markdown()'s
+# existing search paths and install rule need no changes. Re-copied whenever
+# CMake reconfigures, which it does automatically if the holder-core copy changes.
+configure_file(
+  "${HOLDER_CORE_SOURCE_DIR}/resources/WELCOME.md"
+  "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
+  COPYONLY
+)
+
 # ----------------------------
 # Target
 # ----------------------------
