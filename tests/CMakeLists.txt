@@ -164,6 +164,7 @@ add_executable(holder_daemon_tests
   ../src/api/Router.cpp
   ../src/git/ExecutorGitOps.cpp
   ../src/sync/ProjectSyncWorker.cpp
+  ../src/app/Bootstrap.cpp
 )
 target_include_directories(holder_daemon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
