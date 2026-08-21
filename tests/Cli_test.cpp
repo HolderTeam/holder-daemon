@@ -4,9 +4,11 @@
 #include "api/HttpServer.h"
 #include "card/CardRepo.h"
 #include "card/CardStore.h"
+#include "card/TagRepo.h"
 #include "index/FtsIndexer.h"
 #include "platform/Db.h"
 #include "platform/LockFile.h"
+#include "platform/Migrations.h"
 #include "platform/Paths.h"
 #include "project/ProjectRepo.h"
 
@@ -153,6 +155,54 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   REQUIRE(projects2.size() == 1);
   const auto cards2 = card_repo2.list_all(projects2[0].project_id);
   REQUIRE(cards2.size() == 1);
+}
+
+TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migrations]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto xdg_root = dir / "xdg";
+  std::filesystem::create_directories(xdg_root);
+
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
+
+  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  CwdGuard cwd(repo_root);
+  const std::string cmd = "\"" + std::string(HOLDER_BIN_PATH) + "\" --reindex";
+  REQUIRE(run_command(cmd) == 0);
+
+  const auto db_path = xdg_root / "data" / "holder" / "server" / "holder.db";
+  std::string project_id;
+  std::string card_id;
+  {
+    holder::platform::Db db;
+    db.open(db_path);
+    holder::project::ProjectRepo project_repo(db);
+    holder::card::CardRepo card_repo(db);
+    const auto projects = project_repo.list();
+    REQUIRE(projects.size() == 1);
+    project_id = projects[0].project_id;
+    const auto cards = card_repo.list_all(project_id);
+    REQUIRE(cards.size() == 1);
+    card_id = cards[0].card_id;
+
+    holder::index::FtsIndexer fts(db);
+    holder::card::CardStore card_store(db, &fts);
+    card_store.update_content(card_id, "Migration content #legacy-tag", std::nullopt, 100);
+    db.exec("DROP TABLE card_tags;");
+    db.exec("UPDATE schema_version SET version = 1;");
+  }
+
+  REQUIRE(run_command(cmd) == 0);
+
+  holder::platform::Db upgraded_db;
+  upgraded_db.open(db_path);
+  REQUIRE_NOTHROW(holder::platform::Migrations::ensure_schema_version(upgraded_db, 2));
+  holder::card::TagRepo tag_repo(upgraded_db);
+  REQUIRE(
+      tag_repo.list_tags_for_card(project_id, card_id) == std::vector<std::string>{"legacy-tag"}
+  );
 }
 
 TEST_CASE("CLI --help and unknown args branches", "[cli]") {
