@@ -1515,3 +1515,72 @@ TEST_CASE("CardRoutes residual branch coverage", "[card-routes]") {
     REQUIRE(put_res.result() == http::status::not_found);
   }
 }
+
+TEST_CASE("CardRoutes exposes indexed tags on cards and supports tag filtering", "[card-routes][tags]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", (dir / "repo").string());
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  const auto uuid_v4 = []() { return std::string("generated-id"); };
+
+  auto call = [&](http::verb method,
+                  const std::string& path,
+                  const nlohmann::json& body,
+                  const std::unordered_map<std::string, std::string>& params = {}) {
+    auto req = make_request(method, path, body.dump());
+    http::response<http::string_body> res;
+    const bool handled = holder::api::routes::handle_card_routes(
+        path,
+        req,
+        res,
+        db,
+        &card_store,
+        &fts,
+        uuid_v4,
+        map_param_getter(params)
+    );
+    REQUIRE(handled);
+    return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
+  };
+
+  auto create = [&](const std::string& id, const std::string& title, const std::string& content) {
+    const auto [status, payload] = call(
+        http::verb::post,
+        "/cards",
+        {{"card_id", id},
+         {"project_id", "proj-1"},
+         {"title", title},
+         {"content", content},
+         {"created_at", 10},
+         {"updated_at", 10}}
+    );
+    REQUIRE(status == http::status::created);
+    REQUIRE(payload["ok"] == true);
+  };
+
+  create("11111111-1111-4111-8111-111111111111", "Tagged", "Fix #Android and #sync");
+  create("22222222-2222-4222-8222-222222222222", "Other", "Only #sync");
+
+  const auto [detail_status, detail] = call(
+      http::verb::get,
+      "/cards/11111111-1111-4111-8111-111111111111",
+      nlohmann::json::object()
+  );
+  REQUIRE(detail_status == http::status::ok);
+  REQUIRE(detail["data"]["tags"] == nlohmann::json::array({"android", "sync"}));
+  REQUIRE(detail["data"]["tag_occurrences"].size() == 2);
+  REQUIRE(detail["data"]["tag_occurrences"][0]["tag"] == "android");
+  REQUIRE(detail["data"]["tag_occurrences"][0]["byte_start"] == 4);
+  REQUIRE(detail["data"]["tag_occurrences"][0]["byte_end"] == 12);
+
+  const auto [filter_status, filtered] = call(
+      http::verb::get,
+      "/cards",
+      nlohmann::json::object(),
+      {{"project_id", "proj-1"}, {"tag", "android"}}
+  );
+  REQUIRE(filter_status == http::status::ok);
+  REQUIRE(filtered["data"].size() == 1);
+  REQUIRE(filtered["data"][0]["title"] == "Tagged");
+}

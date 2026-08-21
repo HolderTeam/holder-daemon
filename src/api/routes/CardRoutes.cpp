@@ -7,6 +7,8 @@
 #include "card/CardPaths.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
+#include "card/TagRepo.h"
+#include "card/TagExtractor.h"
 #include "privacy/PrivacyError.h"
 #include "project/ProjectRepo.h"
 #include "resource/ResourceRepo.h"
@@ -555,6 +557,7 @@ bool handle_card_routes(
 
   if (path == "/cards" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
+    const std::string tag_raw = param_get("tag");
     const std::string parent_raw = param_get("parent_card_id");
     const std::string view_raw = param_get("view");
     const std::string order_raw = param_get("order");
@@ -567,6 +570,35 @@ bool handle_card_routes(
     } else {
       try {
         holder::card::CardRepo repo(db);
+        if (!tag_raw.empty()) {
+          holder::card::TagRepo tag_repo(db);
+          nlohmann::json data = nlohmann::json::array();
+          for (const auto& card_id : tag_repo.list_card_ids_with_tag(project_id, tag_raw)) {
+            const auto card_opt = repo.get(card_id);
+            if (!card_opt.has_value() || card_opt->deleted_at.has_value()) {
+              continue;
+            }
+            const auto& card = card_opt.value();
+            nlohmann::json item;
+            item["card_id"] = card.card_id;
+            item["project_id"] = card.project_id;
+            item["title"] = card.title;
+            item["rel_path"] = card.rel_path;
+            item["sort_key"] = card.sort_key;
+            item["created_at"] = card.created_at;
+            item["updated_at"] = card.updated_at;
+            item["parent_card_id"] = card.parent_card_id.has_value()
+                                         ? nlohmann::json(card.parent_card_id.value())
+                                         : nlohmann::json(nullptr);
+            item["deleted_at"] = nlohmann::json(nullptr);
+            data.push_back(std::move(item));
+          }
+          nlohmann::json payload;
+          payload["ok"] = true;
+          payload["data"] = std::move(data);
+          res = support::json_response(http::status::ok, payload);
+          return true;
+        }
         const std::string view = view_raw.empty() ? "tree" : view_raw;
         const auto include_count = parse_count_param(count_raw, res);
         if (!include_count.has_value()) return true;
@@ -1269,6 +1301,17 @@ bool handle_card_routes(
                                          ? nlohmann::json(card.deleted_at.value())
                                          : nlohmann::json(nullptr);
                 data["content"] = content_opt.value();
+                holder::card::TagRepo tag_repo(db);
+                data["tags"] = tag_repo.list_tags_for_card(card.project_id, card.card_id);
+                data["tag_occurrences"] = nlohmann::json::array();
+                for (const auto& occurrence :
+                     holder::core::extract_tag_occurrences(content_opt.value())) {
+                  data["tag_occurrences"].push_back({
+                      {"tag", occurrence.tag},
+                      {"byte_start", occurrence.byte_start},
+                      {"byte_end", occurrence.byte_end},
+                  });
+                }
 
                 nlohmann::json payload;
                 payload["ok"] = true;

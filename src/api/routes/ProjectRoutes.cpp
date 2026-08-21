@@ -2,6 +2,8 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
+#include "card/TagRepo.h"
+
 #include "card/CardRepo.h"
 #include "git/RepoSyncMetrics.h"
 #include "platform/Paths.h"
@@ -611,7 +613,26 @@ bool handle_project_routes(
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       return true;
     }
-    if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
+    if (subpath == "/tags" && req.method() == http::verb::get) {
+      try {
+        holder::project::ProjectRepo project_repo(db);
+        if (!project_repo.get(project_id).has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        holder::card::TagRepo tag_repo(db);
+        nlohmann::json data = nlohmann::json::array();
+        for (const auto& [tag, card_count] : tag_repo.list_project_tags(project_id)) {
+          data.push_back({{"tag", tag}, {"card_count", card_count}});
+        }
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = std::move(data);
+        res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::internal_server_error, "error", ex.what());
+      }
+    } else if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
       try {
         const auto body = req.body().empty() ? nlohmann::json::object()
                                              : nlohmann::json::parse(req.body());
