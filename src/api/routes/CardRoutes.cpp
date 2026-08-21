@@ -574,8 +574,10 @@ bool handle_card_routes(
           holder::card::TagRepo tag_repo(db);
           nlohmann::json data = nlohmann::json::array();
           for (const auto& card_id : tag_repo.list_card_ids_with_tag(project_id, tag_raw)) {
+            // list_card_ids_with_tag itself now guarantees a trashed card's id never comes back
+            // (see TagRepo), so this only guards against the card being genuinely missing.
             const auto card_opt = repo.get(card_id);
-            if (!card_opt.has_value() || card_opt->deleted_at.has_value()) {
+            if (!card_opt.has_value()) {
               continue;
             }
             const auto& card = card_opt.value();
