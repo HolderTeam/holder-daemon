@@ -5,6 +5,7 @@
 #endif
 
 #include "api/routes/ProjectRoutes.h"
+#include "card/TagRepo.h"
 #include "git/GitOps.h"
 #include "http_test_helpers.h"
 #include "model/Project.h"
@@ -424,6 +425,42 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(status == http::status::internal_server_error);
     REQUIRE(payload["error"]["code"] == "error");
   }
+}
+
+TEST_CASE("ProjectRoutes lists project tags with card counts", "[project-routes][tags]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  holder::test::create_project(db, "proj-1", (dir / "repo").string());
+  db.exec(
+      "INSERT INTO cards(card_id, project_id, title, rel_path, sort_key, created_at, updated_at) "
+      "VALUES('card-1','proj-1','One','cards/one.md',1,1,1),"
+      "('card-2','proj-1','Two','cards/two.md',2,2,2);"
+  );
+  holder::card::TagRepo tags(db);
+  tags.set_tags_for_card("proj-1", "card-1", {"android", "sync"}, 1);
+  tags.set_tags_for_card("proj-1", "card-2", {"sync"}, 2);
+
+  auto req = make_request(http::verb::get, "/projects/proj-1/tags");
+  http::response<http::string_body> res;
+  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto param_get = [](const std::string&) { return std::string(); };
+  const bool handled = holder::api::routes::handle_project_routes(
+      "/projects/proj-1/tags",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  );
+
+  REQUIRE(handled);
+  REQUIRE(res.result() == http::status::ok);
+  const auto payload = nlohmann::json::parse(res.body());
+  REQUIRE(payload["data"] == nlohmann::json::array({
+      {{"tag", "sync"}, {"card_count", 2}},
+      {{"tag", "android"}, {"card_count", 1}},
+  }));
 }
 
 TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[project-routes]") {

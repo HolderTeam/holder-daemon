@@ -19,6 +19,7 @@ option(HOLDER_USE_SYSTEM_CASTE "Use packaged libcaste instead of third_party/cas
 option(HOLDER_CATCH_DISCOVER_TESTS "Discover Catch2 tests as individual CTest tests" ON)
 option(HOLDER_TSAN_USE_SETARCH "Run tests through setarch -R for GCC ThreadSanitizer" OFF)
 option(HOLDER_WARNINGS_AS_ERRORS "Treat Holder target compiler warnings as errors" OFF)
+set(HOLDER_CORE_SOURCE_DIR "" CACHE PATH "Path to holder-core source tree")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -184,6 +185,35 @@ else()
   set(HOLDER_CASTE_TARGET caste)
 endif()
 
+if(NOT HOLDER_CORE_SOURCE_DIR)
+  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/holder-core/CMakeLists.txt")
+    set(HOLDER_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/holder-core")
+  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../holder-core/CMakeLists.txt")
+    get_filename_component(HOLDER_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../holder-core" ABSOLUTE)
+  else()
+    message(FATAL_ERROR
+      "Missing holder-core. Set HOLDER_CORE_SOURCE_DIR or place holder-core next to holder-daemon.")
+  endif()
+endif()
+add_subdirectory("${HOLDER_CORE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/holder-core")
+
+# config/WELCOME.md is authored in holder-core (shared with other libholder
+# consumers); keep this source-tree copy in sync so find_welcome_markdown()'s
+# existing search paths and install rule need no changes. Re-copied whenever
+# CMake reconfigures, which it does automatically if the holder-core copy changes.
+configure_file(
+  "${HOLDER_CORE_SOURCE_DIR}/resources/WELCOME.md"
+  "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
+  COPYONLY
+)
+
+# schema/schema.sql is authored in holder-core; same rationale as WELCOME.md above.
+configure_file(
+  "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql"
+  COPYONLY
+)
+
 # ----------------------------
 # Target
 # ----------------------------
@@ -199,20 +229,11 @@ add_executable(holderd
   src/platform/LockFile.cpp
   src/platform/ServerInfo.cpp
   src/platform/Signal.cpp
-  src/platform/Fs.cpp
   src/core/SerialExecutor.cpp
   src/core/ConcurrencyProfilePolicy.cpp
-  src/card/CardPaths.cpp
-  src/card/CardFrontMatter.cpp
-  src/ai/AiMessagePaths.cpp
-  src/ai/AiMessageFrontMatter.cpp
   src/ai/AiNudgeRepo.cpp
   src/ai/NudgeService.cpp
-  src/ai/AiProviderCredentialRecovery.cpp
-  src/ai/AiRunnerRepo.cpp
-  src/project/ProjectPaths.cpp
-  src/index/FtsIndexer.cpp
-  src/index/Reindexer.cpp
+  src/ai/AiLocalModelConfigRepo.cpp
   src/llm/LocalModelRunner.cpp
   src/llm/LocalRunnerClient.cpp
   src/llm/ExecutorRunnerClient.cpp
@@ -261,32 +282,7 @@ add_executable(holderd
   src/api/support/RunEventStore.cpp
   src/api/Session.cpp
   src/api/Router.cpp
-  src/project/ProjectRepo.cpp
-  src/project/StartupRecovery.cpp
-  src/project/ProjectSyncRepo.cpp
-  src/card/CardRepo.cpp
-  src/card/LinkRepo.cpp
-  src/resource/ResourceRepo.cpp
-  src/ai/AiThreadRepo.cpp
-  src/ai/AiMessageRepo.cpp
-  src/ai/AiRunRepo.cpp
-  src/ai/AiLocalModelConfigRepo.cpp
-  src/ai/AiProviderCredentialRepo.cpp
-  src/ai/AiProviderSettingRepo.cpp
-  src/project/Rebuilder.cpp
-  src/card/CardStore.cpp
-  src/platform/Db.cpp
-  src/platform/Tx.cpp
-  src/platform/Migrations.cpp
-  src/git/GitRepo.cpp
-  src/git/GitOps.cpp
   src/git/ExecutorGitOps.cpp
-  src/git/RepoSyncMetrics.cpp
-  src/privacy/ProjectPrivacy.cpp
-  src/privacy/PlatformKeyring.cpp
-  src/privacy/SecretStore.cpp
-  src/privacy/CryptoService.cpp
-  src/sync/ProjectSyncPolicy.cpp
   src/sync/ProjectSyncWorker.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
@@ -326,6 +322,7 @@ endif()
 
 # Link libs
 target_link_libraries(holderd PRIVATE
+  Holder::Core
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -437,6 +434,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   endif()
 endif()
 target_link_libraries(holderctl PRIVATE
+  Holder::Core
   Boost::filesystem
   Threads::Threads
   nlohmann_json::nlohmann_json

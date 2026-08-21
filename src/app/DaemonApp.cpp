@@ -4,9 +4,11 @@
 #include "api/HttpServer.h"
 #include "app/Bootstrap.h"
 #include "app/RuntimeGuards.h"
+#include "card/CardRepo.h"
 #include "card/CardStore.h"
+#include "card/TagExtractor.h"
+#include "card/TagRepo.h"
 #include "core/ConcurrencyProfilePolicy.h"
-#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
 #include "llm/LocalModelRunner.h"
@@ -19,9 +21,7 @@
 #include "platform/Paths.h"
 #include "platform/ServerInfo.h"
 #include "platform/Signal.h"
-#include "privacy/ProjectPrivacy.h"
 #include "privacy/SecretStore.h"
-#include "project/ProjectPaths.h"
 #include "project/ProjectRepo.h"
 #include "project/StartupRecovery.h"
 #include "sync/ProjectSyncWorker.h"
@@ -67,6 +67,36 @@ std::filesystem::path find_schema_sql() {
 
   throw std::runtime_error("Cannot find schema/schema.sql from current directory."
   ); // LCOV_EXCL_LINE
+}
+
+void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_store) {
+  holder::project::ProjectRepo project_repo(db);
+  holder::card::CardRepo card_repo(db);
+  holder::card::TagRepo tag_repo(db);
+  std::size_t indexed_cards = 0;
+  std::size_t indexed_tags = 0;
+
+  for (const auto& project : project_repo.list()) {
+    for (const auto& card : card_repo.list_all(project.project_id)) {
+      if (card.deleted_at.has_value()) continue;
+
+      try {
+        const auto content = card_store.get_content(card);
+        if (!content.has_value()) {
+          spdlog::warn("Skipping tag backfill for card with missing content: {}", card.card_id);
+          continue;
+        }
+        const auto tags = holder::core::extract_tags(content.value());
+        tag_repo.set_tags_for_card(project.project_id, card.card_id, tags, card.updated_at);
+        ++indexed_cards;
+        indexed_tags += tags.size();
+      } catch (const std::exception& ex) {
+        spdlog::warn("Skipping tag backfill for card {}: {}", card.card_id, ex.what());
+      }
+    }
+  }
+
+  spdlog::info("Tag index backfill complete: {} cards, {} tags.", indexed_cards, indexed_tags);
 }
 
 } // namespace
@@ -152,7 +182,10 @@ int run_daemon(int argc, char* argv[]) {
 
   const auto schema_path = find_schema_sql();
   holder::platform::Migrations::ensure_schema(db, schema_path);
-  holder::platform::Migrations::ensure_schema_version(db, 1);
+  const bool schema_migrated = holder::platform::Migrations::migrate_to_latest(db);
+  holder::platform::Migrations::ensure_schema_version(
+      db, holder::platform::Migrations::latest_schema_version
+  );
   holder::index::FtsIndexer fts(db);
   auto secret_store = holder::privacy::make_default_secret_store(paths.server_dir());
 
@@ -166,7 +199,7 @@ int run_daemon(int argc, char* argv[]) {
     );
   }
   holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
-  const auto bootstrapped_home = ensure_default_home_project(db);
+  holder::app::bootstrap_default_home_project(db, &fts);
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
@@ -180,19 +213,9 @@ int run_daemon(int argc, char* argv[]) {
   spdlog::info("holder boot complete.");
 
   holder::card::CardStore card_store(db, &fts);
-  if (bootstrapped_home.has_value()) {
-    holder::project::ProjectRepo repo(db);
-    holder::git::RealGitOps git;
-    holder::privacy::ensure_encrypted_project_ready(
-        git,
-        repo,
-        bootstrapped_home->project_id,
-        bootstrapped_home->root_path,
-        bootstrapped_home->project_key_id,
-        bootstrapped_home->updated_at,
-        generate_uuid_v4
-    );
-    ensure_default_welcome_card(card_store, bootstrapped_home.value());
+  if (schema_migrated) {
+    spdlog::info("Rebuilding the tag index after schema migration...");
+    backfill_card_tags(db, card_store);
   }
   if (reindex_only) {
     spdlog::info("Running full reindex...");

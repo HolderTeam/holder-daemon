@@ -2,11 +2,15 @@
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
+#include "card/TagRepo.h"
+
 #include "card/CardRepo.h"
 #include "git/RepoSyncMetrics.h"
+#include "platform/Paths.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectPaths.h"
 #include "project/ProjectRepo.h"
+#include "project/ProjectStore.h"
 #include "project/ProjectSyncRepo.h"
 
 #include <boost/beast/http.hpp>
@@ -564,41 +568,10 @@ bool handle_project_routes(
             project.project_key_id = body.at("project_key_id").get<std::string>();
           }
         }
-        if (project.created_at <= 0) {
-          project.created_at = support::now_epoch_seconds();
-        }
-        if (project.updated_at <= 0) {
-          project.updated_at = project.created_at;
-        }
-
-        holder::project::ProjectRepo repo(db);
         holder::project::ProjectSyncRepo sync_repo(db);
-        if (project.root_path.empty()) {
-          const auto base_root = holder::core::default_projects_root();
-          const auto slug = holder::core::slugify(project.name);
-          project.root_path = holder::core::unique_project_root(base_root, slug, repo.list());
-        }
-        repo.create(project);
 
-        auto& git = resolve_git(git_ops);
-        if (project.git_remote_url.has_value()) {
-          git.open_or_init(project.root_path);
-          git.set_remote("origin", project.git_remote_url.value());
-        }
-        if (project.privacy_mode == "encrypted_git") {
-          holder::privacy::ensure_encrypted_project_ready(
-              git,
-              repo,
-              project.project_id,
-              project.root_path,
-              project.project_key_id,
-              project.updated_at,
-              uuid_v4
-          );
-        }
-        if (const auto persisted = repo.get(project.project_id); persisted.has_value()) {
-          project = persisted.value();
-        }
+        holder::project::ProjectStore store(db, git_ops);
+        project = store.create(std::move(project), uuid_v4, holder::core::default_projects_root());
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
@@ -640,7 +613,26 @@ bool handle_project_routes(
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       return true;
     }
-    if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
+    if (subpath == "/tags" && req.method() == http::verb::get) {
+      try {
+        holder::project::ProjectRepo project_repo(db);
+        if (!project_repo.get(project_id).has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        holder::card::TagRepo tag_repo(db);
+        nlohmann::json data = nlohmann::json::array();
+        for (const auto& [tag, card_count] : tag_repo.list_project_tags(project_id)) {
+          data.push_back({{"tag", tag}, {"card_count", card_count}});
+        }
+        nlohmann::json payload;
+        payload["ok"] = true;
+        payload["data"] = std::move(data);
+        res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::internal_server_error, "error", ex.what());
+      }
+    } else if (subpath == "/git/test-remote" && req.method() == http::verb::post) {
       try {
         const auto body = req.body().empty() ? nlohmann::json::object()
                                              : nlohmann::json::parse(req.body());

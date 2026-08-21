@@ -1,12 +1,15 @@
 #include "sync/ProjectSyncWorker.h"
 
+#include "app/Bootstrap.h"
 #include "git/GitOps.h"
 #include "git/RepoSyncMetrics.h"
+#include "index/FtsIndexer.h"
 #include "platform/Db.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
 #include "sync/ProjectSyncPolicy.h"
+#include "sync/PullConflictResolution.h"
 
 #include <spdlog/spdlog.h>
 
@@ -87,6 +90,7 @@ long long ProjectSyncWorker::now_epoch_seconds() const {
 void ProjectSyncWorker::run_startup_pull_pass() {
   holder::platform::Db db;
   db.open(db_path_);
+  holder::index::FtsIndexer fts(db);
   holder::project::ProjectRepo projects(db);
   holder::project::ProjectSyncRepo sync(db);
   holder::git::RealGitOps git;
@@ -116,6 +120,19 @@ void ProjectSyncWorker::run_startup_pull_pass() {
       git.open_or_init(project.root_path);
       git.set_remote("origin", project.git_remote_url.value());
       git.pull_remote_ff_only("origin");
+      holder::sync::reconcile_index_after_pull(db, &fts, project);
+      sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
+    } catch (const holder::git::NonFastForwardPullError& diverged) {
+      holder::sync::resolve_pull_conflicts(
+          db,
+          &fts,
+          project,
+          git,
+          diverged,
+          now,
+          holder::app::generate_uuid_v4
+      );
+      holder::sync::reconcile_index_after_pull(db, &fts, project);
       sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
     } catch (const std::exception& ex) {
       sync.record_pull_result(
@@ -142,6 +159,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
 void ProjectSyncWorker::run_push_cycle() {
   holder::platform::Db db;
   db.open(db_path_);
+  holder::index::FtsIndexer fts(db);
   holder::project::ProjectRepo projects(db);
   holder::project::ProjectSyncRepo sync(db);
   holder::git::RealGitOps git;
@@ -173,6 +191,19 @@ void ProjectSyncWorker::run_push_cycle() {
         git.open_or_init(project.root_path);
         git.set_remote("origin", project.git_remote_url.value());
         git.pull_remote_ff_only("origin");
+        holder::sync::reconcile_index_after_pull(db, &fts, project);
+        sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
+      } catch (const holder::git::NonFastForwardPullError& diverged) {
+        holder::sync::resolve_pull_conflicts(
+            db,
+            &fts,
+            project,
+            git,
+            diverged,
+            now,
+            holder::app::generate_uuid_v4
+        );
+        holder::sync::reconcile_index_after_pull(db, &fts, project);
         sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
       } catch (const std::exception& ex) {
         sync.record_pull_result(

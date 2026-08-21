@@ -94,49 +94,13 @@ add_executable(holder_daemon_tests
   HttpSearchAiFlow_test.cpp
   Entrypoint_test.cpp
   FatalError_test.cpp
-  PrivacyCryptoService_test.cpp
-  PrivacyError_test.cpp
   Router_test.cpp
   Cli_test.cpp
   HolderCtl_test.cpp
-  ProjectRepo_test.cpp
-  StartupRecovery_test.cpp
-  ProjectSyncRepo_test.cpp
-  ProjectSyncPolicy_test.cpp
   ProjectSyncWorker_test.cpp
-  ProjectPrivacy_test.cpp
-  CardRepo_test.cpp
-  LinkRepo_test.cpp
-  ResourceRepo_test.cpp
-  AiThreadRepo_test.cpp
-  AiMessageRepo_test.cpp
-  AiRunRepo_test.cpp
   AiLocalModelConfigRepo_test.cpp
-  AiRunnerRepo_test.cpp
-  AiProviderCredentialRepo_test.cpp
-  SecretStore_test.cpp
-  AiProviderSettingRepo_test.cpp
-  Migrations_test.cpp
-  Db_test.cpp
-  Cascade_test.cpp
-  CardPaths_test.cpp
+  RunnerRegistry_test.cpp
   Paths_test.cpp
-  CardFrontMatter_test.cpp
-  AiMessagePaths_test.cpp
-  AiMessageFrontMatter_test.cpp
-  ProjectPaths_test.cpp
-  CardStore_test.cpp
-  CardStoreFsFailure_test.cpp
-  FtsIndexer_test.cpp
-  GitRepo_test.cpp
-  PushResult_test.cpp
-  RemoteProbe_test.cpp
-  GitOps_test.cpp
-  RepoSyncMetrics_test.cpp
-  FsAdapterFailure_test.cpp
-  RealFs_test.cpp
-  GitAdapterFailure_test.cpp
-  Reindexer_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
@@ -144,20 +108,11 @@ add_executable(holder_daemon_tests
   ../src/platform/Paths.cpp
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
-  ../src/platform/Fs.cpp
   ../src/core/SerialExecutor.cpp
   ../src/core/ConcurrencyProfilePolicy.cpp
-  ../src/card/CardPaths.cpp
-  ../src/ai/AiMessagePaths.cpp
-  ../src/card/CardFrontMatter.cpp
-  ../src/ai/AiMessageFrontMatter.cpp
   ../src/ai/AiNudgeRepo.cpp
   ../src/ai/NudgeService.cpp
-  ../src/ai/AiProviderCredentialRecovery.cpp
-  ../src/ai/AiRunnerRepo.cpp
-  ../src/project/ProjectPaths.cpp
-  ../src/index/FtsIndexer.cpp
-  ../src/index/Reindexer.cpp
+  ../src/ai/AiLocalModelConfigRepo.cpp
   ../src/llm/LocalModelRunner.cpp
   ../src/llm/LocalRunnerClient.cpp
   ../src/llm/ExecutorRunnerClient.cpp
@@ -207,33 +162,9 @@ add_executable(holder_daemon_tests
   ../src/api/support/RunEventStore.cpp
   ../src/api/Session.cpp
   ../src/api/Router.cpp
-  ../src/git/GitRepo.cpp
-  ../src/git/GitOps.cpp
   ../src/git/ExecutorGitOps.cpp
-  ../src/git/RepoSyncMetrics.cpp
-  ../src/privacy/ProjectPrivacy.cpp
-  ../src/privacy/PlatformKeyring.cpp
-  ../src/privacy/SecretStore.cpp
-  ../src/privacy/CryptoService.cpp
-  ../src/sync/ProjectSyncPolicy.cpp
   ../src/sync/ProjectSyncWorker.cpp
-  ../src/project/ProjectRepo.cpp
-  ../src/project/StartupRecovery.cpp
-  ../src/project/ProjectSyncRepo.cpp
-  ../src/card/CardRepo.cpp
-  ../src/card/LinkRepo.cpp
-  ../src/resource/ResourceRepo.cpp
-  ../src/ai/AiThreadRepo.cpp
-  ../src/ai/AiMessageRepo.cpp
-  ../src/ai/AiRunRepo.cpp
-  ../src/ai/AiLocalModelConfigRepo.cpp
-  ../src/ai/AiProviderCredentialRepo.cpp
-  ../src/ai/AiProviderSettingRepo.cpp
-  ../src/project/Rebuilder.cpp
-  ../src/platform/Migrations.cpp
-  ../src/card/CardStore.cpp
-  ../src/platform/Tx.cpp
-  ../src/platform/Db.cpp
+  ../src/app/Bootstrap.cpp
 )
 target_include_directories(holder_daemon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -267,6 +198,7 @@ else()
 endif()
 
 target_link_libraries(holder_daemon_tests PRIVATE
+  Holder::Core
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto

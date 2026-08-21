@@ -22,4 +22,7 @@ struct Paths {
   void ensure_dirs() const;
 };
 
+// Honors HOLDER_PROJECTS_ROOT if set; otherwise Paths::resolve("holder").data_dir / "projects".
+std::filesystem::path default_projects_root();
+
 } // namespace holder::core

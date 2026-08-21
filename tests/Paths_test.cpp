@@ -189,6 +189,27 @@ TEST_CASE("Paths ensure_dirs throws when config_dir cannot be created", "[paths]
   REQUIRE_THROWS(p.ensure_dirs());
 }
 
+TEST_CASE("default_projects_root uses env override", "[paths]") {
+  const auto base = std::filesystem::temp_directory_path() / "holder_projects_root_test";
+  EnvGuard guard("HOLDER_PROJECTS_ROOT", base.string());
+
+  REQUIRE(holder::core::default_projects_root() == base);
+}
+
+TEST_CASE("default_projects_root falls back to data dir", "[paths]") {
+  if (const char* current = std::getenv("HOLDER_PROJECTS_ROOT")) {
+#ifdef _WIN32
+    _putenv_s("HOLDER_PROJECTS_ROOT", "");
+#else
+    unsetenv("HOLDER_PROJECTS_ROOT");
+#endif
+  }
+  const auto paths = holder::core::Paths::resolve("holder");
+  const auto expected = paths.data_dir / "projects";
+
+  REQUIRE(holder::core::default_projects_root() == expected);
+}
+
 TEST_CASE("Paths ensure_dirs throws when cache_dir cannot be created", "[paths]") {
   namespace fs = std::filesystem;
   auto root = make_temp_dir("holder_paths_cache_fail_");

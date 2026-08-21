@@ -1,5 +1,6 @@
 #include "platform/Paths.h"
 
+#include <cstdlib>
 #include <stdexcept>
 #include <system_error>
 
@@ -66,6 +67,13 @@ void Paths::ensure_dirs() const {
         "Failed to create cache_dir: " + cache_dir.string() + " (" + ec.message() + ")"
     );
   }
+}
+
+std::filesystem::path default_projects_root() {
+  if (const char* env = std::getenv("HOLDER_PROJECTS_ROOT")) {
+    return fs::path(env);
+  }
+  return Paths::resolve("holder").data_dir / "projects";
 }
 
 } // namespace holder::core

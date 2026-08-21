@@ -1,3 +1,6 @@
 [submodule "third_party/caste"]
 	path = third_party/caste
 	url = https://github.com/zeth/caste
+[submodule "third_party/holder-core"]
+	path = third_party/holder-core
+	url = https://github.com/HolderTeam/holder-core

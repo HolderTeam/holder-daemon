@@ -1,10 +1,15 @@
 #include "sync/ProjectSyncWorker.h"
 
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "git/GitRepo.h"
+#include "index/FtsIndexer.h"
+#include "model/Card.h"
 #include "model/Project.h"
 #include "platform/Signal.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
+#include "project/Rebuilder.h"
 
 #include "http_test_helpers.h"
 
@@ -111,6 +116,41 @@ void create_project(
   projects.create(project);
 }
 
+// Writes a real, well-formed card (front matter and all) into repo_dir's git history, so a real
+// pull that reconciles the SQLite index against it (see reconcile_index_after_pull) doesn't trip
+// over content that was never a real card to begin with. Uses its own throwaway DB purely as
+// CardStore's bookkeeping target -- only the resulting git commit in repo_dir is what the test
+// actually seeds with. Returns that throwaway DB's path, so a caller that wants to make a
+// further real (front-matter-correct) edit to the same card can reopen it and use CardStore
+// again rather than hand-rolling front matter itself.
+std::filesystem::path seed_real_card(
+    const std::filesystem::path& repo_dir,
+    const std::string& project_id,
+    const std::string& title,
+    const std::string& content
+) {
+  const auto seed_db_path = repo_dir.string() + "-seed.db";
+  auto db = holder::test::open_db_with_schema(seed_db_path);
+  holder::index::FtsIndexer fts(db);
+  holder::project::ProjectRepo projects(db);
+
+  holder::model::Project project;
+  project.project_id = project_id;
+  project.name = "Project";
+  project.root_path = repo_dir.string();
+  project.privacy_mode = "plain";
+  project.created_at = 1;
+  project.updated_at = 1;
+  projects.create(project);
+
+  holder::model::Card card;
+  card.card_id = "seed-card-" + project_id;
+  card.project_id = project_id;
+  card.title = title;
+  holder::card::CardStore(db, &fts).create(card, content);
+  return seed_db_path;
+}
+
 } // namespace
 
 TEST_CASE("ProjectSyncWorker periodically refreshes pull timestamp", "[sync][worker]") {
@@ -121,9 +161,7 @@ TEST_CASE("ProjectSyncWorker periodically refreshes pull timestamp", "[sync][wor
 
   holder::git::GitRepo remote_repo;
   remote_repo.open_or_init(remote_dir);
-  remote_repo.write_file("cards/a.md", "hello");
-  remote_repo.stage_path("cards/a.md");
-  remote_repo.commit("seed");
+  seed_real_card(remote_dir, "seed-project", "Seed", "hello");
 
   {
     auto db = holder::test::open_db_with_schema(db_path);
@@ -189,6 +227,81 @@ TEST_CASE("ProjectSyncWorker pull failure uses pull retry lane", "[sync][worker]
   REQUIRE(state->last_pull_status.value() == "failed");
   REQUIRE(state->pull_retry_count >= 1);
   REQUIRE(state->next_pull_retry_at.has_value());
+}
+
+TEST_CASE(
+    "ProjectSyncWorker resolves a diverged pull card-level instead of failing",
+    "[sync][worker]"
+) {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  const auto remote_dir = dir / "remote_repo";
+  const auto local_dir = dir / "local_repo";
+
+  // A shared card both sides will edit differently, seeded on what becomes "remote".
+  holder::git::GitRepo remote_repo;
+  remote_repo.open_or_init(remote_dir);
+  const auto remote_seed_db_path = seed_real_card(remote_dir, "proj-1", "Shared", "base");
+
+  // Local starts as a clone of that same history, then diverges: remote gets an edit the local
+  // clone never pulled, and the local clone gets its own independent edit to the same card.
+  holder::git::GitRepo local_repo;
+  local_repo.open_or_init(local_dir);
+  local_repo.set_remote("origin", remote_dir.string());
+  local_repo.pull_remote_ff_only("origin");
+
+  {
+    // Reuse the seed DB, which already knows this card, to make a real (front-matter-correct)
+    // edit via CardStore rather than hand-rolling raw file content.
+    auto remote_seed_db = holder::test::open_db_with_schema(remote_seed_db_path);
+    holder::index::FtsIndexer fts(remote_seed_db);
+    holder::card::CardStore(remote_seed_db, &fts)
+        .update_content("seed-card-proj-1", "remote edit", std::nullopt, 2);
+  }
+
+  {
+    // Local has no DB row for the card it just pulled (only the file) -- rebuild one first
+    // (exactly what a real local peer would already have done on its own pulls), then edit
+    // through CardStore the same way.
+    auto local_db = holder::test::open_db_with_schema(local_dir.string() + "-seed.db");
+    holder::index::FtsIndexer local_fts(local_db);
+    holder::project::ProjectRepo local_projects(local_db);
+    holder::model::Project local_project;
+    local_project.project_id = "proj-1";
+    local_project.name = "Project";
+    local_project.root_path = local_dir.string();
+    local_project.privacy_mode = "plain";
+    local_project.created_at = 1;
+    local_project.updated_at = 1;
+    local_projects.create(local_project);
+    holder::store::Rebuilder(local_db, &local_fts).rebuild_project(local_project);
+    holder::card::CardStore(local_db, &local_fts)
+        .update_content("seed-card-proj-1", "local edit", std::nullopt, 2);
+  }
+
+  {
+    auto db = holder::test::open_db_with_schema(db_path);
+    holder::project::ProjectRepo projects(db);
+    holder::project::ProjectSyncRepo sync(db);
+    create_project(projects, "proj-1", local_dir, remote_dir.string(), "plain");
+    sync.record_push_result("proj-1", "pushed", true, std::nullopt, now_epoch_seconds());
+  }
+
+  run_worker_for_seconds(db_path, 2);
+
+  const auto state = load_sync_state(db_path, "proj-1");
+  REQUIRE(state.has_value());
+  REQUIRE(state->last_pull_status.has_value());
+  REQUIRE(state->last_pull_status.value() == "succeeded");
+
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto cards = holder::card::CardRepo(db).list_all("proj-1");
+  REQUIRE(cards.size() == 2);
+  bool found_conflicted_copy = false;
+  for (const auto& card : cards) {
+    if (card.title == "Shared (conflicted copy)") found_conflicted_copy = true;
+  }
+  REQUIRE(found_conflicted_copy);
 }
 
 TEST_CASE("ProjectSyncWorker push cycle records successful push", "[sync][worker]") {

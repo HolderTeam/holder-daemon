@@ -1,18 +1,14 @@
 #include "app/Bootstrap.h"
 
-#include "card/CardStore.h"
-#include "model/Card.h"
-#include "platform/Db.h"
 #include "platform/InstalledDataPath.h"
-#include "project/ProjectPaths.h"
-#include "project/ProjectRepo.h"
+#include "platform/Paths.h"
+#include "project/DefaultProject.h"
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <spdlog/spdlog.h>
 
-#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -77,50 +73,27 @@ std::string generate_uuid_v4() {
   return boost::uuids::to_string(gen());
 }
 
-std::optional<holder::model::Project> ensure_default_home_project(holder::platform::Db& db) {
-  holder::project::ProjectRepo repo(db);
-  auto projects = repo.list();
-  if (!projects.empty()) {
-    return std::nullopt;
-  }
-
-  holder::model::Project home;
-  home.project_id = generate_uuid_v4();
-  home.name = "Home";
-  home.privacy_mode = "encrypted_git";
-  home.project_key_id.reset();
-  home.created_at = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch()
-  )
-                        .count();
-  home.updated_at = home.created_at;
-
-  const auto base_root = holder::core::default_projects_root();
-  const auto slug = holder::core::slugify(home.name);
-  home.root_path = holder::core::unique_project_root(base_root, slug, projects);
-
-  repo.create(home);
-  spdlog::info("Bootstrapped default Home project ({})", home.project_id);
-  return home;
-}
-
-void ensure_default_welcome_card(
-    holder::card::CardStore& card_store,
-    const holder::model::Project& home
+std::optional<holder::model::Project> bootstrap_default_home_project(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts
 ) {
-  const auto now = std::chrono::duration_cast<std::chrono::seconds>(
-                       std::chrono::system_clock::now().time_since_epoch()
-  )
-                       .count();
   const std::string content = load_welcome_markdown_body();
-  holder::model::Card welcome;
-  welcome.card_id = generate_uuid_v4();
-  welcome.project_id = home.project_id;
-  welcome.title = derive_title_from_markdown_first_line(content, "Welcome");
-  welcome.created_at = now;
-  welcome.updated_at = now;
-  card_store.create(welcome, content);
-  spdlog::info("Bootstrapped welcome card ({}) in Home project", welcome.card_id);
+  const std::string title = derive_title_from_markdown_first_line(content, "Welcome");
+
+  const auto home = holder::project::ensure_default_project(
+      db,
+      "Home",
+      "encrypted_git",
+      title,
+      content,
+      generate_uuid_v4,
+      holder::core::default_projects_root(),
+      fts
+  );
+  if (home.has_value()) {
+    spdlog::info("Bootstrapped default Home project ({})", home->project_id);
+  }
+  return home;
 }
 
 } // namespace holder::app

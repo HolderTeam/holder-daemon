@@ -1,4 +1,8 @@
 tar-ignore = build
 tar-ignore = build-*
 tar-ignore = build-coverage
-tar-ignore = third_party
+tar-ignore = third_party/caste
+tar-ignore = third_party/holder-core/build
+tar-ignore = third_party/holder-core/build-*
+tar-ignore = third_party/holder-core/build-coverage
+tar-ignore = third_party/holder-core/out
