@@ -207,6 +207,13 @@ configure_file(
   COPYONLY
 )
 
+# schema/schema.sql is authored in holder-core; same rationale as WELCOME.md above.
+configure_file(
+  "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql"
+  COPYONLY
+)
+
 # ----------------------------
 # Target
 # ----------------------------
