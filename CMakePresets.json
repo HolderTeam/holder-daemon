@@ -45,6 +45,7 @@
       "name": "windows-vcpkg-tests-debug",
       "configurePreset": "windows-vcpkg-tests-debug",
       "targets": [
+        "holder_core_tests",
         "holder_daemon_tests"
       ]
     }

@@ -55,7 +55,7 @@ jobs:
             -DBUILD_TESTING=ON
 
       - name: Build backend executables and tests
-        run: cmake --build build-macos --target holderd holderctl holder_daemon_tests --parallel
+        run: cmake --build build-macos --target holderd holderctl holder_core_tests holder_daemon_tests --parallel
 
       - name: Run tests
         run: ctest --test-dir build-macos --output-on-failure
