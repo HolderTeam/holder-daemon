@@ -6,6 +6,8 @@ BUILD_TYPE="${2:-RelWithDebInfo}"
 CASTE_DIR="third_party/caste"
 CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
+CCACHE_BIN=""
+CCACHE_STATE="unchecked"
 
 print_usage() {
   cat <<'EOF'
@@ -35,10 +37,72 @@ Examples:
   HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san
 
 Environment:
+  HOLDER_CCACHE                auto (default), 1 to require, or 0 to disable ccache
   HOLDER_CTEST_TIMEOUT          Per-test timeout for normal split CTest runs
   HOLDER_MEMCHECK_BUILD_TYPE    Build type for memcheck, default Debug
   HOLDER_SAN_DETECT_LEAKS       Set to 1 to enable ASan leak detection
 EOF
+}
+
+prepare_ccache() {
+  local setting="${HOLDER_CCACHE:-auto}"
+  local required="false"
+
+  if [ "${CCACHE_STATE}" != "unchecked" ]; then
+    return
+  fi
+
+  case "${setting}" in
+    auto)
+      ;;
+    1|on|true)
+      required="true"
+      ;;
+    0|off|false)
+      CCACHE_STATE="disabled"
+      echo "ccache: disabled by HOLDER_CCACHE=${setting}"
+      return
+      ;;
+    *)
+      echo "Invalid HOLDER_CCACHE value: ${setting} (expected auto, 1, or 0)." >&2
+      exit 2
+      ;;
+  esac
+
+  if CCACHE_BIN="$(command -v ccache 2>/dev/null)"; then
+    CCACHE_STATE="enabled"
+    echo "ccache: enabled (${CCACHE_BIN})"
+    "${CCACHE_BIN}" --show-stats
+    return
+  fi
+
+  CCACHE_BIN=""
+  CCACHE_STATE="disabled"
+  if [ "${required}" = "true" ]; then
+    echo "Missing dependency: ccache is required by HOLDER_CCACHE=${setting}." >&2
+    exit 1
+  fi
+  echo "ccache: not found; building without a compiler cache." >&2
+  echo "Install it with: sudo apt install ccache" >&2
+}
+
+cmake_configure() {
+  prepare_ccache
+  if [ "${CCACHE_STATE}" = "enabled" ]; then
+    cmake "$@" -DCMAKE_CXX_COMPILER_LAUNCHER="${CCACHE_BIN}"
+  else
+    # Clear a launcher cached by an earlier invocation when caching is now
+    # explicitly disabled or ccache is no longer installed.
+    cmake "$@" -DCMAKE_CXX_COMPILER_LAUNCHER=
+  fi
+}
+
+cmake_build() {
+  cmake --build "$@"
+  if [ "${CCACHE_STATE}" = "enabled" ]; then
+    echo "ccache statistics after build:"
+    "${CCACHE_BIN}" --show-stats
+  fi
 }
 
 case "${MODE}" in
@@ -98,20 +162,20 @@ if [ ! -f "${CASTE_DIR}/CMakeLists.txt" ]; then
 fi
 
 build_all() {
-  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE="${1}"
+  cmake_configure -S . -B build -G Ninja -DCMAKE_BUILD_TYPE="${1}"
   if command -v nproc >/dev/null 2>&1; then
     JOBS="$(nproc)"
   else
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
-  cmake --build build -- -j "${JOBS}"
+  cmake_build build -- -j "${JOBS}"
 }
 
 warnings_all() {
   local build_dir="build-warnings"
   local build_type="${1:-Debug}"
 
-  cmake -S . -B "${build_dir}" -G Ninja \
+  cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DHOLDER_WARNINGS_AS_ERRORS=ON
 
@@ -120,7 +184,7 @@ warnings_all() {
   else
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
-  cmake --build "${build_dir}" --target holderd holderctl -- -j "${JOBS}"
+  cmake_build "${build_dir}" --target holderd holderctl -- -j "${JOBS}"
 }
 
 memcheck_all() {
@@ -141,7 +205,7 @@ memcheck_all() {
   suppression_file="${PWD}/tools/valgrind/holder.supp"
   memcheck_skip_regex="Slow background route does not block foreground route|Slow background route does not block save lane route|Multiple configured runners do not block card save path under background saturation|Queued save request jumps ahead of queued non-save work at dispatch time"
 
-  cmake -S . -B "${build_dir}" -G Ninja \
+  cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DMEMORYCHECK_COMMAND="${valgrind_bin}" \
     -DMEMORYCHECK_COMMAND_OPTIONS="${valgrind_options}" \
@@ -152,7 +216,7 @@ memcheck_all() {
   else
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
-  cmake --build "${build_dir}" -- -j "${JOBS}"
+  cmake_build "${build_dir}" -- -j "${JOBS}"
 
   if [ -n "${test_regex}" ]; then
     ctest --test-dir "${build_dir}" \
@@ -201,7 +265,7 @@ san_all() {
     ;;
   esac
 
-  cmake -S . -B "${build_dir}" -G Ninja \
+  cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DCMAKE_CXX_FLAGS="${san_flags}" \
     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}" \
@@ -216,7 +280,7 @@ san_all() {
   fi
   ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
-    cmake --build "${build_dir}" -- -j "${JOBS}"
+    cmake_build "${build_dir}" -- -j "${JOBS}"
 
   ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
@@ -236,7 +300,7 @@ coverage_all() {
     gcov_executable="gcov-13"
   fi
 
-  cmake -S . -B "${build_dir}" -G Ninja \
+  cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
 
@@ -245,7 +309,7 @@ coverage_all() {
   else
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
-  cmake --build "${build_dir}" -- -j "${JOBS}"
+  cmake_build "${build_dir}" -- -j "${JOBS}"
 
   lcov --directory "${build_dir}" --zerocounters
   lcov --capture --initial --directory "${build_dir}" --output-file "${info_base}" \
@@ -308,7 +372,7 @@ tidy_all() {
     fi
   fi
 
-  cmake -S . -B "${build_dir}" -G Ninja \
+  cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
