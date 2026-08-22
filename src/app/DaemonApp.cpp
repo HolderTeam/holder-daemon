@@ -43,6 +43,9 @@
 #ifndef CARD_SERVER_VERSION
 #define CARD_SERVER_VERSION "0.0.0"
 #endif
+#ifndef CARD_SERVER_API_VERSION
+#define CARD_SERVER_API_VERSION "0.0"
+#endif
 
 namespace holder::app {
 namespace {
@@ -206,7 +209,7 @@ int run_daemon(int argc, char* argv[]) {
                         std::chrono::system_clock::now().time_since_epoch()
   )
                         .count();
-  info.api_version = "0.1";
+  info.api_version = CARD_SERVER_API_VERSION;
   info.server_version = CARD_SERVER_VERSION;
   info.auth_token = holder::core::generate_auth_token();
 

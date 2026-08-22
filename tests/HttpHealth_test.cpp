@@ -30,7 +30,7 @@ TEST_CASE("HTTP /health returns ok with valid token", "[http]") {
   const auto payload = get_health(bound.bind, bound.port, token);
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"]["db_ok"] == true);
-  REQUIRE(payload["data"]["api_version"] == "0.1");
+  REQUIRE(payload["data"]["api_version"] == CARD_SERVER_API_VERSION);
   REQUIRE(payload["data"]["privacy"].is_object());
   REQUIRE(payload["data"]["privacy"]["backend"] == "libsodium_xchacha20poly1305_ietf");
   REQUIRE(payload["data"]["privacy"]["project_mode_supported"] == true);

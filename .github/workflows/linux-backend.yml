@@ -87,6 +87,8 @@ jobs:
 
           tr -d '[:space:]' < VERSION \
             > "${stage_dir}/release/holder-daemon-version.txt"
+          tr -d '[:space:]' < API_VERSION \
+            > "${stage_dir}/release/holder-daemon-api-version.txt"
           printf '%s\n' "${GITHUB_SHA}" \
             > "${stage_dir}/release/holder-daemon-commit.txt"
 
@@ -120,10 +122,13 @@ jobs:
           test -f "${stage_dir}/usr/share/holder-daemon/config/git_providers.yaml"
           test -f "${stage_dir}/usr/share/holder-daemon/openapi.yaml"
           test -f "${stage_dir}/usr/share/holder-daemon/assets/swagger-ui/index.html"
+          test -f "${stage_dir}/release/holder-daemon-api-version.txt"
           test -f "${stage_dir}/release/holder-daemon-manifest.txt"
 
           test "$("${stage_dir}/usr/bin/holderd" --version)" = \
             "holderd ${expected_version}"
+          test "$(cat "${stage_dir}/release/holder-daemon-api-version.txt")" = \
+            "$(tr -d '[:space:]' < API_VERSION)"
           "${stage_dir}/usr/bin/holderctl" --help
 
           runtime_dir="$(mktemp -d)"

@@ -13,6 +13,12 @@ else()
     "VERSION must contain a semantic version like 0.1.0 or 2.0.0-dev")
 endif()
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/API_VERSION" HOLDER_DAEMON_API_VERSION)
+string(STRIP "${HOLDER_DAEMON_API_VERSION}" HOLDER_DAEMON_API_VERSION)
+if(NOT HOLDER_DAEMON_API_VERSION MATCHES "^[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "API_VERSION must contain a compatibility version like 0.1")
+endif()
+
 project(card_server VERSION "${HOLDER_DAEMON_CMAKE_VERSION}" LANGUAGES CXX)
 include(GNUInstallDirs)
 
@@ -304,6 +310,7 @@ target_include_directories(holderd PRIVATE
 )
 
 target_compile_definitions(holderd PRIVATE
+  CARD_SERVER_API_VERSION="${HOLDER_DAEMON_API_VERSION}"
   CARD_SERVER_VERSION="${HOLDER_DAEMON_VERSION}"
   HOLDER_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/holder-daemon"
 )
