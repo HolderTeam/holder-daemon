@@ -1,0 +1,192 @@
+name: Linux backend artifact
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out holder-daemon
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            catch2 \
+            ninja-build \
+            pkg-config \
+            libboost-filesystem-dev \
+            libssl-dev \
+            nlohmann-json3-dev \
+            libyaml-cpp-dev \
+            libspdlog-dev \
+            libsqlite3-dev \
+            libsodium-dev \
+            libgit2-dev \
+            libmd4c-dev \
+            libsecret-1-dev
+
+      - name: Configure CMake
+        run: |
+          cmake \
+            -S . \
+            -B build-linux \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_TESTING=ON
+
+      - name: Build backend executables and tests
+        run: |
+          cmake \
+            --build build-linux \
+            --target holderd holderctl holder_core_tests holder_daemon_tests \
+            --parallel
+
+      - name: Run tests
+        run: |
+          ctest \
+            --test-dir build-linux \
+            --output-on-failure \
+            --parallel 8 \
+            --timeout 60
+
+      - name: Stage installed backend
+        run: |
+          set -euo pipefail
+
+          stage_dir="${PWD}/out/artifacts/linux-backend"
+          install -d "${stage_dir}/release"
+
+          DESTDIR="${stage_dir}" cmake --install build-linux
+
+          # Subproject install rules also provide development files. The
+          # AppImage component artifact needs the shared caste runtime, but
+          # not headers, static archives, CMake package files, or man pages.
+          rm -rf \
+            "${stage_dir}/usr/include" \
+            "${stage_dir}/usr/share/man"
+          find "${stage_dir}/usr/lib" -type f -name '*.a' -delete
+          find "${stage_dir}/usr/lib" -type d -name cmake -prune \
+            -exec rm -rf {} +
+
+          tr -d '[:space:]' < VERSION \
+            > "${stage_dir}/release/holder-daemon-version.txt"
+          printf '%s\n' "${GITHUB_SHA}" \
+            > "${stage_dir}/release/holder-daemon-commit.txt"
+
+          (
+            cd "${stage_dir}"
+            find . \( -type f -o -type l \) \
+              ! -path './release/holder-daemon-manifest.txt' \
+              | sed 's#^\./##' \
+              | sort \
+              > release/holder-daemon-manifest.txt
+          )
+
+          find "${stage_dir}" -type f | sort
+
+      - name: Smoke-test staged backend
+        run: |
+          set -euo pipefail
+
+          stage_dir="${PWD}/out/artifacts/linux-backend"
+          expected_version="$(tr -d '[:space:]' < VERSION)"
+          multiarch="$(gcc -print-multiarch)"
+
+          export LD_LIBRARY_PATH="${stage_dir}/usr/lib/${multiarch}:${stage_dir}/usr/lib"
+
+          test -x "${stage_dir}/usr/bin/holderd"
+          test -x "${stage_dir}/usr/bin/holderctl"
+          test -e "${stage_dir}/usr/lib/${multiarch}/libcaste.so"
+          test -f "${stage_dir}/usr/share/holder-daemon/schema/schema.sql"
+          test -f "${stage_dir}/usr/share/holder-daemon/config/WELCOME.md"
+          test -f "${stage_dir}/usr/share/holder-daemon/config/ai_catalog.yaml"
+          test -f "${stage_dir}/usr/share/holder-daemon/config/git_providers.yaml"
+          test -f "${stage_dir}/usr/share/holder-daemon/openapi.yaml"
+          test -f "${stage_dir}/usr/share/holder-daemon/assets/swagger-ui/index.html"
+          test -f "${stage_dir}/release/holder-daemon-manifest.txt"
+
+          test "$("${stage_dir}/usr/bin/holderd" --version)" = \
+            "holderd ${expected_version}"
+          "${stage_dir}/usr/bin/holderctl" --help
+
+          runtime_dir="$(mktemp -d)"
+          export XDG_DATA_HOME="${runtime_dir}/data"
+          export XDG_CONFIG_HOME="${runtime_dir}/config"
+          export XDG_CACHE_HOME="${runtime_dir}/cache"
+          daemon_log="${runtime_dir}/holderd.log"
+
+          cleanup() {
+            if [ -n "${daemon_pid:-}" ] && kill -0 "${daemon_pid}" 2>/dev/null; then
+              kill -TERM "${daemon_pid}" 2>/dev/null || true
+              wait "${daemon_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          (
+            cd "${stage_dir}/usr/share/holder-daemon"
+            exec "${stage_dir}/usr/bin/holderd" --port 19499
+          ) >"${daemon_log}" 2>&1 &
+          daemon_pid=$!
+
+          daemon_ready=0
+          for _ in $(seq 1 100); do
+            if "${stage_dir}/usr/bin/holderctl" health >/dev/null 2>&1; then
+              daemon_ready=1
+              break
+            fi
+            if ! kill -0 "${daemon_pid}" 2>/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+
+          if [ "${daemon_ready}" -ne 1 ]; then
+            cat "${daemon_log}"
+            exit 1
+          fi
+
+          "${stage_dir}/usr/bin/holderctl" health
+          cleanup
+          daemon_pid=""
+          trap - EXIT
+
+      - name: Archive backend artifact
+        run: |
+          set -euo pipefail
+
+          stage_dir="${PWD}/out/artifacts/linux-backend"
+          upload_dir="${PWD}/out/artifacts/linux-backend-upload"
+          archive_name="holder-daemon-linux-x86_64.tar.gz"
+
+          install -d "${upload_dir}"
+          tar -C "${stage_dir}" -czf "${upload_dir}/${archive_name}" .
+          (
+            cd "${upload_dir}"
+            sha256sum "${archive_name}" > "${archive_name}.sha256"
+          )
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: holder-daemon-linux-x86_64
+          path: out/artifacts/linux-backend-upload/*
+          if-no-files-found: error
+          retention-days: 7
