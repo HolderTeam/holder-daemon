@@ -130,6 +130,10 @@ jobs:
           export XDG_DATA_HOME="${runtime_dir}/data"
           export XDG_CONFIG_HOME="${runtime_dir}/config"
           export XDG_CACHE_HOME="${runtime_dir}/cache"
+          # GitHub's headless runner has no org.freedesktop.secrets service.
+          # Use Holder's explicit test keystore for this isolated smoke run;
+          # normal packaged launches continue to use libsecret.
+          export HOLDER_TEST_KEYSTORE_DIR="${runtime_dir}/keystore"
           daemon_log="${runtime_dir}/holderd.log"
 
           cleanup() {
