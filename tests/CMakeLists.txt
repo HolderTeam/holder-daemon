@@ -182,7 +182,7 @@ endif()
 
 target_compile_definitions(holder_daemon_tests PRIVATE
   LOCK_HELPER_PATH="$<TARGET_FILE:lock_helper>"
-  CARD_SERVER_VERSION="${PROJECT_VERSION}"
+  CARD_SERVER_VERSION="${HOLDER_DAEMON_VERSION}"
   SCHEMA_SQL_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../schema/schema.sql"
   HOLDER_BIN_PATH="$<TARGET_FILE:holderd>"
   HOLDER_CTL_PATH="$<TARGET_FILE:holderctl>"

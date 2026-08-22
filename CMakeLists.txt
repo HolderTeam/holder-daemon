@@ -2,11 +2,18 @@ cmake_minimum_required(VERSION 3.22)
 
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" HOLDER_DAEMON_VERSION)
 string(STRIP "${HOLDER_DAEMON_VERSION}" HOLDER_DAEMON_VERSION)
-if(NOT HOLDER_DAEMON_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
-  message(FATAL_ERROR "VERSION must contain a semantic version like 0.1.0")
+if(HOLDER_DAEMON_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$")
+  # CMake's project(VERSION) accepts only numeric components. Keep the full
+  # SemVer for the daemon's reported version and expose its numeric core to
+  # CMake's project version machinery.
+  set(HOLDER_DAEMON_CMAKE_VERSION
+      "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+else()
+  message(FATAL_ERROR
+    "VERSION must contain a semantic version like 0.1.0 or 2.0.0-dev")
 endif()
 
-project(card_server VERSION "${HOLDER_DAEMON_VERSION}" LANGUAGES CXX)
+project(card_server VERSION "${HOLDER_DAEMON_CMAKE_VERSION}" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 # ----------------------------
@@ -297,7 +304,7 @@ target_include_directories(holderd PRIVATE
 )
 
 target_compile_definitions(holderd PRIVATE
-  CARD_SERVER_VERSION="${PROJECT_VERSION}"
+  CARD_SERVER_VERSION="${HOLDER_DAEMON_VERSION}"
   HOLDER_INSTALL_DATADIR="${CMAKE_INSTALL_FULL_DATADIR}/holder-daemon"
 )
 if(HOLDER_ENABLE_ENCRYPTED_GIT)
@@ -421,7 +428,7 @@ target_include_directories(holderctl PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 target_compile_definitions(holderctl PRIVATE
-  CARD_SERVER_VERSION="${PROJECT_VERSION}"
+  CARD_SERVER_VERSION="${HOLDER_DAEMON_VERSION}"
 )
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(holderctl PRIVATE
