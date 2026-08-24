@@ -1,7 +1,7 @@
 #pragma once
 
+#include "platform/DatabaseRebuild.h"
 #include "platform/Paths.h"
-#include "platform/Db.h"
 #include "privacy/SecretStore.h"
 
 #include <filesystem>
@@ -9,29 +9,13 @@
 
 namespace holder::core {
 
-enum class DatabaseHealth { Missing, Healthy, Corrupt, IoError };
+using DatabaseHealth = holder::platform::DatabaseHealth;
+using DatabaseHealthResult = holder::platform::DatabaseHealthResult;
+using DatabaseRebuildReport = holder::platform::DatabaseRebuildReport;
 
-struct DatabaseHealthResult {
-  DatabaseHealth health = DatabaseHealth::Missing;
-  std::string detail;
-};
-
-struct DatabaseRebuildReport {
-  bool dry_run = false;
-  std::string previous_health;
-  std::size_t projects = 0;
-  std::size_t cards = 0;
-  std::size_t ai_threads = 0;
-  std::size_t ai_messages = 0;
-  std::size_t resources = 0;
-  std::size_t assets = 0;
-  std::size_t placements = 0;
-  std::size_t locations = 0;
-  std::filesystem::path backup_path;
-  std::string to_json() const;
-};
-
-DatabaseHealthResult inspect_database_health(const std::filesystem::path& path);
+inline DatabaseHealthResult inspect_database_health(const std::filesystem::path& path) {
+  return holder::platform::inspect_database_health(path);
+}
 
 void audit_durable_database_ownership(
     holder::platform::Db& db,
