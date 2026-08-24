@@ -118,6 +118,16 @@ http::verb verb_for(const std::string& method) {
   throw std::invalid_argument("unsupported S3 method");
 }
 
+std::string utf8_path(const std::filesystem::path& path) {
+  const auto encoded = path.u8string();
+  std::string result;
+  result.reserve(encoded.size());
+  for (const auto byte : encoded) {
+    result.push_back(static_cast<char>(byte));
+  }
+  return result;
+}
+
 void map_status(unsigned int status, const std::string& operation) {
   if (status >= 200 && status < 300) return;
   if (status == 401 || status == 403) {
@@ -220,6 +230,7 @@ unsigned int S3CompatibleProvider::request(
     beast::flat_buffer buffer;
     if (upload != nullptr) {
       beast::error_code error;
+      const auto upload_path = utf8_path(*upload);
       http::request<http::file_body> request{verb_for(method), target, 11};
       request.set(http::field::host, host_header);
       request.set("x-amz-content-sha256", payload_sha256);
@@ -228,7 +239,7 @@ unsigned int S3CompatibleProvider::request(
       if (credentials_.session_token.has_value() && !credentials_.session_token->empty()) {
         request.set("x-amz-security-token", *credentials_.session_token);
       }
-      request.body().open(upload->c_str(), beast::file_mode::scan, error);
+      request.body().open(upload_path.c_str(), beast::file_mode::scan, error);
       if (error) throw std::runtime_error("failed to open S3 upload: " + error.message());
       request.content_length(static_cast<std::uint64_t>(content_length));
       http::write(stream, request);
@@ -249,9 +260,10 @@ unsigned int S3CompatibleProvider::request(
     if (download != nullptr) {
       std::filesystem::create_directories(download->parent_path());
       beast::error_code error;
+      const auto download_path = utf8_path(*download);
       http::response_parser<http::file_body> parser;
       parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
-      parser.get().body().open(download->c_str(), beast::file_mode::write, error);
+      parser.get().body().open(download_path.c_str(), beast::file_mode::write, error);
       if (error) throw std::runtime_error("failed to open S3 download: " + error.message());
       http::read(stream, buffer, parser);
       return parser.get().result_int();
