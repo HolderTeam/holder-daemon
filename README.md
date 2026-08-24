@@ -179,6 +179,9 @@ HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san  # ASan + LSan build + tests
 ./scripts/factory-reset.sh --force  # This wipes all user data, useful for development and testing the onboarding path. Warning: don't use on the actual holder instance you use as a user.
 ```
 
+The opt-in local MinIO and hosted S3-compatible storage test is documented in
+[`docs/s3-compatible-smoke-test.md`](docs/s3-compatible-smoke-test.md).
+
 ## Daemons.
 
 In computing, a daemon is a program that runs as a background process,

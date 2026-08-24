@@ -510,10 +510,9 @@ TEST_CASE("CardRoutes links and backlinks edge branches", "[card-routes]") {
   holder::model::Resource r1{
       .resource_id = "res-1",
       .project_id = "proj-1",
-      .kind = "url",
-      .uri = "https://example.com/1",
+      .type = "website",
       .label = "R1",
-      .desc = std::nullopt,
+      .metadata = {{"identifier", {"https://example.com/1"}}},
       .created_at = 1,
       .updated_at = 1,
   };

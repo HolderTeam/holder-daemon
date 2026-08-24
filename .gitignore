@@ -1,5 +1,6 @@
 build
 build-holder-core
+build-resources
 out
 .vcpkg
 .vscode
@@ -12,4 +13,3 @@ build-memcheck
 Testing
 # Generated from holder-core/resources/WELCOME.md by CMake (configure_file).
 /config/WELCOME.md
-

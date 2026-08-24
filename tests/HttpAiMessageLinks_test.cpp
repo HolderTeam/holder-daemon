@@ -392,10 +392,24 @@ TEST_CASE("AiMessageLinkRoutes direct route filters links and validates target t
   create_card(db, "card-other-project", "proj-2", false);
 
   holder::resource::ResourceRepo resource_repo(db);
-  holder::model::Resource
-      r1{"res-1", "proj-1", "url", "https://example.com/1", "R1", std::nullopt, 1, 1};
-  holder::model::Resource
-      r2{"res-2", "proj-2", "url", "https://example.com/2", "R2", std::nullopt, 1, 1};
+  holder::model::Resource r1{
+      .resource_id = "res-1",
+      .project_id = "proj-1",
+      .type = "website",
+      .label = "R1",
+      .metadata = {{"identifier", {"https://example.com/1"}}},
+      .created_at = 1,
+      .updated_at = 1,
+  };
+  holder::model::Resource r2{
+      .resource_id = "res-2",
+      .project_id = "proj-2",
+      .type = "website",
+      .label = "R2",
+      .metadata = {{"identifier", {"https://example.com/2"}}},
+      .created_at = 1,
+      .updated_at = 1,
+  };
   resource_repo.add(r1);
   resource_repo.add(r2);
 

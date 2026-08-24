@@ -1613,23 +1613,76 @@ components:
               enum: [encrypted_git, plain]
             check:
               $ref: "#/components/schemas/ProjectEncryptionCheck"
+    ResourceMetadata:
+      type: object
+      additionalProperties:
+        type: array
+        items:
+          type: string
+      description: Permissive metadata map. Repeated and custom values are preserved in order.
+    AssetPlacement:
+      type: object
+      required: [placement_id, location_id, encoding, stored_byte_size, created_at]
+      properties:
+        placement_id:
+          type: string
+        location_id:
+          type: string
+        encoding:
+          type: string
+          enum: [plain, holder_asset_v1]
+        stored_byte_size:
+          type: integer
+          format: int64
+        created_at:
+          type: integer
+          format: int64
+    ResourceAsset:
+      type: object
+      required: [asset_id, resource_id, original_filename, media_type, byte_size, plaintext_sha256, placements, created_at, updated_at]
+      properties:
+        asset_id:
+          type: string
+        resource_id:
+          type: string
+        original_filename:
+          type: string
+        media_type:
+          type: string
+        byte_size:
+          type: integer
+          format: int64
+        plaintext_sha256:
+          type: string
+        placements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetPlacement"
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
     Resource:
       type: object
-      required: [resource_id, project_id, kind, uri, label, created_at, updated_at]
+      required: [resource_id, project_id, type, label, metadata, assets, created_at, updated_at]
       properties:
         resource_id:
           type: string
         project_id:
           type: string
-        kind:
+        type:
           type: string
-        uri:
-          type: string
+          description: Friendly, extensible type rather than a closed enum.
         label:
           type: string
-        desc:
-          type: string
-          nullable: true
+        metadata:
+          $ref: "#/components/schemas/ResourceMetadata"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResourceAsset"
         created_at:
           type: integer
           format: int64
@@ -1638,63 +1691,39 @@ components:
           format: int64
     ResourceCreateRequest:
       type: object
-      required: [project_id, kind, uri, label]
+      required: [project_id, type, label]
       properties:
         resource_id:
           type: string
           description: Optional; server generates if omitted.
         project_id:
           type: string
-        kind:
-          type: string
-        uri:
+        type:
           type: string
         label:
           type: string
-        desc:
-          type: string
-          nullable: true
+        metadata:
+          $ref: "#/components/schemas/ResourceMetadata"
         created_at:
           type: integer
           format: int64
-          description: Optional; server uses current time if omitted or 0.
         updated_at:
           type: integer
           format: int64
-          description: Optional; server uses created_at if omitted or 0.
-    ResourceCreateResponse:
-      type: object
-      required: [ok, data]
-      properties:
-        ok:
-          type: boolean
-          enum: [true]
-        data:
-          type: object
-          required: [resource_id]
-          properties:
-            resource_id:
-              type: string
     ResourceUpdateRequest:
       type: object
-      required: [updated_at]
       properties:
-        kind:
+        type:
           type: string
-          nullable: true
-        uri:
-          type: string
-          nullable: true
         label:
           type: string
-          nullable: true
-        desc:
-          type: string
-          nullable: true
+        metadata:
+          $ref: "#/components/schemas/ResourceMetadata"
+          description: Partial metadata update. Empty arrays remove a property; omitted properties are preserved.
         updated_at:
           type: integer
           format: int64
-    ResourceUpdateResponse:
+    ResourceResponse:
       type: object
       required: [ok, data]
       properties:
@@ -1702,11 +1731,7 @@ components:
           type: boolean
           enum: [true]
         data:
-          type: object
-          required: [resource_id]
-          properties:
-            resource_id:
-              type: string
+          $ref: "#/components/schemas/Resource"
     ResourceListResponse:
       type: object
       required: [ok, data]
@@ -1731,6 +1756,120 @@ components:
           properties:
             resource_id:
               type: string
+    StorageLocation:
+      type: object
+      required: [location_id, project_id, name, provider, configuration, bound, created_at, updated_at]
+      properties:
+        location_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+          enum: [local_directory, s3_compatible]
+        configuration:
+          type: object
+          additionalProperties:
+            type: string
+          description: Portable non-secret provider configuration.
+        bound:
+          type: boolean
+        binding_preview:
+          type: string
+          nullable: true
+          description: Safe display text; credentials are never returned.
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    StorageLocationRequest:
+      type: object
+      required: [project_id, name, provider]
+      properties:
+        location_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+          enum: [local_directory, s3_compatible]
+        configuration:
+          type: object
+          additionalProperties:
+            type: string
+    StorageLocationListResponse:
+      type: object
+      required: [ok, data, preferred_location_id]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StorageLocation"
+        preferred_location_id:
+          type: string
+          nullable: true
+    LocationBindingRequest:
+      type: object
+      required: [values]
+      properties:
+        values:
+          type: object
+          additionalProperties:
+            type: string
+          writeOnly: true
+        preview:
+          type: string
+    AssetImportRequest:
+      type: object
+      required: [project_id, card_id, location_id, source_path]
+      properties:
+        project_id:
+          type: string
+        card_id:
+          type: string
+        location_id:
+          type: string
+        source_path:
+          type: string
+          description: Local readable regular file; never persisted into project metadata.
+    AssetImportJob:
+      type: object
+      required: [job_id, status, duplicate_reused]
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, staging, storing, committing, completed, failed]
+        resource_id:
+          type: string
+          nullable: true
+        asset_id:
+          type: string
+          nullable: true
+        duplicate_reused:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+    AssetImportJobResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/AssetImportJob"
     TrashItem:
       type: object
       required: [type]
@@ -3508,7 +3647,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceCreateResponse"
+                $ref: "#/components/schemas/ResourceResponse"
         "400":
           description: Bad request
           content:
@@ -3528,6 +3667,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /resources/{resource_id}:
+    get:
+      summary: Get a resource with its assets and placements
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       summary: Update a resource
       parameters:
@@ -3548,7 +3708,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceUpdateResponse"
+                $ref: "#/components/schemas/ResourceResponse"
         "400":
           description: Bad request
           content:
@@ -3568,7 +3728,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
-      summary: Delete a resource
+      summary: Delete a resource and remove its Card links
       parameters:
         - name: resource_id
           in: path
@@ -3588,6 +3748,209 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /resources/{resource_id}/assets/{asset_id}/content:
+    get:
+      summary: Stream verified asset content
+      parameters:
+        - name: resource_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: asset_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: placement_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recovered plaintext asset
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Missing binding, key, storage, or integrity failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Resource, asset, or placement not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /locations:
+    get:
+      summary: List project storage locations
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageLocationListResponse"
+    post:
+      summary: Create a storage location declaration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StorageLocationRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+  /locations/{location_id}:
+    get:
+      summary: Get a storage location
+      parameters:
+        - &locationId
+          name: location_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+    patch:
+      summary: Update a storage location declaration
+      parameters:
+        - *locationId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                configuration:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete an unused storage location declaration
+      parameters:
+        - *locationId
+      responses:
+        "200":
+          description: Deleted
+        "409":
+          description: A live placement still uses the location
+  /locations/{location_id}/binding:
+    put:
+      summary: Bind private device credentials or path
+      parameters:
+        - *locationId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationBindingRequest"
+      responses:
+        "200":
+          description: Bound; secret values are not returned
+    delete:
+      summary: Remove this device's private binding
+      parameters:
+        - *locationId
+      responses:
+        "200":
+          description: Unbound
+  /locations/{location_id}/test:
+    post:
+      summary: Upload, verify, and remove a storage probe
+      parameters:
+        - *locationId
+      responses:
+        "200":
+          description: Location available
+        "400":
+          description: Missing binding or storage failure
+  /locations/preferred:
+    put:
+      summary: Set this device's preferred project storage location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, location_id]
+              properties:
+                project_id:
+                  type: string
+                location_id:
+                  type: string
+      responses:
+        "200":
+          description: Preferred location saved in the device keyring
+  /imports:
+    post:
+      summary: Start a local-file asset import
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetImportRequest"
+      responses:
+        "202":
+          description: Import queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetImportJobResponse"
+  /imports/{job_id}:
+    get:
+      summary: Poll an asset import job
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current job state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetImportJobResponse"
+        "404":
+          description: Job not found
   /trash:
     get:
       summary: List trashed items by project

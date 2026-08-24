@@ -297,6 +297,8 @@ add_executable(holderd
   src/api/Router.cpp
   src/git/ExecutorGitOps.cpp
   src/sync/ProjectSyncWorker.cpp
+  src/storage/S3SigV4.cpp
+  src/storage/S3CompatibleProvider.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp

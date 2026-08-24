@@ -1,4 +1,5 @@
 #include "api/Listener.h"
+#include "api/routes/AiResourceRoutes.h"
 
 #include "api/support/HttpResponses.h"
 
@@ -335,6 +336,10 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     }
   }
 
+  // Import jobs outlive their initiating HTTP request but borrow the Listener's serialized Git
+  // adapter. Join them before that adapter can be destroyed.
+  holder::api::routes::wait_for_asset_import_jobs();
+
   ioc_.stop();
   for (auto& worker : io_workers_) {
     if (worker.joinable()) {
@@ -568,7 +573,7 @@ void Listener::run_save_worker() {
         context.fts.get(),
         context.nudge_service.get(),
         secret_store_,
-        git_ops_,
+        request_git_ops_,
         context.runner_registry.get()
     );
     auto response = session.execute();
@@ -644,7 +649,7 @@ void Listener::run_general_worker() {
         context.fts.get(),
         context.nudge_service.get(),
         secret_store_,
-        git_ops_,
+        request_git_ops_,
         context.runner_registry.get()
     );
     auto response = session.execute();

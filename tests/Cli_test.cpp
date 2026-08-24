@@ -198,7 +198,7 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
 
   holder::platform::Db upgraded_db;
   upgraded_db.open(db_path);
-  REQUIRE_NOTHROW(holder::platform::Migrations::ensure_schema_version(upgraded_db, 2));
+  REQUIRE_NOTHROW(holder::platform::Migrations::ensure_schema_version(upgraded_db, 4));
   holder::card::TagRepo tag_repo(upgraded_db);
   REQUIRE(
       tag_repo.list_tags_for_card(project_id, card_id) == std::vector<std::string>{"legacy-tag"}

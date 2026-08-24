@@ -37,7 +37,7 @@ TEST_CASE("HTTP rebuild repopulates DB from files", "[http]") {
   card.created_at = 10;
   card.updated_at = 12;
   const std::string card_content = "Card body";
-  const auto card_raw = holder::core::render_card_front_matter(card, {}) + card_content;
+  const auto card_raw = holder::core::render_card_front_matter(card, {}, {}) + card_content;
   write_text(root / card.rel_path, card_raw);
 
   holder::model::AiMessage msg;
@@ -195,7 +195,7 @@ TEST_CASE("HTTP rebuild errors on card path mismatch", "[http]") {
   card.created_at = 10;
   card.updated_at = 10;
   const std::string card_content = "Card body";
-  const auto card_raw = holder::core::render_card_front_matter(card, {}) + card_content;
+  const auto card_raw = holder::core::render_card_front_matter(card, {}, {}) + card_content;
 
   const std::string wrong_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
   const auto wrong_path = holder::core::card_rel_path(wrong_id);
@@ -341,7 +341,7 @@ TEST_CASE("HTTP rebuild errors on duplicate IDs", "[http]") {
   card.rel_path = rel_path;
   card.created_at = 1;
   card.updated_at = 1;
-  const auto raw = holder::core::render_card_front_matter(card, {}) + "body";
+  const auto raw = holder::core::render_card_front_matter(card, {}, {}) + "body";
 
   write_text(root / rel_path, raw);
   write_text(root / alt_path, raw);

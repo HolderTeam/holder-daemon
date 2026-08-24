@@ -76,8 +76,11 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     if (route_result.handled) {
       return {.streamed = route_result.streamed};
     }
-  } else if (resource == "resources") {
-    if (handle_ai_resource_routes(path, req, res, db, uuid_v4, param)) return {};
+  } else if (resource == "resources" || resource == "locations" || resource == "imports") {
+    bool streamed = false;
+    if (handle_ai_resource_routes(
+            path, req, res, db, uuid_v4, param, secret_store, git_ops, &socket, &streamed
+        )) return {.streamed = streamed};
   } else if (resource == "trash") {
     if (handle_trash_routes(path, req, res, db, card_store, fts, param)) return {};
   } else if (resource == "cards") {

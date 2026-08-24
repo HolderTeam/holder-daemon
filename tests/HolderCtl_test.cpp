@@ -1895,8 +1895,7 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
     holder::model::Resource empty_uri_resource;
     empty_uri_resource.resource_id = "empty-uri";
     empty_uri_resource.project_id = "home-id";
-    empty_uri_resource.kind = "url";
-    empty_uri_resource.uri = "";
+    empty_uri_resource.type = "website";
     empty_uri_resource.label = "empty uri";
     empty_uri_resource.created_at = 20;
     empty_uri_resource.updated_at = 20;
@@ -1960,9 +1959,9 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   REQUIRE(
       read_text(show_out) == "Resource: " + resource_id +
                                  "\n"
-                                 "Kind: url\n"
+                                 "Type: url\n"
                                  "Label: docs\n"
-                                 "URI: https://example.com/docs\n"
+                                 "Identifier: https://example.com/docs\n"
                                  "Desc: Docs link\n"
   );
 
@@ -1995,8 +1994,11 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   );
   const auto edited_json = nlohmann::json::parse(read_text(edited_json_out));
   REQUIRE(edited_json["data"]["label"] == "Docs");
-  REQUIRE(edited_json["data"]["uri"] == "https://example.com/reference");
-  REQUIRE(edited_json["data"]["desc"].is_null());
+  REQUIRE(
+      edited_json["data"]["metadata"]["identifier"] ==
+      nlohmann::json::array({"https://example.com/reference"})
+  );
+  REQUIRE(!edited_json["data"]["metadata"].contains("description"));
 
   const auto edit_desc_json_out = xdg_root / "resource-edit-desc.json";
   REQUIRE(

@@ -101,6 +101,8 @@ add_executable(holder_daemon_tests
   AiLocalModelConfigRepo_test.cpp
   RunnerRegistry_test.cpp
   Paths_test.cpp
+  S3SigV4_test.cpp
+  S3CompatibleProvider_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
@@ -164,6 +166,8 @@ add_executable(holder_daemon_tests
   ../src/api/Router.cpp
   ../src/git/ExecutorGitOps.cpp
   ../src/sync/ProjectSyncWorker.cpp
+  ../src/storage/S3SigV4.cpp
+  ../src/storage/S3CompatibleProvider.cpp
   ../src/app/Bootstrap.cpp
 )
 target_include_directories(holder_daemon_tests PRIVATE

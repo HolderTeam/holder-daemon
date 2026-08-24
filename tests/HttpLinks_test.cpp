@@ -262,8 +262,8 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   holder::model::Resource resource_1;
   resource_1.resource_id = "res-1";
   resource_1.project_id = "proj-1";
-  resource_1.kind = "url";
-  resource_1.uri = "https://example.com/1";
+  resource_1.type = "website";
+  resource_1.metadata["identifier"] = {"https://example.com/1"};
   resource_1.label = "R1";
   resource_1.created_at = 10;
   resource_1.updated_at = 10;
@@ -272,7 +272,7 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   holder::model::Resource resource_2 = resource_1;
   resource_2.resource_id = "res-2";
   resource_2.project_id = "proj-2";
-  resource_2.uri = "https://example.com/2";
+  resource_2.metadata["identifier"] = {"https://example.com/2"};
   resource_2.label = "R2";
   resource_2.created_at = 11;
   resource_2.updated_at = 11;
