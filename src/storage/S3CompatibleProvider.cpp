@@ -84,7 +84,8 @@ Endpoint parse_endpoint(const std::string& value, bool allow_insecure_localhost)
 std::string uri_encode_path(const std::string& value) {
   std::ostringstream out;
   out << std::uppercase << std::hex << std::setfill('0');
-  for (unsigned char ch : value) {
+  for (char raw_ch : value) {
+    const auto ch = static_cast<unsigned char>(raw_ch);
     if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~' || ch == '/') {
       out << static_cast<char>(ch);
     } else {
@@ -117,7 +118,7 @@ http::verb verb_for(const std::string& method) {
   throw std::invalid_argument("unsupported S3 method");
 }
 
-void map_status(int status, const std::string& operation) {
+void map_status(unsigned int status, const std::string& operation) {
   if (status >= 200 && status < 300) return;
   if (status == 401 || status == 403) {
     throw holder::resource::StorageError(
@@ -166,7 +167,7 @@ S3CompatibleProvider::S3CompatibleProvider(
   (void)parse_endpoint(config_.endpoint, config_.allow_insecure_localhost);
 }
 
-int S3CompatibleProvider::request(
+unsigned int S3CompatibleProvider::request(
     const std::string& method,
     const std::string& object_key,
     const std::filesystem::path* upload,
@@ -215,7 +216,7 @@ int S3CompatibleProvider::request(
       date,
   });
 
-  auto exchange = [&](auto& stream) -> int {
+  auto exchange = [&](auto& stream) -> unsigned int {
     beast::flat_buffer buffer;
     if (upload != nullptr) {
       beast::error_code error;
@@ -265,7 +266,7 @@ int S3CompatibleProvider::request(
       asio::io_context context;
       tcp::resolver resolver(context);
       const auto resolved = resolver.resolve(host, endpoint.port);
-      int status = 0;
+      unsigned int status = 0;
       if (endpoint.tls) {
         ssl::context tls(ssl::context::tls_client);
         tls.set_default_verify_paths();
@@ -352,4 +353,3 @@ void S3CompatibleProvider::remove(const std::string& object_key) {
 }
 
 } // namespace holder::storage
-

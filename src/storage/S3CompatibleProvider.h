@@ -40,7 +40,7 @@ class S3CompatibleProvider final : public holder::resource::StorageProvider {
   void remove(const std::string& object_key) override;
 
  private:
-  int request(
+  unsigned int request(
       const std::string& method,
       const std::string& object_key,
       const std::filesystem::path* upload,

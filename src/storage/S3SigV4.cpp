@@ -50,7 +50,8 @@ std::string trim_and_collapse(std::string value) {
   value = value.substr(first, last - first + 1);
   std::string out;
   bool whitespace = false;
-  for (unsigned char ch : value) {
+  for (char raw_ch : value) {
+    const auto ch = static_cast<unsigned char>(raw_ch);
     if (std::isspace(ch)) {
       whitespace = true;
     } else {
