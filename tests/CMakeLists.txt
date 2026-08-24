@@ -101,6 +101,9 @@ add_executable(holder_daemon_tests
   AiLocalModelConfigRepo_test.cpp
   RunnerRegistry_test.cpp
   Paths_test.cpp
+  ProjectRegistry_test.cpp
+  DatabaseRecovery_test.cpp
+  DeviceConfigStore_test.cpp
   S3SigV4_test.cpp
   S3CompatibleProvider_test.cpp
   ../src/platform/LockFile.cpp
@@ -108,11 +111,17 @@ add_executable(holder_daemon_tests
   ../src/app/FatalError.cpp
   ../src/platform/BaseDir.cpp
   ../src/platform/Paths.cpp
+  ../src/platform/DatabaseRecovery.cpp
+  ../src/platform/DeviceConfigStore.cpp
+  ../src/platform/ProjectRegistry.cpp
   ../src/platform/ServerInfo.cpp
   ../src/platform/Signal.cpp
   ../src/core/SerialExecutor.cpp
   ../src/core/ConcurrencyProfilePolicy.cpp
   ../src/ai/AiNudgeRepo.cpp
+  ../src/ai/AiThreadDurability.cpp
+  ../src/ai/AiNudgeDurability.cpp
+  ../src/ai/AiThreadStateDurability.cpp
   ../src/ai/NudgeService.cpp
   ../src/ai/AiLocalModelConfigRepo.cpp
   ../src/llm/LocalModelRunner.cpp

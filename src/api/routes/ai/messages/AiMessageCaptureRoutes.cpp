@@ -2,6 +2,7 @@
 
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "ai/AiThreadDurability.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 #include "project/ProjectRepo.h"
@@ -98,6 +99,7 @@ bool handle_ai_message_capture_routes(
       thread.created_at = created_at;
       thread.updated_at = created_at;
       thread_repo.create(thread);
+      holder::ai::persist_ai_thread(db, thread, "Add AI thread metadata");
       thread_id = thread.thread_id;
     }
 

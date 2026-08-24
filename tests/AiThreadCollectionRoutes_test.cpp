@@ -80,8 +80,7 @@ TEST_CASE("AiThreadCollectionRoutes guards and GET error handling", "[http]") {
 TEST_CASE("AiThreadCollectionRoutes POST branch coverage", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  holder::test::create_project(db, "proj-1", (dir / "project").string());
   holder::card::CardRepo card_repo(db);
   holder::model::Card card;
   card.card_id = "card-1";

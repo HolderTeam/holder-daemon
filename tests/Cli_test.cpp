@@ -157,6 +157,24 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   REQUIRE(cards2.size() == 1);
 }
 
+TEST_CASE("holderctl database rebuild dry-run invokes the offline daemon command", "[cli][database]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto xdg_root = dir / "xdg";
+  std::filesystem::create_directories(xdg_root);
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
+  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  CwdGuard cwd(repo_root);
+
+  REQUIRE(run_command("\"" + std::string(HOLDER_CTL_PATH) +
+                      "\" database rebuild --dry-run") == 0);
+  REQUIRE_FALSE(std::filesystem::exists(
+      xdg_root / "data" / "holder" / "server" / "holder.db"
+  ));
+}
+
 TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migrations]") {
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";

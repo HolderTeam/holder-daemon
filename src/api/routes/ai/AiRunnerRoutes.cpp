@@ -1,6 +1,7 @@
 #include "api/routes/ai/AiRunnerRoutes.h"
 
 #include "ai/AiRunnerRepo.h"
+#include "platform/DeviceConfigStore.h"
 #include "api/routes/ai/runner/AiRunnerPullEventRoutes.h"
 #include "api/routes/ai/runner/AiRunnerPullRoutes.h"
 #include "api/support/HttpResponses.h"
@@ -224,6 +225,7 @@ bool handle_ai_runner_crud_routes(
 
       holder::ai::AiRunnerRepo repo(db);
       repo.upsert(runner);
+      holder::core::persist_device_config(db);
       if (runner_registry != nullptr) {
         runner_registry->refresh();
       }
@@ -352,6 +354,7 @@ bool handle_ai_runner_crud_routes(
       }
       runner.updated_at = support::now_epoch_seconds();
       repo.upsert(runner);
+      holder::core::persist_device_config(db);
       if (runner_registry != nullptr) {
         runner_registry->refresh();
       }
@@ -383,6 +386,7 @@ bool handle_ai_runner_crud_routes(
         return true;
       }
       repo.remove(runner_id);
+      holder::core::persist_device_config(db);
       if (runner_registry != nullptr) {
         runner_registry->refresh();
       }

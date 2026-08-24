@@ -10,6 +10,7 @@ int command_health(const holder::core::Paths& paths);
 int command_paths(const holder::core::Paths& paths);
 int command_openapi(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_restart();
+int command_database(int argc, char* argv[], const char* holderctl_path);
 int command_logs(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_reindex(const holder::core::Paths& paths, int argc);
 int command_project(const holder::core::Paths& paths, int argc, char* argv[]);

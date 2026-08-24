@@ -1,5 +1,6 @@
 #include "api/support/ThreadCompaction.h"
 
+#include "ai/AiThreadStateDurability.h"
 #include "api/support/CloudClient.h"
 
 #include <nlohmann/json.hpp>
@@ -191,6 +192,7 @@ void upsert_thread_compaction_state(holder::platform::Db& db, const ThreadCompac
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw_sqlite(db.handle(), "prepare thread compaction upsert failed");
   }
+  holder::ai::persist_thread_compaction_state(db, state);
   sqlite3_bind_text(stmt, 1, state.thread_id.c_str(), -1, SQLITE_TRANSIENT);
   if (state.rolling_summary.has_value()) {
     sqlite3_bind_text(stmt, 2, state.rolling_summary->c_str(), -1, SQLITE_TRANSIENT);

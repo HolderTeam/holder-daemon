@@ -50,6 +50,7 @@ void print_usage(std::ostream& out) {
       << "  recovery-token  Export or import encrypted project recovery tokens\n"
       << "  openapi    Open local Swagger/OpenAPI docs; use --url to print the URL\n"
       << "  reindex    Rebuild the daemon search index from the local database\n"
+      << "  database   Manage the local projection; use 'database rebuild [--dry-run]'\n"
       << "  restart    Restart the local daemon and rotate its bearer token\n"
       << "  logs       Print daemon logs; use --follow to tail or --path for the file path\n"
       << "  version    Print holderctl version\n";

@@ -1,5 +1,7 @@
 #include "ai/AiNudgeRepo.h"
 
+#include "ai/AiNudgeDurability.h"
+
 #include <sqlite3.h>
 
 #include <stdexcept>
@@ -258,6 +260,7 @@ void AiNudgeRepo::dismiss_stale_variants(
     throw_sqlite(db_.handle(), "dismiss stale ai_nudges failed"); // LCOV_EXCL_LINE
   }
   sqlite3_finalize(stmt);
+  backfill_nudge_dismissals(db_);
 }
 
 bool AiNudgeRepo::dismiss(const std::string& nudge_id) {
@@ -277,6 +280,7 @@ bool AiNudgeRepo::dismiss(const std::string& nudge_id) {
   }
   const auto changed = sqlite3_changes(db_.handle());
   sqlite3_finalize(stmt);
+  if (changed > 0) persist_nudge_dismissal(db_, nudge_id);
   return changed > 0;
 }
 

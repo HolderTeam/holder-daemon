@@ -110,6 +110,32 @@ TEST_CASE("CloudQuota cooldown supports configurable base/cap", "[cloud_quota]")
   REQUIRE(third.cooldown_until == 1060); // 40s cap
 }
 
+TEST_CASE("CloudQuota durable ledger restores usage after SQLite loss", "[cloud_quota]") {
+  const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_quota_ledger";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto ledger = dir / "cloud-usage.json";
+
+  holder::platform::Db original;
+  original.open(dir / "original.db");
+  apply_schema(original);
+  holder::api::support::initialize_cloud_usage_ledger(original, ledger);
+  holder::api::support::record_cloud_usage_event(
+      original, "provider", "model", 12, 8, 100, "ledger-test"
+  );
+  REQUIRE(holder::api::support::load_cloud_window_usage(original, "provider", "model", 0).tokens == 20);
+
+  holder::platform::Db rebuilt;
+  rebuilt.open(dir / "rebuilt.db");
+  apply_schema(rebuilt);
+  holder::api::support::restore_cloud_usage_ledger(rebuilt, ledger);
+  const auto usage = holder::api::support::load_cloud_window_usage(
+      rebuilt, "provider", "model", 0
+  );
+  REQUIRE(usage.requests == 1);
+  REQUIRE(usage.tokens == 20);
+}
+
 TEST_CASE("CloudQuota prepare-query errors are surfaced", "[cloud_quota]") {
   const auto dir = std::filesystem::temp_directory_path() / "holder_cloud_quota_prepare_errors";
   std::filesystem::remove_all(dir);

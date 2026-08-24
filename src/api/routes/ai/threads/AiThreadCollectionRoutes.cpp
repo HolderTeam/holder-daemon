@@ -1,6 +1,7 @@
 #include "api/routes/ai/threads/AiThreadCollectionRoutes.h"
 
 #include "ai/AiThreadRepo.h"
+#include "ai/AiThreadDurability.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
@@ -98,6 +99,7 @@ bool handle_ai_thread_collection_routes(
 
         holder::ai::AiThreadRepo repo(db);
         repo.create(thread);
+        holder::ai::persist_ai_thread(db, thread, "Add AI thread metadata");
 
         nlohmann::json payload;
         payload["ok"] = true;

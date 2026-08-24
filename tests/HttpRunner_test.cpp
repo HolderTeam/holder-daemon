@@ -44,9 +44,9 @@ void insert_project(
     const std::filesystem::path& root_path
 ) {
   db.exec(
-      "INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
+      "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
       "VALUES('" +
-      project_id + "', 'Project', '" + root_path.string() + "', 1, 1);"
+      project_id + "', 'Project', '" + root_path.string() + "', 'plain', 1, 1);"
   );
 }
 

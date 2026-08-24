@@ -1,6 +1,7 @@
 #include "api/routes/ai/threads/AiThreadItemRoutes.h"
 
 #include "ai/AiThreadRepo.h"
+#include "ai/AiThreadDurability.h"
 #include "api/support/HttpResponses.h"
 
 #include <boost/beast/http.hpp>
@@ -91,6 +92,7 @@ bool handle_ai_thread_item_routes(
         if (body.contains("card_id")) {
           repo.update_card_id(thread_id, card_id);
         }
+        holder::ai::persist_ai_thread(db, repo.get(thread_id).value());
 
         nlohmann::json payload;
         payload["ok"] = true;
@@ -106,6 +108,12 @@ bool handle_ai_thread_item_routes(
   if (req.method() == http::verb::delete_) {
     try {
       holder::ai::AiThreadRepo repo(db);
+      const auto thread = repo.get(thread_id);
+      if (!thread.has_value()) {
+        res = support::error_response(http::status::not_found, "not_found", "AI thread not found.");
+        return true;
+      }
+      holder::ai::remove_ai_thread_manifest(db, *thread);
       repo.remove(thread_id);
       nlohmann::json payload;
       payload["ok"] = true;

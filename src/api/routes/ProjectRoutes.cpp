@@ -7,8 +7,10 @@
 #include "card/CardRepo.h"
 #include "git/RepoSyncMetrics.h"
 #include "platform/Paths.h"
+#include "platform/ProjectRegistry.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectPaths.h"
+#include "project/ProjectManifest.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectStore.h"
 #include "project/ProjectSyncRepo.h"
@@ -311,6 +313,15 @@ bool handle_project_routes(
         }
       }
 
+      if (const auto refreshed = repo.get(metadata.project_id); refreshed.has_value()) {
+        auto& git = resolve_git(git_ops);
+        holder::project::write_project_manifest(git, *refreshed);
+        git.commit("Restore encrypted project metadata");
+        holder::core::ProjectRegistry(
+            holder::core::Paths::resolve("holder").project_registry_path()
+        ).remember(repo.list());
+      }
+
       nlohmann::json payload;
       payload["ok"] = true;
       payload["data"] = {
@@ -572,6 +583,9 @@ bool handle_project_routes(
 
         holder::project::ProjectStore store(db, git_ops);
         project = store.create(std::move(project), uuid_v4, holder::core::default_projects_root());
+        holder::core::ProjectRegistry(
+            holder::core::Paths::resolve("holder").project_registry_path()
+        ).remember(holder::project::ProjectRepo(db).list());
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
@@ -1081,6 +1095,13 @@ bool handle_project_routes(
                     uuid_v4
                 );
               }
+              const auto updated_project = repo.get(project_id).value();
+              auto& git = resolve_git(git_ops);
+              holder::project::write_project_manifest(git, updated_project);
+              git.commit("Update project metadata");
+              holder::core::ProjectRegistry(
+                  holder::core::Paths::resolve("holder").project_registry_path()
+              ).remember(repo.list());
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};

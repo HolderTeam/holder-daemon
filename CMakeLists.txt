@@ -239,12 +239,18 @@ add_executable(holderd
   src/platform/BaseDir.cpp
   src/platform/InstalledDataPath.cpp
   src/platform/Paths.cpp
+  src/platform/DatabaseRecovery.cpp
+  src/platform/DeviceConfigStore.cpp
+  src/platform/ProjectRegistry.cpp
   src/platform/LockFile.cpp
   src/platform/ServerInfo.cpp
   src/platform/Signal.cpp
   src/core/SerialExecutor.cpp
   src/core/ConcurrencyProfilePolicy.cpp
   src/ai/AiNudgeRepo.cpp
+  src/ai/AiThreadDurability.cpp
+  src/ai/AiNudgeDurability.cpp
+  src/ai/AiThreadStateDurability.cpp
   src/ai/NudgeService.cpp
   src/ai/AiLocalModelConfigRepo.cpp
   src/llm/LocalModelRunner.cpp

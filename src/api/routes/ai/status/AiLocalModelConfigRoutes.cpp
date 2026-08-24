@@ -1,6 +1,7 @@
 #include "api/routes/ai/status/AiLocalModelConfigRoutes.h"
 
 #include "ai/AiLocalModelConfigRepo.h"
+#include "platform/DeviceConfigStore.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 
@@ -74,6 +75,7 @@ bool handle_ai_local_model_config_routes(
 
       holder::ai::AiLocalModelConfigRepo repo(db);
       repo.set(fast_model, strong_model, deep_model, updated_at);
+      holder::core::persist_device_config(db);
 
       nlohmann::json payload;
       payload["ok"] = true;

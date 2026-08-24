@@ -4,10 +4,109 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <stdexcept>
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 namespace holder::api::support {
 namespace {
+
+std::mutex usage_ledger_mutex;
+std::optional<std::filesystem::path> usage_ledger_path;
+
+void restrict_file(const std::filesystem::path& path) {
+#ifndef _WIN32
+  if (::chmod(path.c_str(), S_IRUSR | S_IWUSR) != 0) {
+    throw std::runtime_error("failed to restrict cloud usage ledger permissions");
+  }
+#else
+  (void)path;
+#endif
+}
+
+nlohmann::json load_ledger(const std::filesystem::path& path) {
+  if (!std::filesystem::exists(path)) {
+    return {{"version", 1}, {"events", nlohmann::json::array()}};
+  }
+  std::ifstream in(path, std::ios::binary);
+  if (!in) throw std::runtime_error("failed to open cloud usage ledger");
+  auto body = nlohmann::json::parse(in);
+  if (body.value("version", 0) != 1 || !body.contains("events") ||
+      !body.at("events").is_array()) {
+    throw std::runtime_error("unsupported cloud usage ledger format");
+  }
+  return body;
+}
+
+void write_ledger(const std::filesystem::path& path, const nlohmann::json& body) {
+  std::filesystem::create_directories(path.parent_path());
+  auto temporary = path;
+  temporary += ".tmp";
+  {
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out) throw std::runtime_error("failed to write cloud usage ledger");
+    out << body.dump(2) << '\n';
+    out.flush();
+    if (!out) throw std::runtime_error("failed to flush cloud usage ledger");
+  }
+  restrict_file(temporary);
+  std::error_code ec;
+  std::filesystem::rename(temporary, path, ec);
+#ifdef _WIN32
+  if (ec && std::filesystem::exists(path)) {
+    std::filesystem::remove(path, ec);
+    if (!ec) std::filesystem::rename(temporary, path, ec);
+  }
+#endif
+  if (ec) {
+    std::filesystem::remove(temporary);
+    throw std::runtime_error("failed to replace cloud usage ledger: " + ec.message());
+  }
+  restrict_file(path);
+}
+
+void insert_event(holder::platform::Db& db, const nlohmann::json& event) {
+  static constexpr const char* SQL =
+      "INSERT OR IGNORE INTO ai_cloud_usage_events("
+      "event_id, provider, model_id, prompt_tokens, response_tokens, total_tokens, created_at) "
+      "VALUES(?, ?, ?, ?, ?, ?, ?);";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw std::runtime_error("prepare cloud usage restore failed");
+  }
+  const auto event_id = event.at("event_id").get<std::string>();
+  const auto provider = event.at("provider").get<std::string>();
+  const auto model_id = event.at("model_id").get<std::string>();
+  sqlite3_bind_text(stmt, 1, event_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 2, provider.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, model_id.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt, 4, event.at("prompt_tokens").get<long long>());
+  sqlite3_bind_int64(stmt, 5, event.at("response_tokens").get<long long>());
+  sqlite3_bind_int64(stmt, 6, event.at("total_tokens").get<long long>());
+  sqlite3_bind_int64(stmt, 7, event.at("created_at").get<long long>());
+  const int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  if (rc != SQLITE_DONE) throw std::runtime_error("restore cloud usage event failed");
+}
+
+void append_durable_event(const nlohmann::json& event) {
+  std::lock_guard lock(usage_ledger_mutex);
+  if (!usage_ledger_path.has_value()) return;
+  auto body = load_ledger(*usage_ledger_path);
+  const auto event_id = event.at("event_id").get<std::string>();
+  for (const auto& existing : body.at("events")) {
+    if (existing.value("event_id", std::string()) == event_id) return;
+  }
+  body["events"].push_back(event);
+  write_ledger(*usage_ledger_path, body);
+}
 
 long long failure_cooldown_seconds(
     long long failure_count,
@@ -24,6 +123,50 @@ long long failure_cooldown_seconds(
 }
 
 } // namespace
+
+void restore_cloud_usage_ledger(
+    holder::platform::Db& db,
+    const std::filesystem::path& path
+) {
+  std::lock_guard lock(usage_ledger_mutex);
+  const auto body = load_ledger(path);
+  for (const auto& event : body.at("events")) insert_event(db, event);
+}
+
+void initialize_cloud_usage_ledger(
+    holder::platform::Db& db,
+    const std::filesystem::path& path
+) {
+  std::lock_guard lock(usage_ledger_mutex);
+  usage_ledger_path = path;
+  if (std::filesystem::exists(path)) {
+    const auto body = load_ledger(path);
+    for (const auto& event : body.at("events")) insert_event(db, event);
+    return;
+  }
+
+  nlohmann::json body = {{"version", 1}, {"events", nlohmann::json::array()}};
+  sqlite3_stmt* stmt = nullptr;
+  static constexpr const char* SQL =
+      "SELECT event_id, provider, model_id, prompt_tokens, response_tokens, total_tokens, created_at "
+      "FROM ai_cloud_usage_events ORDER BY created_at, event_id;";
+  if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
+    throw std::runtime_error("prepare cloud usage export failed");
+  }
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    body["events"].push_back({
+        {"event_id", reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0))},
+        {"provider", reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1))},
+        {"model_id", reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2))},
+        {"prompt_tokens", sqlite3_column_int64(stmt, 3)},
+        {"response_tokens", sqlite3_column_int64(stmt, 4)},
+        {"total_tokens", sqlite3_column_int64(stmt, 5)},
+        {"created_at", sqlite3_column_int64(stmt, 6)},
+    });
+  }
+  sqlite3_finalize(stmt);
+  write_ledger(path, body);
+}
 
 CloudQuotaWindowUsage load_cloud_window_usage(
     holder::platform::Db& db,
@@ -70,6 +213,15 @@ void record_cloud_usage_event(
   const std::string event_id = "cloud-" + event_id_seed + "-" + std::to_string(created_at) + "-" +
                                std::to_string(static_cast<unsigned long long>(std::rand()));
   const long long total_tokens = prompt_tokens + response_tokens;
+  append_durable_event({
+      {"event_id", event_id},
+      {"provider", provider},
+      {"model_id", model_id},
+      {"prompt_tokens", prompt_tokens},
+      {"response_tokens", response_tokens},
+      {"total_tokens", total_tokens},
+      {"created_at", created_at},
+  });
   sqlite3_stmt* stmt = nullptr;
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare cloud usage insert failed");

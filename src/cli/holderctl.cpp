@@ -23,6 +23,7 @@ int main(int argc, char* argv[]) {
       return 0;
     }
     if (command == "restart") return holder::cli::command_restart();
+    if (command == "database") return holder::cli::command_database(argc, argv, argv[0]);
 
     const auto paths = holder::core::Paths::resolve("holder");
     if (command == "token") return holder::cli::command_token(paths);

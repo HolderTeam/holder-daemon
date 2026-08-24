@@ -1,7 +1,11 @@
 #include "app/DaemonApp.h"
 
 #include "ai/AiProviderCredentialRecovery.h"
+#include "ai/AiNudgeDurability.h"
+#include "ai/AiThreadDurability.h"
+#include "ai/AiThreadStateDurability.h"
 #include "api/HttpServer.h"
+#include "api/support/CloudQuota.h"
 #include "app/Bootstrap.h"
 #include "app/RuntimeGuards.h"
 #include "card/CardRepo.h"
@@ -11,18 +15,23 @@
 #include "core/ConcurrencyProfilePolicy.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
+#include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "llm/LocalRunnerClient.h"
 #include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
+#include "platform/DatabaseRecovery.h"
+#include "platform/DeviceConfigStore.h"
 #include "platform/InstalledDataPath.h"
 #include "platform/LockFile.h"
 #include "platform/Migrations.h"
 #include "platform/Paths.h"
+#include "platform/ProjectRegistry.h"
 #include "platform/ServerInfo.h"
 #include "platform/Signal.h"
 #include "privacy/SecretStore.h"
 #include "project/ProjectRepo.h"
+#include "project/ProjectManifest.h"
 #include "project/StartupRecovery.h"
 #include "sync/ProjectSyncWorker.h"
 
@@ -31,6 +40,7 @@
 #include <spdlog/spdlog.h>
 
 #include <chrono>
+#include <atomic>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -51,7 +61,8 @@ namespace holder::app {
 namespace {
 
 void print_usage(std::ostream& out) {
-  out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex]\n";
+  out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex] "
+         "[--rebuild-database [--dry-run]]\n";
 }
 
 std::filesystem::path find_schema_sql() {
@@ -102,6 +113,18 @@ void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_
   spdlog::info("Tag index backfill complete: {} cards, {} tags.", indexed_cards, indexed_tags);
 }
 
+void backfill_project_manifests(holder::platform::Db& db) {
+  holder::project::ProjectRepo projects(db);
+  for (const auto& project : projects.list()) {
+    if (holder::project::has_project_manifest(project.root_path)) continue;
+
+    holder::git::RealGitOps git;
+    holder::project::write_project_manifest(git, project);
+    git.commit("Add durable project metadata");
+    spdlog::info("Added durable project metadata: {}", project.root_path);
+  }
+}
+
 } // namespace
 
 int run_daemon(int argc, char* argv[]) {
@@ -142,6 +165,8 @@ int run_daemon(int argc, char* argv[]) {
   std::string bind = "127.0.0.1";
   unsigned short port = 11499;
   bool reindex_only = false;
+  bool rebuild_database_only = false;
+  bool rebuild_dry_run = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--bind" && i + 1 < argc) {
@@ -163,6 +188,10 @@ int run_daemon(int argc, char* argv[]) {
       return 0; // LCOV_EXCL_LINE
     } else if (arg == "--reindex") {
       reindex_only = true;
+    } else if (arg == "--rebuild-database") {
+      rebuild_database_only = true;
+    } else if (arg == "--dry-run") {
+      rebuild_dry_run = true;
     } else {
       spdlog::error("Unknown argument: {}", arg);
       return 2;
@@ -180,17 +209,47 @@ int run_daemon(int argc, char* argv[]) {
     return 2;
   }
 
+  const auto schema_path = find_schema_sql();
+  auto secret_store = holder::privacy::make_default_secret_store(paths.server_dir());
+  if (rebuild_database_only) {
+    const auto report = holder::core::rebuild_database(
+        paths, schema_path, *secret_store, rebuild_dry_run
+    );
+    std::cout << report.to_json() << '\n';
+    spdlog::shutdown();
+    return 0;
+  }
+  if (rebuild_dry_run) {
+    spdlog::error("--dry-run requires --rebuild-database");
+    return 2;
+  }
+
+  const auto startup_health = holder::core::inspect_database_health(paths.db_path());
+  if (startup_health.health == holder::core::DatabaseHealth::IoError) {
+    throw std::runtime_error("database I/O failure: " + startup_health.detail);
+  }
+  if (startup_health.health == holder::core::DatabaseHealth::Missing ||
+      startup_health.health == holder::core::DatabaseHealth::Corrupt) {
+    spdlog::warn(
+        "Database health is {}; rebuilding the local projection before startup.",
+        startup_health.health == holder::core::DatabaseHealth::Missing ? "missing" : "corrupt"
+    );
+    const auto report = holder::core::rebuild_database(paths, schema_path, *secret_store, false);
+    spdlog::info("Database reconstruction completed: {}", report.to_json());
+  }
+
+  const bool database_existed = std::filesystem::exists(paths.db_path());
   holder::platform::Db db;
   db.open(paths.db_path());
 
-  const auto schema_path = find_schema_sql();
   holder::platform::Migrations::ensure_schema(db, schema_path);
   const bool schema_migrated = holder::platform::Migrations::migrate_to_latest(db);
   holder::platform::Migrations::ensure_schema_version(
       db, holder::platform::Migrations::latest_schema_version
   );
+  holder::core::initialize_device_config(db, paths.device_config_path());
+  holder::api::support::initialize_cloud_usage_ledger(db, paths.cloud_usage_ledger_path());
   holder::index::FtsIndexer fts(db);
-  auto secret_store = holder::privacy::make_default_secret_store(paths.server_dir());
 
   holder::project::ProjectRepo project_repo(db);
   if (project_repo.list().empty()) {
@@ -198,11 +257,43 @@ int run_daemon(int argc, char* argv[]) {
         db,
         &fts,
         holder::core::default_projects_root(),
-        generate_uuid_v4
+        generate_uuid_v4,
+        !database_existed
     );
+    holder::core::ProjectRegistry registry(paths.project_registry_path());
+    const auto registered_roots = registry.roots();
+    if (!registered_roots.empty()) {
+      holder::project::recover_project_roots(
+          db,
+          &fts,
+          registered_roots,
+          generate_uuid_v4,
+          !database_existed
+      );
+    }
   }
   holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
   holder::app::bootstrap_default_home_project(db, &fts);
+  backfill_project_manifests(db);
+  const auto thread_manifests_added = holder::ai::backfill_ai_thread_manifests(db);
+  if (thread_manifests_added > 0) {
+    spdlog::info("Added durable metadata for {} AI threads.", thread_manifests_added);
+  }
+  const auto thread_states_added = holder::ai::backfill_thread_compaction_states(db);
+  if (thread_states_added > 0) {
+    spdlog::info("Added durable state for {} AI threads.", thread_states_added);
+  }
+  const auto nudge_dismissals_added = holder::ai::backfill_nudge_dismissals(db);
+  if (nudge_dismissals_added > 0) {
+    spdlog::info("Added durable tombstones for {} dismissed AI nudges.", nudge_dismissals_added);
+  }
+  holder::core::ProjectRegistry(paths.project_registry_path()).remember(project_repo.list());
+  try {
+    holder::core::audit_durable_database_ownership(db, paths);
+    holder::core::mark_database_rebuild_ready(paths);
+  } catch (const std::exception& ex) {
+    spdlog::warn("Database rebuild readiness audit is incomplete: {}", ex.what());
+  }
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
@@ -276,7 +367,41 @@ int run_daemon(int argc, char* argv[]) {
       info.auth_token
   );
 
+  std::atomic<bool> database_health_failure{false};
+  std::jthread database_health_monitor(
+      [&](std::stop_token stop_token) { // LCOV_EXCL_LINE: requires live filesystem corruption.
+        while (!stop_token.stop_requested() && !signals.is_requested()) {
+          for (int tenth_seconds = 0;
+               tenth_seconds < 50 && !stop_token.stop_requested() && !signals.is_requested();
+               ++tenth_seconds) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+          if (stop_token.stop_requested() || signals.is_requested()) break;
+          const auto health = holder::core::inspect_database_health(paths.db_path());
+          if (health.health == holder::core::DatabaseHealth::Healthy) continue;
+          database_health_failure.store(true);
+          if (health.health == holder::core::DatabaseHealth::Corrupt) {
+            spdlog::critical(
+                "SQLite corruption detected during runtime; stopping all work so the database can "
+                "be quarantined and rebuilt on the next start: {}",
+                health.detail
+            );
+          } else {
+            spdlog::critical(
+                "SQLite health check failed during runtime; stopping without classifying the "
+                "failure as corruption: {}",
+                health.detail
+            );
+          }
+          signals.request_stop();
+          server.stop();
+          break;
+        }
+      }
+  );
+
   server.run(signals);
+  database_health_monitor.request_stop();
   const bool shutdown_signal_received = signals.is_requested();
   runner.stop();
   sync_thread.stop_and_join();
@@ -286,7 +411,7 @@ int run_daemon(int argc, char* argv[]) {
   }
   spdlog::info("holder shutdown complete."); // LCOV_EXCL_LINE
   spdlog::shutdown(); // LCOV_EXCL_LINE
-  return 0; // LCOV_EXCL_LINE
+  return database_health_failure.load() ? 3 : 0; // LCOV_EXCL_LINE
 }
 
 } // namespace holder::app

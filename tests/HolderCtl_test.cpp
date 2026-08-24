@@ -668,7 +668,9 @@ TEST_CASE("holderctl project new creates a project and can select it", "[holderc
   REQUIRE_FALSE(root_path.empty());
 
   const auto git_snapshot = git.snapshot();
-  REQUIRE(git_snapshot.open_count == 1);
+  // Project creation opens the repository to persist its durable manifest,
+  // then opens it again to configure the requested remote.
+  REQUIRE(git_snapshot.open_count == 2);
   REQUIRE(git_snapshot.remote_name == "origin");
   REQUIRE(git_snapshot.remote_url == "https://example.com/repo.git");
   REQUIRE(git_snapshot.opened_repo == std::filesystem::path(root_path));

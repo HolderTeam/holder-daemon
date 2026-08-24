@@ -36,10 +36,10 @@ TEST_CASE("AiThreadItemRoutes covers guard and error branches", "[http]") {
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
 
   SECTION("non-matching path returns false") {
-    auto req = make_request(http::verb::get, "/ai/threadz/t1");
+    auto req = make_request(http::verb::get, "/ai/threadz/thread-1");
     http::response<http::string_body> res;
     REQUIRE_FALSE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threadz/t1",
+        "/ai/threadz/thread-1",
         req,
         res,
         db
@@ -71,10 +71,10 @@ TEST_CASE("AiThreadItemRoutes covers guard and error branches", "[http]") {
 
   SECTION("get catches repo errors as bad_request") {
     db.exec("DROP TABLE ai_threads;");
-    auto req = make_request(http::verb::get, "/ai/threads/t1");
+    auto req = make_request(http::verb::get, "/ai/threads/thread-1");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db
@@ -86,16 +86,15 @@ TEST_CASE("AiThreadItemRoutes covers guard and error branches", "[http]") {
 TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
-  db.exec("INSERT INTO projects(project_id, name, root_path, created_at, updated_at) "
-          "VALUES('proj-1', 'Project', '/tmp/project', 1, 1);");
+  holder::test::create_project(db, "proj-1", (dir / "project").string());
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, card_id, created_at, updated_at) "
-          "VALUES('t1', 'proj-1', 'T', NULL, 1, 1);");
+          "VALUES('thread-1', 'proj-1', 'T', NULL, 1, 1);");
 
   SECTION("patch requires updated_at") {
-    auto req = make_request(http::verb::patch, "/ai/threads/t1", R"({"title":"X"})");
+    auto req = make_request(http::verb::patch, "/ai/threads/thread-1", R"({"title":"X"})");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db
@@ -106,20 +105,20 @@ TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
   }
 
   SECTION("patch without title touches updated_at") {
-    auto req = make_request(http::verb::patch, "/ai/threads/t1", R"({"updated_at":99})");
+    auto req = make_request(http::verb::patch, "/ai/threads/thread-1", R"({"updated_at":99})");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db
     ));
     REQUIRE(res.result() == http::status::ok);
 
-    auto get_req = make_request(http::verb::get, "/ai/threads/t1");
+    auto get_req = make_request(http::verb::get, "/ai/threads/thread-1");
     http::response<http::string_body> get_res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         get_req,
         get_res,
         db
@@ -130,10 +129,10 @@ TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
   }
 
   SECTION("patch invalid json hits catch") {
-    auto req = make_request(http::verb::patch, "/ai/threads/t1", "nope");
+    auto req = make_request(http::verb::patch, "/ai/threads/thread-1", "nope");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db
@@ -143,10 +142,10 @@ TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
 
   SECTION("delete catches repo errors") {
     db.exec("DROP TABLE ai_threads;");
-    auto req = make_request(http::verb::delete_, "/ai/threads/t1");
+    auto req = make_request(http::verb::delete_, "/ai/threads/thread-1");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db
@@ -155,10 +154,10 @@ TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
   }
 
   SECTION("unsupported item method returns not_found route payload") {
-    auto req = make_request(http::verb::post, "/ai/threads/t1", R"({"title":"ignored"})");
+    auto req = make_request(http::verb::post, "/ai/threads/thread-1", R"({"title":"ignored"})");
     http::response<http::string_body> res;
     REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
-        "/ai/threads/t1",
+        "/ai/threads/thread-1",
         req,
         res,
         db

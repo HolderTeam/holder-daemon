@@ -12,6 +12,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 
@@ -81,6 +82,45 @@ int command_restart() {
 #else
   throw std::runtime_error("restart is not supported on this platform yet"); // LCOV_EXCL_LINE
 #endif
+}
+
+int command_database(int argc, char* argv[], const char* holderctl_path) {
+  if (argc < 3 || std::string(argv[2]) != "rebuild") {
+    throw std::runtime_error("Usage: holderctl database rebuild [--dry-run]");
+  }
+  bool dry_run = false;
+  for (int i = 3; i < argc; ++i) {
+    const std::string arg = argv[i];
+    if (arg == "--dry-run") dry_run = true;
+    else throw std::runtime_error("Unknown database rebuild option: " + arg);
+  }
+
+  boost::filesystem::path daemon;
+  if (holderctl_path && *holderctl_path) {
+    std::error_code ec;
+    const auto ctl = std::filesystem::absolute(holderctl_path, ec);
+    if (!ec) {
+#ifdef _WIN32
+      const auto sibling = ctl.parent_path() / "holderd.exe";
+#else
+      const auto sibling = ctl.parent_path() / "holderd";
+#endif
+      if (std::filesystem::is_regular_file(sibling)) daemon = boost::filesystem::path(sibling.string());
+    }
+  }
+  if (daemon.empty()) daemon = boost::process::v2::environment::find_executable("holderd");
+  if (daemon.empty()) {
+    throw std::runtime_error("holderd was not found next to holderctl or on PATH");
+  }
+
+  std::vector<std::string> args = {"--rebuild-database"};
+  if (dry_run) args.push_back("--dry-run");
+  boost::asio::io_context ioc;
+  boost::process::v2::process proc(ioc.get_executor(), daemon, args);
+  boost::system::error_code ec;
+  const int exit_code = proc.wait(ec);
+  if (ec) throw std::runtime_error("Failed to run holderd rebuild: " + ec.message());
+  return exit_code;
 }
 
 int command_logs(const holder::core::Paths& paths, int argc, char* argv[]) {

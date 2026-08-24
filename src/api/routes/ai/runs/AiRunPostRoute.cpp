@@ -6,6 +6,7 @@
 #include "ai/AiProviderSettingRepo.h"
 #include "ai/AiRunRepo.h"
 #include "ai/AiThreadRepo.h"
+#include "ai/AiThreadDurability.h"
 #include "api/support/CloudClient.h"
 #include "api/support/CloudConfig.h"
 #include "api/support/CloudQuota.h"
@@ -232,6 +233,7 @@ void maybe_update_thread_title(
       generate_thread_title(runner_registry, runner, runner_id, db, prompt, assistant_text);
   if (!next_title.has_value() || next_title.value() == thread->title) return;
   thread_repo.update_title(thread_id.value(), next_title.value(), updated_at);
+  holder::ai::persist_ai_thread(db, thread_repo.get(thread_id.value()).value());
 }
 
 struct AiRunPostInput {
@@ -306,6 +308,7 @@ void ensure_ai_run_thread(
   thread.created_at = support::now_epoch_seconds();
   thread.updated_at = thread.created_at;
   thread_repo.create(thread);
+  holder::ai::persist_ai_thread(db, thread, "Add AI thread metadata");
   input.thread_id = thread.thread_id;
 }
 
