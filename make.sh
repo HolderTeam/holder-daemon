@@ -3,7 +3,7 @@ set -eu
 
 MODE="${1:-default}"
 BUILD_TYPE="${2:-RelWithDebInfo}"
-CASTE_DIR="third_party/caste"
+CASTE_DIR="submodules/caste"
 CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
 CCACHE_BIN=""
@@ -139,16 +139,16 @@ if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; th
   is_git_repo=true
 fi
 
-if [ -f ".gitmodules" ] && grep -q "third_party/caste" ".gitmodules"; then
+if [ -f ".gitmodules" ] && grep -q "submodules/caste" ".gitmodules"; then
   if [ "${is_git_repo}" = "true" ]; then
-    git submodule update --init --recursive -- third_party/caste
+    git submodule update --init --recursive -- submodules/caste
   fi
 fi
 
 if [ ! -f "${CASTE_DIR}/CMakeLists.txt" ]; then
   if [ "${is_git_repo}" = "true" ]; then
     echo "Missing dependency: ${CASTE_DIR}" >&2
-    echo "Run: git submodule update --init --recursive -- third_party/caste" >&2
+    echo "Run: git submodule update --init --recursive -- submodules/caste" >&2
     exit 1
   fi
 
@@ -322,7 +322,7 @@ coverage_all() {
   lcov --add-tracefile "${info_base}" --add-tracefile "${info_tests}" --output-file "${info_total}"
   lcov --remove "${info_total}" \
     '/usr/*' \
-    '*/third_party/*' \
+    '*/submodules/*' \
     '*/tests/*' \
     '*/CMakeFiles/*/CompilerIdCXX/*' \
     --output-file "${info_total}"
@@ -333,7 +333,7 @@ coverage_all() {
       --object-directory "${build_dir}" \
       --filter 'src/' \
       --exclude 'tests/' \
-      --exclude 'third_party/' \
+      --exclude 'submodules/' \
       --gcov-executable "${gcov_executable}" \
       --gcov-ignore-errors all \
       --exclude-pattern-prefix LCOV \
