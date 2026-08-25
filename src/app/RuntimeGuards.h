@@ -2,6 +2,7 @@
 
 #include "platform/Signal.h"
 
+#include <atomic>
 #include <thread>
 #include <utility>
 
@@ -28,6 +29,30 @@ class SyncThreadGuard {
 
  private:
   holder::core::SignalHandler* signals_ = nullptr;
+  std::thread thread_;
+};
+
+class StopFlagThreadGuard {
+ public:
+  StopFlagThreadGuard(std::atomic<bool>& stop_requested, std::thread thread) noexcept
+      : stop_requested_(&stop_requested),
+        thread_(std::move(thread)) {}
+
+  ~StopFlagThreadGuard() noexcept { stop_and_join(); }
+
+  StopFlagThreadGuard(const StopFlagThreadGuard&) = delete;
+  StopFlagThreadGuard& operator=(const StopFlagThreadGuard&) = delete;
+
+  void stop_and_join() noexcept {
+    if (!thread_.joinable()) return;
+    if (stop_requested_ != nullptr) {
+      stop_requested_->store(true);
+    }
+    thread_.join();
+  }
+
+ private:
+  std::atomic<bool>* stop_requested_ = nullptr;
   std::thread thread_;
 };
 

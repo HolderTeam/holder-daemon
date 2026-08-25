@@ -10,6 +10,19 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
+
+namespace {
+
+std::filesystem::path canonical_test_path(const std::filesystem::path& path) {
+  std::error_code ec;
+  auto canonical = std::filesystem::weakly_canonical(path, ec);
+  if (ec) canonical = std::filesystem::absolute(path, ec);
+  if (ec) canonical = path.lexically_normal();
+  return canonical;
+}
+
+} // namespace
 
 TEST_CASE("ProjectRegistry preserves and updates project roots", "[project][registry]") {
   const auto dir = holder::test::make_temp_dir();
@@ -28,8 +41,8 @@ TEST_CASE("ProjectRegistry preserves and updates project roots", "[project][regi
 
   const auto roots = registry.roots();
   REQUIRE(roots.size() == 2);
-  REQUIRE(std::find(roots.begin(), roots.end(), std::filesystem::path(first.root_path)) != roots.end());
-  REQUIRE(std::find(roots.begin(), roots.end(), std::filesystem::path(second.root_path)) != roots.end());
+  REQUIRE(std::find(roots.begin(), roots.end(), canonical_test_path(first.root_path)) != roots.end());
+  REQUIRE(std::find(roots.begin(), roots.end(), canonical_test_path(second.root_path)) != roots.end());
 }
 
 TEST_CASE("ProjectRegistry rejects unsupported content", "[project][registry]") {
