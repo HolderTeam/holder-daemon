@@ -154,6 +154,24 @@ void map_status(unsigned int status, const std::string& operation) {
   );
 }
 
+template <typename Stream>
+unsigned int read_status_response(
+    Stream& stream,
+    beast::flat_buffer& buffer,
+    bool is_head_response
+) {
+  http::response_parser<http::string_body> parser;
+  parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
+  if (is_head_response) {
+    // A HEAD response has no body even when Content-Length reports the size a
+    // corresponding GET would return. Without skip(), Beast waits for those
+    // bytes and can hang indefinitely on a persistent S3 connection.
+    parser.skip(true);
+  }
+  http::read(stream, buffer, parser);
+  return parser.get().result_int();
+}
+
 } // namespace
 
 S3CompatibleProvider::S3CompatibleProvider(
@@ -243,9 +261,7 @@ unsigned int S3CompatibleProvider::request(
       if (error) throw std::runtime_error("failed to open S3 upload: " + error.message());
       request.content_length(static_cast<std::uint64_t>(content_length));
       http::write(stream, request);
-      http::response<http::string_body> response;
-      http::read(stream, buffer, response);
-      return response.result_int();
+      return read_status_response(stream, buffer, false);
     }
 
     http::request<http::empty_body> request{verb_for(method), target, 11};
@@ -268,9 +284,7 @@ unsigned int S3CompatibleProvider::request(
       http::read(stream, buffer, parser);
       return parser.get().result_int();
     }
-    http::response<http::string_body> response;
-    http::read(stream, buffer, response);
-    return response.result_int();
+    return read_status_response(stream, buffer, method == "HEAD");
   };
 
   for (int attempt = 0; attempt < 3; ++attempt) {
