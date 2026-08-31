@@ -271,4 +271,11 @@ TEST_CASE("HTTP local Location import runs as a polled background job", "[http][
   );
   REQUIRE(resources["data"].size() == 1);
   REQUIRE(resources["data"][0]["assets"][0]["media_type"] == "application/pdf");
+  REQUIRE(resources["data"][0]["referenced_by_cards"].size() == 1);
+  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["card_id"] == "card-1234");
+  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["title"] == "Homework");
+  REQUIRE(
+      resources["data"][0]["referenced_by_cards"][0]["link_kinds"] ==
+      nlohmann::json::array({"attachment"})
+  );
 }

@@ -3,6 +3,8 @@
 #include "api/support/Time.h"
 #include "platform/Paths.h"
 
+#include "card/CardRepo.h"
+#include "card/LinkRepo.h"
 #include "resource/AssetImportService.h"
 #include "resource/AssetEnvelope.h"
 #include "resource/LocalDirectoryProvider.h"
@@ -25,6 +27,7 @@
 #include <fstream>
 #include <mutex>
 #include <memory>
+#include <map>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -124,7 +127,10 @@ nlohmann::json import_job_json(const ImportJob& job) {
   };
 }
 
-nlohmann::json resource_json(const holder::model::ResourceBundle& bundle) {
+nlohmann::json resource_json(
+    const holder::model::ResourceBundle& bundle,
+    nlohmann::json referenced_by_cards = nlohmann::json::array()
+) {
   nlohmann::json assets = nlohmann::json::array();
   for (const auto& asset : bundle.assets) {
     nlohmann::json placements = nlohmann::json::array();
@@ -158,7 +164,62 @@ nlohmann::json resource_json(const holder::model::ResourceBundle& bundle) {
       {"created_at", bundle.resource.created_at},
       {"updated_at", bundle.resource.updated_at},
       {"assets", std::move(assets)},
+      {"referenced_by_cards", std::move(referenced_by_cards)},
   };
+}
+
+nlohmann::json resource_references_json(holder::platform::Db& db, const std::string& project_id) {
+  struct Reference {
+    std::string card_id;
+    std::string title;
+    long long updated_at = 0;
+    std::vector<std::string> link_kinds;
+  };
+
+  std::unordered_map<std::string, holder::model::Card> cards_by_id;
+  for (const auto& card : holder::card::CardRepo(db).list_all(project_id)) {
+    if (!card.deleted_at.has_value()) cards_by_id.emplace(card.card_id, card);
+  }
+
+  std::unordered_map<std::string, std::map<std::string, Reference>> references_by_resource;
+  for (const auto& link : holder::card::LinkRepo(db).list_incoming_typed(project_id, "resource")) {
+    const auto card = cards_by_id.find(link.from_card_id);
+    if (card == cards_by_id.end()) continue;
+    auto& reference = references_by_resource[link.to_card_id][link.from_card_id];
+    reference.card_id = card->second.card_id;
+    reference.title = card->second.title;
+    reference.updated_at = card->second.updated_at;
+    if (std::find(reference.link_kinds.begin(), reference.link_kinds.end(), link.kind) ==
+        reference.link_kinds.end()) {
+      reference.link_kinds.push_back(link.kind);
+    }
+  }
+
+  nlohmann::json result = nlohmann::json::object();
+  for (auto& [resource_id, by_card] : references_by_resource) {
+    std::vector<Reference> references;
+    references.reserve(by_card.size());
+    for (auto& [card_id, reference] : by_card) {
+      (void)card_id;
+      std::sort(reference.link_kinds.begin(), reference.link_kinds.end());
+      references.push_back(std::move(reference));
+    }
+    std::sort(references.begin(), references.end(), [](const auto& left, const auto& right) {
+      if (left.title != right.title) return left.title < right.title;
+      return left.card_id < right.card_id;
+    });
+    auto payload = nlohmann::json::array();
+    for (const auto& reference : references) {
+      payload.push_back({
+          {"card_id", reference.card_id},
+          {"title", reference.title},
+          {"updated_at", reference.updated_at},
+          {"link_kinds", reference.link_kinds},
+      });
+    }
+    result[resource_id] = std::move(payload);
+  }
+  return result;
 }
 
 nlohmann::json location_json(
@@ -333,9 +394,14 @@ bool handle_ai_resource_routes(
     }
     try {
       holder::resource::ResourceRepo repo(db);
+      const auto references = resource_references_json(db, project_id);
       nlohmann::json data = nlohmann::json::array();
       for (const auto& resource : repo.list(project_id)) {
-        data.push_back(resource_json(*repo.get_bundle(resource.resource_id)));
+        const auto found = references.find(resource.resource_id);
+        data.push_back(resource_json(
+            *repo.get_bundle(resource.resource_id),
+            found != references.end() ? *found : nlohmann::json::array()
+        ));
       }
       res = support::json_response(http::status::ok, {{"ok", true}, {"data", std::move(data)}});
     } catch (const std::exception& ex) {
