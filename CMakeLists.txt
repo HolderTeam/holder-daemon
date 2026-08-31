@@ -305,6 +305,9 @@ add_executable(holderd
   src/sync/ProjectSyncWorker.cpp
   src/storage/S3SigV4.cpp
   src/storage/S3CompatibleProvider.cpp
+  src/storage/google/GoogleOAuth.cpp
+  src/storage/google/DriveApi.cpp
+  src/storage/google/GoogleDriveProvider.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp
   # src/store/sqlite_store.cpp

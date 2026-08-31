@@ -106,6 +106,8 @@ add_executable(holder_daemon_tests
   DeviceConfigStore_test.cpp
   S3SigV4_test.cpp
   S3CompatibleProvider_test.cpp
+  GoogleOAuth_test.cpp
+  GoogleDriveProvider_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
   ../src/app/FatalError.cpp
@@ -177,6 +179,9 @@ add_executable(holder_daemon_tests
   ../src/sync/ProjectSyncWorker.cpp
   ../src/storage/S3SigV4.cpp
   ../src/storage/S3CompatibleProvider.cpp
+  ../src/storage/google/GoogleOAuth.cpp
+  ../src/storage/google/DriveApi.cpp
+  ../src/storage/google/GoogleDriveProvider.cpp
   ../src/app/Bootstrap.cpp
 )
 target_include_directories(holder_daemon_tests PRIVATE

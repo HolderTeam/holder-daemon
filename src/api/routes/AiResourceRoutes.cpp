@@ -14,6 +14,7 @@
 #include "resource/ResourceRepo.h"
 #include "resource/ResourceStore.h"
 #include "storage/S3CompatibleProvider.h"
+#include "storage/google/GoogleDriveProvider.h"
 
 #include <boost/beast/http.hpp>
 #include <boost/asio/write.hpp>
@@ -23,6 +24,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -241,6 +243,22 @@ nlohmann::json location_json(
   };
 }
 
+// Read once per call rather than cached -- these are only ever consulted when actually
+// constructing a Google Drive provider or starting an OAuth flow, not on every request,
+// and re-reading getenv() is cheap. Documented as developer setup, never committed --
+// see holder-planning/current/GOOGLE_DRIVE.md.
+holder::storage::google::GoogleOAuthClient google_oauth_client_from_env() {
+  const auto* client_id = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_ID");
+  const auto* client_secret = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET");
+  if (client_id == nullptr || client_secret == nullptr) {
+    throw std::runtime_error(
+        "Google Drive is not configured on this daemon (HOLDER_GOOGLE_OAUTH_CLIENT_ID/"
+        "HOLDER_GOOGLE_OAUTH_CLIENT_SECRET are not set)"
+    );
+  }
+  return {client_id, client_secret};
+}
+
 std::unique_ptr<holder::resource::StorageProvider> storage_provider(
     const holder::model::Location& location,
     const holder::resource::LocationBinding& binding
@@ -289,6 +307,23 @@ std::unique_ptr<holder::resource::StorageProvider> storage_provider(
       credentials.session_token = binding.values.at("session_token");
     }
     return std::make_unique<holder::storage::S3CompatibleProvider>(config, credentials);
+  }
+  if (location.provider == "google-drive") {
+    const auto folder_id = location.configuration.find("folder_id");
+    if (folder_id == location.configuration.end() || folder_id->second.empty()) {
+      throw std::runtime_error("Google Drive location is missing folder_id");
+    }
+    const auto refresh_token = binding.values.find("refresh_token");
+    if (refresh_token == binding.values.end() || refresh_token->second.empty()) {
+      throw std::runtime_error("Google Drive binding is missing refresh_token");
+    }
+    holder::storage::google::GoogleDriveConfig config;
+    config.folder_id = folder_id->second;
+    holder::storage::google::GoogleDriveCredentials credentials;
+    credentials.refresh_token = refresh_token->second;
+    return std::make_unique<holder::storage::google::GoogleDriveProvider>(
+        config, credentials, google_oauth_client_from_env()
+    );
   }
   throw std::runtime_error("unsupported storage provider");
 }
@@ -483,7 +518,8 @@ bool handle_ai_resource_routes(
       location.project_id = body.at("project_id").get<std::string>();
       location.name = body.at("name").get<std::string>();
       location.provider = body.at("provider").get<std::string>();
-      if (location.provider != "local_directory" && location.provider != "s3_compatible") {
+      if (location.provider != "local_directory" && location.provider != "s3_compatible" &&
+          location.provider != "google-drive") {
         throw std::invalid_argument("unsupported storage provider");
       }
       if (body.contains("configuration")) {
