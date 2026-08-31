@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <map>
 #include <stdexcept>
@@ -12,10 +13,26 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <unistd.h>
+#else
+#include <process.h>
 #endif
 
 namespace holder::core {
 namespace {
+
+// A fixed ".tmp" name would let two concurrent remember() calls (e.g. separate
+// processes writing the same registry) race on the same temp file before either
+// atomic rename happens, corrupting it. Make each writer's temp file unique.
+std::string unique_temp_suffix() {
+  static std::atomic<unsigned long long> counter{0};
+#ifdef _WIN32
+  const auto pid = static_cast<unsigned long>(::_getpid());
+#else
+  const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+  return "." + std::to_string(pid) + "." + std::to_string(counter.fetch_add(1));
+}
 
 nlohmann::json load_registry(const std::filesystem::path& path) {
   if (!std::filesystem::exists(path)) {
@@ -96,7 +113,7 @@ void ProjectRegistry::remember(const std::vector<holder::model::Project>& projec
 
   std::filesystem::create_directories(path_.parent_path());
   auto temporary = path_;
-  temporary += ".tmp";
+  temporary += ".tmp" + unique_temp_suffix();
   {
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) {

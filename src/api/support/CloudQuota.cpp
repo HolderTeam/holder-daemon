@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -13,6 +14,9 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <unistd.h>
+#else
+#include <process.h>
 #endif
 
 namespace holder::api::support {
@@ -20,6 +24,19 @@ namespace {
 
 std::mutex usage_ledger_mutex;
 std::optional<std::filesystem::path> usage_ledger_path;
+
+// A fixed ".tmp" name would let two concurrent writers race on the same temp file
+// before either atomic rename happens, corrupting it. Make each writer's temp file
+// unique.
+std::string unique_temp_suffix() {
+  static std::atomic<unsigned long long> counter{0};
+#ifdef _WIN32
+  const auto pid = static_cast<unsigned long>(::_getpid());
+#else
+  const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+  return "." + std::to_string(pid) + "." + std::to_string(counter.fetch_add(1));
+}
 
 void restrict_file(const std::filesystem::path& path) {
 #ifndef _WIN32
@@ -48,7 +65,7 @@ nlohmann::json load_ledger(const std::filesystem::path& path) {
 void write_ledger(const std::filesystem::path& path, const nlohmann::json& body) {
   std::filesystem::create_directories(path.parent_path());
   auto temporary = path;
-  temporary += ".tmp";
+  temporary += ".tmp" + unique_temp_suffix();
   {
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("failed to write cloud usage ledger");

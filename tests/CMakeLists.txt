@@ -265,6 +265,16 @@ if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
   target_link_libraries(holder_daemon_tests PRIVATE Advapi32)
 endif()
 
+# HOLDER_TEST_KEYSTORE_DIR isolates the keystore; XDG_DATA_HOME/XDG_CONFIG_HOME/
+# XDG_CACHE_HOME isolation (real ~/.local/share/holder, ~/.config/holder,
+# ~/.cache/holder pollution otherwise) is applied unconditionally in catch_main.cpp
+# instead of here — catch_discover_tests()'s PROPERTIES argument can't carry a
+# multi-entry ENVIRONMENT value (it's forwarded through cmake_parse_arguments into a
+# list, then through a -D command-line arg to a child `cmake -P` script, which
+# re-splits on ';'; a semicolon inside one property's own value is indistinguishable
+# from a list separator by then, escaped or not, so anything past the first
+# ENVIRONMENT entry is silently dropped), and a TEST_INCLUDE_FILES-based fixup after
+# discovery breaks `ctest -R`/`--rerun-failed` (it only sees the filtered test set).
 set(HOLDER_TEST_ENVIRONMENT
   "HOLDER_TEST_KEYSTORE_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-keystore"
 )

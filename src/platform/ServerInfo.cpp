@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <fstream>
 #include <random>
 #include <stdexcept>
@@ -17,6 +18,19 @@
 namespace holder::core {
 
 namespace {
+
+// A fixed ".tmp" name would let two concurrent writers race on the same temp file
+// before either atomic rename happens, corrupting it. Make each writer's temp file
+// unique.
+std::string unique_temp_suffix() {
+  static std::atomic<unsigned long long> counter{0};
+#ifdef _WIN32
+  const auto pid = static_cast<unsigned long>(::GetCurrentProcessId());
+#else
+  const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+  return "." + std::to_string(pid) + "." + std::to_string(counter.fetch_add(1));
+}
 
 void write_owner_only_file(const std::filesystem::path& path, const std::string& body) {
 #ifdef _WIN32
@@ -94,7 +108,7 @@ void write_server_info(const std::filesystem::path& path, const ServerInfo& info
   j["server_version"] = info.server_version;
   j["auth_token"] = info.auth_token;
 
-  const auto tmp_path = path.string() + ".tmp";
+  const auto tmp_path = path.string() + ".tmp" + unique_temp_suffix();
   write_owner_only_file(tmp_path, j.dump(2) + "\n");
 
   std::error_code ec;

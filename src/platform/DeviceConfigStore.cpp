@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -15,10 +16,26 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <unistd.h>
+#else
+#include <process.h>
 #endif
 
 namespace holder::core {
 namespace {
+
+// A fixed ".tmp" name would let two concurrent writers race on the same temp file
+// before either atomic rename happens, corrupting it. Make each writer's temp file
+// unique.
+std::string unique_temp_suffix() {
+  static std::atomic<unsigned long long> counter{0};
+#ifdef _WIN32
+  const auto pid = static_cast<unsigned long>(::_getpid());
+#else
+  const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+  return "." + std::to_string(pid) + "." + std::to_string(counter.fetch_add(1));
+}
 
 std::mutex config_mutex;
 std::optional<std::filesystem::path> configured_path;
@@ -79,7 +96,7 @@ void write_snapshot(holder::platform::Db& db, const std::filesystem::path& path)
   const auto body = snapshot(db);
   std::filesystem::create_directories(path.parent_path());
   auto temporary = path;
-  temporary += ".tmp";
+  temporary += ".tmp" + unique_temp_suffix();
   {
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("failed to write device config: " + temporary.string());

@@ -13,9 +13,12 @@
 #endif
 #include <shellapi.h>
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -75,10 +78,27 @@ nlohmann::json find_home_project(const nlohmann::json& projects) {
   throw std::runtime_error("Default Home project not found.");
 }
 
+namespace {
+
+// A fixed ".tmp" name would let two concurrent writers race on the same temp file
+// before either atomic rename happens, corrupting it. Make each writer's temp file
+// unique.
+std::string unique_temp_suffix() {
+  static std::atomic<unsigned long long> counter{0};
+#ifdef _WIN32
+  const auto pid = static_cast<unsigned long>(::GetCurrentProcessId());
+#else
+  const auto pid = static_cast<unsigned long>(::getpid());
+#endif
+  return "." + std::to_string(pid) + "." + std::to_string(counter.fetch_add(1));
+}
+
+} // namespace
+
 void write_holderctl_config(const holder::core::Paths& paths, const std::string& project_id) {
   std::filesystem::create_directories(paths.config_dir);
   const auto config_path = holderctl_config_path(paths);
-  const auto tmp_path = config_path.string() + ".tmp";
+  const auto tmp_path = config_path.string() + ".tmp" + unique_temp_suffix();
 
   nlohmann::json config;
   config["current_project_id"] = project_id;
