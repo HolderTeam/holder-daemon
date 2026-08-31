@@ -1,4 +1,5 @@
 #include "api/routes/AiResourceRoutes.h"
+#include "api/routes/GoogleDriveOAuthRoutes.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 #include "platform/Paths.h"
@@ -243,22 +244,6 @@ nlohmann::json location_json(
   };
 }
 
-// Read once per call rather than cached -- these are only ever consulted when actually
-// constructing a Google Drive provider or starting an OAuth flow, not on every request,
-// and re-reading getenv() is cheap. Documented as developer setup, never committed --
-// see holder-planning/current/GOOGLE_DRIVE.md.
-holder::storage::google::GoogleOAuthClient google_oauth_client_from_env() {
-  const auto* client_id = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_ID");
-  const auto* client_secret = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET");
-  if (client_id == nullptr || client_secret == nullptr) {
-    throw std::runtime_error(
-        "Google Drive is not configured on this daemon (HOLDER_GOOGLE_OAUTH_CLIENT_ID/"
-        "HOLDER_GOOGLE_OAUTH_CLIENT_SECRET are not set)"
-    );
-  }
-  return {client_id, client_secret};
-}
-
 std::unique_ptr<holder::resource::StorageProvider> storage_provider(
     const holder::model::Location& location,
     const holder::resource::LocationBinding& binding
@@ -322,7 +307,7 @@ std::unique_ptr<holder::resource::StorageProvider> storage_provider(
     holder::storage::google::GoogleDriveCredentials credentials;
     credentials.refresh_token = refresh_token->second;
     return std::make_unique<holder::storage::google::GoogleDriveProvider>(
-        config, credentials, google_oauth_client_from_env()
+        config, credentials, holder::storage::google::google_oauth_client_from_env()
     );
   }
   throw std::runtime_error("unsupported storage provider");
@@ -762,6 +747,10 @@ bool handle_ai_resource_routes(
     if (location_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       return true;
+    }
+
+    if (action == "oauth/google-drive/authorize" && req.method() == http::verb::post) {
+      return handle_google_drive_oauth_authorize_route(location_id, req, res, db);
     }
 
     if (action == "binding" && req.method() == http::verb::put) {

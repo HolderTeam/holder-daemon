@@ -12,6 +12,7 @@
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 
+#include <cstdlib>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -211,6 +212,18 @@ GoogleTokenResponse token_request(const std::vector<std::pair<std::string, std::
 }
 
 } // namespace
+
+GoogleOAuthClient google_oauth_client_from_env() {
+  const auto* client_id = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_ID");
+  const auto* client_secret = std::getenv("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET");
+  if (client_id == nullptr || client_secret == nullptr) {
+    throw std::runtime_error(
+        "Google Drive is not configured on this daemon (HOLDER_GOOGLE_OAUTH_CLIENT_ID/"
+        "HOLDER_GOOGLE_OAUTH_CLIENT_SECRET are not set)"
+    );
+  }
+  return {client_id, client_secret};
+}
 
 PkceChallenge generate_pkce_challenge() {
   PkceChallenge out;

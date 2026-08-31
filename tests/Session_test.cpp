@@ -172,6 +172,102 @@ TEST_CASE("Session handles normal request/response path", "[session]") {
   REQUIRE(response.find("401 Unauthorized") != std::string::npos);
 }
 
+TEST_CASE(
+    "Session bypasses bearer auth for the Google Drive OAuth callback route",
+    "[session]"
+) {
+  SocketPair pair;
+  holder::platform::Db db;
+  holder::api::Router router;
+  const std::string token = "testtoken";
+
+  // No Authorization header at all -- this is the browser hitting Google's redirect
+  // directly, which never carries the daemon's own token (see Session.cpp's own comment
+  // on this exact route). No pending OAuth attempt exists for "no-such-location", so this
+  // should reach GoogleDriveOAuthRoutes' own "Connection expired" response, not a 401 --
+  // proving the bypass is wired, without needing real Google credentials or a real
+  // browser round trip.
+  const std::string req =
+      "GET /locations/no-such-location/oauth/google-drive/callback?state=x&code=y "
+      "HTTP/1.1\r\n"
+      "Host: localhost\r\n"
+      "Connection: close\r\n"
+      "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
+  REQUIRE_NOTHROW(session.run());
+
+  boost::system::error_code ec;
+  std::string response;
+  std::array<char, 1024> buf{};
+  for (;;) {
+    const auto n = pair.client.read_some(boost::asio::buffer(buf), ec);
+    if (ec) {
+      break;
+    }
+    response.append(buf.data(), n);
+  }
+  REQUIRE(ec == boost::asio::error::eof);
+  REQUIRE(response.find("401 Unauthorized") == std::string::npos);
+  REQUIRE(response.find("Connection expired") != std::string::npos);
+}
+
+TEST_CASE(
+    "Session still requires bearer auth for other /locations routes",
+    "[session]"
+) {
+  SocketPair pair;
+  holder::platform::Db db;
+  holder::api::Router router;
+  const std::string token = "testtoken";
+
+  // A path that merely starts with /locations/ but isn't the callback's exact
+  // .../oauth/google-drive/callback suffix must still hit the normal auth gate --
+  // guards against the bypass in Session.cpp being accidentally broadened.
+  const std::string req = "GET /locations/some-id/binding HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
+  boost::asio::write(pair.client, boost::asio::buffer(req));
+
+  holder::api::Session session(
+      std::move(pair.server),
+      db,
+      token,
+      router,
+      std::chrono::steady_clock::now(),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr
+  );
+  REQUIRE_NOTHROW(session.run());
+
+  boost::system::error_code ec;
+  std::string response;
+  std::array<char, 1024> buf{};
+  for (;;) {
+    const auto n = pair.client.read_some(boost::asio::buffer(buf), ec);
+    if (ec) {
+      break;
+    }
+    response.append(buf.data(), n);
+  }
+  REQUIRE(ec == boost::asio::error::eof);
+  REQUIRE(response.find("401 Unauthorized") != std::string::npos);
+}
+
 TEST_CASE("Session write_prepared_response cancel hook terminates in-flight write", "[session]") {
   namespace http = boost::beast::http;
 

@@ -33,6 +33,13 @@ struct GoogleTokenResponse {
   std::string token_type;
 };
 
+// Reads HOLDER_GOOGLE_OAUTH_CLIENT_ID/HOLDER_GOOGLE_OAUTH_CLIENT_SECRET from the
+// environment. Documented as developer setup, never committed -- see
+// holder-planning/current/GOOGLE_DRIVE.md. Throws std::runtime_error if either is unset,
+// with a message safe to surface directly in an API error response (names the env vars,
+// never a value).
+GoogleOAuthClient google_oauth_client_from_env();
+
 PkceChallenge generate_pkce_challenge();
 
 // An opaque random string for OAuth's `state` parameter (CSRF protection) -- the

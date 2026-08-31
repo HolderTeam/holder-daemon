@@ -1,5 +1,6 @@
 #include "api/Session.h"
 #include "api/routes/AuthenticatedRoutes.h"
+#include "api/routes/GoogleDriveOAuthRoutes.h"
 #include "api/routes/StaticRoutes.h"
 #include "api/support/HttpAuth.h"
 #include "api/support/HttpResponses.h"
@@ -368,31 +369,41 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   if (path_ == "/ping") {
     res = ping_response(req_);
   } else if (!routes::handle_static_routes(path_, req_, res)) {
-    if (!support::is_authorized_bearer(req_, auth_token_)) {
-      res = support::error_response(
-          http::status::unauthorized,
-          "unauthorized",
-          "Missing or invalid token."
-      );
-    } else if (!router_.dispatch(req_, res)) {
-      const auto route_result = routes::dispatch_authenticated_routes(
-          path_,
-          query_string_,
-          req_,
-          res,
-          socket_,
-          db_,
-          card_store_,
-          fts_,
-          nudge_service_,
-          secret_store_,
-          git_ops_,
-          runner_registry_,
-          [&]() { // LCOV_EXCL_LINE
-            return generate_uuid_v4();
-          }
-      );
-      if (route_result.streamed) return std::nullopt;
+    // Google's redirect after the user finishes authorizing in their browser hits this
+    // directly -- the browser never carries auth_token_, so this one path+method
+    // combination under /locations/ must be checked (and, if matched, fully handled)
+    // before the bearer-auth gate below, the same way handle_static_routes already is.
+    // Everything else under /locations/, including starting the OAuth flow itself, still
+    // requires the normal token. See GoogleDriveOAuthRoutes.h's own doc comments.
+    if (!routes::handle_google_drive_oauth_callback_route(
+            path_, query_string_, req_, res, db_, secret_store_, git_ops_
+        )) {
+      if (!support::is_authorized_bearer(req_, auth_token_)) {
+        res = support::error_response(
+            http::status::unauthorized,
+            "unauthorized",
+            "Missing or invalid token."
+        );
+      } else if (!router_.dispatch(req_, res)) {
+        const auto route_result = routes::dispatch_authenticated_routes(
+            path_,
+            query_string_,
+            req_,
+            res,
+            socket_,
+            db_,
+            card_store_,
+            fts_,
+            nudge_service_,
+            secret_store_,
+            git_ops_,
+            runner_registry_,
+            [&]() { // LCOV_EXCL_LINE
+              return generate_uuid_v4();
+            }
+        );
+        if (route_result.streamed) return std::nullopt;
+      }
     }
   }
 

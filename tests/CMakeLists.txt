@@ -58,6 +58,7 @@ add_executable(holder_daemon_tests
   AiMessageCaptureRoutes_test.cpp
   HttpAiComplete_test.cpp
   HttpResources_test.cpp
+  GoogleDriveOAuthRoutes_test.cpp
   HttpTrash_test.cpp
   TrashRoutes_test.cpp
   HttpRebuild_test.cpp
@@ -144,6 +145,7 @@ add_executable(holder_daemon_tests
   ../src/api/routes/ai/messages/AiMessageCrudRoutes.cpp
   ../src/api/routes/ai/messages/AiMessageLinkRoutes.cpp
   ../src/api/routes/AiResourceRoutes.cpp
+  ../src/api/routes/GoogleDriveOAuthRoutes.cpp
   ../src/api/routes/ai/runs/AiRunPostRoute.cpp
   ../src/api/routes/ai/runs/AiRunQueryRoutes.cpp
   ../src/api/routes/ai/AiRunRoutes.cpp

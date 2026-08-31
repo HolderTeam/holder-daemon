@@ -271,6 +271,7 @@ add_executable(holderd
   src/api/routes/ai/messages/AiMessageCrudRoutes.cpp
   src/api/routes/ai/messages/AiMessageLinkRoutes.cpp
   src/api/routes/AiResourceRoutes.cpp
+  src/api/routes/GoogleDriveOAuthRoutes.cpp
   src/api/routes/ai/runs/AiRunPostRoute.cpp
   src/api/routes/ai/runs/AiRunQueryRoutes.cpp
   src/api/routes/ai/AiRunRoutes.cpp
