@@ -212,39 +212,53 @@ TEST_CASE("HTTP local Location import runs as a polled background job", "[http][
   REQUIRE(bound["data"]["bound"] == true);
   REQUIRE(bound["data"].dump().find("root_path") == std::string::npos);
 
-  const auto started = http_json_request(
-      running.bound.bind,
-      running.bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/imports",
-      {{"project_id", "proj-1"},
-       {"card_id", "card-1234"},
-       {"location_id", location_id},
-       {"source_path", source.string()}},
-      boost::beast::http::status::accepted
-  );
-  const auto job_id = started["data"]["job_id"].get<std::string>();
-
-  nlohmann::json job;
-  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  do {
-    job = http_json_request(
+  const auto import_and_wait = [&]() {
+    const auto started = http_json_request(
         running.bound.bind,
         running.bound.port,
         token,
-        boost::beast::http::verb::get,
-        "/imports/" + job_id,
-        nlohmann::json::object(),
-        boost::beast::http::status::ok
-    )["data"];
-    if (job["status"] == "completed" || job["status"] == "failed") break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  } while (std::chrono::steady_clock::now() < deadline);
+        boost::beast::http::verb::post,
+        "/imports",
+        {{"project_id", "proj-1"},
+         {"card_id", "card-1234"},
+         {"location_id", location_id},
+         {"source_path", source.string()}},
+        boost::beast::http::status::accepted
+    );
+    const auto job_id = started["data"]["job_id"].get<std::string>();
+
+    nlohmann::json job;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    do {
+      job = http_json_request(
+          running.bound.bind,
+          running.bound.port,
+          token,
+          boost::beast::http::verb::get,
+          "/imports/" + job_id,
+          nlohmann::json::object(),
+          boost::beast::http::status::ok
+      )["data"];
+      if (job["status"] == "completed" || job["status"] == "failed") break;
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    } while (std::chrono::steady_clock::now() < deadline);
+    return job;
+  };
+
+  const auto job = import_and_wait();
 
   REQUIRE(job["status"] == "completed");
   REQUIRE(job["resource_id"].is_string());
+  REQUIRE(job["duplicate_reused"] == false);
+  REQUIRE(job["link_created"] == true);
   REQUIRE(std::filesystem::exists(object_root));
+
+  const auto duplicate_job = import_and_wait();
+  REQUIRE(duplicate_job["status"] == "completed");
+  REQUIRE(duplicate_job["resource_id"] == job["resource_id"]);
+  REQUIRE(duplicate_job["asset_id"] == job["asset_id"]);
+  REQUIRE(duplicate_job["duplicate_reused"] == true);
+  REQUIRE(duplicate_job["link_created"] == false);
 
   const auto resources = http_json_request(
       running.bound.bind,

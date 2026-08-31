@@ -41,6 +41,7 @@ struct ImportJob {
   std::string resource_id;
   std::string asset_id;
   bool duplicate_reused = false;
+  bool link_created = false;
   std::string error;
 };
 
@@ -118,6 +119,7 @@ nlohmann::json import_job_json(const ImportJob& job) {
       {"resource_id", job.resource_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.resource_id)},
       {"asset_id", job.asset_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.asset_id)},
       {"duplicate_reused", job.duplicate_reused},
+      {"link_created", job.link_created},
       {"error", job.error.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.error)},
   };
 }
@@ -495,6 +497,7 @@ bool handle_ai_resource_routes(
             .resource_id = {},
             .asset_id = {},
             .duplicate_reused = false,
+            .link_created = false,
             .error = {},
         };
       }
@@ -539,6 +542,7 @@ bool handle_ai_resource_routes(
                 found->second.resource_id = result.resource_id;
                 found->second.asset_id = result.asset_id;
                 found->second.duplicate_reused = result.duplicate_reused;
+                found->second.link_created = result.link_created;
               }
             } catch (const std::exception& ex) {
               update_import_job(job_id, "failed", ex.what());
@@ -561,6 +565,7 @@ bool handle_ai_resource_routes(
                 .resource_id = {},
                 .asset_id = {},
                 .duplicate_reused = false,
+                .link_created = false,
                 .error = {},
             })}}
       );
@@ -718,10 +723,29 @@ bool handle_ai_resource_routes(
         std::ofstream(probe_file, std::ios::binary) << "Holder storage probe\n";
         const auto digest = holder::resource::digest_file(probe_file);
         const auto object_key = location_object_key(*location, ".holder-probes/" + uuid_v4());
-        provider->put(object_key, probe_file, digest.byte_size, digest.sha256);
-        if (!provider->exists(object_key)) throw std::runtime_error("storage probe not found");
-        provider->remove(object_key);
-        std::filesystem::remove(probe_file);
+        bool remote_cleanup_needed = false;
+        try {
+          // A PUT can reach the provider even if the client subsequently sees an error. Mark the
+          // object as possibly present before starting the request so every failure path attempts
+          // best-effort cleanup.
+          remote_cleanup_needed = true;
+          provider->put(object_key, probe_file, digest.byte_size, digest.sha256);
+          if (!provider->exists(object_key)) throw std::runtime_error("storage probe not found");
+          provider->remove(object_key);
+          remote_cleanup_needed = false;
+        } catch (...) {
+          if (remote_cleanup_needed) {
+            try {
+              provider->remove(object_key);
+            } catch (...) {
+            }
+          }
+          std::error_code ignored;
+          std::filesystem::remove(probe_file, ignored);
+          throw;
+        }
+        std::error_code ignored;
+        std::filesystem::remove(probe_file, ignored);
         res = support::json_response(
             http::status::ok, {{"ok", true}, {"data", {{"available", true}}}}
         );
@@ -782,6 +806,7 @@ bool handle_ai_resource_routes(
         if (bindings && bindings->preferred(location->project_id) == location_id) {
           bindings->clear_preferred(location->project_id);
         }
+        if (bindings) bindings->unbind(location->project_id, location_id);
         res = support::json_response(
             http::status::ok, {{"ok", true}, {"data", {{"location_id", location_id}}}}
         );
