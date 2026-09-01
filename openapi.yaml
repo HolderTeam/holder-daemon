@@ -891,6 +891,123 @@ components:
           type: string
         kind:
           type: string
+    Milestone:
+      type: object
+      required: [milestone_id, card_id, start_at, all_day, created_at, updated_at]
+      properties:
+        milestone_id:
+          type: string
+        card_id:
+          type: string
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+          nullable: true
+        all_day:
+          type: boolean
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        card_title:
+          type: string
+          description: Included in project calendar responses.
+    MilestoneCreateRequest:
+      type: object
+      required: [start_at]
+      properties:
+        start_at:
+          type: integer
+          format: int64
+        end_at:
+          type: integer
+          format: int64
+          nullable: true
+        all_day:
+          type: boolean
+          default: false
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+    MilestoneResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/Milestone"
+    MilestoneListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Milestone"
+    CalendarCardActivity:
+      type: object
+      required: [card_id, title, created_at, updated_at]
+      properties:
+        card_id:
+          type: string
+        title:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+    ProjectCalendarResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, from, to, milestones, created_cards, updated_cards]
+          properties:
+            project_id:
+              type: string
+            from:
+              type: integer
+              format: int64
+            to:
+              type: integer
+              format: int64
+            milestones:
+              type: array
+              items:
+                $ref: "#/components/schemas/Milestone"
+            created_cards:
+              type: array
+              items:
+                $ref: "#/components/schemas/CalendarCardActivity"
+            updated_cards:
+              type: array
+              items:
+                $ref: "#/components/schemas/CalendarCardActivity"
     SearchCardItem:
       type: object
       required: [card_id, title, updated_at, created_at, snippet, rank]
@@ -2518,6 +2635,128 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /calendar:
+    get:
+      summary: List project milestones and card activity in a time range
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Calendar activity in the requested inclusive epoch-second range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCalendarResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/milestones:
+    get:
+      summary: List milestones attached to a card
+      parameters:
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneListResponse"
+        "404":
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Add a milestone to a card
+      parameters:
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/milestones/{milestone_id}:
+    delete:
+      summary: Remove a milestone from a card
+      parameters:
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: milestone_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removal result
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Card not found
           content:
             application/json:
               schema:
