@@ -60,6 +60,7 @@ nlohmann::json entry_json(const holder::history::CardHistoryEntry& entry) {
       {"first_oid", entry.first_oid},
       {"last_oid", entry.last_oid},
       {"parent_oids", entry.parent_oids},
+      {"visible_parent_oids", entry.visible_parent_oids},
       {"author", {{"name", entry.author_name}, {"email", entry.author_email}}},
       {"started_at", entry.started_at},
       {"ended_at", entry.ended_at},

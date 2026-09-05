@@ -2071,7 +2071,7 @@ components:
           type: string
     CardHistoryEntry:
       type: object
-      required: [first_oid, last_oid, parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge, saves]
+      required: [first_oid, last_oid, parent_oids, visible_parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge, saves]
       properties:
         first_oid:
           type: string
@@ -2079,6 +2079,11 @@ components:
           type: string
         parent_oids:
           type: array
+          items:
+            type: string
+        visible_parent_oids:
+          type: array
+          description: Direct parent entries visible on this history page; omitted connections must not be inferred across filtered commits or page boundaries.
           items:
             type: string
         author:
