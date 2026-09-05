@@ -71,6 +71,8 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
   REQUIRE(list["entries"][0]["saves"].size() == 1);
   CHECK(list["entries"][0]["saves"][0]["oid"] == list["entries"][0]["last_oid"]);
   CHECK(list["entries"][0]["saves"][0]["parent_oids"].is_array());
+  CHECK(list["entries"][0]["saves"][0]["message"] == "Update card History card");
+  CHECK(list["entries"][0]["saves"][0]["authored_at"].is_number_integer());
 
   query["from"] = *old_oid;
   query["to"] = list["head_oid"].get<std::string>();

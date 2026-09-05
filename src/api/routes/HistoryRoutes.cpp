@@ -51,7 +51,9 @@ nlohmann::json entry_json(const holder::history::CardHistoryEntry& entry) {
     saves.push_back({
         {"oid", save.oid},
         {"parent_oids", save.parent_oids},
+        {"authored_at", save.authored_at},
         {"committed_at", save.committed_at},
+        {"message", save.message},
     });
   }
   return {
