@@ -286,6 +286,7 @@ add_executable(holderd
   src/api/routes/ai/threads/AiThreadCollectionRoutes.cpp
   src/api/routes/ai/threads/AiThreadItemRoutes.cpp
   src/api/routes/CardRoutes.cpp
+  src/api/routes/HistoryRoutes.cpp
   src/api/routes/MilestoneRoutes.cpp
   src/api/routes/ProjectRoutes.cpp
   src/api/routes/RebuildRoutes.cpp

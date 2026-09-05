@@ -2061,6 +2061,121 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchMessageItem"
+    CardHistoryAuthor:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+    CardHistoryEntry:
+      type: object
+      required: [first_oid, last_oid, parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge]
+      properties:
+        first_oid:
+          type: string
+        last_oid:
+          type: string
+        parent_oids:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: "#/components/schemas/CardHistoryAuthor"
+        started_at:
+          type: integer
+          format: int64
+        ended_at:
+          type: integer
+          format: int64
+        kind:
+          type: string
+          enum: [created, updated, moved, links, milestones, deleted, restored, permanently_deleted, merged]
+        summary:
+          type: string
+        commit_count:
+          type: integer
+          minimum: 1
+        is_merge:
+          type: boolean
+    CardHistoryPageData:
+      type: object
+      required: [head_oid, entries, next_cursor]
+      properties:
+        head_oid:
+          type: string
+          nullable: true
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardHistoryEntry"
+        next_cursor:
+          type: string
+          nullable: true
+    CardHistoryPageResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardHistoryPageData"
+    CardHistoryVersion:
+      type: object
+      required: [exists, oid, title, body]
+      properties:
+        exists:
+          type: boolean
+        oid:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+    CardHistoryDiffLine:
+      type: object
+      required: [origin, text, old_line, new_line]
+      properties:
+        origin:
+          type: string
+          enum: [" ", "+", "-"]
+        text:
+          type: string
+        old_line:
+          type: integer
+          format: int64
+          nullable: true
+        new_line:
+          type: integer
+          format: int64
+          nullable: true
+    CardHistoryComparisonData:
+      type: object
+      required: [from, to, summary, lines, truncated]
+      properties:
+        from:
+          $ref: "#/components/schemas/CardHistoryVersion"
+        to:
+          $ref: "#/components/schemas/CardHistoryVersion"
+        summary:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/CardHistoryDiffLine"
+        truncated:
+          type: boolean
+    CardHistoryComparisonResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardHistoryComparisonData"
 paths:
   /health:
     get:
@@ -2407,6 +2522,127 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}:
+    get:
+      summary: List saved history for a card
+      description: Returns commits reachable from the captured project HEAD that changed the card. Adjacent autosaves may be grouped into one entry.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Saved card history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistoryPageResponse"
+        "400":
+          description: Invalid card identifier, limit, or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The encrypted project key is unavailable on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Project history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}/compare:
+    get:
+      summary: Compare two saved versions of a card
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: mode
+          required: false
+          schema:
+            type: string
+            enum: [since]
+            default: since
+      responses:
+        "200":
+          description: A line-oriented card comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistoryComparisonResponse"
+        "400":
+          description: Invalid or missing comparison parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The encrypted project key is unavailable on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Project history is temporarily unavailable
           content:
             application/json:
               schema:

@@ -2,6 +2,7 @@
 
 #include "api/routes/AiResourceRoutes.h"
 #include "api/routes/CardRoutes.h"
+#include "api/routes/HistoryRoutes.h"
 #include "api/routes/MilestoneRoutes.h"
 #include "api/routes/ProjectRoutes.h"
 #include "api/routes/RebuildRoutes.h"
@@ -53,6 +54,7 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
   const std::string resource = first_segment(path);
 
   if (resource == "projects" || resource == "recovery-token") {
+    if (resource == "projects" && handle_history_routes(path, req, res, db, param)) return {};
     if (handle_project_routes(path, req, res, db, git_ops, uuid_v4, param)) return {};
   } else if (resource == "rebuild") {
     if (handle_rebuild_routes(path, req, res, db, fts)) return {};
