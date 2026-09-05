@@ -68,6 +68,9 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
   const auto list = nlohmann::json::parse(res.body())["data"];
   REQUIRE(list["entries"].size() == 2);
   REQUIRE(list["head_oid"].is_string());
+  REQUIRE(list["entries"][0]["saves"].size() == 1);
+  CHECK(list["entries"][0]["saves"][0]["oid"] == list["entries"][0]["last_oid"]);
+  CHECK(list["entries"][0]["saves"][0]["parent_oids"].is_array());
 
   query["from"] = *old_oid;
   query["to"] = list["head_oid"].get<std::string>();

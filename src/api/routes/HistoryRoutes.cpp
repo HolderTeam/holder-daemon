@@ -46,6 +46,14 @@ std::optional<HistoryPath> parse_history_path(const std::string& path) {
 }
 
 nlohmann::json entry_json(const holder::history::CardHistoryEntry& entry) {
+  nlohmann::json saves = nlohmann::json::array();
+  for (const auto& save : entry.saves) {
+    saves.push_back({
+        {"oid", save.oid},
+        {"parent_oids", save.parent_oids},
+        {"committed_at", save.committed_at},
+    });
+  }
   return {
       {"first_oid", entry.first_oid},
       {"last_oid", entry.last_oid},
@@ -57,6 +65,7 @@ nlohmann::json entry_json(const holder::history::CardHistoryEntry& entry) {
       {"summary", entry.summary},
       {"commit_count", entry.commit_count},
       {"is_merge", entry.is_merge},
+      {"saves", std::move(saves)},
   };
 }
 

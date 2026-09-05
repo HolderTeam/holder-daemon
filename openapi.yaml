@@ -2071,7 +2071,7 @@ components:
           type: string
     CardHistoryEntry:
       type: object
-      required: [first_oid, last_oid, parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge]
+      required: [first_oid, last_oid, parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge, saves]
       properties:
         first_oid:
           type: string
@@ -2099,6 +2099,22 @@ components:
           minimum: 1
         is_merge:
           type: boolean
+        saves:
+          type: array
+          description: Exact saved commits in chronological order; one item for an ungrouped entry.
+          items:
+            type: object
+            required: [oid, parent_oids, committed_at]
+            properties:
+              oid:
+                type: string
+              parent_oids:
+                type: array
+                items:
+                  type: string
+              committed_at:
+                type: integer
+                format: int64
     CardHistoryPageData:
       type: object
       required: [head_oid, entries, next_cursor]
