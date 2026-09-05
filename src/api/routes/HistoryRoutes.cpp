@@ -133,31 +133,38 @@ bool handle_history_routes(
       return true;
     }
 
+    const auto mode_text = param_get("mode");
+    const auto mode = mode_text.empty() ? std::string("since") : mode_text;
+    if (mode != "since" && mode != "change") {
+      res = support::error_response(
+          http::status::bad_request,
+          "bad_request",
+          "mode must be either since or change."
+      );
+      return true;
+    }
     const auto from_text = param_get("from");
     const auto to_text = param_get("to");
-    if (from_text.empty() || to_text.empty()) {
+    if (to_text.empty() || (mode == "since" && from_text.empty())) {
       res = support::error_response(
-          http::status::bad_request, "bad_request", "from and to commit OIDs are required."
+          http::status::bad_request,
+          "bad_request",
+          mode == "since" ? "from and to commit OIDs are required."
+                            : "to commit OID is required."
       );
       return true;
     }
-    if (!valid_oid(from_text) || !valid_oid(to_text)) {
+    if ((!from_text.empty() && !valid_oid(from_text)) || !valid_oid(to_text)) {
       res = support::error_response(
           http::status::bad_request, "bad_request", "from and to must be full commit OIDs."
-      );
-      return true;
-    }
-    const auto mode = param_get("mode");
-    if (!mode.empty() && mode != "since") {
-      res = support::error_response(
-          http::status::bad_request, "bad_request", "Only mode=since is currently supported."
       );
       return true;
     }
     const auto comparison = history.compare(
         *project,
         parsed->card_id,
-        std::optional<std::string>{from_text},
+        from_text.empty() ? std::optional<std::string>{}
+                          : std::optional<std::string>{from_text},
         std::optional<std::string>{to_text}
     );
     nlohmann::json lines = nlohmann::json::array();

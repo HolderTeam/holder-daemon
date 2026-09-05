@@ -78,7 +78,36 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
   CHECK(comparison["from"]["body"] == "Old body\n");
   CHECK(comparison["to"]["body"] == "New body\n");
 
+  query.clear();
+  query["to"] = *old_oid;
+  query["mode"] = "change";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto creation = nlohmann::json::parse(res.body())["data"];
+  CHECK_FALSE(creation["from"]["exists"].get<bool>());
+  CHECK(creation["to"]["body"] == "Old body\n");
+
+  query["mode"] = "unsupported";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  CHECK(res.result() == http::status::bad_request);
+
+  query["mode"] = "since";
   query["from"] = "not-an-oid";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  CHECK(res.result() == http::status::bad_request);
+
+  query.clear();
+  query["to"] = list["head_oid"].get<std::string>();
+  query["mode"] = "since";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  CHECK(res.result() == http::status::bad_request);
+
+  query.clear();
+  query["mode"] = "change";
   res = {};
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
   CHECK(res.result() == http::status::bad_request);
