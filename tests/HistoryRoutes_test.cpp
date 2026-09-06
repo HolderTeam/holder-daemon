@@ -199,6 +199,47 @@ TEST_CASE("HistoryRoutes handles an empty card history and card-absent revision"
   CHECK(comparison["lines"].empty());
 }
 
+TEST_CASE("HistoryRoutes compares captured revisions after a later autosave", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  const std::string card_id = "abcd-captured-history";
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  history_commit(git, card_id, "First saved body\n", "Add card History card");
+  const auto first_oid = git.head_oid();
+  REQUIRE(first_oid.has_value());
+  history_commit(git, card_id, "Captured saved body\n", "Update card History card");
+
+  const auto base = "/projects/history-project/history/cards/" + card_id;
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  std::unordered_map<std::string, std::string> query;
+  auto param = [&](const std::string& key) {
+    const auto found = query.find(key);
+    return found == query.end() ? std::string{} : found->second;
+  };
+
+  REQUIRE(holder::api::routes::handle_history_routes(base, req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto captured_oid = nlohmann::json::parse(res.body())["data"]["head_oid"].get<std::string>();
+
+  history_commit(git, card_id, "Later autosave body\n", "Update card History card");
+
+  query["from"] = *first_oid;
+  query["to"] = captured_oid;
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto comparison = nlohmann::json::parse(res.body())["data"];
+  CHECK(comparison["from"]["oid"] == *first_oid);
+  CHECK(comparison["from"]["body"] == "First saved body\n");
+  CHECK(comparison["to"]["oid"] == captured_oid);
+  CHECK(comparison["to"]["body"] == "Captured saved body\n");
+}
+
 TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][history]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
