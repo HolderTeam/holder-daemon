@@ -140,7 +140,8 @@ bool handle_history_routes(
                                                       : nlohmann::json(nullptr)},
              {"entries", std::move(entries)},
              {"next_cursor", page.next_cursor.has_value() ? nlohmann::json(*page.next_cursor)
-                                                            : nlohmann::json(nullptr)}}}}
+                                                            : nlohmann::json(nullptr)},
+             {"scan_limited", page.scan_limited}}}}
       );
       return true;
     }

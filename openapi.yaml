@@ -2127,7 +2127,7 @@ components:
                 type: string
     CardHistoryPageData:
       type: object
-      required: [head_oid, entries, next_cursor]
+      required: [head_oid, entries, next_cursor, scan_limited]
       properties:
         head_oid:
           type: string
@@ -2139,6 +2139,9 @@ components:
         next_cursor:
           type: string
           nullable: true
+        scan_limited:
+          type: boolean
+          description: True when History examined its bounded number of revisions before reaching the end; next_cursor continues the scan.
     CardHistoryPageResponse:
       type: object
       required: [ok, data]
