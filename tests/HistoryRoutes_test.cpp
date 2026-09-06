@@ -241,6 +241,40 @@ TEST_CASE("HistoryRoutes compares captured revisions after a later autosave", "[
   CHECK(comparison["to"]["body"] == "Captured saved body\n");
 }
 
+TEST_CASE("HistoryRoutes rejects an oversized history comparison", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  const std::string card_id = "abcd-oversized-history";
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  history_commit(git, card_id, "Small version\n", "Add card History card");
+  const auto old_oid = git.head_oid();
+  REQUIRE(old_oid.has_value());
+  const std::string oversized(2 * 1024 * 1024, 'x');
+  history_commit(git, card_id, oversized, "Update card History card");
+  const auto head_oid = git.head_oid();
+  REQUIRE(head_oid.has_value());
+
+  const auto base = "/projects/history-project/history/cards/" + card_id;
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  std::unordered_map<std::string, std::string> query;
+  auto param = [&](const std::string& key) {
+    const auto found = query.find(key);
+    return found == query.end() ? std::string{} : found->second;
+  };
+
+  query["from"] = *old_oid;
+  query["to"] = *head_oid;
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::payload_too_large);
+  CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "history_response_too_large");
+}
+
 TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][history]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");

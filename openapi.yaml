@@ -2608,6 +2608,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Project history is temporarily unavailable
           content:
@@ -2667,6 +2673,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: The encrypted project key is unavailable on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
           content:
             application/json:
               schema:

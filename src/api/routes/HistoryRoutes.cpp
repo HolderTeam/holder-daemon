@@ -20,6 +20,8 @@ namespace {
 
 namespace http = boost::beast::http;
 
+constexpr std::size_t kMaxHistoryResponseBytes = 2 * 1024 * 1024;
+
 struct HistoryPath {
   std::string project_id;
   std::string card_id;
@@ -99,6 +101,10 @@ bool valid_oid(const std::string& value) {
   });
 }
 
+bool exceeds_history_response_limit(const nlohmann::json& payload) {
+  return payload.dump().size() > kMaxHistoryResponseBytes;
+}
+
 } // namespace
 
 bool handle_history_routes(
@@ -132,17 +138,25 @@ bool handle_history_routes(
       );
       nlohmann::json entries = nlohmann::json::array();
       for (const auto& entry : page.entries) entries.push_back(entry_json(entry));
-      res = support::json_response(
-          http::status::ok,
-          {{"ok", true},
-           {"data",
-            {{"head_oid", page.head_oid.has_value() ? nlohmann::json(*page.head_oid)
-                                                      : nlohmann::json(nullptr)},
-             {"entries", std::move(entries)},
-             {"next_cursor", page.next_cursor.has_value() ? nlohmann::json(*page.next_cursor)
-                                                            : nlohmann::json(nullptr)},
-             {"scan_limited", page.scan_limited}}}}
-      );
+      nlohmann::json payload = {
+          {"ok", true},
+          {"data",
+           {{"head_oid", page.head_oid.has_value() ? nlohmann::json(*page.head_oid)
+                                                     : nlohmann::json(nullptr)},
+            {"entries", std::move(entries)},
+            {"next_cursor", page.next_cursor.has_value() ? nlohmann::json(*page.next_cursor)
+                                                           : nlohmann::json(nullptr)},
+            {"scan_limited", page.scan_limited}}}
+      };
+      if (exceeds_history_response_limit(payload)) {
+        res = support::error_response(
+            http::status::payload_too_large,
+            "history_response_too_large",
+            "History response exceeds the 2 MiB limit."
+        );
+        return true;
+      }
+      res = support::json_response(http::status::ok, payload);
       return true;
     }
 
@@ -189,16 +203,24 @@ bool handle_history_routes(
           {"new_line", line.new_line < 0 ? nlohmann::json(nullptr) : nlohmann::json(line.new_line)},
       });
     }
-    res = support::json_response(
-        http::status::ok,
-        {{"ok", true},
-         {"data",
-          {{"from", version_json(comparison.from)},
-           {"to", version_json(comparison.to)},
-           {"summary", comparison.summary},
-           {"lines", std::move(lines)},
-           {"truncated", comparison.truncated}}}}
-    );
+    nlohmann::json payload = {
+        {"ok", true},
+        {"data",
+         {{"from", version_json(comparison.from)},
+          {"to", version_json(comparison.to)},
+          {"summary", comparison.summary},
+          {"lines", std::move(lines)},
+          {"truncated", comparison.truncated}}}
+    };
+    if (exceeds_history_response_limit(payload)) {
+      res = support::error_response(
+          http::status::payload_too_large,
+          "history_response_too_large",
+          "History response exceeds the 2 MiB limit."
+      );
+      return true;
+    }
+    res = support::json_response(http::status::ok, payload);
   } catch (const std::invalid_argument& ex) {
     res = support::error_response(http::status::bad_request, "bad_request", ex.what());
   } catch (const holder::privacy::PrivacyError& ex) {
