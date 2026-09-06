@@ -2061,6 +2061,68 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchMessageItem"
+    ProjectHistoryAffectedObject:
+      type: object
+      required: [kind, paths]
+      properties:
+        kind:
+          type: string
+          enum: [card, resource, location, ai_data, project_settings, unknown]
+        paths:
+          type: array
+          items:
+            type: string
+    ProjectHistoryActivity:
+      type: object
+      required: [oid, parent_oids, author, authored_at, committed_at, message, affected_objects, is_merge]
+      properties:
+        oid:
+          type: string
+        parent_oids:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: "#/components/schemas/CardHistoryAuthor"
+        authored_at:
+          type: integer
+          format: int64
+        committed_at:
+          type: integer
+          format: int64
+        message:
+          type: string
+        affected_objects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectHistoryAffectedObject"
+        is_merge:
+          type: boolean
+    ProjectHistoryPageData:
+      type: object
+      required: [head_oid, activities, next_cursor, scan_limited]
+      properties:
+        head_oid:
+          type: string
+          nullable: true
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectHistoryActivity"
+        next_cursor:
+          type: string
+          nullable: true
+        scan_limited:
+          type: boolean
+    ProjectHistoryPageResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/ProjectHistoryPageData"
     CardHistoryAuthor:
       type: object
       required: [name, email]
@@ -2551,6 +2613,67 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history:
+    get:
+      summary: List project activity history
+      description: Returns bounded, cursor-paginated Git activities for the project. Each activity groups its changed paths by recognised Holder object kind; unknown paths remain visible as unknown.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: kind
+          required: false
+          description: Return only activities affecting this Holder object kind.
+          schema:
+            type: string
+            enum: [card, resource, location, ai_data, project_settings, unknown]
+      responses:
+        "200":
+          description: Project activity history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHistoryPageResponse"
+        "400":
+          description: Invalid limit, cursor, or object-kind filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Project history is temporarily unavailable
           content:
             application/json:
               schema:

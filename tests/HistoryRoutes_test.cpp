@@ -157,6 +157,56 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
   CHECK(res.result() == http::status::bad_request);
 }
 
+TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  git.write_file("cards/ab/cd/abcd-project-route.md", "card");
+  git.write_file("resources/ef/gh/efgh-project-route.json", "resource");
+  git.stage_paths({
+      "cards/ab/cd/abcd-project-route.md", "resources/ef/gh/efgh-project-route.json"
+  });
+  git.commit("Attach project resource");
+  git.write_file("notes/from-another-tool.txt", "external");
+  git.stage_path("notes/from-another-tool.txt");
+  git.commit("External project note");
+
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  std::unordered_map<std::string, std::string> query;
+  auto param = [&](const std::string& key) {
+    const auto found = query.find(key);
+    return found == query.end() ? std::string{} : found->second;
+  };
+  const std::string path = "/projects/history-project/history";
+
+  REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto page = nlohmann::json::parse(res.body())["data"];
+  REQUIRE(page["activities"].size() == 2);
+  CHECK(page["activities"][0]["message"] == "External project note");
+  REQUIRE(page["activities"][1]["affected_objects"].size() == 2);
+  CHECK(page["activities"][1]["affected_objects"][0]["kind"] == "card");
+  CHECK(page["activities"][1]["affected_objects"][1]["kind"] == "resource");
+
+  query["kind"] = "resource";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto resource_page = nlohmann::json::parse(res.body())["data"];
+  REQUIRE(resource_page["activities"].size() == 1);
+  CHECK(resource_page["activities"][0]["message"] == "Attach project resource");
+
+  query["kind"] = "not-a-kind";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
+  CHECK(res.result() == http::status::bad_request);
+}
+
 TEST_CASE("HistoryRoutes validates project and comparison parameters", "[http][history]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");

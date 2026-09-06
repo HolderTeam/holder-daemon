@@ -3,6 +3,7 @@
 #include "api/support/HttpResponses.h"
 
 #include "history/CardHistory.h"
+#include "history/ProjectHistory.h"
 #include "privacy/PrivacyError.h"
 #include "project/ProjectRepo.h"
 
@@ -23,24 +24,32 @@ namespace http = boost::beast::http;
 constexpr std::size_t kMaxHistoryResponseBytes = 2 * 1024 * 1024;
 
 struct HistoryPath {
+  enum class Scope { Project, Card };
   std::string project_id;
   std::string card_id;
+  Scope scope = Scope::Card;
   bool compare = false;
 };
 
 std::optional<HistoryPath> parse_history_path(const std::string& path) {
   static const std::string projects = "/projects/";
-  static const std::string history = "/history/cards/";
+  static const std::string project_history = "/history";
+  static const std::string card_history = "/history/cards/";
   if (path.rfind(projects, 0) != 0) return std::nullopt;
   const auto project_end = path.find('/', projects.size());
-  if (project_end == std::string::npos ||
-      path.compare(project_end, history.size(), history) != 0) return std::nullopt;
+  if (project_end == std::string::npos) return std::nullopt;
   HistoryPath parsed;
   parsed.project_id = path.substr(projects.size(), project_end - projects.size());
-  const auto card_start = project_end + history.size();
+  if (parsed.project_id.empty()) return std::nullopt;
+  if (path.substr(project_end) == project_history) {
+    parsed.scope = HistoryPath::Scope::Project;
+    return parsed;
+  }
+  if (path.compare(project_end, card_history.size(), card_history) != 0) return std::nullopt;
+  const auto card_start = project_end + card_history.size();
   const auto suffix = path.find('/', card_start);
   parsed.card_id = path.substr(card_start, suffix - card_start);
-  if (parsed.project_id.empty() || parsed.card_id.empty()) return std::nullopt;
+  if (parsed.card_id.empty()) return std::nullopt;
   if (suffix == std::string::npos) return parsed;
   if (path.substr(suffix) != "/compare") return std::nullopt;
   parsed.compare = true;
@@ -81,6 +90,40 @@ nlohmann::json version_json(const holder::history::CardVersion& version) {
       {"title", version.title},
       {"body", version.body},
   };
+}
+
+nlohmann::json project_activity_json(const holder::history::ProjectHistoryActivity& activity) {
+  nlohmann::json affected_objects = nlohmann::json::array();
+  for (const auto& object : activity.affected_objects) {
+    affected_objects.push_back({
+        {"kind", holder::history::project_history_object_kind_name(object.kind)},
+        {"paths", object.paths},
+    });
+  }
+  return {
+      {"oid", activity.oid},
+      {"parent_oids", activity.parent_oids},
+      {"author", {{"name", activity.author_name}, {"email", activity.author_email}}},
+      {"authored_at", activity.authored_at},
+      {"committed_at", activity.committed_at},
+      {"message", activity.message},
+      {"affected_objects", std::move(affected_objects)},
+      {"is_merge", activity.is_merge},
+  };
+}
+
+std::optional<holder::history::ProjectHistoryObjectKind> project_history_kind(
+    const std::string& raw
+) {
+  if (raw.empty()) return std::nullopt;
+  using Kind = holder::history::ProjectHistoryObjectKind;
+  if (raw == "card") return Kind::Card;
+  if (raw == "resource") return Kind::Resource;
+  if (raw == "location") return Kind::Location;
+  if (raw == "ai_data") return Kind::AiData;
+  if (raw == "project_settings") return Kind::ProjectSettings;
+  if (raw == "unknown") return Kind::Unknown;
+  throw std::invalid_argument("kind must be a supported project history object kind");
 }
 
 std::size_t history_limit(const std::string& raw) {
@@ -124,15 +167,48 @@ bool handle_history_routes(
       return true;
     }
 
+    const auto cursor_text = param_get("cursor");
+    if (!cursor_text.empty() && !valid_oid(cursor_text)) {
+      throw std::invalid_argument("cursor must be a full commit OID");
+    }
+    const auto cursor = cursor_text.empty()
+        ? std::optional<std::string>{}
+        : std::optional<std::string>{cursor_text};
+
+    if (parsed->scope == HistoryPath::Scope::Project) {
+      holder::history::ProjectHistoryService history;
+      const auto page = history.list(
+          *project,
+          history_limit(param_get("limit")),
+          cursor,
+          project_history_kind(param_get("kind"))
+      );
+      nlohmann::json activities = nlohmann::json::array();
+      for (const auto& activity : page.activities) activities.push_back(project_activity_json(activity));
+      nlohmann::json payload = {
+          {"ok", true},
+          {"data",
+           {{"head_oid", page.head_oid.has_value() ? nlohmann::json(*page.head_oid)
+                                                     : nlohmann::json(nullptr)},
+            {"activities", std::move(activities)},
+            {"next_cursor", page.next_cursor.has_value() ? nlohmann::json(*page.next_cursor)
+                                                           : nlohmann::json(nullptr)},
+            {"scan_limited", page.scan_limited}}}
+      };
+      if (exceeds_history_response_limit(payload)) {
+        res = support::error_response(
+            http::status::payload_too_large,
+            "history_response_too_large",
+            "History response exceeds the 2 MiB limit."
+        );
+        return true;
+      }
+      res = support::json_response(http::status::ok, payload);
+      return true;
+    }
+
     holder::history::CardHistoryService history;
     if (!parsed->compare) {
-      const auto cursor_text = param_get("cursor");
-      if (!cursor_text.empty() && !valid_oid(cursor_text)) {
-        throw std::invalid_argument("cursor must be a full commit OID");
-      }
-      const auto cursor = cursor_text.empty()
-          ? std::optional<std::string>{}
-          : std::optional<std::string>{cursor_text};
       const auto page = history.list(
           *project, parsed->card_id, history_limit(param_get("limit")), cursor
       );
