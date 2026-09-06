@@ -147,6 +147,56 @@ TEST_CASE("HistoryRoutes validates project and comparison parameters", "[http][h
   CHECK_FALSE(holder::api::routes::handle_history_routes(
       "/cards/abcd-card/history", req, res, db, empty_param
   ));
+
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history/cards/abc", req, res, db, empty_param
+  ));
+  CHECK(res.result() == http::status::bad_request);
+}
+
+TEST_CASE("HistoryRoutes handles an empty card history and card-absent revision", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  git.write_file("project-notes.md", "This repository revision has no card.\n");
+  git.stage_path("project-notes.md");
+  git.commit("Add project note");
+  const auto unrelated_oid = git.head_oid();
+  REQUIRE(unrelated_oid.has_value());
+
+  const std::string card_id = "abcd-no-history";
+  const auto base = "/projects/history-project/history/cards/" + card_id;
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  std::unordered_map<std::string, std::string> query;
+  auto param = [&](const std::string& key) {
+    const auto found = query.find(key);
+    return found == query.end() ? std::string{} : found->second;
+  };
+
+  REQUIRE(holder::api::routes::handle_history_routes(base, req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto list = nlohmann::json::parse(res.body())["data"];
+  CHECK(list["head_oid"] == *unrelated_oid);
+  CHECK(list["entries"].empty());
+  CHECK(list["next_cursor"].is_null());
+
+  query["from"] = *unrelated_oid;
+  query["to"] = *unrelated_oid;
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto comparison = nlohmann::json::parse(res.body())["data"];
+  CHECK_FALSE(comparison["from"]["exists"].get<bool>());
+  CHECK_FALSE(comparison["to"]["exists"].get<bool>());
+  CHECK(comparison["lines"].empty());
 }
 
 TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][history]") {
