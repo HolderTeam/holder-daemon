@@ -9,6 +9,9 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <unordered_map>
 
@@ -37,6 +40,26 @@ void history_commit(
   git.write_file(path, history_card_file(card_id, body));
   git.stage_path(path);
   git.commit(message);
+}
+
+struct FileSnapshot {
+  bool exists = false;
+  std::string bytes;
+};
+
+FileSnapshot snapshot_file(const std::filesystem::path& path) {
+  FileSnapshot snapshot;
+  snapshot.exists = std::filesystem::exists(path);
+  if (!snapshot.exists) return snapshot;
+  std::ifstream input(path, std::ios::binary);
+  snapshot.bytes.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+  return snapshot;
+}
+
+void check_file_unchanged(const std::filesystem::path& path, const FileSnapshot& before) {
+  const auto after = snapshot_file(path);
+  CHECK(after.exists == before.exists);
+  CHECK(after.bytes == before.bytes);
 }
 
 } // namespace
@@ -273,6 +296,52 @@ TEST_CASE("HistoryRoutes rejects an oversized history comparison", "[http][histo
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
   REQUIRE(res.result() == http::status::payload_too_large);
   CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "history_response_too_large");
+}
+
+TEST_CASE("HistoryRoutes leave SQLite files unchanged", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto db_path = dir / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  const std::string card_id = "abcd-sqlite-history";
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  history_commit(git, card_id, "First body\n", "Add card History card");
+  const auto old_oid = git.head_oid();
+  REQUIRE(old_oid.has_value());
+  history_commit(git, card_id, "Second body\n", "Update card History card");
+  const auto head_oid = git.head_oid();
+  REQUIRE(head_oid.has_value());
+
+  const auto db_before = snapshot_file(db_path);
+  const auto wal_before = snapshot_file(db_path.string() + "-wal");
+  const auto journal_before = snapshot_file(db_path.string() + "-journal");
+
+  const auto base = "/projects/history-project/history/cards/" + card_id;
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  std::unordered_map<std::string, std::string> query;
+  auto param = [&](const std::string& key) {
+    const auto found = query.find(key);
+    return found == query.end() ? std::string{} : found->second;
+  };
+
+  REQUIRE(holder::api::routes::handle_history_routes(base, req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  query["from"] = *old_oid;
+  query["to"] = *head_oid;
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+
+  // SQLite can update the -shm file solely to record an active WAL reader.
+  // That transient lock bookkeeping is not persistent database state, so this
+  // proof deliberately checks the database and durable journal files instead.
+  check_file_unchanged(db_path, db_before);
+  check_file_unchanged(db_path.string() + "-wal", wal_before);
+  check_file_unchanged(db_path.string() + "-journal", journal_before);
 }
 
 TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][history]") {
