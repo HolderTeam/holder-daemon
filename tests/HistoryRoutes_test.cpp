@@ -377,3 +377,33 @@ TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][
   const auto error = nlohmann::json::parse(res.body())["error"];
   CHECK(error["code"] == "history_key_unavailable");
 }
+
+TEST_CASE("HistoryRoutes reports malformed historical card data", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  const std::string card_id = "abcd-malformed-route";
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  const auto path = holder::core::card_rel_path(card_id);
+  git.write_file(path, "Not a Holder card file\n");
+  git.stage_path(path);
+  git.commit("Update card History card");
+
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  auto empty_param = [](const std::string&) { return std::string{}; };
+  REQUIRE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history/cards/" + card_id,
+      req,
+      res,
+      db,
+      empty_param
+  ));
+  CHECK(res.result() == http::status::service_unavailable);
+  const auto error = nlohmann::json::parse(res.body())["error"];
+  CHECK(error["code"] == "history_unavailable");
+  CHECK(error["message"] == "Historical card content is malformed");
+}
