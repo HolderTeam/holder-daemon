@@ -165,7 +165,10 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
 
   holder::git::GitRepo git;
   git.open_or_init(project_root);
-  git.write_file("cards/ab/cd/abcd-project-route.md", "card");
+  git.write_file(
+      "cards/ab/cd/abcd-project-route.md",
+      history_card_file("abcd-project-route", "Project history card")
+  );
   git.write_file("resources/ef/gh/efgh-project-route.json", "resource");
   git.stage_paths({
       "cards/ab/cd/abcd-project-route.md", "resources/ef/gh/efgh-project-route.json"
@@ -191,6 +194,10 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
   CHECK(page["activities"][0]["message"] == "External project note");
   REQUIRE(page["activities"][1]["affected_objects"].size() == 2);
   CHECK(page["activities"][1]["affected_objects"][0]["kind"] == "card");
+  CHECK(page["activities"][1]["affected_objects"][0]["items"][0]["path"] ==
+        "cards/ab/cd/abcd-project-route.md");
+  CHECK(page["activities"][1]["affected_objects"][0]["items"][0]["title"] ==
+        "History card");
   CHECK(page["activities"][1]["affected_objects"][1]["kind"] == "resource");
 
   query["kind"] = "resource";

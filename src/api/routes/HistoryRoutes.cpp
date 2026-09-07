@@ -95,9 +95,20 @@ nlohmann::json version_json(const holder::history::CardVersion& version) {
 nlohmann::json project_activity_json(const holder::history::ProjectHistoryActivity& activity) {
   nlohmann::json affected_objects = nlohmann::json::array();
   for (const auto& object : activity.affected_objects) {
+    nlohmann::json paths = nlohmann::json::array();
+    nlohmann::json items = nlohmann::json::array();
+    for (const auto& item : object.items) {
+      paths.push_back(item.path);
+      nlohmann::json json_item = {{"path", item.path}};
+      if (item.title.has_value()) json_item["title"] = *item.title;
+      items.push_back(std::move(json_item));
+    }
     affected_objects.push_back({
         {"kind", holder::history::project_history_object_kind_name(object.kind)},
-        {"paths", object.paths},
+        // Keep paths for compatibility with existing API consumers; items carries
+        // optional historical display metadata for the richer History UI.
+        {"paths", std::move(paths)},
+        {"items", std::move(items)},
     });
   }
   return {
