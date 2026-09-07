@@ -1,6 +1,9 @@
 #include "api/routes/HistoryRoutes.h"
 #include "http_test_helpers.h"
 
+#include "ai/AiMessageFrontMatter.h"
+#include "ai/AiMessagePaths.h"
+#include "ai/AiThreadManifest.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
 #include "git/GitRepo.h"
@@ -252,6 +255,71 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
   res = {};
   REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
   CHECK(res.result() == http::status::bad_request);
+}
+
+TEST_CASE("HistoryRoutes describes historical project AI data", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+
+  holder::model::Project project;
+  project.project_id = "history-project";
+  project.root_path = project_root.string();
+  project.privacy_mode = "plain";
+  holder::model::AiThread thread;
+  thread.thread_id = "route-thread-history";
+  thread.project_id = project.project_id;
+  thread.title = "Release review";
+  thread.created_at = 1;
+  thread.updated_at = 1;
+  holder::model::AiMessage message;
+  message.message_id = "route-message-history";
+  message.thread_id = thread.thread_id;
+  message.role = "user";
+  message.source = "holder";
+  message.created_at = 2;
+
+  holder::git::GitRepo git;
+  git.open_or_init(project_root);
+  const auto thread_path = holder::ai::ai_thread_manifest_rel_path(thread.thread_id);
+  const auto message_path = holder::core::ai_message_rel_path(message.message_id);
+  git.write_file(thread_path, holder::ai::render_ai_thread_manifest(project, thread));
+  git.write_file(
+      message_path,
+      holder::core::render_ai_message_front_matter(message, project.project_id, {}) +
+          "Can you review the release notes?\n"
+  );
+  git.stage_paths({thread_path, message_path});
+  git.commit("Capture AI review");
+
+  http::request<http::string_body> req{http::verb::get, "/", 11};
+  http::response<http::string_body> res;
+  const auto empty_param = [](const std::string&) { return std::string{}; };
+  REQUIRE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history", req, res, db, empty_param
+  ));
+  REQUIRE(res.result() == http::status::ok);
+  const auto page = nlohmann::json::parse(res.body())["data"];
+  REQUIRE(page["activities"].size() == 1);
+  const auto& items = page["activities"][0]["affected_objects"][0]["items"];
+  REQUIRE(items.size() == 2);
+  bool found_message = false;
+  bool found_thread = false;
+  for (const auto& item : items) {
+    if (item["path"] == message_path) {
+      found_message = true;
+      CHECK(item["title"] == "Release review");
+      CHECK(item["detail"] == "user: Can you review the release notes?");
+    }
+    if (item["path"] == thread_path) {
+      found_thread = true;
+      CHECK(item["title"] == "Release review");
+      CHECK_FALSE(item.contains("detail"));
+    }
+  }
+  CHECK(found_message);
+  CHECK(found_thread);
 }
 
 TEST_CASE("HistoryRoutes validates project and comparison parameters", "[http][history]") {
