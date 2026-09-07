@@ -20,7 +20,11 @@ namespace http = boost::beast::http;
 
 namespace {
 
-std::string history_card_file(const std::string& card_id, const std::string& body) {
+std::string history_card_file(
+    const std::string& card_id,
+    const std::string& body,
+    const std::vector<holder::model::Milestone>& milestones = {}
+) {
   holder::model::Card card;
   card.card_id = card_id;
   card.project_id = "history-project";
@@ -28,7 +32,7 @@ std::string history_card_file(const std::string& card_id, const std::string& bod
   card.rel_path = holder::core::card_rel_path(card_id);
   card.created_at = 1;
   card.updated_at = 2;
-  return holder::core::render_card_front_matter(card, {}, {}) + body;
+  return holder::core::render_card_front_matter(card, {}, milestones) + body;
 }
 
 void history_commit(
@@ -185,9 +189,16 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
 
   holder::git::GitRepo git;
   git.open_or_init(project_root);
+  holder::model::Milestone milestone;
+  milestone.milestone_id = "route-milestone";
+  milestone.project_id = "history-project";
+  milestone.card_id = "abcd-project-route";
+  milestone.start_at = 1;
+  milestone.kind = "Review";
+  milestone.description = "Project review";
   git.write_file(
       "cards/ab/cd/abcd-project-route.md",
-      history_card_file("abcd-project-route", "Project history card")
+      history_card_file("abcd-project-route", "Project history card", {milestone})
   );
   git.write_file(
       "resources/ef/gh/efgh-project-route.json",
@@ -221,6 +232,8 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
         "cards/ab/cd/abcd-project-route.md");
   CHECK(page["activities"][1]["affected_objects"][0]["items"][0]["title"] ==
         "History card");
+  CHECK(page["activities"][1]["affected_objects"][0]["items"][0]["detail"] ==
+        "Milestone: Review — Project review");
   CHECK(page["activities"][1]["affected_objects"][1]["kind"] == "resource");
   CHECK(page["activities"][1]["affected_objects"][1]["items"][0]["title"] ==
         "Project notes");
