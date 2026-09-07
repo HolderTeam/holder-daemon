@@ -101,6 +101,7 @@ nlohmann::json project_activity_json(const holder::history::ProjectHistoryActivi
       paths.push_back(item.path);
       nlohmann::json json_item = {{"path", item.path}};
       if (item.title.has_value()) json_item["title"] = *item.title;
+      if (item.detail.has_value()) json_item["detail"] = *item.detail;
       items.push_back(std::move(json_item));
     }
     affected_objects.push_back({

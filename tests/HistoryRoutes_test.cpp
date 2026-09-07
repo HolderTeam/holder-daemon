@@ -5,6 +5,7 @@
 #include "card/CardPaths.h"
 #include "git/GitRepo.h"
 #include "project/ProjectRepo.h"
+#include "resource/ResourceManifest.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -40,6 +41,25 @@ void history_commit(
   git.write_file(path, history_card_file(card_id, body));
   git.stage_path(path);
   git.commit(message);
+}
+
+std::string history_resource_manifest(const std::string& resource_id, const std::string& label) {
+  holder::model::ResourceBundle bundle;
+  bundle.resource.resource_id = resource_id;
+  bundle.resource.project_id = "history-project";
+  bundle.resource.type = "file";
+  bundle.resource.label = label;
+  bundle.resource.created_at = 1;
+  bundle.resource.updated_at = 1;
+  holder::model::Asset asset;
+  asset.asset_id = "asset-" + resource_id;
+  asset.resource_id = resource_id;
+  asset.original_filename = "project-notes.pdf";
+  asset.media_type = "application/pdf";
+  asset.byte_size = 42;
+  asset.plaintext_sha256 = std::string(64, 'a');
+  bundle.assets.push_back(asset);
+  return holder::resource::render_resource_manifest(bundle);
 }
 
 struct FileSnapshot {
@@ -169,7 +189,10 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
       "cards/ab/cd/abcd-project-route.md",
       history_card_file("abcd-project-route", "Project history card")
   );
-  git.write_file("resources/ef/gh/efgh-project-route.json", "resource");
+  git.write_file(
+      "resources/ef/gh/efgh-project-route.json",
+      history_resource_manifest("efgh-project-route", "Project notes")
+  );
   git.stage_paths({
       "cards/ab/cd/abcd-project-route.md", "resources/ef/gh/efgh-project-route.json"
   });
@@ -199,6 +222,10 @@ TEST_CASE("HistoryRoutes lists and filters project activities", "[http][history]
   CHECK(page["activities"][1]["affected_objects"][0]["items"][0]["title"] ==
         "History card");
   CHECK(page["activities"][1]["affected_objects"][1]["kind"] == "resource");
+  CHECK(page["activities"][1]["affected_objects"][1]["items"][0]["title"] ==
+        "Project notes");
+  CHECK(page["activities"][1]["affected_objects"][1]["items"][0]["detail"] ==
+        "Attachment: project-notes.pdf");
 
   query["kind"] = "resource";
   res = {};
