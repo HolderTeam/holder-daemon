@@ -1376,6 +1376,10 @@ TEST_CASE(
 
   holder::api::Router router;
   std::atomic<int> slow_foreground_started{0};
+  // Set the instant this handler actually runs -- proof that the general-worker pool has
+  // dispatched it, independent of any wall-clock assumption about how long that takes to
+  // happen. See the REQUIRE_FALSE below for why this replaces a timing-based wait_for check.
+  std::atomic<bool> fast_foreground_started{false};
   router.add(
       http::verb::get,
       "/foreground-slow",
@@ -1394,7 +1398,8 @@ TEST_CASE(
   router.add(
       http::verb::get,
       "/foreground-fast",
-      [](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+      [&fast_foreground_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+        fast_foreground_started.store(true);
         res.result(http::status::ok);
         res.set(http::field::content_type, "application/json");
         res.body() = R"({"ok":true})";
@@ -1500,7 +1505,14 @@ TEST_CASE(
 
   REQUIRE(saved["ok"] == true);
   REQUIRE(save_elapsed_ms < 200);
-  REQUIRE(queued_foreground.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout);
+  // Deterministic, not a timing race: the default ConcurrencyProfile has exactly 3
+  // general_workers_, all still occupied by the still-sleeping slow1/slow2/slow3 handlers at
+  // this point (each holds its worker for a fixed 300ms, far longer than this test body takes
+  // to reach here) -- so it is architecturally impossible for /foreground-fast to have been
+  // dispatched yet, regardless of scheduling delays on this thread. A wait_for(...)-based
+  // check here previously inferred that from a fixed wall-clock window instead of observing it
+  // directly, which is what made this assertion flaky under CI scheduling contention.
+  REQUIRE_FALSE(fast_foreground_started.load());
 
   REQUIRE(slow1.get().status == http::status::ok);
   REQUIRE(slow2.get().status == http::status::ok);
