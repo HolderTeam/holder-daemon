@@ -12,6 +12,8 @@
 #include <boost/asio.hpp>
 #include <cstddef>
 #include <future>
+#include <thread>
+#include <utility>
 
 using holder::test::create_project;
 using holder::test::make_temp_dir;
@@ -36,6 +38,31 @@ boost::asio::ip::tcp::socket connect_test_socket(
 void write_raw_request(boost::asio::ip::tcp::socket& socket, const std::string& request) {
   boost::asio::write(socket, boost::asio::buffer(request));
 }
+
+/** Ensures listener.stop() and the runner thread's join() always run, even when a REQUIRE
+ * fails partway through a test and unwinds the stack before reaching the test's own trailing
+ * stop()/join() calls. Without this, std::thread's destructor calls std::terminate()
+ * unconditionally on a still-joinable thread -- so an ordinary assertion failure crashed the
+ * whole test process (visible as "Subprocess aborted" from CTest) instead of reporting a clean
+ * failure. listener.stop() is idempotent (guarded by compare_exchange_strong), so a test that
+ * still calls it explicitly before this guard destructs is unaffected. */
+class ListenerRunGuard {
+ public:
+  ListenerRunGuard(holder::api::Listener& listener, std::thread thread)
+      : listener_(listener), thread_(std::move(thread)) {}
+
+  ListenerRunGuard(const ListenerRunGuard&) = delete;
+  ListenerRunGuard& operator=(const ListenerRunGuard&) = delete;
+
+  ~ListenerRunGuard() {
+    listener_.stop();
+    if (thread_.joinable()) thread_.join();
+  }
+
+ private:
+  holder::api::Listener& listener_;
+  std::thread thread_;
+};
 
 } // namespace
 
@@ -123,6 +150,7 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
@@ -159,8 +187,7 @@ TEST_CASE("Slow background route does not block foreground route", "[listener]")
   const auto slow = slow_future.get();
   REQUIRE(slow.status == http::status::ok);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE("Slow background route does not block save lane route", "[listener]") {
@@ -218,6 +245,7 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   REQUIRE(wait_for_http_listener(bound.bind, bound.port));
 
   auto slow_future = std::async(std::launch::async, [&]() {
@@ -256,8 +284,7 @@ TEST_CASE("Slow background route does not block save lane route", "[listener]") 
   const auto slow = slow_future.get();
   REQUIRE(slow.status == http::status::ok);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE("Listener worker-owned DB handles support concurrent mixed request load", "[listener]") {
@@ -299,6 +326,7 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   for (int i = 1; i <= 3; ++i) {
@@ -400,8 +428,7 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   REQUIRE(card["ok"] == true);
   REQUIRE(card["data"]["card_id"] == "card-1");
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE("Listener stop cancels in-flight ingress read and returns promptly", "[listener]") {
@@ -1119,6 +1146,7 @@ TEST_CASE("Listener serves card nudge and ai status routes without regression", 
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto created = holder::test::http_json_request(
@@ -1178,8 +1206,7 @@ TEST_CASE("Listener serves card nudge and ai status routes without regression", 
   );
   REQUIRE(patched["ok"] == true);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE(
@@ -1238,6 +1265,7 @@ TEST_CASE(
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto created = holder::test::http_json_request(
@@ -1333,8 +1361,7 @@ TEST_CASE(
   REQUIRE(slow2.get().status == http::status::ok);
   REQUIRE(slow3.get().status == http::status::ok);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE(
@@ -1408,6 +1435,7 @@ TEST_CASE(
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto slow1 = std::async(std::launch::async, [&]() {
@@ -1479,8 +1507,7 @@ TEST_CASE(
   REQUIRE(slow3.get().status == http::status::ok);
   REQUIRE(queued_foreground.get().status == http::status::ok);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
 
 TEST_CASE(
@@ -1550,6 +1577,7 @@ TEST_CASE(
   std::thread listener_thread([&listener, &signals]() {
     listener.run(signals);
   });
+  ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto slow1 = std::async(std::launch::async, [&]() {
@@ -1612,6 +1640,5 @@ TEST_CASE(
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   REQUIRE(canceled_background_runs.load() == 0);
 
-  listener.stop();
-  listener_thread.join();
+  // listener_guard's destructor stops the listener and joins its thread.
 }
