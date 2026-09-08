@@ -2268,6 +2268,18 @@ components:
         data:
           $ref: "#/components/schemas/CardHistoryComparisonData"
 paths:
+  /ping:
+    get:
+      summary: Liveness check, unauthenticated
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum: [pong]
   /health:
     get:
       summary: Health check
