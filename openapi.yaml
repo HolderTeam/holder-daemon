@@ -2061,6 +2061,68 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchMessageItem"
+    ProjectHistoryAffectedObject:
+      type: object
+      required: [kind, paths]
+      properties:
+        kind:
+          type: string
+          enum: [card, resource, location, ai_data, project_settings, unknown]
+        paths:
+          type: array
+          items:
+            type: string
+    ProjectHistoryActivity:
+      type: object
+      required: [oid, parent_oids, author, authored_at, committed_at, message, affected_objects, is_merge]
+      properties:
+        oid:
+          type: string
+        parent_oids:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: "#/components/schemas/CardHistoryAuthor"
+        authored_at:
+          type: integer
+          format: int64
+        committed_at:
+          type: integer
+          format: int64
+        message:
+          type: string
+        affected_objects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectHistoryAffectedObject"
+        is_merge:
+          type: boolean
+    ProjectHistoryPageData:
+      type: object
+      required: [head_oid, activities, next_cursor, scan_limited]
+      properties:
+        head_oid:
+          type: string
+          nullable: true
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectHistoryActivity"
+        next_cursor:
+          type: string
+          nullable: true
+        scan_limited:
+          type: boolean
+    ProjectHistoryPageResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/ProjectHistoryPageData"
     CardHistoryAuthor:
       type: object
       required: [name, email]
@@ -2071,7 +2133,7 @@ components:
           type: string
     CardHistoryEntry:
       type: object
-      required: [first_oid, last_oid, parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge]
+      required: [first_oid, last_oid, parent_oids, visible_parent_oids, author, started_at, ended_at, kind, summary, commit_count, is_merge, saves]
       properties:
         first_oid:
           type: string
@@ -2079,6 +2141,11 @@ components:
           type: string
         parent_oids:
           type: array
+          items:
+            type: string
+        visible_parent_oids:
+          type: array
+          description: Direct parent entries visible on this history page; omitted connections must not be inferred across filtered commits or page boundaries.
           items:
             type: string
         author:
@@ -2099,9 +2166,30 @@ components:
           minimum: 1
         is_merge:
           type: boolean
+        saves:
+          type: array
+          description: Exact saved commits in chronological order; one item for an ungrouped entry.
+          items:
+            type: object
+            required: [oid, parent_oids, authored_at, committed_at, message]
+            properties:
+              oid:
+                type: string
+              parent_oids:
+                type: array
+                items:
+                  type: string
+              authored_at:
+                type: integer
+                format: int64
+              committed_at:
+                type: integer
+                format: int64
+              message:
+                type: string
     CardHistoryPageData:
       type: object
-      required: [head_oid, entries, next_cursor]
+      required: [head_oid, entries, next_cursor, scan_limited]
       properties:
         head_oid:
           type: string
@@ -2113,6 +2201,9 @@ components:
         next_cursor:
           type: string
           nullable: true
+        scan_limited:
+          type: boolean
+          description: True when History examined its bounded number of revisions before reaching the end; next_cursor continues the scan.
     CardHistoryPageResponse:
       type: object
       required: [ok, data]
@@ -2526,6 +2617,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history:
+    get:
+      summary: List project activity history
+      description: Returns bounded, cursor-paginated Git activities for the project. Each activity groups its changed paths by recognised Holder object kind; unknown paths remain visible as unknown.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: cursor
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: kind
+          required: false
+          description: Return only activities affecting this Holder object kind.
+          schema:
+            type: string
+            enum: [card, resource, location, ai_data, project_settings, unknown]
+      responses:
+        "200":
+          description: Project activity history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectHistoryPageResponse"
+        "400":
+          description: Invalid limit, cursor, or object-kind filter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Project history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/history/cards/{card_id}:
     get:
       summary: List saved history for a card
@@ -2579,6 +2731,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Project history is temporarily unavailable
           content:
@@ -2601,7 +2759,8 @@ paths:
             type: string
         - in: query
           name: from
-          required: true
+          required: false
+          description: Required for since mode; omit in change mode when the event created the card
           schema:
             type: string
         - in: query
@@ -2614,7 +2773,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [since]
+            enum: [since, change]
             default: since
       responses:
         "200":
@@ -2637,6 +2796,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: The encrypted project key is unavailable on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded History response would exceed 2 MiB
           content:
             application/json:
               schema:
