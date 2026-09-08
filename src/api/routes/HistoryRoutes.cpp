@@ -1,7 +1,9 @@
 #include "api/routes/HistoryRoutes.h"
 
 #include "api/support/HttpResponses.h"
+#include "api/support/Time.h"
 
+#include "card/CardStore.h"
 #include "history/CardHistory.h"
 #include "history/ProjectHistory.h"
 #include "privacy/PrivacyError.h"
@@ -29,6 +31,7 @@ struct HistoryPath {
   std::string card_id;
   Scope scope = Scope::Card;
   bool compare = false;
+  bool restore = false;
 };
 
 std::optional<HistoryPath> parse_history_path(const std::string& path) {
@@ -51,8 +54,9 @@ std::optional<HistoryPath> parse_history_path(const std::string& path) {
   parsed.card_id = path.substr(card_start, suffix - card_start);
   if (parsed.card_id.empty()) return std::nullopt;
   if (suffix == std::string::npos) return parsed;
-  if (path.substr(suffix) != "/compare") return std::nullopt;
-  parsed.compare = true;
+  if (path.substr(suffix) == "/compare") parsed.compare = true;
+  else if (path.substr(suffix) == "/restore") parsed.restore = true;
+  else return std::nullopt;
   return parsed;
 }
 
@@ -167,15 +171,51 @@ bool handle_history_routes(
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
     holder::platform::Db& db,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    holder::card::CardStore* card_store
 ) {
   const auto parsed = parse_history_path(path);
-  if (!parsed.has_value() || req.method() != http::verb::get) return false;
+  if (!parsed.has_value()) return false;
 
   try {
     const auto project = holder::project::ProjectRepo(db).get(parsed->project_id);
     if (!project.has_value()) {
       res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+      return true;
+    }
+
+    if (parsed->restore) {
+      if (req.method() != http::verb::post) {
+        res = support::error_response(
+            http::status::method_not_allowed, "method_not_allowed", "Method not allowed."
+        );
+        return true;
+      }
+      if (card_store == nullptr) {
+        res = support::error_response(
+            http::status::not_implemented, "not_implemented", "Card store unavailable."
+        );
+        return true;
+      }
+      const auto oid = param_get("oid");
+      if (!valid_oid(oid)) {
+        throw std::invalid_argument("oid must be a full commit OID");
+      }
+      const auto card = card_store->get(parsed->card_id);
+      if (!card.has_value() || card->project_id != project->project_id) {
+        res = support::error_response(http::status::not_found, "not_found", "Card not found.");
+        return true;
+      }
+      card_store->restore_version(parsed->card_id, oid, support::now_epoch_seconds());
+      res = support::json_response(
+          http::status::ok, {{"ok", true}, {"data", {{"card_id", parsed->card_id}}}}
+      );
+      return true;
+    }
+    if (req.method() != http::verb::get) {
+      res = support::error_response(
+          http::status::method_not_allowed, "method_not_allowed", "Method not allowed."
+      );
       return true;
     }
 

@@ -6,6 +6,7 @@
 #include "ai/AiThreadManifest.h"
 #include "card/CardFrontMatter.h"
 #include "card/CardPaths.h"
+#include "card/CardStore.h"
 #include "git/GitRepo.h"
 #include "project/ProjectRepo.h"
 #include "resource/ResourceManifest.h"
@@ -571,4 +572,37 @@ TEST_CASE("HistoryRoutes reports malformed historical card data", "[http][histor
   const auto error = nlohmann::json::parse(res.body())["error"];
   CHECK(error["code"] == "history_unavailable");
   CHECK(error["message"] == "Historical card content is malformed");
+}
+
+TEST_CASE("HistoryRoutes restores a selected card version", "[http][history]") {
+  const auto dir = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(dir / "holder.db");
+  const auto project_root = dir / "project";
+  holder::test::create_project(db, "history-project", project_root.string());
+  holder::card::CardStore store(db, nullptr);
+  holder::model::Card card;
+  card.card_id = "abcd-restore-route";
+  card.project_id = "history-project";
+  card.title = "Original";
+  card.created_at = 1;
+  card.updated_at = 1;
+  store.create(card, "original body");
+  holder::git::GitRepo git;
+  git.open_existing(project_root);
+  const auto oid = git.head_oid();
+  REQUIRE(oid.has_value());
+  store.update_content(card.card_id, "changed body", std::string("Changed"), 2);
+
+  http::request<http::string_body> req{http::verb::post, "/", 11};
+  http::response<http::string_body> res;
+  auto param = [&](const std::string& key) { return key == "oid" ? *oid : std::string{}; };
+  REQUIRE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history/cards/" + card.card_id + "/restore",
+      req, res, db, param, &store
+  ));
+  CHECK(res.result() == http::status::ok);
+  const auto restored = store.get(card.card_id);
+  REQUIRE(restored.has_value());
+  CHECK(restored->title == "Original");
+  REQUIRE(store.get_content(*restored).value() == "original body");
 }
