@@ -180,8 +180,9 @@ bool persist_nudge_dismissal(holder::platform::Db& db, const std::string& nudge_
   if (!nudge.has_value()) return false;
   const auto project = holder::project::ProjectRepo(db).get(nudge->project_id);
   if (!project.has_value()) throw std::runtime_error("project missing for nudge dismissal");
-  if (!holder::project::has_project_manifest(project->root_path)) return false;
   holder::git::RealGitOps git;
+  auto operation = git.lock_operation(project->root_path);
+  if (!holder::project::has_project_manifest(project->root_path)) return false;
   const auto path = relative_path(nudge_id);
   git.open_or_init(project->root_path);
   git.write_file(path, encode(*project, *nudge));

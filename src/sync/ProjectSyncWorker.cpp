@@ -100,6 +100,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
     if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
       continue;
     }
+    auto operation = git.lock_operation(project.root_path);
     try {
       git.open_or_init(project.root_path);
       git.set_remote("origin", project.git_remote_url.value());
@@ -169,6 +170,7 @@ void ProjectSyncWorker::run_push_cycle() {
     if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
       continue;
     }
+    auto operation = git.lock_operation(project.root_path);
     try {
       git.open_or_init(project.root_path);
       git.set_remote("origin", project.git_remote_url.value());

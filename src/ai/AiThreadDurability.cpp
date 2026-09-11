@@ -29,6 +29,7 @@ void persist_ai_thread(
 ) {
   const auto project = require_project(db, thread.project_id);
   holder::git::RealGitOps git;
+  auto operation = git.lock_operation(project.root_path);
   holder::ai::write_ai_thread_manifest(git, project, thread);
   git.commit(commit_message);
 }
@@ -36,6 +37,7 @@ void persist_ai_thread(
 void remove_ai_thread_manifest(holder::platform::Db& db, const holder::model::AiThread& thread) {
   const auto project = require_project(db, thread.project_id);
   holder::git::RealGitOps git;
+  auto operation = git.lock_operation(project.root_path);
   git.open_or_init(project.root_path);
   const auto rel_path = holder::ai::ai_thread_manifest_rel_path(thread.thread_id);
   const auto full_path = std::filesystem::path(project.root_path) / rel_path;
@@ -51,6 +53,7 @@ std::size_t backfill_ai_thread_manifests(holder::platform::Db& db) {
   std::size_t written = 0;
   for (const auto& project : projects.list()) {
     holder::git::RealGitOps git;
+    auto operation = git.lock_operation(project.root_path);
     bool changed = false;
     for (const auto& thread : threads.list(project.project_id)) {
       const auto rel_path = holder::ai::ai_thread_manifest_rel_path(thread.thread_id);
