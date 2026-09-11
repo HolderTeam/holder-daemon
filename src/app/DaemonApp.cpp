@@ -116,9 +116,9 @@ void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_
 void backfill_project_manifests(holder::platform::Db& db) {
   holder::project::ProjectRepo projects(db);
   for (const auto& project : projects.list()) {
-    if (holder::project::has_project_manifest(project.root_path)) continue;
-
     holder::git::RealGitOps git;
+    auto operation = git.lock_operation(project.root_path);
+    if (holder::project::has_project_manifest(project.root_path)) continue;
     holder::project::write_project_manifest(git, project);
     git.commit("Add durable project metadata");
     spdlog::info("Added durable project metadata: {}", project.root_path);

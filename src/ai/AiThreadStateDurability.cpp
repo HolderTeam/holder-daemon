@@ -119,8 +119,9 @@ bool persist_thread_compaction_state(
   if (!thread.has_value()) return false;
   const auto project = holder::project::ProjectRepo(db).get(thread->project_id);
   if (!project.has_value()) throw std::runtime_error("project missing for AI thread state");
-  if (!holder::project::has_project_manifest(project->root_path)) return false;
   holder::git::RealGitOps git;
+  auto operation = git.lock_operation(project->root_path);
+  if (!holder::project::has_project_manifest(project->root_path)) return false;
   const auto path = relative_path(state.thread_id);
   git.open_or_init(project->root_path);
   git.write_file(path, encode(*project, state));

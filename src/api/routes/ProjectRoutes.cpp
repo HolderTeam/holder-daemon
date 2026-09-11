@@ -256,11 +256,13 @@ bool handle_project_routes(
         const auto base_root = holder::core::default_projects_root();
         const auto slug = holder::core::slugify(project.name);
         project.root_path = holder::core::unique_project_root(base_root, slug, repo.list());
-        repo.create(project);
         project_created = true;
-        project_opt = repo.get(metadata.project_id);
+        project_opt = project;
       }
 
+      auto& git = resolve_git(git_ops);
+      auto operation = git.lock_operation(project_opt->root_path);
+      if (project_created) repo.create(*project_opt);
       holder::privacy::import_recovery_token(repo, metadata.project_id, pin, recovery_token, now);
 
       const bool remote_hint_present = metadata.git_remote_url.has_value() &&
@@ -270,7 +272,6 @@ bool handle_project_routes(
       std::string remote_error;
       std::string pull_error;
       if (remote_hint_present) {
-        auto& git = resolve_git(git_ops);
         const auto refreshed = repo.get(metadata.project_id);
         if (refreshed.has_value()) {
           git.open_or_init(refreshed->root_path);
@@ -314,7 +315,6 @@ bool handle_project_routes(
       }
 
       if (const auto refreshed = repo.get(metadata.project_id); refreshed.has_value()) {
-        auto& git = resolve_git(git_ops);
         holder::project::write_project_manifest(git, *refreshed);
         git.commit("Restore encrypted project metadata");
         holder::core::ProjectRegistry(
@@ -661,6 +661,8 @@ bool handle_project_routes(
           return true;
         }
         auto project = project_opt.value();
+        auto& git = resolve_git(git_ops);
+        auto operation = git.lock_operation(project.root_path);
 
         std::optional<std::string> remote_url = project.git_remote_url;
         if (body.contains("remote_url")) {
@@ -688,7 +690,6 @@ bool handle_project_routes(
           return true;
         }
 
-        auto& git = resolve_git(git_ops);
         git.open_or_init(project.root_path);
         git.set_remote("origin", remote_url.value());
         const auto probe = git.probe_remote("origin");
@@ -748,6 +749,7 @@ bool handle_project_routes(
         }
 
         auto& git = resolve_git(git_ops);
+        auto operation = git.lock_operation(project.root_path);
         git.open_or_init(project.root_path);
         git.set_remote("origin", project.git_remote_url.value());
         const auto push = git.push_branch("origin", branch, set_upstream);
@@ -1005,6 +1007,10 @@ bool handle_project_routes(
                   "Project not found."
               );
             } else {
+              const std::string repo_root = has_root ? body.at("root_path").get<std::string>()
+                                                     : project_opt->root_path;
+              auto& git = resolve_git(git_ops);
+              auto operation = git.lock_operation(repo_root);
               if (has_name) {
                 repo.update_name(project_id, body.at("name").get<std::string>(), updated_at);
               }
@@ -1061,9 +1067,6 @@ bool handle_project_routes(
                 }
               }
               if (has_git_remote) {
-                const std::string repo_root = has_root ? body.at("root_path").get<std::string>()
-                                                       : project_opt->root_path;
-                auto& git = resolve_git(git_ops);
                 git.open_or_init(repo_root);
                 if (body.at("git_remote_url").is_null()) {
                   git.remove_remote("origin");
@@ -1082,9 +1085,6 @@ bool handle_project_routes(
                                               ))
                                      : project_opt->project_key_id;
               if (effective_privacy_mode == "encrypted_git") {
-                const std::string repo_root = has_root ? body.at("root_path").get<std::string>()
-                                                       : project_opt->root_path;
-                auto& git = resolve_git(git_ops);
                 holder::privacy::ensure_encrypted_project_ready(
                     git,
                     repo,
@@ -1096,7 +1096,6 @@ bool handle_project_routes(
                 );
               }
               const auto updated_project = repo.get(project_id).value();
-              auto& git = resolve_git(git_ops);
               holder::project::write_project_manifest(git, updated_project);
               git.commit("Update project metadata");
               holder::core::ProjectRegistry(
