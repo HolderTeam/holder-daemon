@@ -30,7 +30,7 @@ TEST_CASE("HTTP rebuild repopulates DB from files", "[http]") {
   holder::test::create_project(db, project_id, root.string());
 
   holder::model::Card card;
-  card.card_id = "11111111-1111-1111-1111-111111111111";
+  card.card_id = "11111111-1111-4111-8111-111111111111";
   card.project_id = project_id;
   card.title = "Rebuild Card";
   card.rel_path = holder::core::card_rel_path(card.card_id);
@@ -188,7 +188,7 @@ TEST_CASE("HTTP rebuild errors on card path mismatch", "[http]") {
   holder::test::create_project(db, project_id, root.string());
 
   holder::model::Card card;
-  card.card_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  card.card_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   card.project_id = project_id;
   card.title = "Mismatch";
   card.rel_path = holder::core::card_rel_path(card.card_id);
@@ -197,7 +197,7 @@ TEST_CASE("HTTP rebuild errors on card path mismatch", "[http]") {
   const std::string card_content = "Card body";
   const auto card_raw = holder::core::render_card_front_matter(card, {}, {}) + card_content;
 
-  const std::string wrong_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const std::string wrong_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   const auto wrong_path = holder::core::card_rel_path(wrong_id);
   write_text(root / wrong_path, card_raw);
 
@@ -330,9 +330,9 @@ TEST_CASE("HTTP rebuild errors on duplicate IDs", "[http]") {
   std::filesystem::create_directories(root);
   holder::test::create_project(db, project_id, root.string());
 
-  const std::string card_id = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+  const std::string card_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   const auto rel_path = holder::core::card_rel_path(card_id);
-  const auto alt_path = holder::core::card_rel_path("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+  const auto alt_path = holder::core::card_rel_path("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");
 
   holder::model::Card card;
   card.card_id = card_id;
@@ -386,7 +386,7 @@ TEST_CASE("HTTP rebuild errors on empty IDs", "[http]") {
   std::filesystem::create_directories(root);
   holder::test::create_project(db, project_id, root.string());
 
-  const auto rel_path = holder::core::card_rel_path("ffffffff-ffff-ffff-ffff-ffffffffffff");
+  const auto rel_path = holder::core::card_rel_path("ffffffff-ffff-4fff-8fff-ffffffffffff");
   write_text(root / rel_path, "---\ncard_id: \"\"\nproject_id: proj-1\n---\nbody");
 
   const std::string token = "testtoken";

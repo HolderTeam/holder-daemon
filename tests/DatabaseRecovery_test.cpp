@@ -53,7 +53,7 @@ TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[d
 
   holder::card::CardStore cards(original, nullptr);
   holder::model::Card card;
-  card.card_id = "card-recovery";
+  card.card_id = "11111111-1111-4111-8111-111111111111";
   card.project_id = project.project_id;
   card.title = "Survives";
   card.created_at = 20;
@@ -119,7 +119,7 @@ TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable
       input, [] { return std::string("unused"); }, projects_root
   );
   holder::model::Card card;
-  card.card_id = "card-corrupt";
+  card.card_id = "22222222-2222-4222-8222-222222222222";
   card.project_id = project.project_id;
   card.title = "Still here";
   card.created_at = 20;

@@ -279,48 +279,30 @@ TEST_CASE("HTTP project create/list/get/patch", "[http]") {
       boost::beast::http::status::created
   );
 
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      {{"card_id", "11111111-1111-4111-8111-111111111111"},
-       {"project_id", "proj-1"},
-       {"title", "P1 Root"},
-       {"content", "P1 Root"},
-       {"created_at", 10},
-       {"updated_at", 10}},
-      boost::beast::http::status::created
+  holder::test::create_card_fixture(
+      card_store,
+      "11111111-1111-4111-8111-111111111111",
+      "proj-1",
+      "P1 Root",
+      "P1 Root",
+      10
   );
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      {{"card_id", "22222222-2222-4222-8222-222222222222"},
-       {"project_id", "proj-2"},
-       {"title", "P2 Root"},
-       {"content", "P2 Root"},
-       {"created_at", 10},
-       {"updated_at", 10}},
-      boost::beast::http::status::created
+  holder::test::create_card_fixture(
+      card_store,
+      "22222222-2222-4222-8222-222222222222",
+      "proj-2",
+      "P2 Root",
+      "P2 Root",
+      10
   );
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      {{"card_id", "33333333-3333-4333-8333-333333333333"},
-       {"project_id", "proj-2"},
-       {"title", "P2 Child"},
-       {"content", "P2 Child"},
-       {"parent_card_id", "22222222-2222-4222-8222-222222222222"},
-       {"created_at", 10},
-       {"updated_at", 10}},
-      boost::beast::http::status::created
+  holder::test::create_card_fixture(
+      card_store,
+      "33333333-3333-4333-8333-333333333333",
+      "proj-2",
+      "P2 Child",
+      "P2 Child",
+      10,
+      "22222222-2222-4222-8222-222222222222"
   );
 
   const auto counted = http_json_request(

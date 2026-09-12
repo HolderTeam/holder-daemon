@@ -226,7 +226,8 @@ inline holder::platform::Db open_db_with_schema(const std::filesystem::path& db_
 inline void create_project(
     holder::platform::Db& db,
     const std::string& project_id,
-    const std::string& root_path = "/tmp/project"
+    const std::string& root_path = "/tmp/project",
+    holder::model::IdScheme id_scheme = holder::model::IdScheme::Uuid4
 ) {
   holder::project::ProjectRepo repo(db);
   holder::model::Project project;
@@ -235,9 +236,30 @@ inline void create_project(
   project.root_path = root_path;
   project.privacy_mode = "plain";
   project.project_key_id.reset();
+  project.id_scheme = id_scheme;
   project.created_at = 1;
   project.updated_at = 1;
   repo.create(project);
+}
+
+inline void create_card_fixture(
+    holder::card::CardStore& card_store,
+    const std::string& card_id,
+    const std::string& project_id,
+    const std::string& title,
+    const std::string& content,
+    long long created_at,
+    const std::optional<std::string>& parent_card_id = std::nullopt,
+    const std::optional<double>& sort_key = std::nullopt
+) {
+  holder::model::Card card;
+  card.card_id = card_id;
+  card.project_id = project_id;
+  card.title = title;
+  card.parent_card_id = parent_card_id;
+  card.created_at = created_at;
+  card.updated_at = created_at;
+  card_store.create(card, content, sort_key);
 }
 
 inline nlohmann::json http_json_request(

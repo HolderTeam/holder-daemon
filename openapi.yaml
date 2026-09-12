@@ -563,9 +563,6 @@ components:
       type: object
       required: [project_id, title, content]
       properties:
-        card_id:
-          type: string
-          description: Optional; server generates if omitted.
         project_id:
           type: string
         title:

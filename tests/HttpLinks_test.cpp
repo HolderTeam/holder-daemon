@@ -41,41 +41,8 @@ TEST_CASE("HTTP card links create/list/delete", "[http]") {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json card_a = {
-      {"card_id", "card-a"},
-      {"project_id", "proj-1"},
-      {"title", "Card A"},
-      {"content", "alpha"},
-      {"created_at", 10},
-      {"updated_at", 10}
-  };
-  nlohmann::json card_b = {
-      {"card_id", "card-b"},
-      {"project_id", "proj-1"},
-      {"title", "Card B"},
-      {"content", "beta"},
-      {"created_at", 11},
-      {"updated_at", 11}
-  };
-
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_a,
-      boost::beast::http::status::created
-  );
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_b,
-      boost::beast::http::status::created
-  );
+  holder::test::create_card_fixture(card_store, "card-a", "proj-1", "Card A", "alpha", 10);
+  holder::test::create_card_fixture(card_store, "card-b", "proj-1", "Card B", "beta", 11);
   nlohmann::json link_body = {
       {"to_card_id", "card-b"},
       {"to_type", "card"},
@@ -293,57 +260,9 @@ TEST_CASE("HTTP card links validate non-card targets and filter ai-message sourc
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json card_a = {
-      {"card_id", "card-a"},
-      {"project_id", "proj-1"},
-      {"title", "Card A"},
-      {"content", "alpha"},
-      {"created_at", 12},
-      {"updated_at", 12}
-  };
-  nlohmann::json card_b = {
-      {"card_id", "card-b"},
-      {"project_id", "proj-1"},
-      {"title", "Card B"},
-      {"content", "beta"},
-      {"created_at", 13},
-      {"updated_at", 13}
-  };
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_a,
-      boost::beast::http::status::created
-  );
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_b,
-      boost::beast::http::status::created
-  );
-  nlohmann::json card_c_other_project = {
-      {"card_id", "card-c"},
-      {"project_id", "proj-2"},
-      {"title", "Card C"},
-      {"content", "gamma"},
-      {"created_at", 14},
-      {"updated_at", 14}
-  };
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_c_other_project,
-      boost::beast::http::status::created
-  );
+  holder::test::create_card_fixture(card_store, "card-a", "proj-1", "Card A", "alpha", 12);
+  holder::test::create_card_fixture(card_store, "card-b", "proj-1", "Card B", "beta", 13);
+  holder::test::create_card_fixture(card_store, "card-c", "proj-2", "Card C", "gamma", 14);
 
   auto create_link = [&](const nlohmann::json& body, boost::beast::http::status status) {
     return http_json_request(

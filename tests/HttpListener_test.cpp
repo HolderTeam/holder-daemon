@@ -331,23 +331,14 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
 
   for (int i = 1; i <= 3; ++i) {
     const auto card_id = "card-" + std::to_string(i);
-    const auto created = holder::test::http_json_request(
-        bound.bind,
-        bound.port,
-        token,
-        http::verb::post,
-        "/cards",
-        nlohmann::json{
-            {"card_id", card_id},
-            {"project_id", "proj-1"},
-            {"title", "Card " + std::to_string(i)},
-            {"content", "start"},
-            {"created_at", i},
-            {"updated_at", i},
-        },
-        http::status::created
+    holder::test::create_card_fixture(
+        card_store,
+        card_id,
+        "proj-1",
+        "Card " + std::to_string(i),
+        "start",
+        i
     );
-    REQUIRE(created["ok"] == true);
   }
 
   auto list_future = std::async(std::launch::async, [&]() {
@@ -1149,23 +1140,7 @@ TEST_CASE("Listener serves card nudge and ai status routes without regression", 
   ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto created = holder::test::http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      http::verb::post,
-      "/cards",
-      nlohmann::json{
-          {"card_id", "card-1"},
-          {"project_id", "proj-1"},
-          {"title", "Frog"},
-          {"content", ""},
-          {"created_at", 1},
-          {"updated_at", 1},
-      },
-      http::status::created
-  );
-  REQUIRE(created["ok"] == true);
+  holder::test::create_card_fixture(card_store, "card-1", "proj-1", "Frog", "", 1);
 
   const auto status = holder::test::http_json_request(
       bound.bind,
@@ -1268,23 +1243,7 @@ TEST_CASE(
   ListenerRunGuard listener_guard(listener, std::move(listener_thread));
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  const auto created = holder::test::http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      http::verb::post,
-      "/cards",
-      nlohmann::json{
-          {"card_id", "card-1"},
-          {"project_id", "proj-1"},
-          {"title", "Card"},
-          {"content", "start"},
-          {"created_at", 1},
-          {"updated_at", 1},
-      },
-      http::status::created
-  );
-  REQUIRE(created["ok"] == true);
+  holder::test::create_card_fixture(card_store, "card-1", "proj-1", "Card", "start", 1);
 
   for (int i = 0; i < 3; ++i) {
     const auto created_runner = holder::test::http_json_request(

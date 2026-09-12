@@ -22,6 +22,8 @@
 
 namespace {
 
+constexpr char kSeedCardId[] = "11111111-1111-4111-8111-111111111111";
+
 class SyncWorkerHookGuard {
  public:
   SyncWorkerHookGuard() = default;
@@ -144,7 +146,7 @@ std::filesystem::path seed_real_card(
   projects.create(project);
 
   holder::model::Card card;
-  card.card_id = "seed-card-" + project_id;
+  card.card_id = kSeedCardId;
   card.project_id = project_id;
   card.title = title;
   holder::card::CardStore(db, &fts).create(card, content);
@@ -256,7 +258,7 @@ TEST_CASE(
     auto remote_seed_db = holder::test::open_db_with_schema(remote_seed_db_path);
     holder::index::FtsIndexer fts(remote_seed_db);
     holder::card::CardStore(remote_seed_db, &fts)
-        .update_content("seed-card-proj-1", "remote edit", std::nullopt, 2);
+        .update_content(kSeedCardId, "remote edit", std::nullopt, 2);
   }
 
   {
@@ -276,7 +278,7 @@ TEST_CASE(
     local_projects.create(local_project);
     holder::store::Rebuilder(local_db, &local_fts).rebuild_project(local_project);
     holder::card::CardStore(local_db, &local_fts)
-        .update_content("seed-card-proj-1", "local edit", std::nullopt, 2);
+        .update_content(kSeedCardId, "local edit", std::nullopt, 2);
   }
 
   {
