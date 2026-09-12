@@ -76,6 +76,15 @@ std::filesystem::path find_schema_sql() {
   fs::path p2 = fs::current_path().parent_path() / "schema" / "schema.sql";
   if (fs::exists(p2)) return p2;
 
+  // Or if run from the daemon source tree with its bundled holder-core dependency.
+  fs::path p3 =
+      fs::current_path() / "submodules" / "holder-core" / "schema" / "schema.sql";
+  if (fs::exists(p3)) return p3;
+
+  // Support the sibling holder-core layout used for local development.
+  fs::path p4 = fs::current_path().parent_path() / "holder-core" / "schema" / "schema.sql";
+  if (fs::exists(p4)) return p4;
+
   if (auto installed = holder::core::installed_data_path("schema/schema.sql")) // LCOV_EXCL_LINE
     return installed.value(); // LCOV_EXCL_LINE
 

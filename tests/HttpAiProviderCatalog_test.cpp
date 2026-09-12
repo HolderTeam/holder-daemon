@@ -35,9 +35,7 @@ TEST_CASE("HTTP ai provider catalog reflects configured credentials", "[http]") 
   const auto db_path = dir / "holder.db";
 
   auto db = open_db_with_schema(db_path);
-  const auto cloudproviders_path =
-      std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() / "config" /
-      "ai_catalog.yaml";
+  const auto cloudproviders_path = std::filesystem::path(DAEMON_AI_CATALOG_PATH);
   holder::test::EnvGuard cloudproviders_env("HOLDER_AI_CATALOG_PATH", cloudproviders_path.string());
 
   const std::string token = "testtoken";
@@ -177,9 +175,7 @@ TEST_CASE("AiProviderCatalogRoutes direct handles missing catalog and db failure
   }
 
   SECTION("db failure on repo list is caught") {
-    const auto ai_catalog_path =
-        std::filesystem::path(SCHEMA_SQL_PATH).parent_path().parent_path() / "config" /
-        "ai_catalog.yaml";
+    const auto ai_catalog_path = std::filesystem::path(DAEMON_AI_CATALOG_PATH);
     holder::test::EnvGuard catalog_env("HOLDER_AI_CATALOG_PATH", ai_catalog_path.string());
     holder::platform::Db unopened_db;
     auto req = make_req(http::verb::get, "/ai/providers/catalog");
