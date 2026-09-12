@@ -1,6 +1,5 @@
 #include "sync/ProjectSyncWorker.h"
 
-#include "app/Bootstrap.h"
 #include "git/GitOps.h"
 #include "git/RepoSyncMetrics.h"
 #include "index/FtsIndexer.h"
@@ -124,15 +123,7 @@ void ProjectSyncWorker::run_startup_pull_pass() {
       holder::sync::reconcile_index_after_pull(db, &fts, project);
       sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
     } catch (const holder::git::NonFastForwardPullError& diverged) {
-      holder::sync::resolve_pull_conflicts(
-          db,
-          &fts,
-          project,
-          git,
-          diverged,
-          now,
-          holder::app::generate_uuid_v4
-      );
+      holder::sync::resolve_pull_conflicts(db, &fts, project, git, diverged, now);
       holder::sync::reconcile_index_after_pull(db, &fts, project);
       sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
     } catch (const std::exception& ex) {
@@ -196,15 +187,7 @@ void ProjectSyncWorker::run_push_cycle() {
         holder::sync::reconcile_index_after_pull(db, &fts, project);
         sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
       } catch (const holder::git::NonFastForwardPullError& diverged) {
-        holder::sync::resolve_pull_conflicts(
-            db,
-            &fts,
-            project,
-            git,
-            diverged,
-            now,
-            holder::app::generate_uuid_v4
-        );
+        holder::sync::resolve_pull_conflicts(db, &fts, project, git, diverged, now);
         holder::sync::reconcile_index_after_pull(db, &fts, project);
         sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
       } catch (const std::exception& ex) {

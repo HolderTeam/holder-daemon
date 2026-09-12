@@ -43,23 +43,7 @@ TEST_CASE("HTTP trash list/empty/hard delete", "[http]") {
   });
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  nlohmann::json card_body = {
-      {"card_id", "card-1"},
-      {"project_id", "proj-1"},
-      {"title", "Card"},
-      {"content", "Hello"},
-      {"created_at", 10},
-      {"updated_at", 10}
-  };
-  http_json_request(
-      bound.bind,
-      bound.port,
-      token,
-      boost::beast::http::verb::post,
-      "/cards",
-      card_body,
-      boost::beast::http::status::created
-  );
+  holder::test::create_card_fixture(card_store, "card-1", "proj-1", "Card", "Hello", 10);
 
   nlohmann::json msg_body = {
       {"message_id", "msg-1"},
@@ -201,23 +185,7 @@ TEST_CASE("HTTP trash routes validate parameters and hard-delete variants", "[ht
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   auto mk_card = [&](const std::string& id) {
-    nlohmann::json body = {
-        {"card_id", id},
-        {"project_id", "proj-1"},
-        {"title", id},
-        {"content", "Hello"},
-        {"created_at", 10},
-        {"updated_at", 10}
-    };
-    http_json_request(
-        bound.bind,
-        bound.port,
-        token,
-        boost::beast::http::verb::post,
-        "/cards",
-        body,
-        boost::beast::http::status::created
-    );
+    holder::test::create_card_fixture(card_store, id, "proj-1", id, "Hello", 10);
     http_json_request(
         bound.bind,
         bound.port,
