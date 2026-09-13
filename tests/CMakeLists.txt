@@ -87,6 +87,7 @@ add_executable(holder_daemon_tests
   ThreadCompaction_test.cpp
   HttpCards_test.cpp
   HttpMilestones_test.cpp
+  CardReferenceRoutes_test.cpp
   CardRoutes_test.cpp
   HistoryRoutes_test.cpp
   HttpLinks_test.cpp
@@ -161,6 +162,7 @@ add_executable(holder_daemon_tests
   ../src/api/routes/ai/AiThreadRoutes.cpp
   ../src/api/routes/ai/threads/AiThreadCollectionRoutes.cpp
   ../src/api/routes/ai/threads/AiThreadItemRoutes.cpp
+  ../src/api/routes/CardReferenceRoutes.cpp
   ../src/api/routes/CardRoutes.cpp
   ../src/api/routes/HistoryRoutes.cpp
   ../src/api/routes/MilestoneRoutes.cpp
