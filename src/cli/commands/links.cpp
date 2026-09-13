@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -110,10 +111,26 @@ void print_links_table(const nlohmann::json& links, bool backlinks) {
   }
 
   std::cout << (backlinks ? "FROM_ID" : "TO_ID") << "\tTYPE\tKIND\tLABEL\tCREATED\n";
-  for (const auto& link : links) {
-    std::cout << json_string(link, backlinks ? "from_card_id" : "to_card_id") << "\t"
-              << json_string(link, "to_type") << "\t" << json_string(link, "kind") << "\t"
-              << json_string(link, "label") << "\t" << link.value("created_at", 0) << "\n";
+  std::vector<std::string> displayed_ids(links.size());
+  std::vector<std::string> card_ids;
+  std::vector<std::size_t> card_indices;
+  for (std::size_t i = 0; i < links.size(); ++i) {
+    const auto& link = links.at(i);
+    displayed_ids.at(i) = json_string(link, backlinks ? "from_card_id" : "to_card_id");
+    if (backlinks || json_string(link, "to_type") == "card") {
+      card_ids.push_back(displayed_ids.at(i));
+      card_indices.push_back(i);
+    }
+  }
+  const auto abbreviated_card_ids = display_card_ids(card_ids);
+  for (std::size_t i = 0; i < card_indices.size(); ++i) {
+    displayed_ids.at(card_indices.at(i)) = abbreviated_card_ids.at(i);
+  }
+  for (std::size_t i = 0; i < links.size(); ++i) {
+    const auto& link = links.at(i);
+    std::cout << displayed_ids.at(i) << "\t" << json_string(link, "to_type") << "\t"
+              << json_string(link, "kind") << "\t" << json_string(link, "label") << "\t"
+              << link.value("created_at", 0) << "\n";
   }
 }
 
@@ -148,6 +165,8 @@ int command_links(const holder::core::Paths& paths, int argc, char* argv[]) {
       print_links_table(payload.at("data"), false);
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list links: ") + ex.what());
   }
@@ -182,6 +201,8 @@ int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]) 
       print_links_table(payload.at("data"), true);
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list backlinks: ") + ex.what());
   }
@@ -228,9 +249,12 @@ int command_link(const holder::core::Paths& paths, int argc, char* argv[]) {
     if (options.json_output) {
       std::cout << payload.dump(2) << "\n";
     } else {
-      std::cout << "Linked card: " << from_card_id << " -> " << to_card_id << "\n";
+      const auto displayed_ids = display_card_ids({from_card_id, to_card_id});
+      std::cout << "Linked card: " << displayed_ids.at(0) << " -> " << displayed_ids.at(1) << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to link cards: ") + ex.what());
   }

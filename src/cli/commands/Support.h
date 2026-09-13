@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 
@@ -55,6 +56,8 @@ std::string resolve_card_reference(
     const std::string& reference,
     CardReferenceScope scope
 );
+std::vector<std::string> display_card_ids(const std::vector<std::string>& card_ids);
+std::string display_card_id(const std::string& card_id);
 nlohmann::json card_api_request(
     const holder::core::Paths& paths,
     boost::beast::http::verb method,

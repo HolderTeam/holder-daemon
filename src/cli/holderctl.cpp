@@ -11,6 +11,7 @@
 #endif
 
 int main(int argc, char* argv[]) {
+  const bool json_output = holder::cli::json_output_requested(argc, argv);
   try {
     if (argc < 2 || std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h") {
       holder::cli::print_usage(std::cout);
@@ -51,11 +52,23 @@ int main(int argc, char* argv[]) {
     if (command == "logs") return holder::cli::command_logs(paths, argc, argv);
     if (command == "reindex") return holder::cli::command_reindex(paths, argc);
 
-    std::cerr << "Unknown command: " << command << "\n";
-    holder::cli::print_usage(std::cerr);
-    return 2;
+    if (!json_output) {
+      std::cerr << "Unknown command: " << command << "\n";
+      holder::cli::print_usage(std::cerr);
+      return 2;
+    }
+    throw holder::cli::CliError(
+        "unknown_command",
+        "Unknown command: " + command,
+        {{"command", command}},
+        "",
+        2
+    );
+  } catch (const holder::cli::CliError& ex) {
+    holder::cli::print_cli_error(std::cerr, ex, json_output);
+    return ex.exit_code();
   } catch (const std::exception& ex) {
-    std::cerr << "holderctl: " << ex.what() << "\n";
+    holder::cli::print_cli_error(std::cerr, ex, json_output);
     return 1;
   }
 }

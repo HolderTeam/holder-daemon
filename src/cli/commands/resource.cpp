@@ -719,6 +719,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::cout << "Deleted resource: " << resource_id << "\n";
       return 0;
     }
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Resource command failed: ") + ex.what());
   }

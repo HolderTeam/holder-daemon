@@ -360,6 +360,16 @@ TEST_CASE("holderctl status paths openapi and version smoke", "[holderctl]") {
   REQUIRE(run_command(bin + " --version") == 0);
   REQUIRE(run_command(bin + " --help") == 0);
   REQUIRE(run_command(bin + " nope") == 2);
+
+  const auto json_error_path = xdg_root / "unknown-command.json";
+  REQUIRE(
+      run_command(bin + " nope --json >/dev/null 2> \"" + json_error_path.string() + "\"") == 2
+  );
+  const auto json_error = nlohmann::json::parse(read_text(json_error_path));
+  REQUIRE(json_error["ok"] == false);
+  REQUIRE(json_error["error"]["code"] == "unknown_command");
+  REQUIRE(json_error["error"]["message"] == "Unknown command: nope");
+  REQUIRE(json_error["error"]["details"]["command"] == "nope");
 }
 
 TEST_CASE("holderctl status reports missing or stopped daemon", "[holderctl]") {
@@ -758,6 +768,14 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card --bad card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
+  const auto json_error_path = xdg_root / "parser-error.json";
+  REQUIRE(
+      run_command(bin + " card --json >/dev/null 2> \"" + json_error_path.string() + "\"") == 1
+  );
+  const auto json_error = nlohmann::json::parse(read_text(json_error_path));
+  REQUIRE(json_error["ok"] == false);
+  REQUIRE(json_error["error"]["code"] == "cli_error");
+  REQUIRE(json_error["error"]["message"] == "Usage: holderctl card [--json] <card-reference>");
   REQUIRE(run_command(bin + " edit >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " edit one two >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " links >/dev/null 2>/dev/null") == 1);
@@ -1057,8 +1075,12 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
 
+  constexpr const char* root_one_id = "12345678-1111-4111-8111-111111111111";
+  constexpr const char* root_two_id = "12345678-2222-4222-8222-222222222222";
+  constexpr const char* child_id = "87654321-3333-4333-8333-333333333333";
+
   holder::model::Card root_one;
-  root_one.card_id = "root-card-one";
+  root_one.card_id = root_one_id;
   root_one.project_id = "cards-project";
   root_one.title = "Root One";
   root_one.created_at = 10;
@@ -1066,7 +1088,7 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   card_store.create(root_one, "root one body");
 
   holder::model::Card root_two;
-  root_two.card_id = "root-card-two";
+  root_two.card_id = root_two_id;
   root_two.project_id = "cards-project";
   root_two.title = "Root Two";
   root_two.created_at = 11;
@@ -1074,9 +1096,9 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   card_store.create(root_two, "root two body");
 
   holder::model::Card child;
-  child.card_id = "child-card-one";
+  child.card_id = child_id;
   child.project_id = "cards-project";
-  child.parent_card_id = "root-card-one";
+  child.parent_card_id = root_one_id;
   child.title = "Child One";
   child.created_at = 12;
   child.updated_at = 40;
@@ -1113,15 +1135,15 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   REQUIRE(run_command(bin + " cards > \"" + root_out.string() + "\"") == 0);
   const auto root_output = read_text(root_out);
   REQUIRE(root_output.find("CARD_ID\tTITLE\tCHILDREN\tUPDATED\n") == 0);
-  REQUIRE(root_output.find("root-card-one\tRoot One\t1\t20\n") != std::string::npos);
-  REQUIRE(root_output.find("root-card-two\tRoot Two\t0\t30\n") != std::string::npos);
-  REQUIRE(root_output.find("child-card-one") == std::string::npos);
+  REQUIRE(root_output.find("12345678-1\tRoot One\t1\t20\n") != std::string::npos);
+  REQUIRE(root_output.find("12345678-2\tRoot Two\t0\t30\n") != std::string::npos);
+  REQUIRE(root_output.find(child_id) == std::string::npos);
 
   const auto child_out = xdg_root / "cards-child.out";
   REQUIRE(run_command(bin + " cards --parent 'Root One' > \"" + child_out.string() + "\"") == 0);
   const auto child_output = read_text(child_out);
-  REQUIRE(child_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
-  REQUIRE(child_output.find("root-card-two") == std::string::npos);
+  REQUIRE(child_output.find("87654321\tChild One\t0\t40\n") != std::string::npos);
+  REQUIRE(child_output.find(root_two_id) == std::string::npos);
 
   const auto empty_child_out = xdg_root / "cards-empty-child.out";
   REQUIRE(
@@ -1132,9 +1154,9 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   const auto recent_out = xdg_root / "cards-recent.out";
   REQUIRE(run_command(bin + " cards --recent --limit 2 > \"" + recent_out.string() + "\"") == 0);
   const auto recent_output = read_text(recent_out);
-  REQUIRE(recent_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
-  REQUIRE(recent_output.find("root-card-two\tRoot Two\t0\t30\n") != std::string::npos);
-  REQUIRE(recent_output.find("root-card-one") == std::string::npos);
+  REQUIRE(recent_output.find("87654321\tChild One\t0\t40\n") != std::string::npos);
+  REQUIRE(recent_output.find("12345678\tRoot Two\t0\t30\n") != std::string::npos);
+  REQUIRE(recent_output.find(root_one_id) == std::string::npos);
 
   const auto json_path = xdg_root / "cards.json";
   REQUIRE(run_command(bin + " cards --json > \"" + json_path.string() + "\"") == 0);
@@ -1142,6 +1164,8 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   REQUIRE(payload["ok"] == true);
   REQUIRE(payload["data"].is_array());
   REQUIRE(payload["data"].size() == 2);
+  REQUIRE(payload.dump().find(root_one_id) != std::string::npos);
+  REQUIRE(payload.dump().find(root_two_id) != std::string::npos);
 
   write_server_info(
       info_path,
@@ -1261,10 +1285,26 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   );
   const auto ambiguous_error = read_text(ambiguous_error_path);
   REQUIRE(ambiguous_error.find("Card reference is ambiguous") != std::string::npos);
-  REQUIRE(ambiguous_error.find(ambiguous_card_id_one) != std::string::npos);
+  REQUIRE(ambiguous_error.find("aaaaaaaa-1\tCollision One") != std::string::npos);
   REQUIRE(ambiguous_error.find("Collision One") != std::string::npos);
-  REQUIRE(ambiguous_error.find(ambiguous_card_id_two) != std::string::npos);
+  REQUIRE(ambiguous_error.find("aaaaaaaa-2\tCollision Two") != std::string::npos);
   REQUIRE(ambiguous_error.find("Collision Two") != std::string::npos);
+  REQUIRE(ambiguous_error.find(ambiguous_card_id_one) == std::string::npos);
+  REQUIRE(ambiguous_error.find(ambiguous_card_id_two) == std::string::npos);
+
+  const auto ambiguous_json_path = xdg_root / "card-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " card --json aaaaaaaa >/dev/null 2> \"" + ambiguous_json_path.string() + "\""
+      ) == 1
+  );
+  const auto ambiguous_json = nlohmann::json::parse(read_text(ambiguous_json_path));
+  REQUIRE(ambiguous_json["ok"] == false);
+  REQUIRE(ambiguous_json["error"]["code"] == "card_reference_ambiguous");
+  REQUIRE(ambiguous_json["error"]["details"]["reference"] == "aaaaaaaa");
+  REQUIRE(ambiguous_json["error"]["details"]["candidates"].size() == 2);
+  REQUIRE(ambiguous_json.dump().find(ambiguous_card_id_one) != std::string::npos);
+  REQUIRE(ambiguous_json.dump().find(ambiguous_card_id_two) != std::string::npos);
 
   REQUIRE(run_command(bin + " card " + other_card_id + " >/dev/null 2>/dev/null") == 1);
   const auto missing_error_path = xdg_root / "card-missing.err";
@@ -1277,6 +1317,18 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
       read_text(missing_error_path).find("Card not found in current project: Missing card") !=
       std::string::npos
   );
+
+  const auto missing_json_path = xdg_root / "card-missing.json";
+  REQUIRE(
+      run_command(
+          bin + " card --json 'Missing card' >/dev/null 2> \"" + missing_json_path.string() + "\""
+      ) == 1
+  );
+  const auto missing_json = nlohmann::json::parse(read_text(missing_json_path));
+  REQUIRE(missing_json["ok"] == false);
+  REQUIRE(missing_json["error"]["code"] == "card_reference_not_found");
+  REQUIRE(missing_json["error"]["message"] == "Card was not found in the current project.");
+  REQUIRE(missing_json["error"]["details"]["reference"] == "Missing card");
   REQUIRE(run_command(bin + " append " + other_card_id + " extra >/dev/null 2>/dev/null") == 1);
 
   server.stop();
@@ -1765,20 +1817,23 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   const auto new_out = xdg_root / "new.out";
   REQUIRE(run_command(bin + " new Revise long division > \"" + new_out.string() + "\"") == 0);
   const auto first_card_id = created_card_id_from_output(read_text(new_out));
+  REQUIRE(first_card_id.size() == 8);
 
   const std::string long_title(96, 'A');
   const auto long_new_out = xdg_root / "long-new.out";
   REQUIRE(run_command(bin + " new " + long_title + " > \"" + long_new_out.string() + "\"") == 0);
   const auto long_card_id = created_card_id_from_output(read_text(long_new_out));
+  REQUIRE(long_card_id.size() == 8);
   const auto long_json_out = xdg_root / "long-card.json";
   REQUIRE(
       run_command(bin + " card --json " + long_card_id + " > \"" + long_json_out.string() + "\"") ==
       0
   );
-  REQUIRE(
-      nlohmann::json::parse(read_text(long_json_out))["data"]["title"].get<std::string>().size() ==
-      80
-  );
+  const auto long_card_json = nlohmann::json::parse(read_text(long_json_out));
+  REQUIRE(long_card_json["data"]["title"].get<std::string>().size() == 80);
+  const auto full_long_card_id = long_card_json["data"]["card_id"].get<std::string>();
+  REQUIRE(full_long_card_id.size() == 36);
+  REQUIRE(full_long_card_id.rfind(long_card_id, 0) == 0);
 
   const auto first_card_out = xdg_root / "first-card.out";
   REQUIRE(

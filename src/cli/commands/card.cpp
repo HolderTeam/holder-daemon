@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -273,14 +274,23 @@ int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
       return 0;
     }
 
+    std::vector<std::string> card_ids;
+    card_ids.reserve(cards.size());
     for (const auto& card : cards) {
-      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\n";
+      card_ids.push_back(json_string(card, "card_id"));
+    }
+    const auto displayed_ids = display_card_ids(card_ids);
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+      const auto& card = cards.at(i);
+      std::cout << displayed_ids.at(i) << "\t" << json_string(card, "title") << "\n";
       const auto snippet = json_string(card, "snippet");
       if (!snippet.empty()) {
         std::cout << "  " << snippet << "\n";
       }
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to search cards: ") + ex.what());
   }
@@ -324,12 +334,21 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     std::cout << "CARD_ID\tTITLE\tCHILDREN\tUPDATED\n";
+    std::vector<std::string> card_ids;
+    card_ids.reserve(cards.size());
     for (const auto& card : cards) {
-      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\t"
+      card_ids.push_back(json_string(card, "card_id"));
+    }
+    const auto displayed_ids = display_card_ids(card_ids);
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+      const auto& card = cards.at(i);
+      std::cout << displayed_ids.at(i) << "\t" << json_string(card, "title") << "\t"
                 << card.value("child_count", 0) << "\t" << card.value("updated_at", 0) << "\n";
     }
     return 0;
     // LCOV_EXCL_START
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list cards: ") + ex.what());
   }
@@ -379,6 +398,8 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::cout << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to print card: ") + ex.what());
   }
@@ -422,8 +443,10 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
         card_update_body(data, edited_content)
     );
     remove_temp_file(temp_path);
-    std::cout << "Updated card: " << card_id << "\n";
+    std::cout << "Updated card: " << display_card_id(card_id) << "\n";
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to edit card: ") + ex.what());
   }
@@ -454,7 +477,8 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
         // LCOV_EXCL_STOP
         boost::beast::http::status::created
     );
-    std::cout << "Created card: " << json_string(payload.at("data"), "card_id") << "\n";
+    std::cout << "Created card: " << display_card_id(json_string(payload.at("data"), "card_id"))
+              << "\n";
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to create card: ") + ex.what());
@@ -503,8 +527,10 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
         "/cards/" + url_encode_component(card_id),
         card_update_body(data, content)
     );
-    std::cout << "Appended to card: " << card_id << "\n";
+    std::cout << "Appended to card: " << display_card_id(card_id) << "\n";
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to append to card: ") + ex.what());
   }

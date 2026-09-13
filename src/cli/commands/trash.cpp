@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -113,8 +114,15 @@ void print_trash_table(const nlohmann::json& trash) {
   }
 
   std::cout << "CARD_ID\tTITLE\tDELETED\n";
+  std::vector<std::string> card_ids;
+  card_ids.reserve(trash.size());
   for (const auto& item : trash) {
-    std::cout << json_string(item, "card_id") << "\t" << json_string(item, "title") << "\t"
+    card_ids.push_back(json_string(item, "card_id"));
+  }
+  const auto displayed_ids = display_card_ids(card_ids);
+  for (std::size_t i = 0; i < trash.size(); ++i) {
+    const auto& item = trash.at(i);
+    std::cout << displayed_ids.at(i) << "\t" << json_string(item, "title") << "\t"
               << item.value("deleted_at", 0) << "\n";
   }
 }
@@ -138,7 +146,7 @@ int restore_trashed_card(
   if (options.json_output) {
     std::cout << payload.dump(2) << "\n";
   } else {
-    std::cout << "Restored card: " << card_id << "\n";
+    std::cout << "Restored card: " << display_card_id(card_id) << "\n";
   }
   return 0;
 }
@@ -181,7 +189,7 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
-        std::cout << "Deleted trashed card: " << card_id << "\n";
+        std::cout << "Deleted trashed card: " << display_card_id(card_id) << "\n";
       }
       return 0;
     }
@@ -214,9 +222,11 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
     if (options.json_output) {
       std::cout << payload.dump(2) << "\n";
     } else {
-      std::cout << "Trashed card: " << card_id << "\n";
+      std::cout << "Trashed card: " << display_card_id(card_id) << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to manage trash: ") + ex.what());
   }
@@ -229,6 +239,8 @@ int command_restore(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
     return restore_trashed_card(paths, current_project_id, options);
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to restore card: ") + ex.what());
   }
