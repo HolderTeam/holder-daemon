@@ -14,6 +14,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -33,7 +34,7 @@ struct CardsOptions {
 
 struct CardOptions {
   bool json_output = false;
-  std::string card_id;
+  std::string card_reference;
 };
 
 SearchOptions parse_search_options(int argc, char* argv[]) {
@@ -79,7 +80,7 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
     } else if (arg == "--limit") {
       if (i + 1 >= argc) {
         throw std::runtime_error(
-            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-reference>]"
         );
       }
       try {
@@ -93,7 +94,7 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
     } else if (arg == "--parent") {
       if (i + 1 >= argc) {
         throw std::runtime_error(
-            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+            "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-reference>]"
         );
       }
       const std::string parent = argv[++i];
@@ -105,7 +106,7 @@ CardsOptions parse_cards_options(int argc, char* argv[]) {
       throw std::runtime_error("Unknown cards option: " + arg);
     } else {
       throw std::runtime_error(
-          "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-id>]"
+          "Usage: holderctl cards [--json] [--recent [--limit N] | --parent <card-reference>]"
       );
     }
   }
@@ -127,15 +128,15 @@ CardOptions parse_card_options(int argc, char* argv[]) {
       options.json_output = true;
     } else if (arg.rfind("--", 0) == 0) {
       throw std::runtime_error("Unknown card option: " + arg);
-    } else if (options.card_id.empty()) {
-      options.card_id = arg;
+    } else if (options.card_reference.empty()) {
+      options.card_reference = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
+      throw std::runtime_error("Usage: holderctl card [--json] <card-reference>");
     }
   }
 
-  if (options.card_id.empty()) {
-    throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
+  if (options.card_reference.empty()) {
+    throw std::runtime_error("Usage: holderctl card [--json] <card-reference>");
   }
   return options;
 }
@@ -273,14 +274,23 @@ int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
       return 0;
     }
 
+    std::vector<std::string> card_ids;
+    card_ids.reserve(cards.size());
     for (const auto& card : cards) {
-      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\n";
+      card_ids.push_back(json_string(card, "card_id"));
+    }
+    const auto displayed_ids = display_card_ids(card_ids);
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+      const auto& card = cards.at(i);
+      std::cout << displayed_ids.at(i) << "\t" << json_string(card, "title") << "\n";
       const auto snippet = json_string(card, "snippet");
       if (!snippet.empty()) {
         std::cout << "  " << snippet << "\n";
       }
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to search cards: ") + ex.what());
   }
@@ -292,13 +302,22 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
   const auto project_id = json_string(project, "project_id");
 
   try {
+    std::optional<std::string> parent_card_id;
+    if (options.parent_card_id.has_value()) {
+      parent_card_id = resolve_card_reference(
+          paths,
+          project_id,
+          options.parent_card_id.value(),
+          CardReferenceScope::Live
+      );
+    }
     std::string target = "/cards?project_id=" + url_encode_component(project_id) + "&count=true";
     if (options.recent) {
       target += "&view=recent&limit=" + std::to_string(options.limit);
     } else {
       target += "&view=tree";
-      if (options.parent_card_id.has_value()) {
-        target += "&parent_card_id=" + url_encode_component(options.parent_card_id.value());
+      if (parent_card_id.has_value()) {
+        target += "&parent_card_id=" + url_encode_component(parent_card_id.value());
       }
     }
 
@@ -315,12 +334,21 @@ int command_cards(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     std::cout << "CARD_ID\tTITLE\tCHILDREN\tUPDATED\n";
+    std::vector<std::string> card_ids;
+    card_ids.reserve(cards.size());
     for (const auto& card : cards) {
-      std::cout << json_string(card, "card_id") << "\t" << json_string(card, "title") << "\t"
+      card_ids.push_back(json_string(card, "card_id"));
+    }
+    const auto displayed_ids = display_card_ids(card_ids);
+    for (std::size_t i = 0; i < cards.size(); ++i) {
+      const auto& card = cards.at(i);
+      std::cout << displayed_ids.at(i) << "\t" << json_string(card, "title") << "\t"
                 << card.value("child_count", 0) << "\t" << card.value("updated_at", 0) << "\n";
     }
     return 0;
     // LCOV_EXCL_START
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list cards: ") + ex.what());
   }
@@ -334,11 +362,17 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
   (void)find_project_by_id(projects_payload.at("data"), current_project_id);
 
   try {
+    const auto card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.card_reference,
+        CardReferenceScope::Live
+    );
     const auto connection = read_secure_daemon_connection(paths);
     const auto response = http_json_request(
         connection,
         boost::beast::http::verb::get,
-        "/cards/" + url_encode_component(options.card_id),
+        "/cards/" + url_encode_component(card_id),
         std::chrono::seconds(10) // LCOV_EXCL_LINE
     );
 
@@ -350,7 +384,7 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto& data = response.payload.at("data");
     const auto card_project_id = json_string(data, "project_id");
     if (card_project_id != current_project_id) {
-      throw std::runtime_error("Card is not in the current project: " + options.card_id);
+      throw std::runtime_error("Card is not in the current project: " + options.card_reference);
     }
 
     if (options.json_output) {
@@ -364,6 +398,8 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::cout << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to print card: ") + ex.what());
   }
@@ -371,23 +407,21 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
 
 int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
   if (argc != 3 || std::string(argv[2]).empty()) {
-    throw std::runtime_error("Usage: holderctl edit <card-id>");
+    throw std::runtime_error("Usage: holderctl edit <card-reference>");
   }
 
-  const std::string card_id = argv[2];
+  const std::string card_reference = argv[2];
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
+    const auto card_id =
+        resolve_card_reference(paths, current_project_id, card_reference, CardReferenceScope::Live);
     const auto fetched = card_api_request(
         paths,
         boost::beast::http::verb::get,
         "/cards/" + url_encode_component(card_id)
     );
     const auto& data = fetched.at("data");
-    if (json_string(data, "project_id") != current_project_id) {
-      throw std::runtime_error("Card is not in the current project: " + card_id);
-    }
-
     const auto editor = required_editor();
     const auto original_content = json_string(data, "content");
     const auto temp_path = edit_temp_path(paths, card_id);
@@ -409,8 +443,10 @@ int command_edit(const holder::core::Paths& paths, int argc, char* argv[]) {
         card_update_body(data, edited_content)
     );
     remove_temp_file(temp_path);
-    std::cout << "Updated card: " << card_id << "\n";
+    std::cout << "Updated card: " << display_card_id(card_id) << "\n";
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to edit card: ") + ex.what());
   }
@@ -441,7 +477,8 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
         // LCOV_EXCL_STOP
         boost::beast::http::status::created
     );
-    std::cout << "Created card: " << json_string(payload.at("data"), "card_id") << "\n";
+    std::cout << "Created card: " << display_card_id(json_string(payload.at("data"), "card_id"))
+              << "\n";
     return 0;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to create card: ") + ex.what());
@@ -451,34 +488,32 @@ int command_new(const holder::core::Paths& paths, int argc, char* argv[]) {
 int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
   if (argc < 3) {
     throw std::runtime_error(
-        "Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>"
+        "Usage: holderctl append <card-reference> <text>  OR  <command> | holderctl append <card-reference>"
     );
   }
 
-  const std::string card_id = argv[2];
+  const std::string card_reference = argv[2];
   std::string addition = join_args(3, argc, argv);
   if (addition.empty()) {
     addition = read_stdin_all();
   }
   if (trim_ascii_whitespace(addition).empty()) {
     throw std::runtime_error(
-        "Usage: holderctl append <card-id> <text>  OR  <command> | holderctl append <card-id>"
+        "Usage: holderctl append <card-reference> <text>  OR  <command> | holderctl append <card-reference>"
     );
   }
 
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
+    const auto card_id =
+        resolve_card_reference(paths, current_project_id, card_reference, CardReferenceScope::Live);
     const auto fetched = card_api_request(
         paths,
         boost::beast::http::verb::get,
         "/cards/" + url_encode_component(card_id)
     );
     const auto& data = fetched.at("data");
-    if (json_string(data, "project_id") != current_project_id) {
-      throw std::runtime_error("Card is not in the current project: " + card_id);
-    }
-
     auto content = json_string(data, "content");
     trim_trailing_line_breaks(content);
     if (!content.empty()) {
@@ -492,8 +527,10 @@ int command_append(const holder::core::Paths& paths, int argc, char* argv[]) {
         "/cards/" + url_encode_component(card_id),
         card_update_body(data, content)
     );
-    std::cout << "Appended to card: " << card_id << "\n";
+    std::cout << "Appended to card: " << display_card_id(card_id) << "\n";
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to append to card: ") + ex.what());
   }

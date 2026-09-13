@@ -9,6 +9,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #ifndef _WIN32
 #include <csignal>
@@ -22,6 +23,27 @@ namespace {
 template <typename T> void ignore_result(T&&) noexcept {}
 
 } // namespace
+
+CliError::CliError(
+    std::string code,
+    std::string message,
+    nlohmann::json details,
+    std::string human_message,
+    int exit_code
+)
+    : std::runtime_error(human_message.empty() ? message : human_message),
+      code_(std::move(code)),
+      message_(std::move(message)),
+      details_(std::move(details)),
+      exit_code_(exit_code) {}
+
+const std::string& CliError::code() const noexcept { return code_; }
+
+const std::string& CliError::message() const noexcept { return message_; }
+
+const nlohmann::json& CliError::details() const noexcept { return details_; }
+
+int CliError::exit_code() const noexcept { return exit_code_; }
 
 void print_usage(std::ostream& out) {
   out << "Usage: holderctl <command>\n"
@@ -37,7 +59,7 @@ void print_usage(std::ostream& out) {
       << "  current    Print the current project\n"
       << "  cards      List root cards in the current project; use --recent for latest\n"
       << "  search     Search cards in the current project\n"
-      << "  card       Print a card from the current project\n"
+      << "  card       Print a card by UUID, UUID prefix, or exact title\n"
       << "  edit       Open $EDITOR for a card, then save changes\n"
       << "  links      List outgoing links from a card in the current project\n"
       << "  backlinks  List backlinks to a card in the current project\n"
@@ -54,6 +76,33 @@ void print_usage(std::ostream& out) {
       << "  restart    Restart the local daemon and rotate its bearer token\n"
       << "  logs       Print daemon logs; use --follow to tail or --path for the file path\n"
       << "  version    Print holderctl version\n";
+}
+
+bool json_output_requested(int argc, char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--json") return true;
+  }
+  return false;
+}
+
+void print_cli_error(std::ostream& out, const std::exception& error, bool json_output) {
+  if (!json_output) {
+    out << "holderctl: " << error.what() << "\n";
+    return;
+  }
+
+  nlohmann::json payload = {
+      {"ok", false},
+      {"error", {{"code", "cli_error"}, {"message", error.what()}}},
+  };
+  if (const auto* cli_error = dynamic_cast<const CliError*>(&error)) {
+    payload["error"]["code"] = cli_error->code();
+    payload["error"]["message"] = cli_error->message();
+    if (!cli_error->details().empty()) {
+      payload["error"]["details"] = cli_error->details();
+    }
+  }
+  out << payload.dump(2) << "\n";
 }
 
 bool is_process_running(int pid) {

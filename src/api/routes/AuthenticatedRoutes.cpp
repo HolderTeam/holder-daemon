@@ -1,6 +1,7 @@
 #include "api/routes/AuthenticatedRoutes.h"
 
 #include "api/routes/AiResourceRoutes.h"
+#include "api/routes/CardReferenceRoutes.h"
 #include "api/routes/CardRoutes.h"
 #include "api/routes/HistoryRoutes.h"
 #include "api/routes/MilestoneRoutes.h"
@@ -88,6 +89,8 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     if (handle_trash_routes(path, req, res, db, card_store, fts, param)) return {};
   } else if (resource == "calendar") {
     if (handle_milestone_routes(path, req, res, db, card_store, uuid_v4, param)) return {};
+  } else if (resource == "card-references") {
+    if (handle_card_reference_routes(path, req, res, db)) return {};
   } else if (resource == "cards") {
     if (handle_milestone_routes(path, req, res, db, card_store, uuid_v4, param)) return {};
     if (handle_card_routes(path, req, res, db, card_store, fts, uuid_v4, param)) return {};

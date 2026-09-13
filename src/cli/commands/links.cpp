@@ -8,6 +8,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -76,11 +77,11 @@ LinkCreateOptions parse_link_create_options(int argc, char* argv[]) {
       options.json_output = true;
     } else if (arg == "--kind") {
       options.kind = require_value(
-          "Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]"
+          "Usage: holderctl link <from-card-reference> <to-card-reference> [--kind <kind>] [--label <label>] [--json]"
       );
     } else if (arg == "--label") {
       options.label = require_value(
-          "Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]"
+          "Usage: holderctl link <from-card-reference> <to-card-reference> [--kind <kind>] [--label <label>] [--json]"
       );
     } else if (arg.rfind("--", 0) == 0) {
       throw std::runtime_error("Unknown link option: " + arg);
@@ -90,14 +91,14 @@ LinkCreateOptions parse_link_create_options(int argc, char* argv[]) {
       options.to_card_id = arg;
     } else {
       throw std::runtime_error(
-          "Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]"
+          "Usage: holderctl link <from-card-reference> <to-card-reference> [--kind <kind>] [--label <label>] [--json]"
       );
     }
   }
 
   if (options.from_card_id.empty() || options.to_card_id.empty()) {
     throw std::runtime_error(
-        "Usage: holderctl link <from-card-id> <to-card-id> [--kind <kind>] [--label <label>] [--json]"
+        "Usage: holderctl link <from-card-reference> <to-card-reference> [--kind <kind>] [--label <label>] [--json]"
     );
   }
   return options;
@@ -110,10 +111,26 @@ void print_links_table(const nlohmann::json& links, bool backlinks) {
   }
 
   std::cout << (backlinks ? "FROM_ID" : "TO_ID") << "\tTYPE\tKIND\tLABEL\tCREATED\n";
-  for (const auto& link : links) {
-    std::cout << json_string(link, backlinks ? "from_card_id" : "to_card_id") << "\t"
-              << json_string(link, "to_type") << "\t" << json_string(link, "kind") << "\t"
-              << json_string(link, "label") << "\t" << link.value("created_at", 0) << "\n";
+  std::vector<std::string> displayed_ids(links.size());
+  std::vector<std::string> card_ids;
+  std::vector<std::size_t> card_indices;
+  for (std::size_t i = 0; i < links.size(); ++i) {
+    const auto& link = links.at(i);
+    displayed_ids.at(i) = json_string(link, backlinks ? "from_card_id" : "to_card_id");
+    if (backlinks || json_string(link, "to_type") == "card") {
+      card_ids.push_back(displayed_ids.at(i));
+      card_indices.push_back(i);
+    }
+  }
+  const auto abbreviated_card_ids = display_card_ids(card_ids);
+  for (std::size_t i = 0; i < card_indices.size(); ++i) {
+    displayed_ids.at(card_indices.at(i)) = abbreviated_card_ids.at(i);
+  }
+  for (std::size_t i = 0; i < links.size(); ++i) {
+    const auto& link = links.at(i);
+    std::cout << displayed_ids.at(i) << "\t" << json_string(link, "to_type") << "\t"
+              << json_string(link, "kind") << "\t" << json_string(link, "label") << "\t"
+              << link.value("created_at", 0) << "\n";
   }
 }
 
@@ -123,16 +140,21 @@ int command_links(const holder::core::Paths& paths, int argc, char* argv[]) {
   const auto options = parse_link_list_options(
       argc,
       argv,
-      "Usage: holderctl links <card-id> [--include-deleted] [--json]",
+      "Usage: holderctl links <card-reference> [--include-deleted] [--json]",
       "links"
   );
 
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
-    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+    const auto card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.card_id,
+        options.include_deleted ? CardReferenceScope::Either : CardReferenceScope::Live
+    );
 
-    std::string target = "/cards/" + url_encode_component(options.card_id) + "/links";
+    std::string target = "/cards/" + url_encode_component(card_id) + "/links";
     if (options.include_deleted) {
       target += "?include_deleted=1";
     }
@@ -143,6 +165,8 @@ int command_links(const holder::core::Paths& paths, int argc, char* argv[]) {
       print_links_table(payload.at("data"), false);
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list links: ") + ex.what());
   }
@@ -152,16 +176,21 @@ int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]) 
   const auto options = parse_link_list_options(
       argc,
       argv,
-      "Usage: holderctl backlinks <card-id> [--include-deleted] [--json]",
+      "Usage: holderctl backlinks <card-reference> [--include-deleted] [--json]",
       "backlinks"
   );
 
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
-    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+    const auto card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.card_id,
+        options.include_deleted ? CardReferenceScope::Either : CardReferenceScope::Live
+    );
 
-    std::string target = "/cards/" + url_encode_component(options.card_id) + "/backlinks";
+    std::string target = "/cards/" + url_encode_component(card_id) + "/backlinks";
     if (options.include_deleted) {
       target += "?include_deleted=1";
     }
@@ -172,6 +201,8 @@ int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]) 
       print_links_table(payload.at("data"), true);
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to list backlinks: ") + ex.what());
   }
@@ -183,11 +214,22 @@ int command_link(const holder::core::Paths& paths, int argc, char* argv[]) {
   try {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
-    (void)fetch_card_in_current_project(paths, current_project_id, options.from_card_id);
+    const auto from_card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.from_card_id,
+        CardReferenceScope::Live
+    );
+    const auto to_card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.to_card_id,
+        CardReferenceScope::Live
+    );
 
     // LCOV_EXCL_START
     nlohmann::json body = {
-        {"to_card_id", options.to_card_id},
+        {"to_card_id", to_card_id},
         {"to_type", "card"},
         {"kind", options.kind},
         {"created_at", now_epoch_seconds()},
@@ -200,16 +242,19 @@ int command_link(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto payload = card_api_request(
         paths,
         boost::beast::http::verb::post,
-        "/cards/" + url_encode_component(options.from_card_id) + "/links",
+        "/cards/" + url_encode_component(from_card_id) + "/links",
         body,
         boost::beast::http::status::created
     );
     if (options.json_output) {
       std::cout << payload.dump(2) << "\n";
     } else {
-      std::cout << "Linked card: " << options.from_card_id << " -> " << options.to_card_id << "\n";
+      const auto displayed_ids = display_card_ids({from_card_id, to_card_id});
+      std::cout << "Linked card: " << displayed_ids.at(0) << " -> " << displayed_ids.at(1) << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to link cards: ") + ex.what());
   }

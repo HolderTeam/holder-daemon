@@ -8,8 +8,15 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
+
+enum class CardReferenceScope {
+  Live,
+  Trashed,
+  Either,
+};
 
 std::string api_error_message(const HttpJsonResponse& response, const std::string& fallback);
 nlohmann::json list_projects_payload(const holder::core::Paths& paths, bool include_count);
@@ -43,17 +50,20 @@ nlohmann::json recovery_token_request(
     const nlohmann::json& body
 );
 nlohmann::json require_current_project_payload(const holder::core::Paths& paths);
+std::string resolve_card_reference(
+    const holder::core::Paths& paths,
+    const std::string& project_id,
+    const std::string& reference,
+    CardReferenceScope scope
+);
+std::vector<std::string> display_card_ids(const std::vector<std::string>& card_ids);
+std::string display_card_id(const std::string& card_id);
 nlohmann::json card_api_request(
     const holder::core::Paths& paths,
     boost::beast::http::verb method,
     const std::string& target,
     const nlohmann::json& body = nlohmann::json::object(),
     boost::beast::http::status success = boost::beast::http::status::ok
-);
-nlohmann::json fetch_card_in_current_project(
-    const holder::core::Paths& paths,
-    const std::string& current_project_id,
-    const std::string& card_id
 );
 
 } // namespace holder::cli

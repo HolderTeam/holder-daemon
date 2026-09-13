@@ -342,40 +342,34 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
   }
 
   auto list_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(
+    return holder::test::http_request_raw(
         bound.bind,
         bound.port,
         token,
         http::verb::get,
-        "/cards?project_id=proj-1",
-        nlohmann::json::object(),
-        http::status::ok
+        "/cards?project_id=proj-1"
     );
   });
   auto project_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(
+    return holder::test::http_request_raw(
         bound.bind,
         bound.port,
         token,
         http::verb::get,
-        "/projects",
-        nlohmann::json::object(),
-        http::status::ok
+        "/projects"
     );
   });
   auto status_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(
+    return holder::test::http_request_raw(
         bound.bind,
         bound.port,
         token,
         http::verb::get,
-        "/ai/status",
-        nlohmann::json::object(),
-        http::status::ok
+        "/ai/status"
     );
   });
   auto runner_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(
+    return holder::test::http_request_raw(
         bound.bind,
         bound.port,
         token,
@@ -385,28 +379,37 @@ TEST_CASE("Listener worker-owned DB handles support concurrent mixed request loa
             {"name", "Concurrent Runner"},
             {"kind", "ollama"},
             {"base_url", "http://concurrent:11434"},
-        },
-        http::status::created
+        }
     );
   });
 
   auto card_future = std::async(std::launch::async, [&]() {
-    return holder::test::http_json_request(
+    return holder::test::http_request_raw(
         bound.bind,
         bound.port,
         token,
         http::verb::get,
-        "/cards/card-1",
-        nlohmann::json::object(),
-        http::status::ok
+        "/cards/card-1"
     );
   });
 
-  const auto listed = list_future.get();
-  const auto projects = project_future.get();
-  const auto status = status_future.get();
-  const auto runner = runner_future.get();
-  const auto card = card_future.get();
+  const auto listed_response = list_future.get();
+  const auto projects_response = project_future.get();
+  const auto status_response = status_future.get();
+  const auto runner_response = runner_future.get();
+  const auto card_response = card_future.get();
+
+  REQUIRE(listed_response.status == http::status::ok);
+  REQUIRE(projects_response.status == http::status::ok);
+  REQUIRE(status_response.status == http::status::ok);
+  REQUIRE(runner_response.status == http::status::created);
+  REQUIRE(card_response.status == http::status::ok);
+
+  const auto listed = nlohmann::json::parse(listed_response.body);
+  const auto projects = nlohmann::json::parse(projects_response.body);
+  const auto status = nlohmann::json::parse(status_response.body);
+  const auto runner = nlohmann::json::parse(runner_response.body);
+  const auto card = nlohmann::json::parse(card_response.body);
 
   REQUIRE(listed["ok"] == true);
   REQUIRE(listed["data"].is_array());

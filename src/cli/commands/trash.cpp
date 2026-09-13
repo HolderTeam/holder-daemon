@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace holder::cli {
 namespace {
@@ -20,7 +21,7 @@ struct TrashOptions {
 TrashOptions parse_trash_options(int argc, char* argv[]) {
   if (argc < 3) {
     throw std::runtime_error(
-        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+        "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
     ); // LCOV_EXCL_LINE
   }
 
@@ -43,28 +44,28 @@ TrashOptions parse_trash_options(int argc, char* argv[]) {
       options.card_id = arg;
     } else {
       throw std::runtime_error(
-          "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+          "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
       );
     }
   }
 
   if (options.subcommand.empty()) {
     throw std::runtime_error(
-        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+        "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
     ); // LCOV_EXCL_LINE
   }
   const bool needs_card = options.subcommand == "card" || options.subcommand == "restore" ||
                           options.subcommand == "delete";
   if (needs_card && options.card_id.empty()) {
     throw std::runtime_error(
-        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+        "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
     );
   }
   if ((options.subcommand == "list" || options.subcommand == "empty") &&
       !options.card_id.empty(
       )) { // LCOV_EXCL_LINE: parser rejects extra args before this defensive check.
     throw std::runtime_error(
-        "Usage: holderctl trash <card-id>|list|restore <card-id>|delete <card-id>|empty [--json]"
+        "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
     ); // LCOV_EXCL_LINE
   }
   return options;
@@ -72,7 +73,7 @@ TrashOptions parse_trash_options(int argc, char* argv[]) {
 
 TrashOptions parse_restore_options(int argc, char* argv[]) {
   if (argc < 3) {
-    throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+    throw std::runtime_error("Usage: holderctl restore <card-reference> [--json]");
   }
 
   TrashOptions options;
@@ -86,11 +87,11 @@ TrashOptions parse_restore_options(int argc, char* argv[]) {
     } else if (options.card_id.empty()) {
       options.card_id = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+      throw std::runtime_error("Usage: holderctl restore <card-reference> [--json]");
     }
   }
   if (options.card_id.empty()) {
-    throw std::runtime_error("Usage: holderctl restore <card-id> [--json]");
+    throw std::runtime_error("Usage: holderctl restore <card-reference> [--json]");
   }
   return options;
 }
@@ -106,18 +107,6 @@ nlohmann::json list_current_project_trash_payload(
   );
 }
 
-nlohmann::json find_trashed_card_in_payload(
-    const nlohmann::json& trash,
-    const std::string& card_id
-) {
-  for (const auto& item : trash) {
-    if (json_string(item, "type") == "card" && json_string(item, "card_id") == card_id) {
-      return item;
-    }
-  }
-  throw std::runtime_error("Card is not in the current project trash: " + card_id);
-}
-
 void print_trash_table(const nlohmann::json& trash) {
   if (!trash.is_array() || trash.empty()) {
     std::cout << "Trash is empty.\n";
@@ -125,8 +114,15 @@ void print_trash_table(const nlohmann::json& trash) {
   }
 
   std::cout << "CARD_ID\tTITLE\tDELETED\n";
+  std::vector<std::string> card_ids;
+  card_ids.reserve(trash.size());
   for (const auto& item : trash) {
-    std::cout << json_string(item, "card_id") << "\t" << json_string(item, "title") << "\t"
+    card_ids.push_back(json_string(item, "card_id"));
+  }
+  const auto displayed_ids = display_card_ids(card_ids);
+  for (std::size_t i = 0; i < trash.size(); ++i) {
+    const auto& item = trash.at(i);
+    std::cout << displayed_ids.at(i) << "\t" << json_string(item, "title") << "\t"
               << item.value("deleted_at", 0) << "\n";
   }
 }
@@ -136,17 +132,21 @@ int restore_trashed_card(
     const std::string& current_project_id,
     const TrashOptions& options
 ) {
-  const auto trash = list_current_project_trash_payload(paths, current_project_id);
-  (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
+  const auto card_id = resolve_card_reference(
+      paths,
+      current_project_id,
+      options.card_id,
+      CardReferenceScope::Trashed
+  );
   const auto payload = card_api_request(
       paths,
       boost::beast::http::verb::post,
-      "/cards/" + url_encode_component(options.card_id) + "/restore"
+      "/cards/" + url_encode_component(card_id) + "/restore"
   );
   if (options.json_output) {
     std::cout << payload.dump(2) << "\n";
   } else {
-    std::cout << "Restored card: " << options.card_id << "\n";
+    std::cout << "Restored card: " << display_card_id(card_id) << "\n";
   }
   return 0;
 }
@@ -175,17 +175,21 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
     }
 
     if (options.subcommand == "delete") {
-      const auto trash = list_current_project_trash_payload(paths, current_project_id);
-      (void)find_trashed_card_in_payload(trash.at("data"), options.card_id);
+      const auto card_id = resolve_card_reference(
+          paths,
+          current_project_id,
+          options.card_id,
+          CardReferenceScope::Trashed
+      );
       const auto payload = card_api_request(
           paths,
           boost::beast::http::verb::delete_,
-          "/trash/card/" + url_encode_component(options.card_id)
+          "/trash/card/" + url_encode_component(card_id)
       );
       if (options.json_output) {
         std::cout << payload.dump(2) << "\n";
       } else {
-        std::cout << "Deleted trashed card: " << options.card_id << "\n";
+        std::cout << "Deleted trashed card: " << display_card_id(card_id) << "\n";
       }
       return 0;
     }
@@ -204,18 +208,25 @@ int command_trash(const holder::core::Paths& paths, int argc, char* argv[]) {
       return 0;
     }
 
-    (void)fetch_card_in_current_project(paths, current_project_id, options.card_id);
+    const auto card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.card_id,
+        CardReferenceScope::Live
+    );
     const auto payload = card_api_request(
         paths,
         boost::beast::http::verb::delete_,
-        "/cards/" + url_encode_component(options.card_id)
+        "/cards/" + url_encode_component(card_id)
     );
     if (options.json_output) {
       std::cout << payload.dump(2) << "\n";
     } else {
-      std::cout << "Trashed card: " << options.card_id << "\n";
+      std::cout << "Trashed card: " << display_card_id(card_id) << "\n";
     }
     return 0;
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to manage trash: ") + ex.what());
   }
@@ -228,6 +239,8 @@ int command_restore(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto project = require_current_project_payload(paths);
     const auto current_project_id = json_string(project, "project_id");
     return restore_trashed_card(paths, current_project_id, options);
+  } catch (const CliError&) {
+    throw;
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to restore card: ") + ex.what());
   }
