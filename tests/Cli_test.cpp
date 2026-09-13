@@ -315,12 +315,11 @@ TEST_CASE("CLI reindex fails when welcome markdown path exists but cannot be ope
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
-  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_schema";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
   std::filesystem::copy_file(
-      repo_root / "schema" / "schema.sql",
+      std::filesystem::path(SCHEMA_SQL_PATH),
       isolated / "schema" / "schema.sql"
   );
   const auto welcome = isolated / "config" / "WELCOME.md";
@@ -351,11 +350,10 @@ TEST_CASE("CLI reindex fails when schema exists but welcome markdown is missing"
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
-  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_schema_no_welcome";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::copy_file(
-      repo_root / "schema" / "schema.sql",
+      std::filesystem::path(SCHEMA_SQL_PATH),
       isolated / "schema" / "schema.sql"
   );
   CwdGuard cwd(isolated);
@@ -374,12 +372,11 @@ TEST_CASE("CLI welcome title falls back when first markdown line is not a headin
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
-  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_custom_welcome";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
   std::filesystem::copy_file(
-      repo_root / "schema" / "schema.sql",
+      std::filesystem::path(SCHEMA_SQL_PATH),
       isolated / "schema" / "schema.sql"
   );
   {
@@ -412,12 +409,11 @@ TEST_CASE("CLI welcome title falls back when first markdown line is blank", "[cl
   holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
-  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   const auto isolated = dir / "with_blank_first_line";
   std::filesystem::create_directories(isolated / "schema");
   std::filesystem::create_directories(isolated / "config");
   std::filesystem::copy_file(
-      repo_root / "schema" / "schema.sql",
+      std::filesystem::path(SCHEMA_SQL_PATH),
       isolated / "schema" / "schema.sql"
   );
   {

@@ -220,10 +220,12 @@ configure_file(
   COPYONLY
 )
 
-# schema/schema.sql is authored in holder-core; same rationale as WELCOME.md above.
+# Keep a build-tree schema beside holderd for development runs and staged artifacts.
+# The only tracked schema source remains in holder-core.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schema")
 configure_file(
   "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
-  "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql"
+  "${CMAKE_CURRENT_BINARY_DIR}/schema/schema.sql"
   COPYONLY
 )
 
@@ -411,9 +413,6 @@ if(WIN32)
       "${CMAKE_CURRENT_BINARY_DIR}/config"
       "${CMAKE_CURRENT_BINARY_DIR}/assets"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql"
-      "${CMAKE_CURRENT_BINARY_DIR}/schema/schema.sql"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
       "${CMAKE_CURRENT_SOURCE_DIR}/config/ai_catalog.yaml"
       "${CMAKE_CURRENT_SOURCE_DIR}/config/git_providers.yaml"
@@ -480,7 +479,10 @@ endif()
 install(TARGETS holderd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(TARGETS holderctl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-install(FILES schema/schema.sql DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/schema)
+install(
+  FILES "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/schema
+)
 install(FILES
   config/WELCOME.md
   config/ai_catalog.yaml

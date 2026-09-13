@@ -238,7 +238,7 @@ Planned clients after backend stabilisation:
 
 Implications for engineering decisions in this phase:
 
-* schema can change directly in `schema/schema.sql` when needed
+* schema changes belong in `holder-core/schema/schema.sql` and its migration machinery
 * incremental DB migration machinery is deferred to a later phase
 * redirect/legacy endpoint shims are generally unnecessary unless they unblock active backend work
 
