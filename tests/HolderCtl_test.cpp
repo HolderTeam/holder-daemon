@@ -1118,15 +1118,14 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
   REQUIRE(root_output.find("child-card-one") == std::string::npos);
 
   const auto child_out = xdg_root / "cards-child.out";
-  REQUIRE(run_command(bin + " cards --parent root-card-one > \"" + child_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " cards --parent 'Root One' > \"" + child_out.string() + "\"") == 0);
   const auto child_output = read_text(child_out);
   REQUIRE(child_output.find("child-card-one\tChild One\t0\t40\n") != std::string::npos);
   REQUIRE(child_output.find("root-card-two") == std::string::npos);
 
   const auto empty_child_out = xdg_root / "cards-empty-child.out";
   REQUIRE(
-      run_command(bin + " cards --parent child-card-one > \"" + empty_child_out.string() + "\"") ==
-      0
+      run_command(bin + " cards --parent 'Child One' > \"" + empty_child_out.string() + "\"") == 0
   );
   REQUIRE(read_text(empty_child_out) == "No root cards.\n");
 
@@ -1355,7 +1354,7 @@ TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project
     holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "0");
 
     const auto edit_out = xdg_root / "edit.out";
-    REQUIRE(run_command(bin + " edit editable.card > \"" + edit_out.string() + "\"") == 0);
+    REQUIRE(run_command(bin + " edit 'Editable Card' > \"" + edit_out.string() + "\"") == 0);
     REQUIRE(read_text(edit_out) == "Updated card: editable.card\n");
   }
 
@@ -1370,7 +1369,7 @@ TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project
     holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "0");
 
     const auto noop_out = xdg_root / "edit-noop.out";
-    REQUIRE(run_command(bin + " edit editable.card > \"" + noop_out.string() + "\"") == 0);
+    REQUIRE(run_command(bin + " edit 'Editable Card' > \"" + noop_out.string() + "\"") == 0);
     REQUIRE(read_text(noop_out) == "No changes.\n");
   }
 
@@ -1380,15 +1379,15 @@ TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project
     holder::test::EnvGuard editor_content_env("HOLDERCTL_FAKE_EDITOR_CONTENT", "");
     holder::test::EnvGuard editor_exit_env("HOLDERCTL_FAKE_EDITOR_EXIT", "7");
 
-    REQUIRE(run_command(bin + " edit editable.card >/dev/null 2>/dev/null") == 1);
+    REQUIRE(run_command(bin + " edit 'Editable Card' >/dev/null 2>/dev/null") == 1);
   }
 
   {
     holder::test::EnvGuard editor_env("EDITOR", "");
-    REQUIRE(run_command(bin + " edit editable.card >/dev/null 2>/dev/null") == 1);
+    REQUIRE(run_command(bin + " edit 'Editable Card' >/dev/null 2>/dev/null") == 1);
   }
 
-  REQUIRE(run_command(bin + " edit other-editable-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " edit 'Other Editable Card' >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -1469,36 +1468,36 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
 #endif
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
-  REQUIRE(run_command(bin + " links source-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links 'Source Card' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " use link-project >/dev/null") == 0);
 
   const auto empty_links_out = xdg_root / "links-empty.out";
-  REQUIRE(run_command(bin + " links source-card > \"" + empty_links_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " links 'Source Card' > \"" + empty_links_out.string() + "\"") == 0);
   REQUIRE(read_text(empty_links_out) == "No links.\n");
 
   const auto empty_backlinks_out = xdg_root / "backlinks-empty.out";
   REQUIRE(
-      run_command(bin + " backlinks target-card > \"" + empty_backlinks_out.string() + "\"") == 0
+      run_command(bin + " backlinks 'Target Card' > \"" + empty_backlinks_out.string() + "\"") == 0
   );
   REQUIRE(read_text(empty_backlinks_out) == "No backlinks.\n");
 
   const auto link_out = xdg_root / "link.out";
   REQUIRE(
       run_command(
-          bin + " link source-card target-card --kind cite --label 'Related Card' > \"" +
+          bin + " link 'Source Card' 'Target Card' --kind cite --label 'Related Card' > \"" +
           link_out.string() + "\""
       ) == 0
   );
   REQUIRE(read_text(link_out) == "Linked card: source-card -> target-card\n");
 
   const auto links_out = xdg_root / "links.out";
-  REQUIRE(run_command(bin + " links source-card > \"" + links_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " links 'Source Card' > \"" + links_out.string() + "\"") == 0);
   const auto links_text = read_text(links_out);
   REQUIRE(links_text.find("TO_ID\tTYPE\tKIND\tLABEL\tCREATED\n") == 0);
   REQUIRE(links_text.find("target-card\tcard\tcite\tRelated Card\t") != std::string::npos);
 
   const auto backlinks_out = xdg_root / "backlinks.out";
-  REQUIRE(run_command(bin + " backlinks target-card > \"" + backlinks_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " backlinks 'Target Card' > \"" + backlinks_out.string() + "\"") == 0);
   const auto backlinks_text = read_text(backlinks_out);
   REQUIRE(backlinks_text.find("FROM_ID\tTYPE\tKIND\tLABEL\tCREATED\n") == 0);
   REQUIRE(backlinks_text.find("source-card\tcard\tcite\tRelated Card\t") != std::string::npos);
@@ -1506,7 +1505,8 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
   const auto links_json_out = xdg_root / "links.json";
   REQUIRE(
       run_command(
-          bin + " links --json --include-deleted source-card > \"" + links_json_out.string() + "\""
+          bin + " links --json --include-deleted 'Source Card' > \"" + links_json_out.string() +
+          "\""
       ) == 0
   );
   const auto links_json = nlohmann::json::parse(read_text(links_json_out));
@@ -1517,7 +1517,7 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
   const auto backlinks_json_out = xdg_root / "backlinks.json";
   REQUIRE(
       run_command(
-          bin + " backlinks --json --include-deleted target-card > \"" +
+          bin + " backlinks --json --include-deleted 'Target Card' > \"" +
           backlinks_json_out.string() + "\""
       ) == 0
   );
@@ -1528,7 +1528,7 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
   const auto link_json_out = xdg_root / "link.json";
   REQUIRE(
       run_command(
-          bin + " link source-card target-card --json > \"" + link_json_out.string() + "\""
+          bin + " link 'Source Card' 'Target Card' --json > \"" + link_json_out.string() + "\""
       ) == 0
   );
   const auto link_json = nlohmann::json::parse(read_text(link_json_out));
@@ -1537,11 +1537,19 @@ TEST_CASE("holderctl links backlinks and link expose card links", "[holderctl]")
   REQUIRE(link_json["data"]["to_card_id"] == "target-card");
 
   REQUIRE(
-      run_command(bin + " link other-source-card other-target-card >/dev/null 2>/dev/null") == 1
+      run_command(bin + " link 'Other Source Card' 'Other Target Card' >/dev/null 2>/dev/null") == 1
   );
-  REQUIRE(run_command(bin + " link source-card other-target-card >/dev/null 2>/dev/null") == 1);
-  REQUIRE(run_command(bin + " links other-source-card >/dev/null 2>/dev/null") == 1);
-  REQUIRE(run_command(bin + " backlinks other-target-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " link 'Source Card' 'Other Target Card' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links 'Other Source Card' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks 'Other Target Card' >/dev/null 2>/dev/null") == 1);
+
+  REQUIRE(run_command(bin + " trash 'Source Card' >/dev/null") == 0);
+  REQUIRE(run_command(bin + " links 'Source Card' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " links --include-deleted 'Source Card' >/dev/null") == 0);
+
+  REQUIRE(run_command(bin + " trash 'Target Card' >/dev/null") == 0);
+  REQUIRE(run_command(bin + " backlinks 'Target Card' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " backlinks --include-deleted 'Target Card' >/dev/null") == 0);
 
   server.stop();
   server_thread.join();
@@ -1609,7 +1617,7 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
 #endif
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
-  REQUIRE(run_command(bin + " trash trash-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash 'Trash Card' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " use trash-project >/dev/null") == 0);
 
   const auto empty_trash_out = xdg_root / "trash-empty.out";
@@ -1617,14 +1625,14 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
   REQUIRE(read_text(empty_trash_out) == "Trash is empty.\n");
 
   const auto trash_out = xdg_root / "trash.out";
-  REQUIRE(run_command(bin + " trash trash-card > \"" + trash_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " trash 'Trash Card' > \"" + trash_out.string() + "\"") == 0);
   REQUIRE(read_text(trash_out) == "Trashed card: trash-card\n");
   REQUIRE(run_command(bin + " card \"Trash Card\" >/dev/null 2>/dev/null") == 1);
 
   const auto trash_card_json_out = xdg_root / "trash-card.json";
   REQUIRE(
       run_command(
-          bin + " trash json-trash-card --json > \"" + trash_card_json_out.string() + "\""
+          bin + " trash 'JSON Trash Card' --json > \"" + trash_card_json_out.string() + "\""
       ) == 0
   );
   const auto trash_card_json = nlohmann::json::parse(read_text(trash_card_json_out));
@@ -1646,60 +1654,60 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
   REQUIRE(trash_json["data"][0]["card_id"] == "trash-card");
 
   const auto restore_out = xdg_root / "restore.out";
-  REQUIRE(run_command(bin + " restore trash-card > \"" + restore_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " restore 'Trash Card' > \"" + restore_out.string() + "\"") == 0);
   REQUIRE(read_text(restore_out) == "Restored card: trash-card\n");
   const auto restored_card_out = xdg_root / "restored-card.out";
   REQUIRE(run_command(bin + " card \"Trash Card\" > \"" + restored_card_out.string() + "\"") == 0);
   REQUIRE(read_text(restored_card_out) == "Trash Card body\n");
 
-  REQUIRE(run_command(bin + " trash trash-card >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Trash Card' >/dev/null") == 0);
   const auto trash_restore_json_out = xdg_root / "trash-restore.json";
   REQUIRE(
       run_command(
-          bin + " trash restore trash-card --json > \"" + trash_restore_json_out.string() + "\""
+          bin + " trash restore 'Trash Card' --json > \"" + trash_restore_json_out.string() + "\""
       ) == 0
   );
   REQUIRE(nlohmann::json::parse(read_text(trash_restore_json_out))["ok"] == true);
 
-  REQUIRE(run_command(bin + " trash trash-card >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Trash Card' >/dev/null") == 0);
   const auto restore_json_out = xdg_root / "restore-json.out";
   REQUIRE(
-      run_command(bin + " restore --json trash-card > \"" + restore_json_out.string() + "\"") == 0
+      run_command(bin + " restore --json 'Trash Card' > \"" + restore_json_out.string() + "\"") == 0
   );
   REQUIRE(nlohmann::json::parse(read_text(restore_json_out))["ok"] == true);
 
-  REQUIRE(run_command(bin + " trash delete trash-card >/dev/null 2>/dev/null") == 1);
-  REQUIRE(run_command(bin + " trash delete other-trash-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash delete 'Trash Card' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " trash delete 'Other Trash Card' >/dev/null 2>/dev/null") == 1);
 
-  REQUIRE(run_command(bin + " trash delete-card >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Delete Card' >/dev/null") == 0);
   const auto delete_json_out = xdg_root / "trash-delete.json";
   REQUIRE(
       run_command(
-          bin + " trash delete delete-card --json > \"" + delete_json_out.string() + "\""
+          bin + " trash delete 'Delete Card' --json > \"" + delete_json_out.string() + "\""
       ) == 0
   );
   REQUIRE(nlohmann::json::parse(read_text(delete_json_out))["ok"] == true);
-  REQUIRE(run_command(bin + " restore delete-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore 'Delete Card' >/dev/null 2>/dev/null") == 1);
 
   create_card("delete-card-two", "trash-project", "Delete Card Two", 21);
-  REQUIRE(run_command(bin + " trash delete-card-two >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Delete Card Two' >/dev/null") == 0);
   const auto delete_out = xdg_root / "trash-delete.out";
   REQUIRE(
-      run_command(bin + " trash delete delete-card-two > \"" + delete_out.string() + "\"") == 0
+      run_command(bin + " trash delete 'Delete Card Two' > \"" + delete_out.string() + "\"") == 0
   );
   REQUIRE(read_text(delete_out) == "Deleted trashed card: delete-card-two\n");
-  REQUIRE(run_command(bin + " restore delete-card-two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " restore 'Delete Card Two' >/dev/null 2>/dev/null") == 1);
 
-  REQUIRE(run_command(bin + " trash empty-card-one >/dev/null") == 0);
-  REQUIRE(run_command(bin + " trash empty-card-two >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Empty Card One' >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Empty Card Two' >/dev/null") == 0);
   const auto empty_json_out = xdg_root / "trash-empty.json";
   REQUIRE(run_command(bin + " trash empty --json > \"" + empty_json_out.string() + "\"") == 0);
   REQUIRE(nlohmann::json::parse(read_text(empty_json_out))["ok"] == true);
 
   create_card("empty-card-three", "trash-project", "Empty Card Three", 23);
   create_card("empty-card-four", "trash-project", "Empty Card Four", 25);
-  REQUIRE(run_command(bin + " trash empty-card-three >/dev/null") == 0);
-  REQUIRE(run_command(bin + " trash empty-card-four >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Empty Card Three' >/dev/null") == 0);
+  REQUIRE(run_command(bin + " trash 'Empty Card Four' >/dev/null") == 0);
   const auto empty_out = xdg_root / "trash-empty-command.out";
   REQUIRE(run_command(bin + " trash empty > \"" + empty_out.string() + "\"") == 0);
   REQUIRE(read_text(empty_out) == "Emptied card trash.\n");
@@ -1805,7 +1813,7 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   const auto append_out = xdg_root / "append.out";
   REQUIRE(
       run_command(
-          bin + " append " + first_card_id + " < \"" + append_input.string() + "\" > \"" +
+          bin + " append 'Revise long division' < \"" + append_input.string() + "\" > \"" +
           append_out.string() + "\""
       ) == 0
   );
@@ -1818,9 +1826,10 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   REQUIRE(read_text(appended_card_out) == "Revise long division\n\nextra line\n");
 
   const auto append_args_out = xdg_root / "append-args.out";
+  const auto first_card_prefix = first_card_id.substr(0, 8);
   REQUIRE(
       run_command(
-          bin + " append " + first_card_id + " Revise binary trees > \"" +
+          bin + " append " + first_card_prefix + " Revise binary trees > \"" +
           append_args_out.string() + "\""
       ) == 0
   );
@@ -1869,8 +1878,18 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
     repo.update_name("home-id", "Home", 2);
   }
 
+  holder::index::FtsIndexer setup_fts(db);
+  holder::card::CardStore setup_cards(db, &setup_fts);
+  holder::model::Card import_target;
+  import_target.card_id = "abcdef12-3456-4789-8abc-def012345678";
+  import_target.project_id = "home-id";
+  import_target.title = "Import Target";
+  import_target.created_at = 3;
+  import_target.updated_at = 3;
+  setup_cards.create(import_target, "Attach imported resources here.\n");
+
   const std::string token = "resourcetoken";
-  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &setup_cards, &setup_fts);
   holder::api::HttpServer::BoundInfo bound;
   try {
     bound = server.start();
@@ -2078,6 +2097,34 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       ) == 1
   );
   REQUIRE(run_command(bin + " resource nope >/dev/null 2>/dev/null") == 1);
+
+  const auto import_source = xdg_root / "import-source.txt";
+  {
+    std::ofstream out(import_source);
+    out << "import me\n";
+  }
+  const auto import_objects = xdg_root / "import-objects";
+  REQUIRE(
+      run_command(
+          bin + " resource location add-local Imports \"" + import_objects.string() +
+          "\" >/dev/null"
+      ) == 0
+  );
+  const auto import_out = xdg_root / "resource-import.out";
+  REQUIRE(
+      run_command(
+          bin + " resource import 'Import Target' \"" + import_source.string() + "\" > \"" +
+          import_out.string() + "\""
+      ) == 0
+  );
+  REQUIRE(read_text(import_out).find("Attached resource: ") == 0);
+  REQUIRE(run_command(bin + " trash 'Import Target' >/dev/null") == 0);
+  REQUIRE(
+      run_command(
+          bin + " resource import 'Import Target' \"" + import_source.string() +
+          "\" >/dev/null 2>/dev/null"
+      ) == 1
+  );
 
   server.stop();
   server_thread.join();

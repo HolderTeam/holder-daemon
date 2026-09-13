@@ -508,21 +508,4 @@ nlohmann::json card_api_request(
   return response.payload;
 }
 
-nlohmann::json fetch_card_in_current_project(
-    const holder::core::Paths& paths,
-    const std::string& current_project_id,
-    const std::string& card_id
-) {
-  const auto payload = card_api_request(
-      paths,
-      boost::beast::http::verb::get,
-      "/cards/" + url_encode_component(card_id)
-  );
-  const auto& data = payload.at("data");
-  if (json_string(data, "project_id") != current_project_id) {
-    throw std::runtime_error("Card is not in the current project: " + card_id);
-  }
-  return payload;
-}
-
 } // namespace holder::cli

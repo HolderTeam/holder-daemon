@@ -334,16 +334,18 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
     if (subcommand == "import") {
       if (argc < 5 || argc > 7) {
         throw std::runtime_error(
-            "Usage: holderctl resource import <card-id> <file> [--location <location-id>]"
+            "Usage: holderctl resource import <card-reference> <file> [--location <location-id>]"
         );
       }
       const auto project = require_current_project_payload(paths);
       const auto project_id = json_string(project, "project_id");
+      const auto card_id =
+          resolve_card_reference(paths, project_id, argv[3], CardReferenceScope::Live);
       std::string location_id;
       if (argc == 7) {
         if (std::string(argv[5]) != "--location" || std::string(argv[6]).empty()) {
           throw std::runtime_error(
-              "Usage: holderctl resource import <card-id> <file> [--location <location-id>]"
+              "Usage: holderctl resource import <card-reference> <file> [--location <location-id>]"
           );
         }
         location_id = argv[6];
@@ -364,7 +366,7 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
           boost::beast::http::verb::post,
           "/imports",
           {{"project_id", project_id},
-           {"card_id", argv[3]},
+           {"card_id", card_id},
            {"location_id", location_id},
            {"source_path", source.string()}},
           boost::beast::http::status::accepted

@@ -62,10 +62,5 @@ nlohmann::json card_api_request(
     const nlohmann::json& body = nlohmann::json::object(),
     boost::beast::http::status success = boost::beast::http::status::ok
 );
-nlohmann::json fetch_card_in_current_project(
-    const holder::core::Paths& paths,
-    const std::string& current_project_id,
-    const std::string& card_id
-);
 
 } // namespace holder::cli
