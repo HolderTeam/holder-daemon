@@ -1173,8 +1173,12 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
 
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
+  constexpr const char* card_id = "12345678-1111-4111-8111-111111111111";
+  constexpr const char* other_card_id = "87654321-2222-4222-8222-222222222222";
+  constexpr const char* ambiguous_card_id_one = "aaaaaaaa-1111-4111-8111-111111111111";
+  constexpr const char* ambiguous_card_id_two = "aaaaaaaa-2222-4222-8222-222222222222";
   holder::model::Card card;
-  card.card_id = "card-one";
+  card.card_id = card_id;
   card.project_id = "card-project";
   card.title = "Card One";
   card.created_at = 10;
@@ -1182,12 +1186,28 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
   card_store.create(card, "body from holderctl card");
 
   holder::model::Card other_card;
-  other_card.card_id = "card-two";
+  other_card.card_id = other_card_id;
   other_card.project_id = "other-project";
   other_card.title = "Card Two";
   other_card.created_at = 12;
   other_card.updated_at = 13;
   card_store.create(other_card, "other body");
+
+  holder::model::Card ambiguous_one;
+  ambiguous_one.card_id = ambiguous_card_id_one;
+  ambiguous_one.project_id = "card-project";
+  ambiguous_one.title = "Collision One";
+  ambiguous_one.created_at = 14;
+  ambiguous_one.updated_at = 15;
+  card_store.create(ambiguous_one, "first collision body");
+
+  holder::model::Card ambiguous_two;
+  ambiguous_two.card_id = ambiguous_card_id_two;
+  ambiguous_two.project_id = "card-project";
+  ambiguous_two.title = "Collision Two";
+  ambiguous_two.created_at = 16;
+  ambiguous_two.updated_at = 17;
+  card_store.create(ambiguous_two, "second collision body");
 
   const std::string token = "cardtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -1213,23 +1233,52 @@ TEST_CASE("holderctl card prints a card from the current project", "[holderctl]"
 #endif
 
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
-  REQUIRE(run_command(bin + " card card-one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card " + card_id + " >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " use card-project >/dev/null") == 0);
 
   const auto card_out = xdg_root / "card.out";
-  REQUIRE(run_command(bin + " card card-one > \"" + card_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " card " + card_id + " > \"" + card_out.string() + "\"") == 0);
   REQUIRE(read_text(card_out) == "body from holderctl card\n");
 
+  const auto prefix_out = xdg_root / "card-prefix.out";
+  REQUIRE(run_command(bin + " card 12345678 > \"" + prefix_out.string() + "\"") == 0);
+  REQUIRE(read_text(prefix_out) == "body from holderctl card\n");
+
+  const auto title_out = xdg_root / "card-title.out";
+  REQUIRE(run_command(bin + " card \"Card One\" > \"" + title_out.string() + "\"") == 0);
+  REQUIRE(read_text(title_out) == "body from holderctl card\n");
+
   const auto json_path = xdg_root / "card.json";
-  REQUIRE(run_command(bin + " card --json card-one > \"" + json_path.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " card --json 12345678 > \"" + json_path.string() + "\"") == 0);
   const auto payload = nlohmann::json::parse(read_text(json_path));
   REQUIRE(payload["ok"] == true);
-  REQUIRE(payload["data"]["card_id"] == "card-one");
+  REQUIRE(payload["data"]["card_id"] == card_id);
   REQUIRE(payload["data"]["content"] == "body from holderctl card");
 
-  REQUIRE(run_command(bin + " card card-two >/dev/null 2>/dev/null") == 1);
-  REQUIRE(run_command(bin + " card missing-card >/dev/null 2>/dev/null") == 1);
-  REQUIRE(run_command(bin + " append card-two extra >/dev/null 2>/dev/null") == 1);
+  const auto ambiguous_error_path = xdg_root / "card-ambiguous.err";
+  REQUIRE(
+      run_command(bin + " card aaaaaaaa >/dev/null 2> \"" + ambiguous_error_path.string() + "\"") ==
+      1
+  );
+  const auto ambiguous_error = read_text(ambiguous_error_path);
+  REQUIRE(ambiguous_error.find("Card reference is ambiguous") != std::string::npos);
+  REQUIRE(ambiguous_error.find(ambiguous_card_id_one) != std::string::npos);
+  REQUIRE(ambiguous_error.find("Collision One") != std::string::npos);
+  REQUIRE(ambiguous_error.find(ambiguous_card_id_two) != std::string::npos);
+  REQUIRE(ambiguous_error.find("Collision Two") != std::string::npos);
+
+  REQUIRE(run_command(bin + " card " + other_card_id + " >/dev/null 2>/dev/null") == 1);
+  const auto missing_error_path = xdg_root / "card-missing.err";
+  REQUIRE(
+      run_command(
+          bin + " card \"Missing card\" >/dev/null 2> \"" + missing_error_path.string() + "\""
+      ) == 1
+  );
+  REQUIRE(
+      read_text(missing_error_path).find("Card not found in current project: Missing card") !=
+      std::string::npos
+  );
+  REQUIRE(run_command(bin + " append " + other_card_id + " extra >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();
@@ -1311,7 +1360,7 @@ TEST_CASE("holderctl edit opens EDITOR and patches a card in the current project
   }
 
   const auto edited_card_out = xdg_root / "edited-card.out";
-  REQUIRE(run_command(bin + " card editable.card > \"" + edited_card_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " card \"Editable Card\" > \"" + edited_card_out.string() + "\"") == 0);
   REQUIRE(read_text(edited_card_out) == "edited body\nsecond line\n");
 
   {
@@ -1570,7 +1619,7 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
   const auto trash_out = xdg_root / "trash.out";
   REQUIRE(run_command(bin + " trash trash-card > \"" + trash_out.string() + "\"") == 0);
   REQUIRE(read_text(trash_out) == "Trashed card: trash-card\n");
-  REQUIRE(run_command(bin + " card trash-card >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " card \"Trash Card\" >/dev/null 2>/dev/null") == 1);
 
   const auto trash_card_json_out = xdg_root / "trash-card.json";
   REQUIRE(
@@ -1600,7 +1649,7 @@ TEST_CASE("holderctl trash and restore manage card deletion lifecycle", "[holder
   REQUIRE(run_command(bin + " restore trash-card > \"" + restore_out.string() + "\"") == 0);
   REQUIRE(read_text(restore_out) == "Restored card: trash-card\n");
   const auto restored_card_out = xdg_root / "restored-card.out";
-  REQUIRE(run_command(bin + " card trash-card > \"" + restored_card_out.string() + "\"") == 0);
+  REQUIRE(run_command(bin + " card \"Trash Card\" > \"" + restored_card_out.string() + "\"") == 0);
   REQUIRE(read_text(restored_card_out) == "Trash Card body\n");
 
   REQUIRE(run_command(bin + " trash trash-card >/dev/null") == 0);

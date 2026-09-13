@@ -33,7 +33,7 @@ struct CardsOptions {
 
 struct CardOptions {
   bool json_output = false;
-  std::string card_id;
+  std::string card_reference;
 };
 
 SearchOptions parse_search_options(int argc, char* argv[]) {
@@ -127,15 +127,15 @@ CardOptions parse_card_options(int argc, char* argv[]) {
       options.json_output = true;
     } else if (arg.rfind("--", 0) == 0) {
       throw std::runtime_error("Unknown card option: " + arg);
-    } else if (options.card_id.empty()) {
-      options.card_id = arg;
+    } else if (options.card_reference.empty()) {
+      options.card_reference = arg;
     } else {
-      throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
+      throw std::runtime_error("Usage: holderctl card [--json] <card-reference>");
     }
   }
 
-  if (options.card_id.empty()) {
-    throw std::runtime_error("Usage: holderctl card [--json] <card-id>");
+  if (options.card_reference.empty()) {
+    throw std::runtime_error("Usage: holderctl card [--json] <card-reference>");
   }
   return options;
 }
@@ -334,11 +334,17 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
   (void)find_project_by_id(projects_payload.at("data"), current_project_id);
 
   try {
+    const auto card_id = resolve_card_reference(
+        paths,
+        current_project_id,
+        options.card_reference,
+        CardReferenceScope::Live
+    );
     const auto connection = read_secure_daemon_connection(paths);
     const auto response = http_json_request(
         connection,
         boost::beast::http::verb::get,
-        "/cards/" + url_encode_component(options.card_id),
+        "/cards/" + url_encode_component(card_id),
         std::chrono::seconds(10) // LCOV_EXCL_LINE
     );
 
@@ -350,7 +356,7 @@ int command_card(const holder::core::Paths& paths, int argc, char* argv[]) {
     const auto& data = response.payload.at("data");
     const auto card_project_id = json_string(data, "project_id");
     if (card_project_id != current_project_id) {
-      throw std::runtime_error("Card is not in the current project: " + options.card_id);
+      throw std::runtime_error("Card is not in the current project: " + options.card_reference);
     }
 
     if (options.json_output) {

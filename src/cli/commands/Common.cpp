@@ -37,7 +37,7 @@ void print_usage(std::ostream& out) {
       << "  current    Print the current project\n"
       << "  cards      List root cards in the current project; use --recent for latest\n"
       << "  search     Search cards in the current project\n"
-      << "  card       Print a card from the current project\n"
+      << "  card       Print a card by UUID, UUID prefix, or exact title\n"
       << "  edit       Open $EDITOR for a card, then save changes\n"
       << "  links      List outgoing links from a card in the current project\n"
       << "  backlinks  List backlinks to a card in the current project\n"

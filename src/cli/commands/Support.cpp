@@ -390,6 +390,91 @@ nlohmann::json require_current_project_payload(const holder::core::Paths& paths)
   return find_project_by_id(projects_payload.at("data"), current_project_id);
 }
 
+namespace {
+
+std::string card_reference_scope_name(CardReferenceScope scope) {
+  switch (scope) {
+  case CardReferenceScope::Live:
+    return "live";
+  case CardReferenceScope::Trashed:
+    return "trashed";
+  case CardReferenceScope::Either:
+    return "either";
+  }
+  return {}; // LCOV_EXCL_LINE
+}
+
+std::runtime_error invalid_card_reference_response() {
+  return std::runtime_error("Invalid card reference response from daemon.");
+}
+
+} // namespace
+
+std::string resolve_card_reference(
+    const holder::core::Paths& paths,
+    const std::string& project_id,
+    const std::string& reference,
+    CardReferenceScope scope
+) {
+  const auto connection = read_secure_daemon_connection(paths);
+  const auto response = http_json_request(
+      connection,
+      boost::beast::http::verb::post,
+      "/card-references/resolve",
+      std::chrono::seconds(10), // LCOV_EXCL_LINE
+      nlohmann::json{
+          {"project_id", project_id},
+          {"reference", reference},
+          {"scope", card_reference_scope_name(scope)},
+      }
+  );
+
+  if (response.status != boost::beast::http::status::ok || !response.payload.value("ok", false)) {
+    const auto fallback = "HTTP " + std::to_string(static_cast<unsigned>(response.status));
+    throw std::runtime_error(
+        "Card reference request failed: " + api_error_message(response, fallback)
+    );
+  }
+  if (!response.payload.contains("data") || !response.payload.at("data").is_object()) {
+    throw invalid_card_reference_response(); // LCOV_EXCL_LINE
+  }
+
+  const auto& data = response.payload.at("data");
+  const auto status = json_string(data, "status");
+  if (status == "resolved") {
+    if (!data.contains("card") || !data.at("card").is_object()) {
+      throw invalid_card_reference_response(); // LCOV_EXCL_LINE
+    }
+    const auto card_id = json_string(data.at("card"), "card_id");
+    if (card_id.empty()) {
+      throw invalid_card_reference_response(); // LCOV_EXCL_LINE
+    }
+    return card_id;
+  }
+
+  if (status == "ambiguous") {
+    if (!data.contains("candidates") || !data.at("candidates").is_array()) {
+      throw invalid_card_reference_response(); // LCOV_EXCL_LINE
+    }
+    std::ostringstream message;
+    message << "Card reference is ambiguous in the current project: " << reference
+            << "\nCandidates:";
+    for (const auto& candidate : data.at("candidates")) {
+      message << "\n  " << json_string(candidate, "card_id") << "\t"
+              << json_string(candidate, "title");
+      if (candidate.contains("deleted_at") && !candidate.at("deleted_at").is_null()) {
+        message << "\t(trashed)";
+      }
+    }
+    throw std::runtime_error(message.str());
+  }
+
+  if (status == "not_found") {
+    throw std::runtime_error("Card not found in current project: " + reference);
+  }
+  throw invalid_card_reference_response(); // LCOV_EXCL_LINE
+}
+
 nlohmann::json card_api_request(
     const holder::core::Paths& paths,
     boost::beast::http::verb method,
