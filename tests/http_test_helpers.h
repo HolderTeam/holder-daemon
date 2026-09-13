@@ -362,7 +362,8 @@ inline HttpResult http_request_raw(
     unsigned short port,
     const std::string& token,
     boost::beast::http::verb method,
-    const std::string& target
+    const std::string& target,
+    const nlohmann::json& body = nlohmann::json::object()
 ) {
   namespace http = boost::beast::http;
   using tcp = boost::asio::ip::tcp;
@@ -381,6 +382,11 @@ inline HttpResult http_request_raw(
   req.keep_alive(false);
   if (!token.empty()) {
     req.set(http::field::authorization, "Bearer " + token);
+  }
+  if (!body.is_null() && !body.empty()) {
+    req.set(http::field::content_type, "application/json");
+    req.body() = body.dump();
+    req.prepare_payload();
   }
 
   http::write(stream, req);
