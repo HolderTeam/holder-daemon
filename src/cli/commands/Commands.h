@@ -20,6 +20,7 @@ int command_current(const holder::core::Paths& paths, int argc);
 int command_cards(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_search(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_history(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_edit(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_links(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]);
@@ -29,6 +30,8 @@ int command_restore(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_new(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_append(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_resource(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_tags(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_tag(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_recovery_token(const holder::core::Paths& paths, int argc, char* argv[]);
 
 } // namespace holder::cli

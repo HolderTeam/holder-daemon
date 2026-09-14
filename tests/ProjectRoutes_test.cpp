@@ -376,11 +376,27 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
   SECTION("sync-status returns default sync object when no row exists") {
     auto [status, payload] = call(http::verb::get, "/projects/proj-1/git/sync-status");
     REQUIRE(status == http::status::ok);
-    REQUIRE(payload["data"]["sync"]["uncommitted_changes_count"] == 0);
-    REQUIRE(payload["data"]["sync"]["unpushed_commits_count"] == 0);
-    REQUIRE(payload["data"]["sync"]["retry_count"] == 0);
-    REQUIRE(payload["data"]["sync"]["pull_retry_count"] == 0);
-    REQUIRE(payload["data"]["sync"]["updated_at"].is_null());
+    const nlohmann::json expected = {
+        {"ok", true},
+        {"data",
+         {{"project_id", "proj-1"},
+          {"sync",
+           {{"last_commit_at", nullptr},
+            {"last_push_at", nullptr},
+            {"last_pull_at", nullptr},
+            {"uncommitted_changes_count", 0},
+            {"unpushed_commits_count", 0},
+            {"last_push_status", nullptr},
+            {"last_pull_status", nullptr},
+            {"last_sync_error", nullptr},
+            {"last_sync_error_at", nullptr},
+            {"retry_count", 0},
+            {"next_retry_at", nullptr},
+            {"pull_retry_count", 0},
+            {"next_pull_retry_at", nullptr},
+            {"updated_at", nullptr}}}}}
+    };
+    REQUIRE(payload == expected);
   }
 
   SECTION("sync-status maps existing zero updated_at to null") {
@@ -457,10 +473,15 @@ TEST_CASE("ProjectRoutes lists project tags with card counts", "[project-routes]
   REQUIRE(handled);
   REQUIRE(res.result() == http::status::ok);
   const auto payload = nlohmann::json::parse(res.body());
-  REQUIRE(payload["data"] == nlohmann::json::array({
-      {{"tag", "sync"}, {"card_count", 2}},
-      {{"tag", "android"}, {"card_count", 1}},
-  }));
+  const nlohmann::json expected = {
+      {"ok", true},
+      {"data",
+       nlohmann::json::array({
+           {{"tag", "sync"}, {"card_count", 2}},
+           {{"tag", "android"}, {"card_count", 1}},
+       })}
+  };
+  REQUIRE(payload == expected);
 }
 
 TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[project-routes]") {

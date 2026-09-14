@@ -757,6 +757,65 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CardListItem"
+    ProjectTag:
+      type: object
+      required: [tag, card_count]
+      properties:
+        tag:
+          type: string
+          description: Normalized tag without the leading #.
+        card_count:
+          type: integer
+          minimum: 1
+          description: Number of live cards in the project carrying this tag.
+    ProjectTagListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          description: Tags ordered by descending card count, then ascending tag.
+          items:
+            $ref: "#/components/schemas/ProjectTag"
+    CardTagMutationRequest:
+      type: object
+      required: [project_id, tag]
+      properties:
+        project_id:
+          type: string
+          minLength: 1
+          description: Project that must own the live card.
+        tag:
+          type: string
+          minLength: 1
+          description: Tag without the leading #. Mutation normalizes valid tags to lowercase.
+    CardTagMutationResult:
+      type: object
+      required: [card_id, tag, outcome, changed]
+      properties:
+        card_id:
+          type: string
+        tag:
+          type: string
+          description: Normalized tag without the leading #.
+        outcome:
+          type: string
+          enum: [added, already_present, removed, not_present, present_outside_editable_tag_line]
+        changed:
+          type: boolean
+          description: True only when card content was changed.
+    CardTagMutationResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardTagMutationResult"
     CardPatchResponse:
       type: object
       required: [ok, data]
@@ -1421,9 +1480,20 @@ components:
       type: object
       required:
         [
+          last_commit_at,
+          last_push_at,
+          last_pull_at,
           uncommitted_changes_count,
           unpushed_commits_count,
-          retry_count
+          last_push_status,
+          last_pull_status,
+          last_sync_error,
+          last_sync_error_at,
+          retry_count,
+          next_retry_at,
+          pull_retry_count,
+          next_pull_retry_at,
+          updated_at
         ]
       properties:
         last_commit_at:
@@ -1458,6 +1528,12 @@ components:
         retry_count:
           type: integer
         next_retry_at:
+          type: integer
+          format: int64
+          nullable: true
+        pull_retry_count:
+          type: integer
+        next_pull_retry_at:
           type: integer
           format: int64
           nullable: true
@@ -1658,6 +1734,21 @@ components:
             next_action:
               type: string
               nullable: true
+    ProjectGitSyncStatusResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, sync]
+          properties:
+            project_id:
+              type: string
+            sync:
+              $ref: "#/components/schemas/ProjectSync"
     ProjectDeleteResponse:
       type: object
       required: [ok, data]
@@ -2276,6 +2367,27 @@ components:
           type: string
         body:
           type: string
+    RevisionReference:
+      type: string
+      minLength: 8
+      maxLength: 40
+      pattern: "^[0-9A-Fa-f]{8,40}$"
+      description: Full Git commit object ID or a unique leading commit-ID prefix. Successful responses use the canonical full lowercase object ID.
+    CardHistorySnapshotResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id, snapshot]
+          properties:
+            card_id:
+              type: string
+            snapshot:
+              $ref: "#/components/schemas/CardHistoryVersion"
     CardHistoryDiffLine:
       type: object
       required: [origin, text, old_line, new_line]
@@ -2318,6 +2430,34 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/CardHistoryComparisonData"
+    CardHistoryRestoreResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id, restored_from_oid, result_oid, title, updated_at, deleted_at]
+          properties:
+            card_id:
+              type: string
+            restored_from_oid:
+              type: string
+              description: Canonical full commit object ID of the selected historical snapshot.
+            result_oid:
+              type: string
+              description: Canonical full commit object ID created by the restoration.
+            title:
+              type: string
+            updated_at:
+              type: integer
+              format: int64
+            deleted_at:
+              type: integer
+              format: int64
+              nullable: true
 paths:
   /ping:
     get:
@@ -2680,6 +2820,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/tags:
+    get:
+      summary: List project tags with live-card counts
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project tags ordered by descending card count, then ascending tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectTagListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/history:
     get:
       summary: List project activity history
@@ -2808,7 +2982,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/history/cards/{card_id}/compare:
     get:
-      summary: Compare two saved versions of a card
+      summary: Compare saved card versions or the change introduced by one revision
+      description: >-
+        In since mode, compares the explicitly selected from and to snapshots. In change mode,
+        compares the first parent of to with to; a root commit is compared with a previously
+        nonexistent card. Merge commits use only their first parent, not a combined multi-parent
+        diff.
       parameters:
         - in: path
           name: project_id
@@ -2823,17 +3002,19 @@ paths:
         - in: query
           name: from
           required: false
-          description: Required for since mode; omit in change mode when the event created the card
+          description: Required and used in since mode; change mode derives its base from to.
           schema:
-            type: string
+            $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: to
           required: true
+          description: The ending revision, or the revision whose introduced change is requested.
           schema:
-            type: string
+            $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: mode
           required: false
+          description: Since compares two explicit snapshots; change compares to with its first parent.
           schema:
             type: string
             enum: [since, change]
@@ -2852,13 +3033,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Project not found
+          description: Project or revision not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: The encrypted project key is unavailable on this device
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
           content:
             application/json:
               schema:
@@ -2871,6 +3052,126 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Project history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}/snapshot:
+    get:
+      summary: Read a card snapshot at a selected revision
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: oid
+          required: true
+          schema:
+            $ref: "#/components/schemas/RevisionReference"
+      responses:
+        "200":
+          description: The card snapshot, including an explicit absent state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistorySnapshotResponse"
+        "400":
+          description: Missing revision reference or invalid card identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or revision not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded snapshot response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The historical snapshot is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}/restore:
+    post:
+      summary: Restore a card to a saved snapshot
+      description: Restores the complete card snapshot at the selected commit and records the result as a new commit without rewriting history.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: oid
+          required: true
+          description: Revision containing the snapshot to restore.
+          schema:
+            $ref: "#/components/schemas/RevisionReference"
+      responses:
+        "200":
+          description: Card snapshot restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistoryRestoreResponse"
+        "400":
+          description: Missing revision reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project, card, or revision not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The historical snapshot cannot be read or restored
           content:
             application/json:
               schema:
@@ -2951,6 +3252,40 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/sync-status:
+    get:
+      summary: Get persisted project Git sync status
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current persisted sync state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitSyncStatusResponse"
+        "400":
+          description: Sync status is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
           content:
             application/json:
               schema:
@@ -3275,6 +3610,12 @@ paths:
           schema:
             type: string
         - in: query
+          name: tag
+          required: false
+          schema:
+            type: string
+          description: Exact normalized tag to match, without the leading #. When supplied, returns only live cards carrying that tag.
+        - in: query
           name: view
           required: false
           schema:
@@ -3502,6 +3843,97 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Invalid move (cycle/cross-project/invalid target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/tags:
+    post:
+      summary: Add a tag to a live card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardTagMutationRequest"
+      responses:
+        "200":
+          description: Added or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardTagMutationResponse"
+        "400":
+          description: Missing fields or invalid tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card belongs to a different project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Remove a tag from a live card's editable trailing tag line
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardTagMutationRequest"
+      responses:
+        "200":
+          description: Removed, not present, or present only outside the editable tag line
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardTagMutationResponse"
+        "400":
+          description: Missing fields or invalid tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card belongs to a different project
           content:
             application/json:
               schema:

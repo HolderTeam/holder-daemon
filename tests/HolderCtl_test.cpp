@@ -2,17 +2,24 @@
 #include "TestCommand.h"
 
 #include "git/GitOps.h"
+#include "git/GitRepo.h"
 #include "model/Resource.h"
 #include "resource/ResourceRepo.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <git2.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <utility>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -52,6 +59,58 @@ std::string created_resource_id_from_output(const std::string& output) {
   }
   REQUIRE_FALSE(id.empty());
   return id;
+}
+
+std::string history_collision_commit_content(const std::string& tree_oid, std::uint32_t nonce) {
+  return "tree " + tree_oid +
+         "\n"
+         "author Holder <holder@example.invalid> 1 +0000\n"
+         "committer Holder <holder@example.invalid> 1 +0000\n\n"
+         "holderctl history collision " +
+         std::to_string(nonce) + "\n";
+}
+
+std::string write_holderctl_ambiguous_revision_prefix(
+    const std::filesystem::path& root,
+    const std::string& tree_oid
+) {
+  git_repository* raw = nullptr;
+  REQUIRE(git_repository_open(&raw, root.string().c_str()) == 0);
+  git_odb* odb = nullptr;
+  REQUIRE(git_repository_odb(&odb, raw) == 0);
+
+  std::unordered_map<std::uint32_t, std::uint32_t> seen;
+  std::optional<std::pair<std::uint32_t, std::uint32_t>> collision;
+  for (std::uint32_t nonce = 0; nonce < 500'000 && !collision.has_value(); ++nonce) {
+    const auto content = history_collision_commit_content(tree_oid, nonce);
+    git_oid oid{};
+    if (git_odb_hash(&oid, content.data(), content.size(), GIT_OBJECT_COMMIT) != 0) {
+      FAIL("git_odb_hash failed while constructing ambiguous holderctl revision prefixes");
+    }
+    const auto prefix = (static_cast<std::uint32_t>(oid.id[0]) << 24U) |
+                        (static_cast<std::uint32_t>(oid.id[1]) << 16U) |
+                        (static_cast<std::uint32_t>(oid.id[2]) << 8U) |
+                        static_cast<std::uint32_t>(oid.id[3]);
+    const auto [position, inserted] = seen.emplace(prefix, nonce);
+    if (!inserted) collision = std::pair{position->second, nonce};
+  }
+  REQUIRE(collision.has_value());
+
+  std::string prefix;
+  for (const auto nonce : {collision->first, collision->second}) {
+    const auto content = history_collision_commit_content(tree_oid, nonce);
+    git_oid oid{};
+    REQUIRE(git_odb_write(&oid, odb, content.data(), content.size(), GIT_OBJECT_COMMIT) == 0);
+    const std::string oid_text = git_oid_tostr_s(&oid);
+    if (prefix.empty())
+      prefix = oid_text.substr(0, 8);
+    else
+      REQUIRE(oid_text.substr(0, 8) == prefix);
+  }
+
+  git_odb_free(odb);
+  git_repository_free(raw);
+  return prefix;
 }
 
 void write_server_info(
@@ -765,6 +824,13 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " cards --parent '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards --recent --parent card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards extra >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag add one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag change one work >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag add one work --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card --bad card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
@@ -1174,6 +1240,486 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
       "wrongtoken"
   );
   REQUIRE(run_command(bin + " cards >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "tags-root";
+  const auto other_root = xdg_root / "tags-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "tags-project", project_root.string());
+  holder::test::create_project(db, "other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  constexpr const char* first_id = "12345678-1111-4111-8111-111111111111";
+  constexpr const char* second_id = "12345678-2222-4222-8222-222222222222";
+  constexpr const char* prose_id = "87654321-3333-4333-8333-333333333333";
+  constexpr const char* other_id = "99999999-4444-4444-8444-444444444444";
+  holder::test::create_card_fixture(
+      card_store,
+      first_id,
+      "tags-project",
+      "First Tagged",
+      "First body\n\n#Android",
+      10
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      second_id,
+      "tags-project",
+      "Second Tagged",
+      "Second body\n\n#android #sync",
+      20
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      prose_id,
+      "tags-project",
+      "Prose Tagged",
+      "Keep #Prose in this sentence.",
+      30
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      other_id,
+      "other-project",
+      "Other Tagged",
+      "Other body\n\n#android",
+      40
+  );
+
+  const std::string token = "tagstoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use tags-project >/dev/null") == 0);
+
+  const auto list_path = xdg_root / "tags.out";
+  REQUIRE(run_command(bin + " tags > \"" + list_path.string() + "\"") == 0);
+  REQUIRE(read_text(list_path) == "TAG\tCARDS\nandroid\t2\nprose\t1\nsync\t1\n");
+
+  const auto cards_path = xdg_root / "tagged-cards.out";
+  REQUIRE(run_command(bin + " tags Android > \"" + cards_path.string() + "\"") == 0);
+  REQUIRE(
+      read_text(cards_path) ==
+      "CARD_ID\tTITLE\n12345678-2\tSecond Tagged\n12345678-1\tFirst Tagged\n"
+  );
+  REQUIRE(read_text(cards_path).find(other_id) == std::string::npos);
+
+  const auto cards_json_path = xdg_root / "tagged-cards.json";
+  REQUIRE(
+      run_command(bin + " tags android --json > \"" + cards_json_path.string() + "\"") == 0
+  );
+  const auto cards_json = nlohmann::json::parse(read_text(cards_json_path));
+  REQUIRE(cards_json["ok"] == true);
+  REQUIRE(cards_json["data"].size() == 2);
+  REQUIRE(cards_json.dump().find(first_id) != std::string::npos);
+  REQUIRE(cards_json.dump().find(second_id) != std::string::npos);
+  REQUIRE(cards_json.dump().find(other_id) == std::string::npos);
+
+  const auto tags_json_path = xdg_root / "tags.json";
+  REQUIRE(run_command(bin + " tags --json > \"" + tags_json_path.string() + "\"") == 0);
+  const auto tags_json = nlohmann::json::parse(read_text(tags_json_path));
+  REQUIRE(tags_json["ok"] == true);
+  REQUIRE(tags_json["data"][0]["tag"] == "android");
+  REQUIRE(tags_json["data"][0]["card_count"] == 2);
+
+  const auto add_path = xdg_root / "tag-add.out";
+  REQUIRE(
+      run_command(bin + " tag add 'First Tagged' Work > \"" + add_path.string() + "\"") == 0
+  );
+  REQUIRE(read_text(add_path) == "Added tag #work to 12345678.\n");
+
+  const auto repeat_path = xdg_root / "tag-repeat.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 'First Tagged' WORK --json > \"" + repeat_path.string() + "\""
+      ) == 0
+  );
+  const auto repeated = nlohmann::json::parse(read_text(repeat_path));
+  REQUIRE(repeated["ok"] == true);
+  REQUIRE(repeated["data"]["card_id"] == first_id);
+  REQUIRE(repeated["data"]["tag"] == "work");
+  REQUIRE(repeated["data"]["outcome"] == "already_present");
+  REQUIRE(repeated["data"]["changed"] == false);
+
+  const auto remove_path = xdg_root / "tag-remove.json";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'First Tagged' work --json > \"" + remove_path.string() + "\""
+      ) == 0
+  );
+  const auto removed = nlohmann::json::parse(read_text(remove_path));
+  REQUIRE(removed["data"]["card_id"] == first_id);
+  REQUIRE(removed["data"]["outcome"] == "removed");
+  REQUIRE(removed["data"]["changed"] == true);
+
+  const auto missing_path = xdg_root / "tag-missing.out";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'First Tagged' work > \"" + missing_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(read_text(missing_path) == "Tag #work is not present on 12345678.\n");
+
+  const auto prose_path = xdg_root / "tag-prose.out";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'Prose Tagged' PROSE > \"" + prose_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(
+      read_text(prose_path) ==
+      "Tag #prose was not removed from 87654321: it appears outside the editable trailing tag "
+      "line; edit the card text directly.\n"
+  );
+  REQUIRE(
+      card_store.get_content(*card_store.get(prose_id)).value() ==
+      "Keep #Prose in this sentence."
+  );
+
+  const auto invalid_path = xdg_root / "tag-invalid.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 'First Tagged' 123invalid --json >/dev/null 2> \"" +
+          invalid_path.string() + "\""
+      ) == 1
+  );
+  const auto invalid = nlohmann::json::parse(read_text(invalid_path));
+  REQUIRE(invalid["ok"] == false);
+  REQUIRE(invalid["error"]["code"] == "invalid_tag");
+
+  const auto ambiguous_path = xdg_root / "tag-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 12345678 work --json >/dev/null 2> \"" +
+          ambiguous_path.string() + "\""
+      ) == 1
+  );
+  const auto ambiguous = nlohmann::json::parse(read_text(ambiguous_path));
+  REQUIRE(ambiguous["error"]["code"] == "card_reference_ambiguous");
+  REQUIRE(ambiguous.dump().find(first_id) != std::string::npos);
+  REQUIRE(ambiguous.dump().find(second_id) != std::string::npos);
+
+  REQUIRE(run_command(bin + " tag add 'Other Tagged' work >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl history exposes project and card revision workflows", "[holderctl][history]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "history-root";
+  const auto other_root = xdg_root / "history-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "history-project", project_root.string());
+  holder::test::create_project(db, "history-other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  constexpr const char* card_id = "12345678-1111-4111-8111-111111111111";
+  constexpr const char* ambiguous_one = "aaaaaaaa-1111-4111-8111-111111111111";
+  constexpr const char* ambiguous_two = "aaaaaaaa-2222-4222-8222-222222222222";
+  constexpr const char* other_card_id = "87654321-3333-4333-8333-333333333333";
+
+  holder::test::create_card_fixture(
+      card_store,
+      card_id,
+      "history-project",
+      "History Card",
+      "First saved body\n",
+      10
+  );
+  holder::git::GitRepo git;
+  git.open_existing(project_root);
+  const auto creation_oid = git.head_oid().value();
+  card_store.update_content(card_id, "Second saved body\n", std::nullopt, 20);
+  const auto edit_oid = git.head_oid().value();
+  git.write_file("notes/from-another-tool.txt", "Project history note\n");
+  git.stage_path("notes/from-another-tool.txt");
+  git.commit("External history note");
+
+  holder::test::create_card_fixture(
+      card_store,
+      ambiguous_one,
+      "history-project",
+      "Ambiguous History One",
+      "one\n",
+      21
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      ambiguous_two,
+      "history-project",
+      "Ambiguous History Two",
+      "two\n",
+      22
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      other_card_id,
+      "history-other-project",
+      "Other History Card",
+      "other\n",
+      23
+  );
+
+  git_repository* raw = nullptr;
+  REQUIRE(git_repository_open(&raw, project_root.string().c_str()) == 0);
+  git_oid head_oid{};
+  REQUIRE(git_reference_name_to_id(&head_oid, raw, "HEAD") == 0);
+  git_commit* head = nullptr;
+  REQUIRE(git_commit_lookup(&head, raw, &head_oid) == 0);
+  const std::string tree_oid = git_oid_tostr_s(git_commit_tree_id(head));
+  git_commit_free(head);
+  git_repository_free(raw);
+  const auto ambiguous_revision =
+      write_holderctl_ambiguous_revision_prefix(project_root, tree_oid);
+
+  const std::string token = "historytoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use history-project >/dev/null") == 0);
+
+  const auto help_path = xdg_root / "history-help.out";
+  REQUIRE(run_command(bin + " history --help > \"" + help_path.string() + "\"") == 0);
+  CHECK(read_text(help_path).find("holderctl history diff CARD REVISION [REVISION]") !=
+        std::string::npos);
+
+  const auto project_json_path = xdg_root / "project-history.json";
+  REQUIRE(
+      run_command(
+          bin + " history --limit 1 --json > \"" + project_json_path.string() + "\""
+      ) == 0
+  );
+  const auto project_page = nlohmann::json::parse(read_text(project_json_path));
+  REQUIRE(project_page["ok"] == true);
+  REQUIRE(project_page["data"]["activities"].size() == 1);
+  REQUIRE(project_page["data"]["activities"][0]["oid"].get<std::string>().size() == 40);
+  REQUIRE(project_page["data"]["next_cursor"].is_string());
+  const auto next_cursor = project_page["data"]["next_cursor"].get<std::string>();
+
+  const auto next_page_path = xdg_root / "project-history-next.json";
+  REQUIRE(
+      run_command(
+          bin + " history --limit 1 --cursor " + next_cursor + " --json > \"" +
+          next_page_path.string() + "\""
+      ) == 0
+  );
+  const auto next_page = nlohmann::json::parse(read_text(next_page_path));
+  REQUIRE(next_page["data"]["activities"].size() == 1);
+  CHECK(next_page["data"]["activities"][0]["oid"] !=
+        project_page["data"]["activities"][0]["oid"]);
+
+  const auto filtered_path = xdg_root / "project-history-filtered.out";
+  REQUIRE(
+      run_command(
+          bin + " history --kind unknown > \"" + filtered_path.string() + "\""
+      ) == 0
+  );
+  const auto filtered = read_text(filtered_path);
+  CHECK(filtered.find("REVISION\tAUTHOR\tCOMMITTED\tKINDS\tMESSAGE\n") == 0);
+  CHECK(filtered.find("unknown\tExternal history note") != std::string::npos);
+
+  const auto card_list_path = xdg_root / "card-history.out";
+  REQUIRE(
+      run_command(
+          bin + " history 'History Card' --limit 1 > \"" + card_list_path.string() + "\""
+      ) == 0
+  );
+  const auto card_list = read_text(card_list_path);
+  CHECK(card_list.find("REVISION\tSAVES\tKIND\tUPDATED\tSUMMARY\n") == 0);
+  CHECK(card_list.find(edit_oid.substr(0, 8)) != std::string::npos);
+  CHECK(card_list.find("Next cursor: ") != std::string::npos);
+
+  const auto show_path = xdg_root / "history-show.out";
+  REQUIRE(
+      run_command(
+          bin + " history show 'History Card' " + creation_oid.substr(0, 8) + " > \"" +
+          show_path.string() + "\""
+      ) == 0
+  );
+  const auto shown = read_text(show_path);
+  CHECK(shown.find("Revision: " + creation_oid + "\n") == 0);
+  CHECK(shown.find("Title: History Card\n\nFirst saved body\n") != std::string::npos);
+
+  const auto show_json_path = xdg_root / "history-show.json";
+  REQUIRE(
+      run_command(
+          bin + " history show 'History Card' " + edit_oid.substr(0, 8) + " --json > \"" +
+          show_json_path.string() + "\""
+      ) == 0
+  );
+  const auto shown_json = nlohmann::json::parse(read_text(show_json_path));
+  CHECK(shown_json["data"]["card_id"] == card_id);
+  CHECK(shown_json["data"]["snapshot"]["oid"] == edit_oid);
+  CHECK(shown_json["data"]["snapshot"]["body"] == "Second saved body\n");
+
+  const auto change_path = xdg_root / "history-change.out";
+  REQUIRE(
+      run_command(
+          bin + " history diff 'History Card' " + edit_oid.substr(0, 8) + " > \"" +
+          change_path.string() + "\""
+      ) == 0
+  );
+  const auto change_text = read_text(change_path);
+  CHECK(change_text.find("From: " + creation_oid + "\nTo: " + edit_oid + "\n") !=
+        std::string::npos);
+  CHECK(change_text.find("-First saved body") != std::string::npos);
+  CHECK(change_text.find("+Second saved body") != std::string::npos);
+  CHECK(change_text.find("+# History Card") == std::string::npos);
+
+  const auto since_path = xdg_root / "history-since.json";
+  REQUIRE(
+      run_command(
+          bin + " history diff 'History Card' " + creation_oid + " " +
+          edit_oid.substr(0, 8) + " --json > \"" + since_path.string() + "\""
+      ) == 0
+  );
+  const auto since = nlohmann::json::parse(read_text(since_path));
+  CHECK(since["data"]["from"]["oid"] == creation_oid);
+  CHECK(since["data"]["to"]["oid"] == edit_oid);
+
+  const auto missing_path = xdg_root / "history-missing.json";
+  REQUIRE(
+      run_command(
+          bin + " history show 'History Card' 00000000 --json >/dev/null 2> \"" +
+          missing_path.string() + "\""
+      ) == 1
+  );
+  CHECK(nlohmann::json::parse(read_text(missing_path))["error"]["code"] ==
+        "revision_not_found");
+
+  const auto revision_ambiguous_path = xdg_root / "history-revision-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " history diff 'History Card' " + ambiguous_revision +
+          " --json >/dev/null 2> \"" + revision_ambiguous_path.string() + "\""
+      ) == 1
+  );
+  CHECK(nlohmann::json::parse(read_text(revision_ambiguous_path))["error"]["code"] ==
+        "revision_ambiguous");
+
+  const auto card_ambiguous_path = xdg_root / "history-card-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " history aaaaaaaa --json >/dev/null 2> \"" +
+          card_ambiguous_path.string() + "\""
+      ) == 1
+  );
+  const auto card_ambiguous = nlohmann::json::parse(read_text(card_ambiguous_path));
+  CHECK(card_ambiguous["error"]["code"] == "card_reference_ambiguous");
+  CHECK(card_ambiguous.dump().find(ambiguous_one) != std::string::npos);
+  CHECK(card_ambiguous.dump().find(ambiguous_two) != std::string::npos);
+  CHECK(run_command(bin + " history 'Other History Card' >/dev/null 2>/dev/null") == 1);
+
+  card_store.trash(card_id, 30);
+  const auto trashed_history_path = xdg_root / "trashed-card-history.json";
+  REQUIRE(
+      run_command(
+          bin + " history 'History Card' --json > \"" + trashed_history_path.string() + "\""
+      ) == 0
+  );
+  CHECK(nlohmann::json::parse(read_text(trashed_history_path))["data"]["entries"].size() >= 3);
+
+  const auto restore_missing_path = xdg_root / "history-restore-missing.json";
+  REQUIRE(
+      run_command(
+          bin + " history restore 'History Card' 00000000 --json >/dev/null 2> \"" +
+          restore_missing_path.string() + "\""
+      ) == 1
+  );
+  CHECK(nlohmann::json::parse(read_text(restore_missing_path))["error"]["code"] ==
+        "revision_not_found");
+  REQUIRE(card_store.get(card_id).has_value());
+  CHECK(card_store.get(card_id)->deleted_at.has_value());
+
+  const auto restore_json_path = xdg_root / "history-restore.json";
+  REQUIRE(
+      run_command(
+          bin + " history restore 'History Card' " + creation_oid.substr(0, 8) +
+          " --json > \"" + restore_json_path.string() + "\""
+      ) == 0
+  );
+  const auto restored = nlohmann::json::parse(read_text(restore_json_path));
+  CHECK(restored["data"]["card_id"] == card_id);
+  CHECK(restored["data"]["restored_from_oid"] == creation_oid);
+  CHECK(restored["data"]["result_oid"].get<std::string>().size() == 40);
+  CHECK(restored["data"]["deleted_at"].is_null());
+  REQUIRE(card_store.get(card_id).has_value());
+  CHECK(card_store.get_content(*card_store.get(card_id)) == "First saved body\n");
+
+  const auto restore_human_path = xdg_root / "history-restore.out";
+  REQUIRE(
+      run_command(
+          bin + " history restore 'History Card' " + edit_oid.substr(0, 8) + " > \"" +
+          restore_human_path.string() + "\""
+      ) == 0
+  );
+  const auto restore_human = read_text(restore_human_path);
+  CHECK(restore_human.find("Restored card 12345678: History Card\n") == 0);
+  CHECK(restore_human.find("Source revision: " + edit_oid + "\n") != std::string::npos);
+  CHECK(restore_human.find("Result revision: ") != std::string::npos);
+  CHECK(restore_human.find("State: live\n") != std::string::npos);
 
   server.stop();
   server_thread.join();
