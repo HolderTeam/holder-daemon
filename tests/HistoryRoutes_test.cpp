@@ -209,6 +209,22 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
   CHECK(comparison["to"]["oid"] == head_oid);
 
   query.clear();
+  query["to"] = uppercase_hex(head_oid.substr(0, 8));
+  query["mode"] = "change";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  REQUIRE(res.result() == http::status::ok);
+  const auto edit = nlohmann::json::parse(res.body())["data"];
+  CHECK(edit["from"]["exists"] == true);
+  CHECK(edit["from"]["body"] == "Old body\n");
+  CHECK(edit["from"]["oid"] == *old_oid);
+  CHECK(edit["to"]["body"] == "New body\n");
+  CHECK(edit["to"]["oid"] == head_oid);
+  CHECK(std::none_of(edit["lines"].begin(), edit["lines"].end(), [](const auto& line) {
+    return line["origin"] == "+" && line["text"] == "# History card";
+  }));
+
+  query.clear();
   query["to"] = old_oid->substr(0, 8);
   query["mode"] = "change";
   res = {};
@@ -226,6 +242,12 @@ TEST_CASE("HistoryRoutes lists and compares card versions", "[http][history]") {
 
   query["mode"] = "since";
   query["from"] = "not-an-oid";
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
+  CHECK(res.result() == http::status::not_found);
+  CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "revision_not_found");
+
+  query = {{"mode", "change"}, {"to", "not-an-oid"}};
   res = {};
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
   CHECK(res.result() == http::status::not_found);
@@ -458,6 +480,12 @@ TEST_CASE(
   CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "revision_ambiguous");
 
   query = {{"from", first_oid}, {"to", first_oid.substr(0, 8)}};
+  res = {};
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", get, res, db, param));
+  REQUIRE(res.result() == http::status::conflict);
+  CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "revision_ambiguous");
+
+  query = {{"mode", "change"}, {"to", first_oid.substr(0, 8)}};
   res = {};
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", get, res, db, param));
   REQUIRE(res.result() == http::status::conflict);

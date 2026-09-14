@@ -94,6 +94,7 @@ TEST_CASE(
   const auto compare =
       document["paths"]["/projects/{project_id}/history/cards/{card_id}/compare"]["get"];
   REQUIRE(compare.IsDefined());
+  CHECK(compare["description"].as<std::string>().find("first parent") != std::string::npos);
   for (const auto& name : {"from", "to"}) {
     const auto parameter = parameter_named(compare, name);
     REQUIRE(parameter.IsDefined());
@@ -101,6 +102,14 @@ TEST_CASE(
         parameter["schema"]["$ref"].as<std::string>() == "#/components/schemas/RevisionReference"
     );
   }
+  CHECK(
+      parameter_named(compare, "from")["description"].as<std::string>().find("since mode") !=
+      std::string::npos
+  );
+  CHECK(
+      parameter_named(compare, "mode")["description"].as<std::string>().find("first parent") !=
+      std::string::npos
+  );
   for (const auto& status : {"400", "404", "409", "413", "503"}) {
     require_json_response_ref(compare, status, "ErrorResponse");
   }

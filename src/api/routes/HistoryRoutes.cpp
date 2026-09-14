@@ -169,6 +169,33 @@ bool valid_oid(const std::string& value) {
          });
 }
 
+bool map_revision_reference_result(
+    const holder::git::RevisionReferenceResult& result,
+    const std::string& reference,
+    const std::string& parameter_name,
+    http::response<http::string_body>& res
+) {
+  switch (result.status) {
+  case holder::git::RevisionReferenceStatus::Resolved:
+    return true;
+  case holder::git::RevisionReferenceStatus::Ambiguous:
+    res = support::error_response(
+        http::status::conflict,
+        "revision_ambiguous",
+        parameter_name + " revision reference is ambiguous: " + reference
+    );
+    return false;
+  case holder::git::RevisionReferenceStatus::NotFound:
+    res = support::error_response(
+        http::status::not_found,
+        "revision_not_found",
+        parameter_name + " revision was not found: " + reference
+    );
+    return false;
+  }
+  throw std::runtime_error("unknown revision reference status"); // LCOV_EXCL_LINE
+}
+
 bool resolve_revision_reference(
     const holder::model::Project& project,
     const std::string& reference,
@@ -188,26 +215,9 @@ bool resolve_revision_reference(
   holder::git::GitRepo repo;
   repo.open_existing(project.root_path);
   const auto result = holder::git::RevisionReferenceResolver(repo).resolve(reference);
-  switch (result.status) {
-  case holder::git::RevisionReferenceStatus::Resolved:
-    resolved_oid = result.oid.value();
-    return true;
-  case holder::git::RevisionReferenceStatus::Ambiguous:
-    res = support::error_response(
-        http::status::conflict,
-        "revision_ambiguous",
-        parameter_name + " revision reference is ambiguous: " + reference
-    );
-    return false;
-  case holder::git::RevisionReferenceStatus::NotFound:
-    res = support::error_response(
-        http::status::not_found,
-        "revision_not_found",
-        parameter_name + " revision was not found: " + reference
-    );
-    return false;
-  }
-  throw std::runtime_error("unknown revision reference status"); // LCOV_EXCL_LINE
+  if (!map_revision_reference_result(result, reference, parameter_name, res)) return false;
+  resolved_oid = result.oid.value();
+  return true;
 }
 
 bool exceeds_history_response_limit(const nlohmann::json& payload) {
@@ -408,18 +418,26 @@ bool handle_history_routes(
       );
       return true;
     }
-    std::string from_oid;
-    std::string to_oid;
-    if (!from_text.empty() &&
-        !resolve_revision_reference(*project, from_text, "from", res, from_oid))
-      return true;
-    if (!resolve_revision_reference(*project, to_text, "to", res, to_oid)) return true;
-    const auto comparison = history.compare(
-        *project,
-        parsed->card_id,
-        from_text.empty() ? std::optional<std::string>{} : std::optional<std::string>{from_oid},
-        std::optional<std::string>{to_oid}
-    );
+    holder::history::CardHistoryComparison comparison;
+    if (mode == "change") {
+      auto change = history.compare_change(*project, parsed->card_id, to_text);
+      if (!map_revision_reference_result(change.revision, to_text, "to", res)) return true;
+      if (!change.comparison.has_value()) {
+        throw std::runtime_error("resolved history change is missing its comparison");
+      }
+      comparison = std::move(*change.comparison);
+    } else {
+      std::string from_oid;
+      std::string to_oid;
+      if (!resolve_revision_reference(*project, from_text, "from", res, from_oid)) return true;
+      if (!resolve_revision_reference(*project, to_text, "to", res, to_oid)) return true;
+      comparison = history.compare(
+          *project,
+          parsed->card_id,
+          std::optional<std::string>{from_oid},
+          std::optional<std::string>{to_oid}
+      );
+    }
     nlohmann::json lines = nlohmann::json::array();
     for (const auto& line : comparison.lines) {
       lines.push_back({

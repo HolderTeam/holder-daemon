@@ -2982,7 +2982,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/history/cards/{card_id}/compare:
     get:
-      summary: Compare two saved versions of a card
+      summary: Compare saved card versions or the change introduced by one revision
+      description: >-
+        In since mode, compares the explicitly selected from and to snapshots. In change mode,
+        compares the first parent of to with to; a root commit is compared with a previously
+        nonexistent card. Merge commits use only their first parent, not a combined multi-parent
+        diff.
       parameters:
         - in: path
           name: project_id
@@ -2997,17 +3002,19 @@ paths:
         - in: query
           name: from
           required: false
-          description: Required for since mode; optional in change mode.
+          description: Required and used in since mode; change mode derives its base from to.
           schema:
             $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: to
           required: true
+          description: The ending revision, or the revision whose introduced change is requested.
           schema:
             $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: mode
           required: false
+          description: Since compares two explicit snapshots; change compares to with its first parent.
           schema:
             type: string
             enum: [since, change]
