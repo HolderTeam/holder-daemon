@@ -5,6 +5,7 @@
 
 #include "card/CardStore.h"
 #include "git/GitRepo.h"
+#include "git/RepoLocks.h"
 #include "git/RevisionReferenceResolver.h"
 #include "history/CardHistory.h"
 #include "history/ProjectHistory.h"
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -249,6 +251,8 @@ bool handle_history_routes(
         );
         return true;
       }
+      const auto repo_mutex = holder::git::repo_mutex_for(project->root_path);
+      const std::lock_guard<std::recursive_mutex> repo_guard(*repo_mutex);
       std::string oid;
       if (!resolve_revision_reference(*project, param_get("oid"), "oid", res, oid)) return true;
       const auto card = card_store->get(parsed->card_id);
@@ -399,7 +403,8 @@ bool handle_history_routes(
       res = support::error_response(
           http::status::bad_request,
           "bad_request",
-          mode == "since" ? "from and to commit OIDs are required." : "to commit OID is required."
+          mode == "since" ? "from and to revision references are required."
+                          : "to revision reference is required."
       );
       return true;
     }

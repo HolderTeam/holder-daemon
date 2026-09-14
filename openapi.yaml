@@ -3140,7 +3140,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/CardHistoryRestoreResponse"
         "400":
-          description: Invalid or missing commit object ID
+          description: Missing revision reference
           content:
             application/json:
               schema:
