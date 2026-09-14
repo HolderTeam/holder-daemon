@@ -780,6 +780,42 @@ components:
           description: Tags ordered by descending card count, then ascending tag.
           items:
             $ref: "#/components/schemas/ProjectTag"
+    CardTagMutationRequest:
+      type: object
+      required: [project_id, tag]
+      properties:
+        project_id:
+          type: string
+          minLength: 1
+          description: Project that must own the live card.
+        tag:
+          type: string
+          minLength: 1
+          description: Tag without the leading #. Mutation normalizes valid tags to lowercase.
+    CardTagMutationResult:
+      type: object
+      required: [card_id, tag, outcome, changed]
+      properties:
+        card_id:
+          type: string
+        tag:
+          type: string
+          description: Normalized tag without the leading #.
+        outcome:
+          type: string
+          enum: [added, already_present, removed, not_present, present_outside_editable_tag_line]
+        changed:
+          type: boolean
+          description: True only when card content was changed.
+    CardTagMutationResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/CardTagMutationResult"
     CardPatchResponse:
       type: object
       required: [ok, data]
@@ -3703,6 +3739,97 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Invalid move (cycle/cross-project/invalid target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/tags:
+    post:
+      summary: Add a tag to a live card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardTagMutationRequest"
+      responses:
+        "200":
+          description: Added or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardTagMutationResponse"
+        "400":
+          description: Missing fields or invalid tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card belongs to a different project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Remove a tag from a live card's editable trailing tag line
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CardTagMutationRequest"
+      responses:
+        "200":
+          description: Removed, not present, or present only outside the editable tag line
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardTagMutationResponse"
+        "400":
+          description: Missing fields or invalid tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card belongs to a different project
           content:
             application/json:
               schema:

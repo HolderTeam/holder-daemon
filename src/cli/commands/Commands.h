@@ -29,6 +29,8 @@ int command_restore(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_new(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_append(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_resource(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_tags(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_tag(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_recovery_token(const holder::core::Paths& paths, int argc, char* argv[]);
 
 } // namespace holder::cli

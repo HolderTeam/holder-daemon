@@ -36,6 +36,8 @@ int main(int argc, char* argv[]) {
     if (command == "use") return holder::cli::command_use(paths, argc, argv);
     if (command == "current") return holder::cli::command_current(paths, argc);
     if (command == "cards") return holder::cli::command_cards(paths, argc, argv);
+    if (command == "tags") return holder::cli::command_tags(paths, argc, argv);
+    if (command == "tag") return holder::cli::command_tag(paths, argc, argv);
     if (command == "search") return holder::cli::command_search(paths, argc, argv);
     if (command == "card") return holder::cli::command_card(paths, argc, argv);
     if (command == "edit") return holder::cli::command_edit(paths, argc, argv);

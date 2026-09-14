@@ -765,6 +765,13 @@ TEST_CASE("holderctl parser errors do not require daemon metadata", "[holderctl]
   REQUIRE(run_command(bin + " cards --parent '' >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards --recent --parent card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " cards extra >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags one two >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags '' >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tags --bad >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag add one >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag change one work >/dev/null 2>/dev/null") == 1);
+  REQUIRE(run_command(bin + " tag add one work --bad >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card --bad card-id >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " card one two >/dev/null 2>/dev/null") == 1);
@@ -1174,6 +1181,199 @@ TEST_CASE("holderctl cards lists root and recent cards in the current project", 
       "wrongtoken"
   );
   REQUIRE(run_command(bin + " cards >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "tags-root";
+  const auto other_root = xdg_root / "tags-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "tags-project", project_root.string());
+  holder::test::create_project(db, "other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  constexpr const char* first_id = "12345678-1111-4111-8111-111111111111";
+  constexpr const char* second_id = "12345678-2222-4222-8222-222222222222";
+  constexpr const char* prose_id = "87654321-3333-4333-8333-333333333333";
+  constexpr const char* other_id = "99999999-4444-4444-8444-444444444444";
+  holder::test::create_card_fixture(
+      card_store,
+      first_id,
+      "tags-project",
+      "First Tagged",
+      "First body\n\n#Android",
+      10
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      second_id,
+      "tags-project",
+      "Second Tagged",
+      "Second body\n\n#android #sync",
+      20
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      prose_id,
+      "tags-project",
+      "Prose Tagged",
+      "Keep #Prose in this sentence.",
+      30
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      other_id,
+      "other-project",
+      "Other Tagged",
+      "Other body\n\n#android",
+      40
+  );
+
+  const std::string token = "tagstoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use tags-project >/dev/null") == 0);
+
+  const auto list_path = xdg_root / "tags.out";
+  REQUIRE(run_command(bin + " tags > \"" + list_path.string() + "\"") == 0);
+  REQUIRE(read_text(list_path) == "TAG\tCARDS\nandroid\t2\nprose\t1\nsync\t1\n");
+
+  const auto cards_path = xdg_root / "tagged-cards.out";
+  REQUIRE(run_command(bin + " tags Android > \"" + cards_path.string() + "\"") == 0);
+  REQUIRE(
+      read_text(cards_path) ==
+      "CARD_ID\tTITLE\n12345678-2\tSecond Tagged\n12345678-1\tFirst Tagged\n"
+  );
+  REQUIRE(read_text(cards_path).find(other_id) == std::string::npos);
+
+  const auto cards_json_path = xdg_root / "tagged-cards.json";
+  REQUIRE(
+      run_command(bin + " tags android --json > \"" + cards_json_path.string() + "\"") == 0
+  );
+  const auto cards_json = nlohmann::json::parse(read_text(cards_json_path));
+  REQUIRE(cards_json["ok"] == true);
+  REQUIRE(cards_json["data"].size() == 2);
+  REQUIRE(cards_json.dump().find(first_id) != std::string::npos);
+  REQUIRE(cards_json.dump().find(second_id) != std::string::npos);
+  REQUIRE(cards_json.dump().find(other_id) == std::string::npos);
+
+  const auto tags_json_path = xdg_root / "tags.json";
+  REQUIRE(run_command(bin + " tags --json > \"" + tags_json_path.string() + "\"") == 0);
+  const auto tags_json = nlohmann::json::parse(read_text(tags_json_path));
+  REQUIRE(tags_json["ok"] == true);
+  REQUIRE(tags_json["data"][0]["tag"] == "android");
+  REQUIRE(tags_json["data"][0]["card_count"] == 2);
+
+  const auto add_path = xdg_root / "tag-add.out";
+  REQUIRE(
+      run_command(bin + " tag add 'First Tagged' Work > \"" + add_path.string() + "\"") == 0
+  );
+  REQUIRE(read_text(add_path) == "Added tag #work to 12345678.\n");
+
+  const auto repeat_path = xdg_root / "tag-repeat.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 'First Tagged' WORK --json > \"" + repeat_path.string() + "\""
+      ) == 0
+  );
+  const auto repeated = nlohmann::json::parse(read_text(repeat_path));
+  REQUIRE(repeated["ok"] == true);
+  REQUIRE(repeated["data"]["card_id"] == first_id);
+  REQUIRE(repeated["data"]["tag"] == "work");
+  REQUIRE(repeated["data"]["outcome"] == "already_present");
+  REQUIRE(repeated["data"]["changed"] == false);
+
+  const auto remove_path = xdg_root / "tag-remove.json";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'First Tagged' work --json > \"" + remove_path.string() + "\""
+      ) == 0
+  );
+  const auto removed = nlohmann::json::parse(read_text(remove_path));
+  REQUIRE(removed["data"]["card_id"] == first_id);
+  REQUIRE(removed["data"]["outcome"] == "removed");
+  REQUIRE(removed["data"]["changed"] == true);
+
+  const auto missing_path = xdg_root / "tag-missing.out";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'First Tagged' work > \"" + missing_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(read_text(missing_path) == "Tag #work is not present on 12345678.\n");
+
+  const auto prose_path = xdg_root / "tag-prose.out";
+  REQUIRE(
+      run_command(
+          bin + " tag remove 'Prose Tagged' PROSE > \"" + prose_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(
+      read_text(prose_path) ==
+      "Tag #prose was not removed from 87654321: it appears outside the editable trailing tag "
+      "line; edit the card text directly.\n"
+  );
+  REQUIRE(
+      card_store.get_content(*card_store.get(prose_id)).value() ==
+      "Keep #Prose in this sentence."
+  );
+
+  const auto invalid_path = xdg_root / "tag-invalid.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 'First Tagged' 123invalid --json >/dev/null 2> \"" +
+          invalid_path.string() + "\""
+      ) == 1
+  );
+  const auto invalid = nlohmann::json::parse(read_text(invalid_path));
+  REQUIRE(invalid["ok"] == false);
+  REQUIRE(invalid["error"]["code"] == "invalid_tag");
+
+  const auto ambiguous_path = xdg_root / "tag-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " tag add 12345678 work --json >/dev/null 2> \"" +
+          ambiguous_path.string() + "\""
+      ) == 1
+  );
+  const auto ambiguous = nlohmann::json::parse(read_text(ambiguous_path));
+  REQUIRE(ambiguous["error"]["code"] == "card_reference_ambiguous");
+  REQUIRE(ambiguous.dump().find(first_id) != std::string::npos);
+  REQUIRE(ambiguous.dump().find(second_id) != std::string::npos);
+
+  REQUIRE(run_command(bin + " tag add 'Other Tagged' work >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();

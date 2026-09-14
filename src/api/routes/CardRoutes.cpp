@@ -1064,6 +1064,110 @@ bool handle_card_routes(
             res = support::error_response(http::status::bad_request, "bad_request", ex.what());
           }
         }
+      } else if (tail == "/tags") {
+        if (req.method() != http::verb::post && req.method() != http::verb::delete_) {
+          res = support::error_response(
+              http::status::method_not_allowed,
+              "method_not_allowed",
+              "Method not allowed."
+          );
+        } else {
+          try {
+            const auto body = nlohmann::json::parse(req.body());
+            if (!body.contains("project_id") || !body.contains("tag") ||
+                body.at("project_id").is_null() || body.at("tag").is_null()) {
+              res = support::error_response(
+                  http::status::bad_request,
+                  "bad_request",
+                  "project_id and tag are required."
+              );
+              return true;
+            }
+
+            const auto project_id = body.at("project_id").get<std::string>();
+            const auto tag = body.at("tag").get<std::string>();
+            if (project_id.empty()) {
+              res = support::error_response(
+                  http::status::bad_request,
+                  "bad_request",
+                  "project_id must not be empty."
+              );
+              return true;
+            }
+            const auto card_opt = card_store->get(card_id);
+            if (!card_opt.has_value() || card_opt->deleted_at.has_value()) {
+              res = support::error_response(
+                  http::status::not_found,
+                  "not_found",
+                  "Card not found."
+              );
+              return true;
+            }
+            if (card_opt->project_id != project_id) {
+              res = support::error_response(
+                  http::status::unprocessable_entity,
+                  "cross_project_tag_forbidden",
+                  "Card is in a different project."
+              );
+              return true;
+            }
+
+            std::string outcome;
+            bool changed = false;
+            if (req.method() == http::verb::post) {
+              switch (card_store->add_tag(card_id, tag, support::now_epoch_seconds())) {
+              case holder::card::AddTagResult::Added:
+                outcome = "added";
+                changed = true;
+                break;
+              case holder::card::AddTagResult::AlreadyPresent:
+                outcome = "already_present";
+                break;
+              case holder::card::AddTagResult::InvalidTag:
+                res = support::error_response(
+                    http::status::bad_request,
+                    "invalid_tag",
+                    "Invalid tag: " + tag + "."
+                );
+                return true;
+              }
+            } else {
+              switch (card_store->remove_tag(card_id, tag, support::now_epoch_seconds())) {
+              case holder::card::RemoveTagResult::Removed:
+                outcome = "removed";
+                changed = true;
+                break;
+              case holder::card::RemoveTagResult::NotPresent:
+                outcome = "not_present";
+                break;
+              case holder::card::RemoveTagResult::PresentOutsideEditableTagLine:
+                outcome = "present_outside_editable_tag_line";
+                break;
+              case holder::card::RemoveTagResult::InvalidTag:
+                res = support::error_response(
+                    http::status::bad_request,
+                    "invalid_tag",
+                    "Invalid tag: " + tag + "."
+                );
+                return true;
+              }
+            }
+
+            const nlohmann::json payload = {
+                {"ok", true},
+                {"data",
+                 {{"card_id", card_id},
+                  {"tag", holder::core::normalize_tag(tag)},
+                  {"outcome", outcome},
+                  {"changed", changed}}},
+            };
+            res = support::json_response(http::status::ok, payload);
+          } catch (const holder::privacy::PrivacyError& ex) {
+            res = privacy_error_response(ex); // LCOV_EXCL_LINE
+          } catch (const std::exception& ex) {
+            res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+          }
+        }
       } else if (tail == "/links") {
         try {
           const auto card_opt = card_store->get(card_id);
