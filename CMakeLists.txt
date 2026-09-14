@@ -435,6 +435,7 @@ add_executable(holderctl
   src/cli/commands/DaemonCommands.cpp
   src/cli/commands/Support.cpp
   src/cli/commands/card.cpp
+  src/cli/commands/history.cpp
   src/cli/commands/links.cpp
   src/cli/commands/project.cpp
   src/cli/commands/recovery.cpp

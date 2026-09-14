@@ -62,6 +62,7 @@ void print_usage(std::ostream& out) {
       << "  tag        Add or remove a tag from a live card\n"
       << "  search     Search cards in the current project\n"
       << "  card       Print a card by UUID, UUID prefix, or exact title\n"
+      << "  history    Inspect project or card history, compare, show, and restore revisions\n"
       << "  edit       Open $EDITOR for a card, then save changes\n"
       << "  links      List outgoing links from a card in the current project\n"
       << "  backlinks  List backlinks to a card in the current project\n"

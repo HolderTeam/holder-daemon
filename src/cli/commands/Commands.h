@@ -20,6 +20,7 @@ int command_current(const holder::core::Paths& paths, int argc);
 int command_cards(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_search(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]);
+int command_history(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_edit(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_links(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_backlinks(const holder::core::Paths& paths, int argc, char* argv[]);
