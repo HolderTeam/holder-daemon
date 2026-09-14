@@ -2367,6 +2367,27 @@ components:
           type: string
         body:
           type: string
+    RevisionReference:
+      type: string
+      minLength: 8
+      maxLength: 40
+      pattern: "^[0-9A-Fa-f]{8,40}$"
+      description: Full Git commit object ID or a unique leading commit-ID prefix. Successful responses use the canonical full lowercase object ID.
+    CardHistorySnapshotResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id, snapshot]
+          properties:
+            card_id:
+              type: string
+            snapshot:
+              $ref: "#/components/schemas/CardHistoryVersion"
     CardHistoryDiffLine:
       type: object
       required: [origin, text, old_line, new_line]
@@ -2418,10 +2439,25 @@ components:
           enum: [true]
         data:
           type: object
-          required: [card_id]
+          required: [card_id, restored_from_oid, result_oid, title, updated_at, deleted_at]
           properties:
             card_id:
               type: string
+            restored_from_oid:
+              type: string
+              description: Canonical full commit object ID of the selected historical snapshot.
+            result_oid:
+              type: string
+              description: Canonical full commit object ID created by the restoration.
+            title:
+              type: string
+            updated_at:
+              type: integer
+              format: int64
+            deleted_at:
+              type: integer
+              format: int64
+              nullable: true
 paths:
   /ping:
     get:
@@ -2961,14 +2997,14 @@ paths:
         - in: query
           name: from
           required: false
-          description: Required for since mode; omit in change mode when the event created the card
+          description: Required for since mode; optional in change mode.
           schema:
-            type: string
+            $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: to
           required: true
           schema:
-            type: string
+            $ref: "#/components/schemas/RevisionReference"
         - in: query
           name: mode
           required: false
@@ -2990,13 +3026,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Project not found
+          description: Project or revision not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: The encrypted project key is unavailable on this device
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
           content:
             application/json:
               schema:
@@ -3009,6 +3045,68 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Project history is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}/snapshot:
+    get:
+      summary: Read a card snapshot at a selected revision
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: oid
+          required: true
+          schema:
+            $ref: "#/components/schemas/RevisionReference"
+      responses:
+        "200":
+          description: The card snapshot, including an explicit absent state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistorySnapshotResponse"
+        "400":
+          description: Missing revision reference or invalid card identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or revision not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: The bounded snapshot response would exceed 2 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The historical snapshot is temporarily unavailable
           content:
             application/json:
               schema:
@@ -3031,10 +3129,9 @@ paths:
         - in: query
           name: oid
           required: true
-          description: Full Git commit object ID containing the snapshot to restore.
+          description: Revision containing the snapshot to restore.
           schema:
-            type: string
-            pattern: "^[0-9A-Fa-f]{40}$"
+            $ref: "#/components/schemas/RevisionReference"
       responses:
         "200":
           description: Card snapshot restored
@@ -3055,13 +3152,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
-          description: Project or card not found
+          description: Project, card, or revision not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: The encrypted project key is unavailable on this device
+          description: A revision reference is ambiguous or the encrypted project key is unavailable
           content:
             application/json:
               schema:

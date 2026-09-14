@@ -80,10 +80,48 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "OpenAPI contracts card-history snapshot restore",
-    "[openapi][holderctl-foundation][history]"
+    "OpenAPI contracts card-history revision references, snapshots, and restore",
+    "[openapi][holderctl-history][history]"
 ) {
   const auto document = load_openapi();
+  const auto schemas = document["components"]["schemas"];
+  const auto revision = schemas["RevisionReference"];
+  REQUIRE(revision.IsDefined());
+  CHECK(revision["minLength"].as<int>() == 8);
+  CHECK(revision["maxLength"].as<int>() == 40);
+  CHECK(revision["pattern"].as<std::string>() == "^[0-9A-Fa-f]{8,40}$");
+
+  const auto compare =
+      document["paths"]["/projects/{project_id}/history/cards/{card_id}/compare"]["get"];
+  REQUIRE(compare.IsDefined());
+  for (const auto& name : {"from", "to"}) {
+    const auto parameter = parameter_named(compare, name);
+    REQUIRE(parameter.IsDefined());
+    CHECK(
+        parameter["schema"]["$ref"].as<std::string>() == "#/components/schemas/RevisionReference"
+    );
+  }
+  for (const auto& status : {"400", "404", "409", "413", "503"}) {
+    require_json_response_ref(compare, status, "ErrorResponse");
+  }
+
+  const auto snapshot =
+      document["paths"]["/projects/{project_id}/history/cards/{card_id}/snapshot"]["get"];
+  REQUIRE(snapshot.IsDefined());
+  for (const auto& name : {"project_id", "card_id", "oid"}) {
+    const auto parameter = parameter_named(snapshot, name);
+    REQUIRE(parameter.IsDefined());
+    CHECK(parameter["required"].as<bool>());
+  }
+  CHECK(
+      parameter_named(snapshot, "oid")["schema"]["$ref"].as<std::string>() ==
+      "#/components/schemas/RevisionReference"
+  );
+  require_json_response_ref(snapshot, "200", "CardHistorySnapshotResponse");
+  for (const auto& status : {"400", "401", "404", "409", "413", "503"}) {
+    require_json_response_ref(snapshot, status, "ErrorResponse");
+  }
+
   const auto restore =
       document["paths"]["/projects/{project_id}/history/cards/{card_id}/restore"]["post"];
   REQUIRE(restore.IsDefined());
@@ -95,16 +133,33 @@ TEST_CASE(
   }
   const auto oid = parameter_named(restore, "oid");
   CHECK(oid["in"].as<std::string>() == "query");
-  CHECK(oid["schema"]["pattern"].as<std::string>() == "^[0-9A-Fa-f]{40}$");
+  CHECK(oid["schema"]["$ref"].as<std::string>() == "#/components/schemas/RevisionReference");
 
   require_json_response_ref(restore, "200", "CardHistoryRestoreResponse");
   for (const auto& status : {"400", "401", "404", "409", "503"}) {
     require_json_response_ref(restore, status, "ErrorResponse");
   }
 
-  const auto response = document["components"]["schemas"]["CardHistoryRestoreResponse"];
+  const auto response = schemas["CardHistoryRestoreResponse"];
   CHECK(required_properties(response) == std::vector<std::string>{"data", "ok"});
-  CHECK(required_properties(response["properties"]["data"]) == std::vector<std::string>{"card_id"});
+  CHECK(
+      required_properties(response["properties"]["data"]) ==
+      std::vector<std::string>{
+          "card_id",
+          "deleted_at",
+          "restored_from_oid",
+          "result_oid",
+          "title",
+          "updated_at"
+      }
+  );
+
+  const auto snapshot_response = schemas["CardHistorySnapshotResponse"];
+  CHECK(required_properties(snapshot_response) == std::vector<std::string>{"data", "ok"});
+  CHECK(
+      required_properties(snapshot_response["properties"]["data"]) ==
+      std::vector<std::string>{"card_id", "snapshot"}
+  );
 }
 
 TEST_CASE("OpenAPI contracts live-card tag mutations", "[openapi][holderctl-tags][tags]") {
