@@ -41,6 +41,9 @@ int main(int argc, char* argv[]) {
     if (command == "search") return holder::cli::command_search(paths, argc, argv);
     if (command == "card") return holder::cli::command_card(paths, argc, argv);
     if (command == "history") return holder::cli::command_history(paths, argc, argv);
+    if (command == "milestones") return holder::cli::command_milestones(paths, argc, argv);
+    if (command == "milestone") return holder::cli::command_milestone(paths, argc, argv);
+    if (command == "calendar") return holder::cli::command_calendar(paths, argc, argv);
     if (command == "edit") return holder::cli::command_edit(paths, argc, argv);
     if (command == "links") return holder::cli::command_links(paths, argc, argv);
     if (command == "backlinks") return holder::cli::command_backlinks(paths, argc, argv);

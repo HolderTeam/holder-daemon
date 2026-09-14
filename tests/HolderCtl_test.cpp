@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -27,6 +29,41 @@
 #endif
 
 namespace {
+
+class HolderCtlTimeZoneGuard {
+ public:
+  explicit HolderCtlTimeZoneGuard(const std::string& value) {
+    if (const char* current = std::getenv("TZ")) old_ = current;
+    set(value);
+  }
+
+  ~HolderCtlTimeZoneGuard() {
+    if (old_.has_value()) {
+      set(*old_);
+    } else {
+#ifdef _WIN32
+      _putenv_s("TZ", "");
+      _tzset();
+#else
+      unsetenv("TZ");
+      tzset();
+#endif
+    }
+  }
+
+ private:
+  static void set(const std::string& value) {
+#ifdef _WIN32
+    _putenv_s("TZ", value.c_str());
+    _tzset();
+#else
+    setenv("TZ", value.c_str(), 1);
+    tzset();
+#endif
+  }
+
+  std::optional<std::string> old_;
+};
 
 int run_command(const std::string& cmd) {
   return holder::test::run_system_command(cmd);
@@ -1433,6 +1470,260 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
   REQUIRE(ambiguous.dump().find(second_id) != std::string::npos);
 
   REQUIRE(run_command(bin + " tag add 'Other Tagged' work >/dev/null 2>/dev/null") == 1);
+
+  server.stop();
+  server_thread.join();
+}
+
+TEST_CASE(
+    "holderctl milestones and calendar expose the existing daemon API",
+    "[holderctl][milestones][calendar]"
+) {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  HolderCtlTimeZoneGuard timezone("UTC0");
+
+  const auto db_path = xdg_root / "holder.db";
+  auto db = holder::test::open_db_with_schema(db_path);
+  const auto project_root = xdg_root / "milestone-root";
+  const auto other_root = xdg_root / "milestone-other-root";
+  std::filesystem::create_directories(project_root);
+  std::filesystem::create_directories(other_root);
+  holder::test::create_project(db, "milestone-project", project_root.string());
+  holder::test::create_project(db, "other-project", other_root.string());
+
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore card_store(db, &fts);
+  constexpr const char* card_id = "aaaaaaaa-1111-4111-8111-111111111111";
+  constexpr const char* collision_id = "aaaaaaaa-3333-4333-8333-333333333333";
+  constexpr const char* trashed_id = "cccccccc-4444-4444-8444-444444444444";
+  constexpr const char* other_id = "bbbbbbbb-2222-4222-8222-222222222222";
+  holder::test::create_card_fixture(
+      card_store,
+      card_id,
+      "milestone-project",
+      "Release Card",
+      "Release notes",
+      1780275600
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      collision_id,
+      "milestone-project",
+      "Collision Release",
+      "Collision notes",
+      1
+  );
+  holder::test::create_card_fixture(
+      card_store,
+      trashed_id,
+      "milestone-project",
+      "Trashed Release",
+      "Trashed notes",
+      2
+  );
+  card_store.trash(trashed_id, 3);
+  holder::test::create_card_fixture(
+      card_store,
+      other_id,
+      "other-project",
+      "Other Release",
+      "Other notes",
+      1780275600
+  );
+
+  const std::string token = "milestonestoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available in test environment: ") + ex.what());
+  }
+
+  holder::core::SignalHandler signals;
+  std::thread server_thread([&server, &signals]() {
+    server.run(signals);
+  });
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  REQUIRE(run_command(bin + " use milestone-project >/dev/null") == 0);
+
+  const auto empty_path = xdg_root / "milestones-empty.out";
+  REQUIRE(run_command(bin + " milestones 'Release Card' > \"" + empty_path.string() + "\"") == 0);
+  REQUIRE(read_text(empty_path) == "No milestones.\n");
+
+  const auto all_day_path = xdg_root / "milestone-all-day.json";
+  REQUIRE(
+      run_command(
+          bin +
+          " milestone add 'Release Card' 2026-06-01 --end 2026-06-03 --kind release "
+          "--description 'Release train' --all-day --json > \"" +
+          all_day_path.string() + "\""
+      ) == 0
+  );
+  const auto all_day = nlohmann::json::parse(read_text(all_day_path));
+  REQUIRE(all_day["ok"] == true);
+  REQUIRE(all_day["data"]["card_id"] == card_id);
+  REQUIRE(all_day["data"]["start_at"] == 1780272000);
+  REQUIRE(all_day["data"]["end_at"] == 1780444800);
+  REQUIRE(all_day["data"]["all_day"] == true);
+  REQUIRE(all_day["data"]["kind"] == "release");
+  REQUIRE(all_day["data"]["description"] == "Release train");
+  const auto all_day_id = all_day["data"]["milestone_id"].get<std::string>();
+  REQUIRE(all_day_id.size() == 36);
+
+  const auto timed_path = xdg_root / "milestone-timed.out";
+  REQUIRE(
+      run_command(
+          bin +
+          " milestone add 'Release Card' 2026-06-02T12:30:00+02:30 "
+          "--end 2026-06-02T11:00:00Z --kind meeting > \"" +
+          timed_path.string() + "\""
+      ) == 0
+  );
+  const auto timed_output = read_text(timed_path);
+  REQUIRE(timed_output.find("2026-06-02T10:00:00+00:00") != std::string::npos);
+  REQUIRE(timed_output.find("2026-06-02T11:00:00+00:00") != std::string::npos);
+
+  const auto list_path = xdg_root / "milestones.json";
+  REQUIRE(
+      run_command(
+          bin + " milestones 'Release Card' --json > \"" + list_path.string() + "\""
+      ) == 0
+  );
+  const auto listed = nlohmann::json::parse(read_text(list_path));
+  REQUIRE(listed["data"].size() == 2);
+  REQUIRE(listed.dump().find(all_day_id) != std::string::npos);
+  const auto timed_id = listed["data"][1]["milestone_id"].get<std::string>();
+  REQUIRE(timed_id.size() == 36);
+
+  db.exec("UPDATE cards SET updated_at=1780398000 WHERE card_id="
+          "'aaaaaaaa-1111-4111-8111-111111111111';");
+  const auto calendar_path = xdg_root / "calendar.json";
+  REQUIRE(
+      run_command(
+          bin + " calendar --from 2026-06-01 --to 2026-06-03 --json > \"" + calendar_path.string() +
+          "\""
+      ) == 0
+  );
+  const auto calendar = nlohmann::json::parse(read_text(calendar_path));
+  REQUIRE(calendar["ok"] == true);
+  REQUIRE(calendar["data"]["project_id"] == "milestone-project");
+  REQUIRE(calendar["data"]["from"] == 1780272000);
+  REQUIRE(calendar["data"]["to"] == 1780531199);
+  REQUIRE(calendar["data"]["milestones"].size() == 2);
+  REQUIRE(calendar["data"]["created_cards"].size() == 1);
+  REQUIRE(calendar["data"]["updated_cards"].size() == 1);
+  REQUIRE(calendar.dump().find(card_id) != std::string::npos);
+  REQUIRE(calendar.dump().find(other_id) == std::string::npos);
+
+  const auto calendar_human_path = xdg_root / "calendar.out";
+  REQUIRE(
+      run_command(
+          bin + " calendar --from 2026-06-01 --to 2026-06-03 > \"" + calendar_human_path.string() +
+          "\""
+      ) == 0
+  );
+  const auto calendar_human = read_text(calendar_human_path);
+  REQUIRE(calendar_human.find("\tmilestone\t" + all_day_id + "\t") != std::string::npos);
+  REQUIRE(calendar_human.find("\tmilestone\t" + timed_id + "\t") != std::string::npos);
+  REQUIRE(calendar_human.find("\tcard-created\t-\t") != std::string::npos);
+  REQUIRE(calendar_human.find("\tcard-updated\t-\t") != std::string::npos);
+
+  const auto invalid_path = xdg_root / "milestone-invalid.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone add 'Release Card' 06/01/2026 --json >/dev/null 2> \"" +
+          invalid_path.string() + "\""
+      ) == 1
+  );
+  const auto invalid = nlohmann::json::parse(read_text(invalid_path));
+  REQUIRE(invalid["error"]["code"] == "invalid_milestone_time");
+
+  const auto naive_path = xdg_root / "milestone-naive.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone add 'Release Card' 2026-06-01T12:00:00 --json >/dev/null 2> \"" +
+          naive_path.string() + "\""
+      ) == 1
+  );
+  const auto naive = nlohmann::json::parse(read_text(naive_path));
+  REQUIRE(naive["error"]["code"] == "invalid_milestone_time");
+
+  const auto range_path = xdg_root / "calendar-invalid.json";
+  REQUIRE(
+      run_command(
+          bin + " calendar --from 2026-06-03 --to 2026-06-01 --json >/dev/null 2> \"" +
+          range_path.string() + "\""
+      ) == 1
+  );
+  const auto invalid_range = nlohmann::json::parse(read_text(range_path));
+  REQUIRE(invalid_range["error"]["code"] == "invalid_calendar_range");
+
+  const auto title_path = xdg_root / "milestone-title.err";
+  REQUIRE(
+      run_command(
+          bin + " milestone add 'Release Card' 2026-06-01 --title Wrong >/dev/null 2> \"" +
+          title_path.string() + "\""
+      ) == 1
+  );
+  REQUIRE(read_text(title_path).find("Unknown milestone option: --title") != std::string::npos);
+
+  const auto remove_path = xdg_root / "milestone-remove.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone remove 'Release Card' " + all_day_id + " --json > \"" +
+          remove_path.string() + "\""
+      ) == 0
+  );
+  const auto removed = nlohmann::json::parse(read_text(remove_path));
+  REQUIRE(removed["data"]["milestone_id"] == all_day_id);
+  REQUIRE(removed["data"]["removed"] == true);
+
+  const auto repeat_path = xdg_root / "milestone-remove-repeat.out";
+  REQUIRE(
+      run_command(
+          bin + " milestone remove 'Release Card' " + all_day_id + " > \"" + repeat_path.string() +
+          "\""
+      ) == 0
+  );
+  REQUIRE(read_text(repeat_path).find(all_day_id) != std::string::npos);
+  REQUIRE(read_text(repeat_path).find("was not present") != std::string::npos);
+
+  const auto ambiguous_path = xdg_root / "milestone-card-ambiguous.json";
+  REQUIRE(
+      run_command(
+          bin + " milestones aaaaaaaa --json >/dev/null 2> \"" + ambiguous_path.string() + "\""
+      ) == 1
+  );
+  const auto ambiguous = nlohmann::json::parse(read_text(ambiguous_path));
+  REQUIRE(ambiguous["error"]["code"] == "card_reference_ambiguous");
+  REQUIRE(ambiguous.dump().find(card_id) != std::string::npos);
+  REQUIRE(ambiguous.dump().find(collision_id) != std::string::npos);
+
+  const auto trashed_path = xdg_root / "milestone-card-trashed.json";
+  REQUIRE(
+      run_command(
+          bin + " milestones 'Trashed Release' --json >/dev/null 2> \"" +
+          trashed_path.string() + "\""
+      ) == 1
+  );
+  const auto trashed = nlohmann::json::parse(read_text(trashed_path));
+  REQUIRE(trashed["error"]["code"] == "card_reference_not_found");
+
+  REQUIRE(run_command(bin + " milestones 'Other Release' >/dev/null 2>/dev/null") == 1);
 
   server.stop();
   server_thread.join();

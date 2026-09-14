@@ -217,6 +217,75 @@ TEST_CASE("OpenAPI contracts live-card tag mutations", "[openapi][holderctl-tags
   CHECK(documented_outcomes == expected);
 }
 
+TEST_CASE(
+    "OpenAPI contracts milestones and inclusive project calendar ranges",
+    "[openapi][holderctl-milestones][milestones][calendar]"
+) {
+  const auto document = load_openapi();
+  const auto schemas = document["components"]["schemas"];
+  const auto milestone = schemas["Milestone"];
+  const auto create = schemas["MilestoneCreateRequest"];
+
+  REQUIRE(milestone.IsDefined());
+  CHECK(milestone["properties"]["milestone_id"]["format"].as<std::string>() == "uuid");
+  CHECK(
+      milestone["properties"]["milestone_id"]["description"].as<std::string>().find(
+          "never abbreviated"
+      ) != std::string::npos
+  );
+  CHECK(
+      milestone["properties"]["all_day"]["description"].as<std::string>().find("local calendar-date"
+      ) != std::string::npos
+  );
+  CHECK(required_properties(create) == std::vector<std::string>{"start_at"});
+  CHECK(create["properties"]["kind"].IsDefined());
+  CHECK(create["properties"]["description"].IsDefined());
+  CHECK_FALSE(create["properties"]["title"].IsDefined());
+  CHECK(
+      create["properties"]["end_at"]["description"].as<std::string>().find("Inclusive") !=
+      std::string::npos
+  );
+
+  const auto card_milestones = document["paths"]["/cards/{card_id}/milestones"];
+  REQUIRE(card_milestones["get"].IsDefined());
+  REQUIRE(card_milestones["post"].IsDefined());
+  require_json_response_ref(card_milestones["get"], "200", "MilestoneListResponse");
+  require_json_response_ref(card_milestones["post"], "201", "MilestoneResponse");
+  CHECK(
+      card_milestones["post"]["description"].as<std::string>().find("no independent title") !=
+      std::string::npos
+  );
+
+  const auto remove = document["paths"]["/cards/{card_id}/milestones/{milestone_id}"]["delete"];
+  REQUIRE(remove.IsDefined());
+  require_json_response_ref(remove, "200", "MilestoneRemoveResponse");
+  CHECK(
+      required_properties(schemas["MilestoneRemoveResult"]) ==
+      std::vector<std::string>{"card_id", "milestone_id", "removed"}
+  );
+
+  const auto calendar = document["paths"]["/calendar"]["get"];
+  REQUIRE(calendar.IsDefined());
+  CHECK(
+      calendar["description"].as<std::string>().find("both from and to are inclusive") !=
+      std::string::npos
+  );
+  for (const auto& name : {"from", "to"}) {
+    const auto parameter = parameter_named(calendar, name);
+    REQUIRE(parameter.IsDefined());
+    CHECK(parameter["required"].as<bool>());
+    CHECK(parameter["schema"]["type"].as<std::string>() == "integer");
+    CHECK(parameter["description"].as<std::string>().find("Inclusive") != std::string::npos);
+  }
+  require_json_response_ref(calendar, "200", "ProjectCalendarResponse");
+  const auto calendar_data = schemas["ProjectCalendarResponse"]["properties"]["data"];
+  CHECK(
+      required_properties(calendar_data) ==
+      std::vector<
+          std::string>{"created_cards", "from", "milestones", "project_id", "to", "updated_cards"}
+  );
+}
+
 TEST_CASE("OpenAPI contracts project Git sync status", "[openapi][holderctl-foundation][sync]") {
   const auto document = load_openapi();
   const auto schemas = document["components"]["schemas"];
