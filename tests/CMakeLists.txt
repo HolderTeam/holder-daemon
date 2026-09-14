@@ -90,6 +90,7 @@ add_executable(holder_daemon_tests
   CardReferenceRoutes_test.cpp
   CardRoutes_test.cpp
   HistoryRoutes_test.cpp
+  OpenApiExistingRoutesContract_test.cpp
   HttpLinks_test.cpp
   HttpSearch_test.cpp
   SearchRoutes_test.cpp

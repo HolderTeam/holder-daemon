@@ -757,6 +757,29 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CardListItem"
+    ProjectTag:
+      type: object
+      required: [tag, card_count]
+      properties:
+        tag:
+          type: string
+          description: Normalized tag without the leading #.
+        card_count:
+          type: integer
+          minimum: 1
+          description: Number of live cards in the project carrying this tag.
+    ProjectTagListResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: array
+          description: Tags ordered by descending card count, then ascending tag.
+          items:
+            $ref: "#/components/schemas/ProjectTag"
     CardPatchResponse:
       type: object
       required: [ok, data]
@@ -1421,9 +1444,20 @@ components:
       type: object
       required:
         [
+          last_commit_at,
+          last_push_at,
+          last_pull_at,
           uncommitted_changes_count,
           unpushed_commits_count,
-          retry_count
+          last_push_status,
+          last_pull_status,
+          last_sync_error,
+          last_sync_error_at,
+          retry_count,
+          next_retry_at,
+          pull_retry_count,
+          next_pull_retry_at,
+          updated_at
         ]
       properties:
         last_commit_at:
@@ -1458,6 +1492,12 @@ components:
         retry_count:
           type: integer
         next_retry_at:
+          type: integer
+          format: int64
+          nullable: true
+        pull_retry_count:
+          type: integer
+        next_pull_retry_at:
           type: integer
           format: int64
           nullable: true
@@ -1658,6 +1698,21 @@ components:
             next_action:
               type: string
               nullable: true
+    ProjectGitSyncStatusResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, sync]
+          properties:
+            project_id:
+              type: string
+            sync:
+              $ref: "#/components/schemas/ProjectSync"
     ProjectDeleteResponse:
       type: object
       required: [ok, data]
@@ -2318,6 +2373,19 @@ components:
           enum: [true]
         data:
           $ref: "#/components/schemas/CardHistoryComparisonData"
+    CardHistoryRestoreResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id]
+          properties:
+            card_id:
+              type: string
 paths:
   /ping:
     get:
@@ -2680,6 +2748,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/tags:
+    get:
+      summary: List project tags with live-card counts
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project tags ordered by descending card count, then ascending tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectTagListResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/history:
     get:
       summary: List project activity history
@@ -2875,6 +2977,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/history/cards/{card_id}/restore:
+    post:
+      summary: Restore a card to a saved snapshot
+      description: Restores the complete card snapshot at the selected commit and records the result as a new commit without rewriting history.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: oid
+          required: true
+          description: Full Git commit object ID containing the snapshot to restore.
+          schema:
+            type: string
+            pattern: "^[0-9A-Fa-f]{40}$"
+      responses:
+        "200":
+          description: Card snapshot restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CardHistoryRestoreResponse"
+        "400":
+          description: Invalid or missing commit object ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project or card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The encrypted project key is unavailable on this device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The historical snapshot cannot be read or restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /projects/{project_id}/git/test-remote:
     post:
       summary: Test project remote reachability/auth
@@ -2951,6 +3112,40 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/sync-status:
+    get:
+      summary: Get persisted project Git sync status
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current persisted sync state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitSyncStatusResponse"
+        "400":
+          description: Sync status is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
           content:
             application/json:
               schema:
@@ -3274,6 +3469,12 @@ paths:
           required: true
           schema:
             type: string
+        - in: query
+          name: tag
+          required: false
+          schema:
+            type: string
+          description: Exact normalized tag to match, without the leading #. When supplied, returns only live cards carrying that tag.
         - in: query
           name: view
           required: false

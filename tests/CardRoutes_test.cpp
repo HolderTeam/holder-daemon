@@ -1646,6 +1646,19 @@ TEST_CASE("CardRoutes exposes indexed tags on cards and supports tag filtering",
       {{"project_id", "proj-1"}, {"tag", "android"}}
   );
   REQUIRE(filter_status == http::status::ok);
+  REQUIRE(filtered["ok"] == true);
   REQUIRE(filtered["data"].size() == 1);
+  REQUIRE(filtered["data"][0]["card_id"] == "11111111-1111-4111-8111-111111111111");
+  REQUIRE(filtered["data"][0]["project_id"] == "proj-1");
   REQUIRE(filtered["data"][0]["title"] == "Tagged");
+  REQUIRE(filtered["data"][0]["deleted_at"].is_null());
+
+  const auto [exact_status, exact] = call(
+      http::verb::get,
+      "/cards",
+      nlohmann::json::object(),
+      {{"project_id", "proj-1"}, {"tag", "Android"}}
+  );
+  REQUIRE(exact_status == http::status::ok);
+  REQUIRE(exact["data"].empty());
 }

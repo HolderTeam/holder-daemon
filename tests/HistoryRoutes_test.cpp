@@ -601,6 +601,10 @@ TEST_CASE("HistoryRoutes restores a selected card version", "[http][history]") {
       req, res, db, param, &store
   ));
   CHECK(res.result() == http::status::ok);
+  const nlohmann::json expected = {
+      {"ok", true}, {"data", {{"card_id", card.card_id}}}
+  };
+  CHECK(nlohmann::json::parse(res.body()) == expected);
   const auto restored = store.get(card.card_id);
   REQUIRE(restored.has_value());
   CHECK(restored->title == "Original");
