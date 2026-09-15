@@ -1686,6 +1686,20 @@ TEST_CASE(
   REQUIRE(calendar_human.find("\tcard-created\t-\t") != std::string::npos);
   REQUIRE(calendar_human.find("\tcard-updated\t-\t") != std::string::npos);
 
+  const auto cleared_path = xdg_root / "milestone-edit-cleared.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --clear-end --clear-description --json > \"" +
+          cleared_path.string() + "\""
+      ) == 0
+  );
+  const auto cleared = nlohmann::json::parse(read_text(cleared_path));
+  REQUIRE(cleared["data"]["milestone_id"] == timed_id);
+  REQUIRE(cleared["data"]["end_at"].is_null());
+  REQUIRE(cleared["data"]["description"].is_null());
+  REQUIRE(cleared["data"]["all_day"] == true);
+
   const auto invalid_path = xdg_root / "milestone-invalid.json";
   REQUIRE(
       run_command(
