@@ -1007,17 +1007,22 @@ components:
       properties:
         milestone_id:
           type: string
+          format: uuid
+          description: Canonical milestone identifier; this is not a card ID and is never abbreviated.
         card_id:
           type: string
         start_at:
           type: integer
           format: int64
+          description: Unix epoch seconds. For an all-day milestone, this encodes the originating local date at local midnight.
         end_at:
           type: integer
           format: int64
           nullable: true
+          description: Inclusive milestone end in Unix epoch seconds. For an all-day milestone, this encodes the inclusive ending local date at local midnight.
         all_day:
           type: boolean
+          description: When true, start_at and end_at carry local calendar-date semantics and clients should render dates rather than ordinary timed instants.
         kind:
           type: string
           nullable: true
@@ -1040,13 +1045,16 @@ components:
         start_at:
           type: integer
           format: int64
+          description: Unix epoch seconds. For all_day=true, encode the local calendar date at local midnight.
         end_at:
           type: integer
           format: int64
           nullable: true
+          description: Inclusive milestone end. For all_day=true, encode the inclusive ending local date at local midnight.
         all_day:
           type: boolean
           default: false
+          description: Marks start_at and end_at as local calendar dates rather than timed instants.
         kind:
           type: string
           nullable: true
@@ -1073,6 +1081,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Milestone"
+    MilestoneRemoveResult:
+      type: object
+      required: [card_id, milestone_id, removed]
+      properties:
+        card_id:
+          type: string
+        milestone_id:
+          type: string
+          format: uuid
+          description: Canonical milestone identifier supplied in the request.
+        removed:
+          type: boolean
+          description: True when the milestone existed and was removed; false when it was already absent.
+    MilestoneRemoveResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/MilestoneRemoveResult"
     CalendarCardActivity:
       type: object
       required: [card_id, title, created_at, updated_at]
@@ -1103,9 +1133,11 @@ components:
             from:
               type: integer
               format: int64
+              description: Inclusive lower bound in Unix epoch seconds.
             to:
               type: integer
               format: int64
+              description: Inclusive upper bound in Unix epoch seconds.
             milestones:
               type: array
               items:
@@ -3441,6 +3473,7 @@ paths:
   /calendar:
     get:
       summary: List project milestones and card activity in a time range
+      description: Milestones are selected by start_at and card activity by its corresponding timestamp; both from and to are inclusive. Date parsing and timezone conversion are client concerns because this endpoint accepts epoch seconds.
       parameters:
         - in: query
           name: project_id
@@ -3453,12 +3486,14 @@ paths:
           schema:
             type: integer
             format: int64
+          description: Inclusive lower bound in Unix epoch seconds.
         - in: query
           name: to
           required: true
           schema:
             type: integer
             format: int64
+          description: Inclusive upper bound in Unix epoch seconds.
       responses:
         "200":
           description: Calendar activity in the requested inclusive epoch-second range.
@@ -3502,6 +3537,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     post:
       summary: Add a milestone to a card
+      description: Milestones carry optional kind and description fields and have no independent title.
       parameters:
         - in: path
           name: card_id
@@ -3553,7 +3589,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/MilestoneRemoveResponse"
         "404":
           description: Card not found
           content:
