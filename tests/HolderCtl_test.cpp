@@ -7,6 +7,7 @@
 #include "resource/ResourceRepo.h"
 #include "resource/LocationRepo.h"
 #include "card/LinkRepo.h"
+#include "project/ProjectSyncRepo.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <git2.h>
@@ -304,6 +305,277 @@ class HolderCtlProjectGitOps final : public holder::git::GitOps {
 };
 
 } // namespace
+
+TEST_CASE("holderctl sync status reports recorded state over HTTP", "[holderctl][sync]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  auto db = holder::test::open_db_with_schema(xdg_root / "holder.db");
+  const std::string project_id = "12345678-1234-4234-8234-123456789abc";
+  holder::test::create_project(db, project_id, (xdg_root / "project").string());
+  holder::test::create_project(db, "other-project", (xdg_root / "other").string());
+  holder::project::ProjectRepo projects(db);
+  projects.update_name(project_id, "Home", 1);
+  holder::project::ProjectSyncRepo sync(db);
+  std::string expected_state = "no sync state recorded";
+  std::string expected_remote = "none";
+  std::optional<std::string> expected_failure;
+  std::string project_args;
+  const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
+
+  SECTION("default Home without a recorded sync row") {}
+  SECTION("recorded clean repository") {
+    sync.update_activity_counts(project_id, {0, 0, 100});
+    expected_state = "clean";
+  }
+  SECTION("explicit ID overrides a stale selected project") {
+    std::filesystem::create_directories(config_path.parent_path());
+    std::ofstream(config_path) << R"({"current_project_id":"deleted-project"})";
+    project_args = " --project " + project_id;
+  }
+  SECTION("explicit name with spaces bypasses malformed selection configuration") {
+    projects.update_name(project_id, "Work Project", 1);
+    std::filesystem::create_directories(config_path.parent_path());
+    std::ofstream(config_path) << "invalid configuration";
+    project_args = " --project 'Work Project'";
+  }
+  SECTION("exact ID wins over another project's identical name") {
+    projects.update_name("other-project", project_id, 1);
+    project_args = " --project " + project_id;
+  }
+  SECTION("local changes and unpushed commits in selected project") {
+    // Ensure the selected project wins over the default Home project.
+    projects.update_name(project_id, "Selected", 1);
+    projects.update_name("other-project", "Home", 1);
+    std::filesystem::create_directories(xdg_root / "config" / "holder");
+    std::ofstream(xdg_root / "config" / "holder" / "holderctl.json")
+        << nlohmann::json{{"current_project_id", project_id}};
+    sync.update_activity_counts(project_id, {3, 2, 100});
+    expected_state = "3 local changes, 2 unpushed commits";
+  }
+  SECTION("unpushed commits alone") {
+    sync.update_activity_counts(project_id, {0, 2, 100});
+    expected_state = "2 unpushed commits";
+  }
+  SECTION("local changes alone") {
+    sync.update_activity_counts(project_id, {3, 0, 100});
+    expected_state = "3 local changes";
+  }
+  SECTION("last failure and retry time") {
+    sync.record_push_result(project_id, "network_error", false, "Network unavailable", 100);
+    expected_state = "clean";
+    expected_failure = "Network unavailable";
+  }
+  SECTION("credentials in configured URL and recorded diagnostics are withheld") {
+    projects
+        .update_git_remote(project_id, "https://user:secret@example.invalid/repo?token=hidden", 1);
+    sync.record_pull_result(
+        project_id,
+        "failed",
+        false,
+        "Authentication failed for https://user:secret@example.invalid/repo?token=hidden",
+        100
+    );
+    expected_state = "clean";
+    expected_remote = "configured";
+    expected_failure = "[redacted]";
+  }
+  SECTION("standalone token diagnostic is withheld") {
+    sync.record_push_result(project_id, "auth_failed", false, "Bearer private-secret", 100);
+    expected_state = "clean";
+    expected_failure = "[redacted]";
+  }
+
+  const std::string token = "sync-daemon-private-token";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  const auto bound = server.start();
+  holder::core::SignalHandler signals;
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, 12345, static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const auto out_path = xdg_root / "sync.out";
+  const auto err_path = xdg_root / "sync.err";
+  const bool had_config = std::filesystem::exists(config_path);
+  const auto config_before = had_config ? read_text(config_path) : "";
+  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status" + project_args;
+  const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
+  REQUIRE(run_command(command + redirects) == 0);
+  const auto human = read_text(out_path);
+  CHECK(read_text(err_path).empty());
+  CHECK(human.find("Project: " + project_id + "\n") != std::string::npos);
+  CHECK(human.find("Remote: " + expected_remote + "\n") != std::string::npos);
+  CHECK(human.find("Recorded state: " + expected_state + "\n") != std::string::npos);
+  if (expected_failure) {
+    CHECK(human.find("Last failure: " + *expected_failure + "\n") != std::string::npos);
+    CHECK(human.find("last_sync_error_at: 100\n") != std::string::npos);
+    CHECK(
+        (human.find("next_retry_at:") != std::string::npos ||
+         human.find("next_pull_retry_at:") != std::string::npos)
+    );
+  } else {
+    CHECK(human.find("Last failure:") == std::string::npos);
+  }
+
+  REQUIRE(run_command(command + " --json" + redirects) == 0);
+  CHECK(read_text(err_path).empty());
+  const auto json_output = read_text(out_path);
+  const auto result = nlohmann::json::parse(json_output);
+  auto expected = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/projects/" + project_id + "/git/sync-status",
+      nlohmann::json::object(),
+      boost::beast::http::status::ok
+  );
+  if (expected_failure) expected["data"]["sync"]["last_sync_error"] = *expected_failure;
+  CHECK(result == expected);
+  CHECK(result["data"]["project_id"] == project_id);
+  for (const auto* secret :
+       {"user:secret", "token=hidden", "private-secret", "sync-daemon-private-token"}) {
+    CHECK(human.find(secret) == std::string::npos);
+    CHECK(json_output.find(secret) == std::string::npos);
+  }
+  CHECK_FALSE(std::filesystem::exists(xdg_root / "project" / ".git"));
+  CHECK(std::filesystem::exists(config_path) == had_config);
+  if (had_config) CHECK(read_text(config_path) == config_before);
+}
+
+TEST_CASE("holderctl sync status preserves typed HTTP and network failures", "[holderctl][sync]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  auto db = holder::test::open_db_with_schema(xdg_root / "holder.db");
+  holder::test::create_project(db, "project-id", (xdg_root / "project").string());
+  holder::project::ProjectRepo(db).update_name("project-id", "Home", 1);
+  const std::string token = "private-daemon-token";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr);
+  const auto bound = server.start();
+  holder::core::SignalHandler signals;
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+  std::string client_token = token;
+  std::string expected_code;
+  std::string project_args;
+  SECTION("authentication failure while resolving default project") {
+    client_token = "wrong-private-token";
+    expected_code = "unauthorized";
+  }
+  SECTION("authentication failure while resolving explicit project") {
+    client_token = "wrong-private-token";
+    project_args = " --project project-id";
+    expected_code = "unauthorized";
+  }
+  SECTION("explicit project does not exist") {
+    project_args = " --project Missing";
+    expected_code = "not_found";
+  }
+  SECTION("explicit project name is ambiguous") {
+    holder::test::create_project(db, "other-project", (xdg_root / "other").string());
+    holder::project::ProjectRepo(db).update_name("other-project", "Home", 1);
+    project_args = " --project Home";
+    expected_code = "ambiguous_project";
+  }
+  SECTION("selected project has been deleted") {
+    std::filesystem::create_directories(xdg_root / "config" / "holder");
+    std::ofstream(xdg_root / "config" / "holder" / "holderctl.json")
+        << R"({"current_project_id":"missing"})";
+    expected_code = "not_found";
+  }
+  SECTION("no default Home project") {
+    holder::project::ProjectRepo(db).update_name("project-id", "Other", 1);
+    expected_code = "not_found";
+  }
+  SECTION("daemon is unreachable") {
+    server_thread.stop();
+    expected_code = "network_error";
+  }
+  const auto server_dir = xdg_root / "data" / "holder" / "server";
+  const auto info_path = server_dir / "holder.json";
+  write_server_info(info_path, 12345, static_cast<int>(bound.port), client_token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info_path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const auto out_path = xdg_root / "sync.out";
+  const auto err_path = xdg_root / "sync.err";
+  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status" + project_args;
+  const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
+  REQUIRE(run_command(command + " --json" + redirects) == 1);
+  CHECK(read_text(out_path).empty());
+  const auto error = nlohmann::json::parse(read_text(err_path));
+  CHECK(error["ok"] == false);
+  CHECK(error["error"]["code"] == expected_code);
+  CHECK(read_text(err_path).find(client_token) == std::string::npos);
+  REQUIRE(run_command(command + redirects) == 1);
+  CHECK(read_text(out_path).empty());
+  CHECK(read_text(err_path).find("holderctl:") == 0);
+  CHECK(read_text(err_path).find(client_token) == std::string::npos);
+}
+
+TEST_CASE("holderctl sync help and validation work without a daemon", "[holderctl][sync]") {
+  const auto xdg_root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  const auto out_path = xdg_root / "sync.out";
+  const auto err_path = xdg_root / "sync.err";
+  const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
+  const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
+  for (const auto* args :
+       {"sync --help",
+        "sync status --help",
+        "sync status -h",
+        "sync remote --help",
+        "sync disconnect --help",
+        "sync test --help",
+        "sync push --help",
+        "sync --project 'Work Project' status --help"}) {
+    REQUIRE(run_command(bin + " " + args + redirects) == 0);
+    CHECK(read_text(err_path).empty());
+    CHECK(read_text(out_path).find("holderctl sync status --json") != std::string::npos);
+    CHECK(read_text(out_path).find("--project <id-or-name>") != std::string::npos);
+  }
+  for (const auto* args :
+       {"sync",
+        "sync pull",
+        "sync now",
+        "sync status extra",
+        "sync status --unknown",
+        "sync status status",
+        "sync status --project",
+        "sync status --project ''",
+        "sync status --project '   '",
+        "sync status --project --json",
+        "sync status --project Work --project Home",
+        "sync remote ''",
+        "sync remote '   '",
+        "sync remote one two",
+        "sync remote --unknown",
+        "sync remote --project",
+        "sync disconnect extra",
+        "sync test ''",
+        "sync test '   '",
+        "sync test one two",
+        "sync test --unknown",
+        "sync push extra",
+        "sync push --unknown",
+        "sync disconnect --project"}) {
+    REQUIRE(run_command(bin + " " + args + " --json" + redirects) == 2);
+    CHECK(read_text(out_path).empty());
+    const auto error = nlohmann::json::parse(read_text(err_path));
+    CHECK(error["error"]["code"] == "bad_request");
+  }
+}
 
 TEST_CASE("holderctl token prints token from secure server info", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();

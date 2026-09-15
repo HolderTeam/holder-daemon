@@ -184,9 +184,12 @@ nlohmann::json resolve_project(const nlohmann::json& projects, const std::string
     return name_matches.front();
   }
   if (name_matches.size() > 1) {
-    throw std::runtime_error("Multiple projects named '" + query + "'; use the project id.");
+    throw CliError(
+        "ambiguous_project",
+        "Multiple projects named '" + query + "'; use the project id."
+    );
   }
-  throw std::runtime_error("Project not found: " + query);
+  throw CliError("not_found", "Project not found: " + query);
 }
 
 std::string url_encode_component(const std::string& value) {

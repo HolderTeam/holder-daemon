@@ -1703,17 +1703,23 @@ components:
           properties:
             project_id:
               type: string
+            git_remote_changed:
+              type: boolean
+              description: >-
+                Present when git_remote_url is supplied. Reports whether the stored remote URL
+                changed, including disconnecting it. Reapplying the same value returns false.
+                The URL is persisted only after Git accepts the remote operation.
     ProjectGitTestRemoteRequest:
       type: object
       properties:
         remote_url:
           type: string
           nullable: true
-          description: Optional remote URL override. If provided, project git_remote_url is updated.
+          description: Optional remote URL override for this read-only probe. Stored project configuration and Git configuration are unchanged. If omitted, uses the configured URL; null probes no remote.
         branch:
           type: string
           nullable: true
-          description: Optional branch hint. If omitted, server resolves local default branch from HEAD/init.defaultBranch.
+          description: Optional branch hint, echoed in the result. If omitted, reports local_default. The probe lists remote refs without resolving or fetching a branch.
     ProjectGitTestRemoteResponse:
       type: object
       required: [ok, data]
@@ -1781,6 +1787,9 @@ components:
               type: integer
             behind_count:
               type: integer
+            local_head_commit:
+              type: string
+              nullable: true
             error_code:
               type: string
               nullable: true
@@ -3266,6 +3275,7 @@ paths:
   /projects/{project_id}/git/test-remote:
     post:
       summary: Test project remote reachability/auth
+      description: Connects and lists remote refs using daemon credentials. Does not fetch, create a project repository, or change stored project configuration or Git configuration.
       parameters:
         - in: path
           name: project_id

@@ -31,6 +31,10 @@ class ProbeGitOps final : public holder::git::GitOps {
   void remove_remote(const std::string&) override {}
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
+  holder::git::RemoteProbeResult probe_remote_url(const std::string& url) override {
+    last_remote_url = url;
+    return probe_result;
+  }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
     return {
         .status = holder::git::PushStatus::Pushed,
@@ -69,9 +73,7 @@ TEST_CASE("Project git test-remote returns remote_unset when no remote configure
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto tested = holder::test::http_json_request(
@@ -90,12 +92,12 @@ TEST_CASE("Project git test-remote returns remote_unset when no remote configure
   REQUIRE(tested["data"]["error_code"] == "remote_unset");
   REQUIRE(tested["data"]["error_message"].is_string());
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  CHECK(git.repo_dir_.empty());
+  CHECK_FALSE(std::filesystem::exists(project.root_path));
 }
 
 TEST_CASE(
-    "Project git test-remote uses override remote and persists project remote",
+    "Project git test-remote uses override without changing project or repository",
     "[git][http]"
 ) {
   const auto dir = holder::test::make_temp_dir();
@@ -109,6 +111,7 @@ TEST_CASE(
   project.root_path = (dir / "repo").string();
   project.created_at = 1;
   project.updated_at = 1;
+  project.git_remote_url = "https://example.com/original.git";
   repo.create(project);
 
   ProbeGitOps git;
@@ -128,9 +131,7 @@ TEST_CASE(
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const std::string remote_url = "git@github.com:owner/repo.git";
@@ -156,8 +157,8 @@ TEST_CASE(
   const auto fetched = repo.get("proj-1");
   REQUIRE(fetched.has_value());
   REQUIRE(fetched->git_remote_url.has_value());
-  REQUIRE(fetched->git_remote_url.value() == remote_url);
-
-  std::raise(SIGTERM);
-  server_thread.join();
+  REQUIRE(fetched->git_remote_url == project.git_remote_url);
+  CHECK(fetched->updated_at == 1);
+  CHECK(git.repo_dir_.empty());
+  CHECK_FALSE(std::filesystem::exists(project.root_path));
 }
