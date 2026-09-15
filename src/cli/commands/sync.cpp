@@ -4,20 +4,25 @@
 #include <boost/system/system_error.hpp>
 
 #include <iostream>
+#include <optional>
 #include <string>
 
 namespace holder::cli {
 namespace {
 
 const char* sync_usage() {
-  return "Usage: holderctl sync status [--json]\n"
+  return "Usage: holderctl sync status [--project <id-or-name>] [--json]\n"
          "\nInspect the current project's recorded Git sync state.\n"
+         "Use --project to choose an exact project ID or name without changing the selection.\n"
+         "Omit --project to use the selected project (or Home by default).\n"
          "Counts and results describe the daemon's last observation, not a fresh Git check.\n"
          "Live activity and remote-behind counts are unavailable.\n"
          "Error text containing URLs or credential markers is redacted in all output.\n"
          "\nExamples:\n"
          "  holderctl sync status\n"
-         "  holderctl sync status --json";
+         "  holderctl sync status --json\n"
+         "  holderctl sync status --project \"Work\"\n"
+         "  holderctl sync status --project \"Work\" --json";
 }
 
 // Git diagnostics may embed arbitrary credentials. Withhold the entire diagnostic
@@ -40,7 +45,14 @@ void redact_diagnostics(nlohmann::json& value) {
   }
 }
 
-std::string current_sync_project_id(const holder::core::Paths& paths) {
+std::string sync_project_id(
+    const holder::core::Paths& paths,
+    const std::optional<std::string>& reference
+) {
+  if (reference) {
+    const auto projects = card_api_request(paths, boost::beast::http::verb::get, "/projects");
+    return json_string(resolve_project(projects.at("data"), *reference), "project_id");
+  }
   if (const auto id = read_configured_project_id(paths)) return *id;
   const auto projects = card_api_request(paths, boost::beast::http::verb::get, "/projects");
   for (const auto& project : projects.at("data")) {
@@ -82,13 +94,23 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
   bool json_output = false;
   bool help = false;
   bool status = false;
+  std::optional<std::string> project_reference;
   for (int i = 2; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--json")
       json_output = true;
     else if (arg == "--help" || arg == "-h")
       help = true;
-    else if (arg == "status" && !status)
+    else if (arg == "--project") {
+      if (project_reference || i + 1 >= argc) {
+        throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
+      }
+      const std::string value = argv[++i];
+      if (trim_ascii_whitespace(value).empty() || value.front() == '-') {
+        throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
+      }
+      project_reference = value;
+    } else if (arg == "status" && !status)
       status = true;
     else
       throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
@@ -100,7 +122,7 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
   if (!status) throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
 
   try {
-    const auto project_id = current_sync_project_id(paths);
+    const auto project_id = sync_project_id(paths, project_reference);
     const auto target = "/projects/" + url_encode_component(project_id);
     auto payload =
         card_api_request(paths, boost::beast::http::verb::get, target + "/git/sync-status");

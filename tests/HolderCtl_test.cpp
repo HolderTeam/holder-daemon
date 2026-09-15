@@ -321,11 +321,28 @@ TEST_CASE("holderctl sync status reports recorded state over HTTP", "[holderctl]
   std::string expected_state = "no sync state recorded";
   std::string expected_remote = "none";
   std::optional<std::string> expected_failure;
+  std::string project_args;
+  const auto config_path = xdg_root / "config" / "holder" / "holderctl.json";
 
   SECTION("default Home without a recorded sync row") {}
   SECTION("recorded clean repository") {
     sync.update_activity_counts(project_id, {0, 0, 100});
     expected_state = "clean";
+  }
+  SECTION("explicit ID overrides a stale selected project") {
+    std::filesystem::create_directories(config_path.parent_path());
+    std::ofstream(config_path) << R"({"current_project_id":"deleted-project"})";
+    project_args = " --project " + project_id;
+  }
+  SECTION("explicit name with spaces bypasses malformed selection configuration") {
+    projects.update_name(project_id, "Work Project", 1);
+    std::filesystem::create_directories(config_path.parent_path());
+    std::ofstream(config_path) << "invalid configuration";
+    project_args = " --project 'Work Project'";
+  }
+  SECTION("exact ID wins over another project's identical name") {
+    projects.update_name("other-project", project_id, 1);
+    project_args = " --project " + project_id;
   }
   SECTION("local changes and unpushed commits in selected project") {
     // Ensure the selected project wins over the default Home project.
@@ -385,7 +402,9 @@ TEST_CASE("holderctl sync status reports recorded state over HTTP", "[holderctl]
 #endif
   const auto out_path = xdg_root / "sync.out";
   const auto err_path = xdg_root / "sync.err";
-  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status";
+  const bool had_config = std::filesystem::exists(config_path);
+  const auto config_before = had_config ? read_text(config_path) : "";
+  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status" + project_args;
   const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
   REQUIRE(run_command(command + redirects) == 0);
   const auto human = read_text(out_path);
@@ -426,6 +445,8 @@ TEST_CASE("holderctl sync status reports recorded state over HTTP", "[holderctl]
     CHECK(json_output.find(secret) == std::string::npos);
   }
   CHECK_FALSE(std::filesystem::exists(xdg_root / "project" / ".git"));
+  CHECK(std::filesystem::exists(config_path) == had_config);
+  if (had_config) CHECK(read_text(config_path) == config_before);
 }
 
 TEST_CASE("holderctl sync status preserves typed HTTP and network failures", "[holderctl][sync]") {
@@ -444,9 +465,25 @@ TEST_CASE("holderctl sync status preserves typed HTTP and network failures", "[h
   REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
   std::string client_token = token;
   std::string expected_code;
+  std::string project_args;
   SECTION("authentication failure while resolving default project") {
     client_token = "wrong-private-token";
     expected_code = "unauthorized";
+  }
+  SECTION("authentication failure while resolving explicit project") {
+    client_token = "wrong-private-token";
+    project_args = " --project project-id";
+    expected_code = "unauthorized";
+  }
+  SECTION("explicit project does not exist") {
+    project_args = " --project Missing";
+    expected_code = "not_found";
+  }
+  SECTION("explicit project name is ambiguous") {
+    holder::test::create_project(db, "other-project", (xdg_root / "other").string());
+    holder::project::ProjectRepo(db).update_name("other-project", "Home", 1);
+    project_args = " --project Home";
+    expected_code = "ambiguous_project";
   }
   SECTION("selected project has been deleted") {
     std::filesystem::create_directories(xdg_root / "config" / "holder");
@@ -471,7 +508,7 @@ TEST_CASE("holderctl sync status preserves typed HTTP and network failures", "[h
 #endif
   const auto out_path = xdg_root / "sync.out";
   const auto err_path = xdg_root / "sync.err";
-  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status";
+  const std::string command = std::string("\"") + HOLDER_CTL_PATH + "\" sync status" + project_args;
   const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
   REQUIRE(run_command(command + " --json" + redirects) == 1);
   CHECK(read_text(out_path).empty());
@@ -494,10 +531,15 @@ TEST_CASE("holderctl sync help and validation work without a daemon", "[holderct
   const auto err_path = xdg_root / "sync.err";
   const std::string bin = std::string("\"") + HOLDER_CTL_PATH + "\"";
   const std::string redirects = " > \"" + out_path.string() + "\" 2> \"" + err_path.string() + "\"";
-  for (const auto* args : {"sync --help", "sync status --help", "sync status -h"}) {
+  for (const auto* args :
+       {"sync --help",
+        "sync status --help",
+        "sync status -h",
+        "sync --project 'Work Project' status --help"}) {
     REQUIRE(run_command(bin + " " + args + redirects) == 0);
     CHECK(read_text(err_path).empty());
     CHECK(read_text(out_path).find("holderctl sync status --json") != std::string::npos);
+    CHECK(read_text(out_path).find("--project <id-or-name>") != std::string::npos);
   }
   for (const auto* args :
        {"sync",
@@ -505,7 +547,12 @@ TEST_CASE("holderctl sync help and validation work without a daemon", "[holderct
         "sync now",
         "sync status extra",
         "sync status --unknown",
-        "sync status status"}) {
+        "sync status status",
+        "sync status --project",
+        "sync status --project ''",
+        "sync status --project '   '",
+        "sync status --project --json",
+        "sync status --project Work --project Home"}) {
     REQUIRE(run_command(bin + " " + args + " --json" + redirects) == 2);
     CHECK(read_text(out_path).empty());
     const auto error = nlohmann::json::parse(read_text(err_path));
