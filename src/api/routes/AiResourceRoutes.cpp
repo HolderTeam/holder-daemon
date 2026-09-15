@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -414,16 +415,53 @@ bool handle_ai_resource_routes(
     }
     try {
       holder::resource::ResourceRepo repo(db);
+      const auto card_id = param_get("card_id");
+      int limit = 100;
+      int offset = 0;
+      auto parse_page = [&](const std::string& name, int& value) {
+        const auto raw = param_get(name);
+        if (raw.empty()) return;
+        const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != raw.data() + raw.size()) {
+          throw std::invalid_argument("Invalid " + name + ".");
+        }
+      };
+      if (!card_id.empty()) {
+        const auto card = holder::card::CardRepo(db).get(card_id);
+        if (!card.has_value() || card->deleted_at.has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Live card not found.");
+          return true;
+        }
+        if (card->project_id != project_id) {
+          res = support::error_response(http::status::unprocessable_entity,
+              "cross_project_resource_forbidden", "Card is in a different project.");
+          return true;
+        }
+        parse_page("limit", limit);
+        parse_page("offset", offset);
+      } else if (!param_get("limit").empty() || !param_get("offset").empty()) {
+        throw std::invalid_argument("limit and offset require card_id.");
+      }
+      const auto resources = card_id.empty() ? repo.list(project_id)
+          : repo.list_for_card(project_id, card_id, limit, offset);
       const auto references = resource_references_json(db, project_id);
       nlohmann::json data = nlohmann::json::array();
-      for (const auto& resource : repo.list(project_id)) {
+      for (const auto& resource : resources) {
         const auto found = references.find(resource.resource_id);
         data.push_back(resource_json(
             *repo.get_bundle(resource.resource_id),
             found != references.end() ? *found : nlohmann::json::array()
         ));
       }
-      res = support::json_response(http::status::ok, {{"ok", true}, {"data", std::move(data)}});
+      nlohmann::json payload = {{"ok", true}, {"data", std::move(data)}};
+      if (!card_id.empty()) {
+        payload["card_id"] = card_id;
+        payload["limit"] = limit;
+        payload["offset"] = offset;
+        payload["next_offset"] = resources.size() == static_cast<std::size_t>(limit)
+            ? nlohmann::json(static_cast<long long>(offset) + limit) : nlohmann::json(nullptr);
+      }
+      res = support::json_response(http::status::ok, payload);
     } catch (const std::exception& ex) {
       res = route_error(ex);
     }

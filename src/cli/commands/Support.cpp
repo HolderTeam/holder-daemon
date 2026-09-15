@@ -574,7 +574,15 @@ nlohmann::json card_api_request(
     const auto fallback = "HTTP " +
                           std::to_string(static_cast<unsigned>(response.status)
                           ); // LCOV_EXCL_LINE: covered failures carry structured messages.
-    throw std::runtime_error(api_error_message(response, fallback)); // LCOV_EXCL_LINE
+    const auto message = api_error_message(response, fallback);
+    std::string code = "api_request_failed";
+    nlohmann::json details = nlohmann::json::object();
+    if (response.payload.contains("error") && response.payload.at("error").is_object()) {
+      const auto& error = response.payload.at("error");
+      code = json_string(error, "code", code);
+      if (error.contains("details")) details = error.at("details");
+    }
+    throw CliError(code, message, std::move(details), message);
   } // LCOV_EXCL_LINE
 
   return response.payload;
