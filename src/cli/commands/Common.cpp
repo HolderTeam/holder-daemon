@@ -57,6 +57,7 @@ void print_usage(std::ostream& out) {
       << "  projects   List Holder projects; use --json for raw API output\n"
       << "  use        Set the current project by id/name; no args resets to Home\n"
       << "  current    Print the current project\n"
+      << "  sync       Inspect recorded Git sync status in the current project\n"
       << "  cards      List root cards in the current project; use --recent for latest\n"
       << "  tags       List project tags or live cards carrying an exact tag\n"
       << "  tag        Add or remove a tag from a live card\n"

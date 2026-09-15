@@ -35,6 +35,7 @@ int main(int argc, char* argv[]) {
     if (command == "projects") return holder::cli::command_projects(paths, argc, argv);
     if (command == "use") return holder::cli::command_use(paths, argc, argv);
     if (command == "current") return holder::cli::command_current(paths, argc);
+    if (command == "sync") return holder::cli::command_sync(paths, argc, argv);
     if (command == "cards") return holder::cli::command_cards(paths, argc, argv);
     if (command == "tags") return holder::cli::command_tags(paths, argc, argv);
     if (command == "tag") return holder::cli::command_tag(paths, argc, argv);
