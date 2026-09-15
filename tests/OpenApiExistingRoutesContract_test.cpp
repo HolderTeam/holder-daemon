@@ -46,6 +46,22 @@ void require_json_response_ref(
 } // namespace
 
 TEST_CASE(
+    "OpenAPI contracts binary asset content metadata and structured failures",
+    "[openapi][resources][export]"
+) {
+  const auto document = load_openapi();
+  const auto op = document["paths"]["/resources/{resource_id}/assets/{asset_id}/content"]["get"];
+  CHECK(parameter_named(op, "resource_id")["required"].as<bool>());
+  CHECK(parameter_named(op, "asset_id")["required"].as<bool>());
+  CHECK(op["responses"]["200"]["headers"]["Content-Type"]["schema"]["type"].as<std::string>() == "string");
+  CHECK(op["responses"]["200"]["headers"]["Content-Disposition"]["schema"]["type"].as<std::string>() == "string");
+  CHECK(op["responses"]["200"]["content"]["application/octet-stream"]["schema"]["format"].as<std::string>() == "binary");
+  for (const auto& code : {"400", "401", "404", "409", "422", "502", "503", "507"}) {
+    require_json_response_ref(op, code, "ErrorResponse");
+  }
+}
+
+TEST_CASE(
     "OpenAPI contracts card resource attachments and paginated listing",
     "[openapi][resources][attachments]"
 ) {

@@ -432,6 +432,7 @@ endif()
 add_executable(holderctl
   src/cli/holderctl.cpp
   src/cli/commands/Common.cpp
+  src/cli/commands/Download.cpp
   src/cli/commands/DaemonCommands.cpp
   src/cli/commands/MilestoneDateTime.cpp
   src/cli/commands/Support.cpp
