@@ -358,10 +358,13 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
 
   const std::string subcommand = argv[2];
   if (subcommand == "--help" || subcommand == "-h" ||
-      (argc == 4 && (std::string(argv[3]) == "--help" || std::string(argv[3]) == "-h"))) {
+      (argc == 4 && (std::string(argv[3]) == "--help" || std::string(argv[3]) == "-h")) ||
+      (subcommand == "location" && argc == 5 &&
+          (std::string(argv[4]) == "--help" || std::string(argv[4]) == "-h"))) {
     std::cout << resource_usage() << "\n"
         << "  list [CARD] [--json] [--filter QUERY] [--limit N] [--offset N]\n"
         << "    Without CARD: project resources. With CARD: live-card attachments (default limit 100).\n"
+        << "    --limit (1..1000) and --offset require CARD; --filter searches only the returned page.\n"
         << "  attach CARD RESOURCE_ID [--json]   Attach an existing project resource; repeat is a no-op.\n"
         << "  detach CARD RESOURCE_ID [--json]   Remove only this attachment; preserve the resource.\n"
         << "  delete RESOURCE_ID [--json]        Delete the project resource and all its relationships globally.\n"
@@ -372,13 +375,33 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         << "    --json requires a file output and reports IDs, size, content type, and filename.\n"
         << "  add URI [--kind KIND] [--label LABEL] [--desc TEXT] [--json]\n"
         << "    Create an external project resource without attaching it.\n"
+        << "  show [--json] RESOURCE_ID          Inspect a project resource.\n"
+        << "  edit RESOURCE_ID [--kind KIND] [--uri URI] [--label LABEL] [--desc TEXT|--clear-desc] [--json]\n"
+        << "  open RESOURCE_ID                  Open its URI with the platform opener.\n"
+        << "  location <list|add-local|add-s3|test|prefer|delete> ...\n"
         << "Resource IDs must be complete exact IDs; CARD accepts UUID, unique prefix, or exact title.\n"
         << "Examples:\n"
+        << "  holderctl resource list --filter docs --json\n"
         << "  holderctl resource list 'Research' --limit 50\n"
+        << "  holderctl resource list 'Research' --limit 50 --offset 50 --json\n"
         << "  holderctl resource attach 'Research' RESOURCE_ID --json\n"
         << "  holderctl resource detach 'Research' RESOURCE_ID\n"
         << "  holderctl resource export RESOURCE_ID --output document.pdf\n"
-        << "  holderctl resource export RESOURCE_ID ASSET_ID --output - > document.pdf\n";
+        << "  holderctl resource export RESOURCE_ID ASSET_ID --output - > document.pdf\n"
+        << "  holderctl resource export RESOURCE_ID --output document.pdf --json\n"
+        << "  holderctl resource add https://example.com/docs --label Docs\n"
+        << "  holderctl resource show --json RESOURCE_ID\n"
+        << "  holderctl resource edit RESOURCE_ID --desc 'Reference documentation'\n"
+        << "  holderctl resource open RESOURCE_ID\n"
+        << "  holderctl resource import 'Research' document.pdf --json\n"
+        << "  holderctl resource delete RESOURCE_ID --json\n"
+        << "  holderctl resource location list --json\n"
+        << "  holderctl resource location add-local Archive ./archive\n"
+        << "  holderctl resource location add-s3 Archive https://s3.example.com region bucket ACCESS_KEY_ID\n"
+        << "    (set HOLDER_S3_SECRET_ACCESS_KEY; optionally HOLDER_S3_SESSION_TOKEN)\n"
+        << "  holderctl resource location test LOCATION_ID\n"
+        << "  holderctl resource location prefer LOCATION_ID\n"
+        << "  holderctl resource location delete LOCATION_ID\n";
     return 0;
   }
   try {

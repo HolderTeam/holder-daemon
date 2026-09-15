@@ -5,6 +5,8 @@
 #include "git/GitRepo.h"
 #include "model/Resource.h"
 #include "resource/ResourceRepo.h"
+#include "resource/LocationRepo.h"
+#include "card/LinkRepo.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <git2.h>
@@ -17,6 +19,7 @@
 #include <fstream>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -2834,6 +2837,198 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
 
   server.stop();
   server_thread.join();
+}
+
+TEST_CASE("holderctl resource help covers every command without requiring a daemon", "[holderctl][resource-help]") {
+  const auto root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (root / "data").string());
+  const auto output = root / "help.out";
+  const auto error = root / "help.err";
+  const std::vector<std::string> commands = {"list", "attach", "detach", "export", "add",
+      "show", "edit", "open", "delete", "import", "location", "location list",
+      "location add-local", "location add-s3", "location test", "location prefer", "location delete"};
+  for (const auto& command : commands) {
+    INFO(command);
+    REQUIRE(run_command(std::string("\"") + HOLDER_CTL_PATH + "\" resource " + command +
+        " --help > \"" + output.string() + "\" 2> \"" + error.string() + "\"") == 0);
+    const auto help = read_text(output);
+    REQUIRE(read_text(error).empty());
+    REQUIRE(help.find("Examples:\n") != std::string::npos);
+    for (const auto& example : commands) {
+      if (example == "location") continue;
+      REQUIRE(help.find("  holderctl resource " + example + " ") != std::string::npos);
+    }
+    REQUIRE(help.find("--filter searches only the returned page") != std::string::npos);
+    REQUIRE(help.find("--json requires a file output") != std::string::npos);
+  }
+}
+
+TEST_CASE("holderctl resource lists large projects and traverses attachment pages without omissions", "[holderctl][resource-pagination]") {
+  const auto root = prepare_xdg_tree();
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (root / "cache").string());
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  holder::test::create_project(db, "home-id", (root / "home").string());
+  holder::test::create_project(db, "foreign-id", (root / "foreign").string());
+  holder::project::ProjectRepo(db).update_name("home-id", "Home", 2);
+  holder::index::FtsIndexer fts(db);
+  holder::card::CardStore cards(db, &fts);
+  holder::model::Card card;
+  card.card_id = "abcdef12-3456-4789-8abc-def012345678";
+  card.project_id = "home-id";
+  card.title = "Many Attachments";
+  card.created_at = card.updated_at = 3;
+  cards.create(card, "Large-project pagination fixture.\n");
+  // Fixtures are created before the listener starts. The CLI itself only uses HTTP.
+  holder::resource::ResourceRepo resources(db);
+  std::vector<holder::model::CardLink> links;
+  std::vector<std::string> all_ids;
+  std::vector<std::string> attached_ids;
+  const std::string heading = "RESOURCE_ID\tKIND\tLABEL\tURI\n";
+  std::string project_table = heading;
+  std::vector<std::string> attached_rows;
+  for (int i = 0; i < 1205; ++i) {
+    const auto suffix = std::to_string(i);
+    holder::model::Resource resource;
+    resource.resource_id = "12345678-1234-4234-8234-" + std::string(12 - suffix.size(), '0') + suffix;
+    resource.project_id = "home-id";
+    resource.type = "url";
+    resource.label = "Resource " + suffix;
+    resource.created_at = resource.updated_at = 3; // Tied timestamps exercise the ID tie-breaker.
+    resource.metadata["identifier"] = {"https://example.com/" + suffix};
+    resources.add(resource);
+    all_ids.push_back(resource.resource_id);
+    const auto row = resource.resource_id + "\turl\t" + resource.label + "\t" +
+        resource.metadata["identifier"][0] + "\n";
+    project_table += row;
+    // Every attachment sorts beyond the first 1,000 project resources.
+    if (i >= 1000) {
+      attached_ids.push_back(resource.resource_id);
+      attached_rows.push_back(row);
+      holder::model::CardLink link;
+      link.project_id = card.project_id;
+      link.from_card_id = card.card_id;
+      link.to_card_id = resource.resource_id;
+      link.to_type = "resource";
+      link.kind = "attachment";
+      links.push_back(link);
+    }
+  }
+  holder::card::LinkRepo(db).upsert_links(card.project_id, card.card_id, links);
+  holder::model::Resource foreign;
+  foreign.resource_id = "foreign-resource";
+  foreign.project_id = "foreign-id";
+  foreign.type = "url";
+  foreign.label = "Foreign";
+  resources.add(foreign);
+  holder::resource::LocationRepo locations(db);
+  for (int i = 0; i < 105; ++i) {
+    holder::model::Location location;
+    location.location_id = "location-" + std::to_string(i);
+    location.project_id = "home-id";
+    location.name = "Archive " + std::to_string(i);
+    location.provider = "local_directory";
+    locations.put(location);
+  }
+  holder::model::Location foreign_location;
+  foreign_location.location_id = "foreign-location";
+  foreign_location.project_id = "foreign-id";
+  foreign_location.name = "Foreign";
+  foreign_location.provider = "local_directory";
+  locations.put(foreign_location);
+
+  const std::string token = "paginationtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, &cards, &fts);
+  holder::api::HttpServer::BoundInfo bound;
+  try { bound = server.start(); }
+  catch (const std::exception& ex) { SKIP(std::string("Socket bind not available: ") + ex.what()); }
+  holder::core::SignalHandler signals;
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
+  const auto server_dir = root / "data" / "holder" / "server";
+  const auto info = server_dir / "holder.json";
+  write_server_info(info, static_cast<int>(::getpid()), static_cast<int>(bound.port), token);
+#ifndef _WIN32
+  ::chmod(server_dir.c_str(), S_IRWXU);
+  ::chmod(info.c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const auto output = root / "list.out";
+  const auto error = root / "list.err";
+  auto run = [&](const std::string& args, int expected = 0) {
+    REQUIRE(run_command(std::string("\"") + HOLDER_CTL_PATH + "\" resource " + args +
+        " > \"" + output.string() + "\" 2> \"" + error.string() + "\"") == expected);
+    return read_text(output);
+  };
+  auto ids = [](const nlohmann::json& payload) {
+    std::vector<std::string> result;
+    for (const auto& item : payload.at("data")) result.push_back(item.at("resource_id").get<std::string>());
+    return result;
+  };
+  const auto project = nlohmann::json::parse(run("list --json"));
+  REQUIRE(project["ok"] == true);
+  REQUIRE(ids(project) == all_ids);
+  REQUIRE(read_text(error).empty());
+  REQUIRE(run("list") == project_table);
+  REQUIRE(read_text(error).empty());
+  const auto filtered = nlohmann::json::parse(run("list --filter example.com/1204 --json"));
+  REQUIRE(ids(filtered) == std::vector<std::string>{all_ids.back()});
+  REQUIRE(run("list --filter example.com/1204") == heading + attached_rows.back());
+
+  std::vector<std::string> seen;
+  for (int offset : {0, 100, 200}) {
+    const auto args = "list abcdef12 --offset " + std::to_string(offset);
+    const auto page = nlohmann::json::parse(run(args + " --json"));
+    REQUIRE(page["ok"] == true);
+    REQUIRE(page["card_id"] == card.card_id);
+    REQUIRE(page["limit"] == 100);
+    REQUIRE(page["offset"] == offset);
+    const auto count = std::min(100, 205 - offset);
+    const std::vector<std::string> expected(attached_ids.begin() + offset, attached_ids.begin() + offset + count);
+    REQUIRE(ids(page) == expected);
+    if (count == 100) REQUIRE(page["next_offset"] == offset + count);
+    else REQUIRE(page["next_offset"].is_null());
+    REQUIRE(read_text(error).empty());
+    seen.insert(seen.end(), expected.begin(), expected.end());
+    std::string table = heading;
+    for (int i = offset; i < offset + count; ++i) table += attached_rows[i];
+    REQUIRE(run(args) == table);
+    if (count == 100) REQUIRE(read_text(error) == "More attachments may be available; use --offset " +
+        std::to_string(offset + count) + ".\n");
+    else REQUIRE(read_text(error).empty());
+  }
+  REQUIRE(seen == attached_ids);
+  REQUIRE(std::set<std::string>(seen.begin(), seen.end()).size() == 205);
+  REQUIRE(ids(nlohmann::json::parse(run("list 'Many Attachments' --limit 1000 --json"))) == attached_ids);
+  const auto beyond = nlohmann::json::parse(run("list abcdef12 --offset 205 --json"));
+  REQUIRE(beyond["data"].empty());
+  REQUIRE(beyond["next_offset"].is_null());
+  REQUIRE(run("list abcdef12 --offset 205") == "No resources.\n");
+  REQUIRE(read_text(error).empty());
+  const auto empty_filtered = nlohmann::json::parse(run("list abcdef12 --filter example.com/1204 --json"));
+  REQUIRE(empty_filtered["data"].empty());
+  REQUIRE(empty_filtered["next_offset"] == 100); // Filtering must retain continuation metadata.
+  REQUIRE(ids(nlohmann::json::parse(run("list abcdef12 --offset 200 --filter example.com/1204 --json"))) ==
+      std::vector<std::string>{attached_ids.back()});
+  REQUIRE(run("list abcdef12 --offset 200 --filter example.com/1204") == heading + attached_rows.back());
+  run("list abcdef12 --limit 1001 --json", 1);
+  REQUIRE(nlohmann::json::parse(read_text(error))["error"]["code"] == "invalid_arguments");
+  run("list --limit 100 --json", 1);
+  REQUIRE(nlohmann::json::parse(read_text(error))["error"]["code"] == "invalid_arguments");
+
+  const auto location_list = nlohmann::json::parse(run("location list --json"));
+  REQUIRE(location_list["ok"] == true);
+  REQUIRE(location_list["data"].size() == 105);
+  std::string location_table;
+  std::set<std::string> location_ids;
+  for (const auto& location : location_list["data"]) {
+    REQUIRE(location["project_id"] == "home-id");
+    REQUIRE(location_ids.insert(location["location_id"].get<std::string>()).second);
+    location_table += location["location_id"].get<std::string>() + "\tlocal_directory\t" +
+        location["name"].get<std::string>() + "\tbinding required\n";
+  }
+  REQUIRE(run("location list") == location_table);
+  REQUIRE(read_text(error).empty());
 }
 
 TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl]") {
