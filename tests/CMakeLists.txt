@@ -102,6 +102,8 @@ add_executable(holder_daemon_tests
   Router_test.cpp
   Cli_test.cpp
   HolderCtl_test.cpp
+  HolderCtlDownload_test.cpp
+  HolderCtlExport_test.cpp
   MilestoneDateTime_test.cpp
   ProjectSyncWorker_test.cpp
   AiLocalModelConfigRepo_test.cpp
@@ -194,6 +196,8 @@ add_executable(holder_daemon_tests
   ../src/storage/google/GoogleDriveProvider.cpp
   ../src/app/Bootstrap.cpp
   ../src/cli/commands/MilestoneDateTime.cpp
+  ../src/cli/commands/Common.cpp
+  ../src/cli/commands/Download.cpp
 )
 target_include_directories(holder_daemon_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../src

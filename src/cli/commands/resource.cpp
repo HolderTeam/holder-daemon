@@ -1,11 +1,13 @@
 #include "cli/commands/Commands.h"
 
 #include "cli/commands/Support.h"
+#include "cli/commands/Download.h"
 
 #include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <charconv>
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -13,6 +15,11 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace holder::cli {
 namespace {
@@ -128,7 +135,7 @@ std::string infer_resource_label(const std::string& uri) {
 } // LCOV_EXCL_LINE
 
 std::string resource_usage() {
-  return "Usage: holderctl resource <list|attach|detach|add|show|edit|open|delete|import|location> ...";
+  return "Usage: holderctl resource <list|attach|detach|export|add|show|edit|open|delete|import|location> ...";
 }
 
 ResourceListOptions parse_resource_list_options(int argc, char* argv[]) {
@@ -359,16 +366,98 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         << "  detach CARD RESOURCE_ID [--json]   Remove only this attachment; preserve the resource.\n"
         << "  delete RESOURCE_ID [--json]        Delete the project resource and all its relationships globally.\n"
         << "  import CARD FILE [--location ID] [--json]   Store bytes and attach the resource.\n"
+        << "  export RESOURCE_ID [ASSET_ID] [--output PATH|-] [--json]\n"
+        << "    Download verified bytes; defaults to raw stdout. File output replaces PATH atomically.\n"
+        << "    A sole stored asset is selected automatically; otherwise pass its complete ID.\n"
+        << "    --json requires a file output and reports IDs, size, content type, and filename.\n"
         << "  add URI [--kind KIND] [--label LABEL] [--desc TEXT] [--json]\n"
         << "    Create an external project resource without attaching it.\n"
         << "Resource IDs must be complete exact IDs; CARD accepts UUID, unique prefix, or exact title.\n"
         << "Examples:\n"
         << "  holderctl resource list 'Research' --limit 50\n"
         << "  holderctl resource attach 'Research' RESOURCE_ID --json\n"
-        << "  holderctl resource detach 'Research' RESOURCE_ID\n";
+        << "  holderctl resource detach 'Research' RESOURCE_ID\n"
+        << "  holderctl resource export RESOURCE_ID --output document.pdf\n"
+        << "  holderctl resource export RESOURCE_ID ASSET_ID --output - > document.pdf\n";
     return 0;
   }
   try {
+    if (subcommand == "export") {
+      bool json_output = false;
+      std::string output = "-";
+      bool output_seen = false;
+      std::vector<std::string> positional;
+      const std::string usage = "Usage: holderctl resource export RESOURCE_ID [ASSET_ID] [--output PATH|-] [--json]";
+      for (int i = 3; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--json") json_output = true;
+        else if (arg == "--output" && !output_seen && i + 1 < argc) {
+          output = argv[++i];
+          output_seen = true;
+          if (output.empty() || output.rfind("--", 0) == 0) {
+            throw CliError("invalid_arguments", "--output requires a path or - (use ./ for paths beginning with --)");
+          }
+        } else if (arg.empty() || arg.front() == '-') throw CliError("invalid_arguments", usage);
+        else positional.push_back(arg);
+      }
+      if (positional.empty() || positional.size() > 2) throw CliError("invalid_arguments", usage);
+      if (json_output && output == "-") {
+        throw CliError("invalid_arguments", "--json requires --output PATH; stdout is reserved for asset bytes.");
+      }
+      const auto project_id = json_string(require_current_project_payload(paths), "project_id");
+      const auto payload = card_api_request(paths, boost::beast::http::verb::get,
+          "/resources/" + url_encode_component(positional[0]));
+      const auto& resource = payload.at("data");
+      const auto resource_id = json_string(resource, "resource_id");
+      if (json_string(resource, "project_id") != project_id) {
+        throw CliError("cross_project_resource_forbidden", "Resource is in a different project.",
+            {{"resource_id", resource_id}, {"project_id", project_id}});
+      }
+      const auto& assets = resource.at("assets");
+      std::string asset_id;
+      if (positional.size() == 2) asset_id = positional[1];
+      else if (assets.size() == 1) asset_id = json_string(assets.at(0), "asset_id");
+      else {
+        throw CliError(assets.empty() ? "no_exportable_asset" : "ambiguous_asset",
+            assets.empty() ? "Resource has no stored assets to export." : "Resource has multiple assets; pass ASSET_ID.",
+            {{"resource_id", resource_id}, {"candidates", assets}});
+      }
+      const auto selected = std::find_if(assets.begin(), assets.end(), [&](const auto& asset) {
+        return json_string(asset, "asset_id") == asset_id;
+      });
+      if (selected == assets.end()) {
+        throw CliError("asset_not_found", "Asset not found in resource.",
+            {{"resource_id", resource_id}, {"asset_id", asset_id}});
+      }
+      const auto connection = read_secure_daemon_connection(paths);
+      const auto target = "/resources/" + url_encode_component(resource_id) + "/assets/" +
+          url_encode_component(asset_id) + "/content";
+      const auto timeout = std::chrono::seconds(300);
+      DownloadMetadata metadata;
+      if (output == "-") {
+#ifdef _WIN32
+        if (_setmode(_fileno(stdout), _O_BINARY) == -1) {
+          throw CliError("output_failed", "Could not set stdout to binary mode.");
+        }
+#endif
+        metadata = http_download(connection, target, timeout, [](const char* bytes, std::size_t count) {
+          std::cout.write(bytes, static_cast<std::streamsize>(count));
+          if (!std::cout) throw CliError("output_failed", "Could not write asset bytes to stdout.");
+        });
+        std::cout.flush();
+        if (!std::cout) throw CliError("output_failed", "Could not flush asset bytes to stdout.");
+      } else {
+        metadata = download_to_file(connection, target, output, timeout);
+        if (json_output) {
+          std::cout << nlohmann::json({{"ok", true}, {"data", {
+              {"resource_id", resource_id}, {"asset_id", asset_id}, {"output", output},
+              {"changed", true}, {"byte_size", metadata.byte_size},
+              {"content_type", metadata.content_type}, {"filename", metadata.filename},
+              {"content_disposition", metadata.content_disposition}}}}).dump(2) << "\n";
+        } else std::cerr << "Exported resource: " << resource_id << " to " << output << "\n";
+      }
+      return 0;
+    }
     if (subcommand == "attach" || subcommand == "detach") {
       bool json_output = false;
       std::vector<std::string> positional;

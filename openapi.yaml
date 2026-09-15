@@ -5203,6 +5203,7 @@ paths:
   /resources/{resource_id}/assets/{asset_id}/content:
     get:
       summary: Stream verified asset content
+      description: Authenticated binary download. Content-Type preserves the asset media type and Content-Disposition contains a sanitized quoted original filename. Successful content is arbitrary bytes, not a JSON envelope; failures use ErrorResponse. Without placement_id the daemon selects a stored placement.
       parameters:
         - name: resource_id
           in: path
@@ -5220,10 +5221,51 @@ paths:
           schema:
             type: string
       responses:
+        "401":
+          description: Unauthorized bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Storage binding required or storage conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Asset integrity verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Storage authentication or permission failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Storage unavailable or transient failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "507":
+          description: Storage capacity exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: Recovered plaintext asset
           headers:
+            Content-Type:
+              description: Stored asset media type.
+              schema:
+                type: string
             Content-Disposition:
+              description: Attachment disposition with sanitized quoted original filename.
               schema:
                 type: string
           content:
@@ -5232,7 +5274,7 @@ paths:
                 type: string
                 format: binary
         "400":
-          description: Missing binding, key, storage, or integrity failure
+          description: Invalid configuration, missing key, or unclassified retrieval/integrity failure
           content:
             application/json:
               schema:
