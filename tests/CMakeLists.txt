@@ -102,6 +102,7 @@ add_executable(holder_daemon_tests
   Router_test.cpp
   Cli_test.cpp
   HolderCtl_test.cpp
+  HolderCtlSync_test.cpp
   HolderCtlDownload_test.cpp
   HolderCtlExport_test.cpp
   MilestoneDateTime_test.cpp

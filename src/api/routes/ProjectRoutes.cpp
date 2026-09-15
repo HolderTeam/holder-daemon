@@ -1011,6 +1011,18 @@ bool handle_project_routes(
                                                      : project_opt->root_path;
               auto& git = resolve_git(git_ops);
               auto operation = git.lock_operation(repo_root);
+              // Observe remote configuration under the same repository lock as
+              // the mutation, so concurrent requests report the actual change.
+              const auto locked_project = repo.get(project_id);
+              if (!locked_project.has_value()) {
+                res = support::error_response(
+                    http::status::not_found,
+                    "not_found",
+                    "Project not found."
+                );
+                return true;
+              }
+              std::optional<bool> git_remote_changed;
               if (has_name) {
                 repo.update_name(project_id, body.at("name").get<std::string>(), updated_at);
               }
@@ -1020,17 +1032,6 @@ bool handle_project_routes(
                     body.at("root_path").get<std::string>(),
                     updated_at
                 );
-              }
-              if (has_git_remote) {
-                if (body.at("git_remote_url").is_null()) {
-                  repo.update_git_remote(project_id, std::nullopt, updated_at);
-                } else {
-                  repo.update_git_remote(
-                      project_id,
-                      std::optional<std::string>(body.at("git_remote_url").get<std::string>()),
-                      updated_at
-                  );
-                }
               }
               if (has_git_provider) {
                 if (body.at("git_provider").is_null()) {
@@ -1067,12 +1068,20 @@ bool handle_project_routes(
                 }
               }
               if (has_git_remote) {
+                const auto remote = body.at("git_remote_url").is_null()
+                                        ? std::optional<std::string>{}
+                                        : std::optional<std::string>{
+                                              body.at("git_remote_url").get<std::string>()
+                                          };
                 git.open_or_init(repo_root);
-                if (body.at("git_remote_url").is_null()) {
+                if (!remote.has_value()) {
                   git.remove_remote("origin");
                 } else {
-                  git.set_remote("origin", body.at("git_remote_url").get<std::string>());
+                  git.set_remote("origin", *remote);
                 }
+                git_remote_changed = locked_project->git_remote_url != remote;
+                // Persist the remote only after Git accepts it.
+                repo.update_git_remote(project_id, remote, updated_at);
               }
               const std::string effective_privacy_mode =
                   has_privacy_mode ? body.at("privacy_mode").get<std::string>()
@@ -1104,6 +1113,9 @@ bool handle_project_routes(
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};
+              if (git_remote_changed.has_value()) {
+                payload["data"]["git_remote_changed"] = *git_remote_changed;
+              }
               res = support::json_response(http::status::ok, payload);
             }
           }

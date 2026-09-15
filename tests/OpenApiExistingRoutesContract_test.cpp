@@ -45,6 +45,29 @@ void require_json_response_ref(
 
 } // namespace
 
+TEST_CASE("OpenAPI contracts project remote mutation results", "[openapi][sync][remote]") {
+  const auto document = load_openapi();
+  const auto operation = document["paths"]["/projects/{project_id}"]["patch"];
+  CHECK(parameter_named(operation, "project_id")["required"].as<bool>());
+  CHECK(
+      operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>() ==
+      "#/components/schemas/ProjectUpdateRequest"
+  );
+  require_json_response_ref(operation, "200", "ProjectUpdateResponse");
+  for (const auto* status : {"400", "401", "404"}) {
+    require_json_response_ref(operation, status, "ErrorResponse");
+  }
+  const auto schemas = document["components"]["schemas"];
+  CHECK(schemas["ProjectUpdateRequest"]["properties"]["git_remote_url"]["nullable"].as<bool>());
+  const auto data = schemas["ProjectUpdateResponse"]["properties"]["data"];
+  CHECK(required_properties(data) == std::vector<std::string>{"project_id"});
+  CHECK(data["properties"]["git_remote_changed"]["type"].as<std::string>() == "boolean");
+  const auto description = data["properties"]["git_remote_changed"]["description"].as<std::string>(
+  );
+  CHECK(description.find("Present when git_remote_url is supplied") != std::string::npos);
+  CHECK(description.find("same value returns false") != std::string::npos);
+}
+
 TEST_CASE(
     "OpenAPI contracts binary asset content metadata and structured failures",
     "[openapi][resources][export]"

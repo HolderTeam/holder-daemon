@@ -11,18 +11,26 @@ namespace holder::cli {
 namespace {
 
 const char* sync_usage() {
-  return "Usage: holderctl sync status [--project <id-or-name>] [--json]\n"
-         "\nInspect the current project's recorded Git sync state.\n"
+  return "Usage:\n"
+         "  holderctl sync status [--project <id-or-name>] [--json]\n"
+         "  holderctl sync remote [URL] [--project <id-or-name>] [--json]\n"
+         "  holderctl sync disconnect [--project <id-or-name>] [--json]\n"
+         "\nInspect recorded Git sync state and configure the project's remote.\n"
+         "Remote without a URL shows the configured remote; disconnect removes it.\n"
          "Use --project to choose an exact project ID or name without changing the selection.\n"
          "Omit --project to use the selected project (or Home by default).\n"
          "Counts and results describe the daemon's last observation, not a fresh Git check.\n"
          "Live activity and remote-behind counts are unavailable.\n"
          "Error text containing URLs or credential markers is redacted in all output.\n"
+         "Remote URLs containing credentials, query strings, or fragments are redacted.\n"
          "\nExamples:\n"
          "  holderctl sync status\n"
          "  holderctl sync status --json\n"
          "  holderctl sync status --project \"Work\"\n"
-         "  holderctl sync status --project \"Work\" --json";
+         "  holderctl sync status --project \"Work\" --json\n"
+         "  holderctl sync remote --project \"Work\"\n"
+         "  holderctl sync remote git@example.com:team/work.git --project \"Work\"\n"
+         "  holderctl sync disconnect --project \"Work\" --json";
 }
 
 // Git diagnostics may embed arbitrary credentials. Withhold the entire diagnostic
@@ -34,6 +42,25 @@ std::string safe_diagnostic(const std::string& text) {
     if (lower.find(marker) != std::string::npos) return "[redacted]";
   }
   return text;
+}
+
+std::string safe_remote_url(const std::string& url) {
+  if (url.find_first_of("?#") != std::string::npos) return "[redacted]";
+  for (const char value : url) {
+    const auto ch = static_cast<unsigned char>(value);
+    if (ch < 32 || ch == 127) return "[redacted]";
+  }
+  const auto scheme = url.find("://");
+  if (scheme != std::string::npos) {
+    const auto end = url.find('/', scheme + 3);
+    const auto authority =
+        url.substr(scheme + 3, end == std::string::npos ? end : end - (scheme + 3));
+    if (authority.find('@') != std::string::npos) return "[redacted]";
+  } else if (url.find('@') != std::string::npos &&
+             (url.rfind("git@", 0) != 0 || url.rfind('@') != 3)) {
+    return "[redacted]";
+  }
+  return url;
 }
 
 void redact_diagnostics(nlohmann::json& value) {
@@ -93,8 +120,9 @@ void print_sync_status(const nlohmann::json& data, bool has_remote) {
 int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
   bool json_output = false;
   bool help = false;
-  bool status = false;
+  std::string action;
   std::optional<std::string> project_reference;
+  std::optional<std::string> remote_url;
   for (int i = 2; i < argc; ++i) {
     const std::string arg = argv[i];
     if (arg == "--json")
@@ -110,20 +138,61 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
         throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
       }
       project_reference = value;
-    } else if (arg == "status" && !status)
-      status = true;
-    else
+    } else if (action.empty() && (arg == "status" || arg == "remote" || arg == "disconnect")) {
+      action = arg;
+    } else if (action == "remote" && !remote_url && !trim_ascii_whitespace(arg).empty() &&
+               arg.front() != '-') {
+      remote_url = arg;
+    } else {
       throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
+    }
   }
   if (help) {
     std::cout << sync_usage() << "\n";
     return 0;
   }
-  if (!status) throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
+  if (action.empty()) throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
 
   try {
     const auto project_id = sync_project_id(paths, project_reference);
     const auto target = "/projects/" + url_encode_component(project_id);
+    if (action != "status") {
+      const bool mutation = action == "disconnect" || remote_url.has_value();
+      auto body = nlohmann::json::object();
+      if (mutation) {
+        body["git_remote_url"] = remote_url ? nlohmann::json(*remote_url) : nlohmann::json(nullptr);
+        body["updated_at"] = now_epoch_seconds();
+      }
+      auto payload = card_api_request(
+          paths,
+          mutation ? boost::beast::http::verb::patch : boost::beast::http::verb::get,
+          target,
+          body
+      );
+      if (!mutation) {
+        auto& data = payload.at("data");
+        if (!data.at("git_remote_url").is_null()) {
+          data["git_remote_url"] = safe_remote_url(json_string(data, "git_remote_url"));
+        }
+        redact_diagnostics(data.at("sync").at("last_sync_error"));
+      }
+      if (json_output) {
+        std::cout << payload.dump(2) << "\n";
+      } else if (mutation) {
+        const bool changed = payload.at("data").at("git_remote_changed").get<bool>();
+        std::cout << "Project: " << json_string(payload.at("data"), "project_id") << "\n";
+        if (action == "disconnect") {
+          std::cout << (changed ? "Disconnected.\n" : "Already disconnected.\n");
+        } else {
+          std::cout << (changed ? "Remote set: " : "Remote unchanged: ")
+                    << safe_remote_url(*remote_url) << "\n";
+        }
+      } else {
+        const auto remote = json_string(payload.at("data"), "git_remote_url");
+        std::cout << "Remote: " << (remote.empty() ? "none" : remote) << "\n";
+      }
+      return 0;
+    }
     auto payload =
         card_api_request(paths, boost::beast::http::verb::get, target + "/git/sync-status");
     redact_diagnostics(payload.at("data").at("sync").at("last_sync_error"));
@@ -142,7 +211,10 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
   } catch (const boost::system::system_error& ex) {
     throw CliError("network_error", safe_diagnostic(ex.what()));
   } catch (const std::exception& ex) {
-    throw CliError("sync_status_failed", safe_diagnostic(ex.what()));
+    throw CliError(
+        action == "status" ? "sync_status_failed" : "sync_request_failed",
+        safe_diagnostic(ex.what())
+    );
   }
 }
 

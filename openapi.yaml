@@ -1703,6 +1703,12 @@ components:
           properties:
             project_id:
               type: string
+            git_remote_changed:
+              type: boolean
+              description: >-
+                Present when git_remote_url is supplied. Reports whether the stored remote URL
+                changed, including disconnecting it. Reapplying the same value returns false.
+                The URL is persisted only after Git accepts the remote operation.
     ProjectGitTestRemoteRequest:
       type: object
       properties:
