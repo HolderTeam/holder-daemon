@@ -1,6 +1,7 @@
 #include "http_test_helpers.h"
 
 #include "model/Card.h"
+#include <future>
 
 using holder::test::create_project;
 using holder::test::http_json_request;
@@ -32,6 +33,76 @@ struct RunningServer {
 };
 
 } // namespace
+
+TEST_CASE("HTTP resource attachments are isolated idempotent live-card operations", "[http][resources][attachments]") {
+  namespace http = boost::beast::http;
+  const auto dir = make_temp_dir();
+  auto db = open_db_with_schema(dir / "holder.db");
+  create_project(db, "proj-1", (dir / "project").string());
+  create_project(db, "proj-2", (dir / "other").string());
+  const std::string token = "testtoken";
+  RunningServer running(db, token);
+  auto request = [&](http::verb method, const std::string& path,
+                     const nlohmann::json& body = nlohmann::json::object(),
+                     http::status status = http::status::ok) {
+    return http_json_request(running.bound.bind, running.bound.port, token, method, path, body, status);
+  };
+  const auto card = request(http::verb::post, "/cards", {{"project_id", "proj-1"},
+      {"title", "Attachments"}, {"content", "Attachment card\n"}}, http::status::created);
+  const auto card_id = card["data"]["card_id"].get<std::string>();
+  const auto path = "/cards/" + card_id + "/resources";
+  const auto list_path = "/resources?project_id=proj-1&card_id=" + card_id;
+  const auto resource = request(http::verb::post, "/resources", {{"project_id", "proj-1"},
+      {"type", "url"}, {"label", "Docs"}, {"metadata", {{"identifier", {"https://example.com"}}}}}, http::status::created);
+  const auto resource_id = resource["data"]["resource_id"].get<std::string>();
+  const nlohmann::json body = {{"project_id", "proj-1"}, {"resource_id", resource_id}};
+  REQUIRE(request(http::verb::get, list_path)["data"].empty());
+  const auto attached = request(http::verb::post, path, body);
+  REQUIRE(attached["data"]["changed"] == true);
+  REQUIRE(attached["data"]["card_id"] == card_id);
+  REQUIRE(attached["data"]["resource_id"] == resource_id);
+  REQUIRE(request(http::verb::post, path, body)["data"]["changed"] == false);
+  auto listed = request(http::verb::get, list_path + "&limit=1");
+  REQUIRE(listed["data"].size() == 1);
+  REQUIRE(listed["data"][0]["metadata"] == resource["data"]["metadata"]);
+  REQUIRE(listed["next_offset"] == 1);
+  REQUIRE(request(http::verb::get, list_path + "&limit=1&offset=1")["data"].empty());
+  REQUIRE(request(http::verb::get, list_path + "&limit=0", {}, http::status::bad_request)["ok"] == false);
+  REQUIRE(request(http::verb::get, list_path + "&offset=1x", {}, http::status::bad_request)["ok"] == false);
+  REQUIRE(request(http::verb::post, path, {{"resource_id", resource_id}}, http::status::bad_request)["ok"] == false);
+  REQUIRE(request(http::verb::post, path, {{"project_id", "proj-1"}, {"resource_id", 5}}, http::status::bad_request)["ok"] == false);
+  REQUIRE(request(http::verb::post, path, {{"project_id", "proj-1"}, {"resource_id", card_id}}, http::status::not_found)["ok"] == false);
+  REQUIRE(request(http::verb::delete_, path, {{"project_id", "proj-2"}, {"resource_id", resource_id}}, http::status::unprocessable_entity)["ok"] == false);
+  REQUIRE(request(http::verb::get, "/resources?project_id=proj-2&card_id=" + card_id, {}, http::status::unprocessable_entity)["ok"] == false);
+  const auto foreign = request(http::verb::post, "/resources", {{"project_id", "proj-2"},
+      {"type", "url"}, {"label", "Foreign"}}, http::status::created);
+  for (auto method : {http::verb::post, http::verb::delete_}) {
+    REQUIRE(request(method, path, {{"project_id", "proj-1"}, {"resource_id", foreign["data"]["resource_id"]}}, http::status::unprocessable_entity)["ok"] == false);
+    REQUIRE(http_json_request(running.bound.bind, running.bound.port, "wrong-token", method, path, body,
+        http::status::unauthorized)["ok"] == false);
+  }
+  // Parallel read requests exercise listener request ownership and worker-owned DB handles.
+  std::vector<std::future<nlohmann::json>> reads;
+  for (int i = 0; i < 12; ++i) reads.push_back(std::async(std::launch::async, [&] {
+    return request(http::verb::get, list_path);
+  }));
+  for (auto& read : reads) REQUIRE(read.get()["data"][0]["resource_id"] == resource_id);
+  // An unrelated resource reference survives detach; delete removes both kinds globally.
+  request(http::verb::post, "/cards/" + card_id + "/links",
+      {{"to_card_id", resource_id}, {"to_type", "resource"}, {"kind", "ref"}}, http::status::created);
+  REQUIRE(request(http::verb::delete_, path, body)["data"]["changed"] == true);
+  REQUIRE(request(http::verb::delete_, path, body)["data"]["changed"] == false);
+  REQUIRE(request(http::verb::get, list_path)["data"].empty());
+  REQUIRE(request(http::verb::get, "/resources/" + resource_id)["data"]["resource_id"] == resource_id);
+  REQUIRE(request(http::verb::get, "/cards/" + card_id + "/links")["data"].size() == 1);
+  request(http::verb::post, path, body);
+  request(http::verb::delete_, "/resources/" + resource_id);
+  REQUIRE(request(http::verb::get, list_path)["data"].empty());
+  REQUIRE(request(http::verb::get, "/cards/" + card_id + "/links")["data"].empty());
+  request(http::verb::delete_, "/cards/" + card_id);
+  REQUIRE(request(http::verb::get, list_path, {}, http::status::not_found)["ok"] == false);
+  REQUIRE(request(http::verb::post, path, body, http::status::not_found)["ok"] == false);
+}
 
 TEST_CASE("HTTP resources persist complete Git-backed metadata", "[http][resources]") {
   const auto dir = make_temp_dir();

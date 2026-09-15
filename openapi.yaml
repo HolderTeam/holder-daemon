@@ -2051,6 +2051,17 @@ components:
       type: object
       required: [ok, data]
       properties:
+        card_id:
+          type: string
+          description: Canonical live card ID, present only for card attachment lists.
+        limit:
+          type: integer
+        offset:
+          type: integer
+        next_offset:
+          type: integer
+          nullable: true
+          description: Present for card lists; null when exhausted, otherwise continue here (the next page may be empty).
         ok:
           type: boolean
           enum: [true]
@@ -2058,6 +2069,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Resource"
+    ResourceAttachmentResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [card_id, resource_id, changed, outcome]
+          properties:
+            card_id:
+              type: string
+            resource_id:
+              type: string
+            changed:
+              type: boolean
+            outcome:
+              type: string
+              enum: [attached, already_attached, detached, not_attached]
     ResourceDeleteResponse:
       type: object
       required: [ok, data]
@@ -4039,6 +4070,115 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /cards/{card_id}/resources:
+    post:
+      summary: Attach a project resource to a live card (idempotent)
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, resource_id]
+              properties:
+                project_id:
+                  type: string
+                  minLength: 1
+                resource_id:
+                  type: string
+                  minLength: 1
+                  description: Complete exact project resource ID; no prefix or label lookup.
+      responses:
+        "200":
+          description: Attachment outcome; repeated requests do not change state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAttachmentResponse"
+        "400":
+          description: Malformed request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card or resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card or resource belongs to a different project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Detach one attachment without deleting the project resource (idempotent)
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, resource_id]
+              properties:
+                project_id:
+                  type: string
+                  minLength: 1
+                resource_id:
+                  type: string
+                  minLength: 1
+                  description: Complete exact project resource ID; no prefix or label lookup.
+      responses:
+        "200":
+          description: Attachment outcome; repeated requests do not change state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAttachmentResponse"
+        "400":
+          description: Malformed request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card or resource not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card or resource belongs to a different project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /cards/{card_id}/links:
     get:
       summary: List outgoing links for a card
@@ -4883,14 +5023,50 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /resources:
     get:
-      summary: List resources by project
+      summary: List project resources or attachments to a live card
+      description: With card_id, returns an authoritative live-card attachment join in updated_at descending, resource_id ascending order. Without card_id, preserves the unpaginated project resource list. Detach preserves project resources; delete removes them globally.
       parameters:
+        - in: query
+          name: card_id
+          required: false
+          description: Complete resolved live card ID; must belong to project_id.
+          schema:
+            type: string
+        - in: query
+          name: limit
+          required: false
+          description: Requires card_id.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - in: query
+          name: offset
+          required: false
+          description: Requires card_id.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
         - in: query
           name: project_id
           required: true
           schema:
             type: string
       responses:
+        "404":
+          description: Live card not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Card is in a different project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "200":
           description: OK
           content:

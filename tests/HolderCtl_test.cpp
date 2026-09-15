@@ -22,6 +22,7 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -2871,9 +2872,7 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
 
   const auto server_dir = xdg_root / "data" / "holder" / "server";
@@ -2897,6 +2896,46 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       ) == 0
   );
   const auto resource_id = created_resource_id_from_output(read_text(add_out));
+
+  const auto attachment_out = xdg_root / "attachment-json.out";
+  auto attachment_command = [&](const std::string& args, int expected = 0) {
+    REQUIRE(run_command(bin + " resource " + args + " > \"" + attachment_out.string() +
+        "\" 2> \"" + (xdg_root / "attachment-error.out").string() + "\"") == expected);
+    return read_text(attachment_out);
+  };
+  REQUIRE(nlohmann::json::parse(attachment_command("list 'Import Target' --json"))["data"].empty());
+  auto attachment_json = nlohmann::json::parse(attachment_command("attach abcdef12 " + resource_id + " --json"));
+  REQUIRE(attachment_json["data"]["card_id"] == import_target.card_id);
+  REQUIRE(attachment_json["data"]["resource_id"] == resource_id);
+  REQUIRE(attachment_json["data"]["changed"] == true);
+  REQUIRE(nlohmann::json::parse(attachment_command("attach 'Import Target' " + resource_id + " --json"))["data"]["changed"] == false);
+  REQUIRE(attachment_command("list 'Import Target'").find(resource_id) != std::string::npos);
+  attachment_json = nlohmann::json::parse(attachment_command("list abcdef12 --limit 1 --json"));
+  REQUIRE(attachment_json["data"][0]["resource_id"] == resource_id);
+  REQUIRE(attachment_json["card_id"] == import_target.card_id);
+  REQUIRE(attachment_json["next_offset"] == 1);
+  REQUIRE(nlohmann::json::parse(attachment_command("list abcdef12 --limit 1 --offset 1 --json"))["data"].empty());
+  REQUIRE(attachment_command("detach 'Import Target' " + resource_id).find("detached") == 0);
+  REQUIRE(nlohmann::json::parse(attachment_command("detach abcdef12 " + resource_id + " --json"))["data"]["changed"] == false);
+  REQUIRE(nlohmann::json::parse(attachment_command("list 'Import Target' --json"))["data"].empty());
+  REQUIRE(nlohmann::json::parse(attachment_command("list --json"))["data"].size() == 1);
+  attachment_command("attach abcdef12 missing --json", 1);
+  REQUIRE(nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] == "not_found");
+  attachment_command("attach abcdef12 " + resource_id.substr(0, 8) + " --json", 1);
+  REQUIRE(nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] == "not_found");
+  attachment_command("list abcdef12 --limit 0 --json", 1);
+  attachment_command("attach missing " + resource_id + " --json", 1);
+  // Resolve ambiguous titles through the shared daemon resolver, never client-side listings.
+  const auto duplicate = holder::test::http_json_request(bound.bind, bound.port, token,
+      boost::beast::http::verb::post, "/cards", {{"project_id", "home-id"},
+      {"title", "Import Target"}, {"content", "Duplicate\n"}}, boost::beast::http::status::created);
+  for (const auto& args : std::vector<std::string>{"list 'Import Target' --json", "attach 'Import Target' " + resource_id + " --json",
+                           "detach 'Import Target' " + resource_id + " --json"}) {
+    attachment_command(args, 1);
+    REQUIRE(read_text(xdg_root / "attachment-error.out").find("ambiguous") != std::string::npos);
+  }
+  holder::test::http_json_request(bound.bind, bound.port, token, boost::beast::http::verb::delete_,
+      "/cards/" + duplicate["data"]["card_id"].get<std::string>(), {}, boost::beast::http::status::ok);
 
   const auto add_json_out = xdg_root / "resource-add-json.out";
   REQUIRE(
@@ -3057,7 +3096,7 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       run_command(bin + " resource delete " + resource_id + " > \"" + delete_out.string() + "\"") ==
       0
   );
-  REQUIRE(read_text(delete_out) == "Deleted resource: " + resource_id + "\n");
+  REQUIRE(read_text(delete_out) == "Deleted resource: " + resource_id + " (globally, including all relationships)\n");
 
   REQUIRE(run_command(bin + " resource show " + resource_id + " >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource open empty-uri >/dev/null 2>/dev/null") == 1);
@@ -3091,7 +3130,16 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       ) == 0
   );
   REQUIRE(read_text(import_out).find("Attached resource: ") == 0);
+  const auto imported_list = nlohmann::json::parse(attachment_command("list 'Import Target' --json"));
+  REQUIRE(imported_list["data"].size() == 1);
+  const auto import_json = nlohmann::json::parse(attachment_command("import 'Import Target' \"" + import_source.string() + "\" --json"));
+  REQUIRE(import_json["data"]["card_id"] == import_target.card_id);
+  REQUIRE(import_json["data"]["resource_id"] == imported_list["data"][0]["resource_id"]);
+  REQUIRE(import_json["data"]["changed"] == false);
   REQUIRE(run_command(bin + " trash 'Import Target' >/dev/null") == 0);
+  attachment_command("list abcdef12 --json", 1);
+  attachment_command("attach abcdef12 " + resource_id + " --json", 1);
+  attachment_command("detach abcdef12 " + resource_id + " --json", 1);
   REQUIRE(
       run_command(
           bin + " resource import 'Import Target' \"" + import_source.string() +
@@ -3100,7 +3148,7 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
   );
 
   server.stop();
-  server_thread.join();
+  server_thread.stop();
 }
 
 TEST_CASE("holderctl recovery-token exports and imports encrypted project tokens", "[holderctl]") {
