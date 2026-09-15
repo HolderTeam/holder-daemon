@@ -289,6 +289,71 @@ bool handle_milestone_routes(
       );
       return true;
     }
+
+    if (milestone_id.has_value() && req.method() == http::verb::patch) {
+      if (card_store == nullptr) {
+        res = support::error_response(
+            http::status::not_implemented, "not_implemented", "Card store unavailable."
+        );
+        return true;
+      }
+      const auto body = nlohmann::json::parse(req.body());
+      if (!body.is_object() || body.empty()) {
+        throw std::invalid_argument("milestone update must contain at least one field.");
+      }
+      for (const auto& [name, value] : body.items()) {
+        (void)value;
+        if (name != "start_at" && name != "end_at" && name != "all_day" && name != "kind" &&
+            name != "description") {
+          throw std::invalid_argument("unknown milestone update field: " + name);
+        }
+      }
+
+      holder::card::MilestoneUpdate update;
+      if (body.contains("start_at")) {
+        if (!body.at("start_at").is_number_integer()) {
+          throw std::invalid_argument("start_at must be an epoch-second integer.");
+        }
+        update.start_at = body.at("start_at").get<long long>();
+      }
+      if (body.contains("end_at")) {
+        update.has_end_at = true;
+        if (!body.at("end_at").is_null()) {
+          if (!body.at("end_at").is_number_integer()) {
+            throw std::invalid_argument("end_at must be an epoch-second integer or null.");
+          }
+          update.end_at = body.at("end_at").get<long long>();
+        }
+      }
+      if (body.contains("all_day")) {
+        if (!body.at("all_day").is_boolean()) {
+          throw std::invalid_argument("all_day must be a boolean.");
+        }
+        update.all_day = body.at("all_day").get<bool>();
+      }
+      if (body.contains("kind")) {
+        update.has_kind = true;
+        update.kind = nullable_string(body, "kind");
+      }
+      if (body.contains("description")) {
+        update.has_description = true;
+        update.description = nullable_string(body, "description");
+      }
+
+      const auto updated = card_store->update_milestone(
+          card->project_id, card_id, *milestone_id, update, support::now_epoch_seconds()
+      );
+      if (!updated.has_value()) {
+        res = support::error_response(
+            http::status::not_found, "not_found", "Milestone not found."
+        );
+        return true;
+      }
+      res = support::json_response(
+          http::status::ok, {{"ok", true}, {"data", milestone_json(*updated)}}
+      );
+      return true;
+    }
   } catch (const nlohmann::json::exception& ex) {
     res = support::error_response(http::status::bad_request, "bad_request", ex.what());
     return true;

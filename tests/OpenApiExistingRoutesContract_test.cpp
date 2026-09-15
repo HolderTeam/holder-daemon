@@ -264,6 +264,36 @@ TEST_CASE(
       std::vector<std::string>{"card_id", "milestone_id", "removed"}
   );
 
+  const auto update = document["paths"]["/cards/{card_id}/milestones/{milestone_id}"]["patch"];
+  REQUIRE(update.IsDefined());
+  CHECK(
+      update["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>() ==
+      "#/components/schemas/MilestoneUpdateRequest"
+  );
+  require_json_response_ref(update, "200", "MilestoneResponse");
+  require_json_response_ref(update, "400", "ErrorResponse");
+  require_json_response_ref(update, "404", "ErrorResponse");
+  const auto milestone_id = parameter_named(update, "milestone_id");
+  REQUIRE(milestone_id.IsDefined());
+  CHECK(milestone_id["schema"]["format"].as<std::string>() == "uuid");
+  CHECK(
+      milestone_id["description"].as<std::string>().find("never abbreviated") !=
+      std::string::npos
+  );
+
+  const auto milestone_update = schemas["MilestoneUpdateRequest"];
+  REQUIRE(milestone_update.IsDefined());
+  CHECK(milestone_update["minProperties"].as<int>() == 1);
+  CHECK_FALSE(milestone_update["additionalProperties"].as<bool>());
+  CHECK_FALSE(milestone_update["required"].IsDefined());
+  CHECK_FALSE(milestone_update["properties"]["title"].IsDefined());
+  for (const auto& name : {"start_at", "end_at", "all_day", "kind", "description"}) {
+    CHECK(milestone_update["properties"][name].IsDefined());
+  }
+  CHECK(milestone_update["properties"]["end_at"]["nullable"].as<bool>());
+  CHECK(milestone_update["properties"]["kind"]["nullable"].as<bool>());
+  CHECK(milestone_update["properties"]["description"]["nullable"].as<bool>());
+
   const auto calendar = document["paths"]["/calendar"]["get"];
   REQUIRE(calendar.IsDefined());
   CHECK(

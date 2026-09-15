@@ -64,7 +64,7 @@ void print_usage(std::ostream& out) {
       << "  card       Print a card by UUID, UUID prefix, or exact title\n"
       << "  history    Inspect project or card history, compare, show, and restore revisions\n"
       << "  milestones List milestones attached to a live card\n"
-      << "  milestone  Add or remove a milestone from a live card\n"
+      << "  milestone  Add, edit, or remove a milestone from a live card\n"
       << "  calendar   List milestone and card activity for a local date/time range\n"
       << "  edit       Open $EDITOR for a card, then save changes\n"
       << "  links      List outgoing links from a card in the current project\n"

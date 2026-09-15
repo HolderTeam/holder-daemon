@@ -1609,6 +1609,50 @@ TEST_CASE(
   const auto timed_id = listed["data"][1]["milestone_id"].get<std::string>();
   REQUIRE(timed_id.size() == 36);
 
+  const auto edit_partial_path = xdg_root / "milestone-edit-partial.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --kind appointment --json > \"" + edit_partial_path.string() + "\""
+      ) == 0
+  );
+  const auto partial = nlohmann::json::parse(read_text(edit_partial_path));
+  REQUIRE(partial["data"]["milestone_id"] == timed_id);
+  REQUIRE(partial["data"]["card_id"] == card_id);
+  REQUIRE(partial["data"]["start_at"] == 1780394400);
+  REQUIRE(partial["data"]["end_at"] == 1780398000);
+  REQUIRE(partial["data"]["all_day"] == false);
+  REQUIRE(partial["data"]["kind"] == "appointment");
+  REQUIRE(partial["data"]["description"].is_null());
+
+  const auto edit_all_day_path = xdg_root / "milestone-edit-all-day.out";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --start 2026-06-02 --end 2026-06-03 --all-day --clear-kind "
+          "--description 'All day work' > \"" +
+          edit_all_day_path.string() + "\""
+      ) == 0
+  );
+  const auto edit_all_day = read_text(edit_all_day_path);
+  REQUIRE(edit_all_day.find("Updated milestone " + timed_id) != std::string::npos);
+  REQUIRE(edit_all_day.find("2026-06-02 – 2026-06-03") != std::string::npos);
+
+  const auto after_edit_path = xdg_root / "milestones-after-edit.json";
+  REQUIRE(
+      run_command(
+          bin + " milestones 'Release Card' --json > \"" + after_edit_path.string() + "\""
+      ) == 0
+  );
+  const auto after_edit = nlohmann::json::parse(read_text(after_edit_path));
+  REQUIRE(after_edit["data"].size() == 2);
+  REQUIRE(after_edit["data"][1]["milestone_id"] == timed_id);
+  REQUIRE(after_edit["data"][1]["start_at"] == 1780358400);
+  REQUIRE(after_edit["data"][1]["end_at"] == 1780444800);
+  REQUIRE(after_edit["data"][1]["all_day"] == true);
+  REQUIRE(after_edit["data"][1]["kind"].is_null());
+  REQUIRE(after_edit["data"][1]["description"] == "All day work");
+
   db.exec("UPDATE cards SET updated_at=1780398000 WHERE card_id="
           "'aaaaaaaa-1111-4111-8111-111111111111';");
   const auto calendar_path = xdg_root / "calendar.json";
@@ -1642,6 +1686,20 @@ TEST_CASE(
   REQUIRE(calendar_human.find("\tcard-created\t-\t") != std::string::npos);
   REQUIRE(calendar_human.find("\tcard-updated\t-\t") != std::string::npos);
 
+  const auto cleared_path = xdg_root / "milestone-edit-cleared.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --clear-end --clear-description --json > \"" +
+          cleared_path.string() + "\""
+      ) == 0
+  );
+  const auto cleared = nlohmann::json::parse(read_text(cleared_path));
+  REQUIRE(cleared["data"]["milestone_id"] == timed_id);
+  REQUIRE(cleared["data"]["end_at"].is_null());
+  REQUIRE(cleared["data"]["description"].is_null());
+  REQUIRE(cleared["data"]["all_day"] == true);
+
   const auto invalid_path = xdg_root / "milestone-invalid.json";
   REQUIRE(
       run_command(
@@ -1671,6 +1729,29 @@ TEST_CASE(
   );
   const auto invalid_range = nlohmann::json::parse(read_text(range_path));
   REQUIRE(invalid_range["error"]["code"] == "invalid_calendar_range");
+
+  const auto edit_mixed_path = xdg_root / "milestone-edit-mixed.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --start 2026-06-02 --end 2026-06-03T12:00:00Z --json >/dev/null 2> \"" +
+          edit_mixed_path.string() + "\""
+      ) == 1
+  );
+  const auto edit_mixed = nlohmann::json::parse(read_text(edit_mixed_path));
+  REQUIRE(edit_mixed["error"]["code"] == "invalid_milestone_time");
+
+  const auto missing_edit_path = xdg_root / "milestone-edit-missing.json";
+  REQUIRE(
+      run_command(
+          bin +
+          " milestone edit 'Release Card' 00000000-0000-4000-8000-000000000000 --kind x "
+          "--json >/dev/null 2> \"" +
+          missing_edit_path.string() + "\""
+      ) == 1
+  );
+  const auto missing_edit = nlohmann::json::parse(read_text(missing_edit_path));
+  REQUIRE(missing_edit["error"]["code"] == "not_found");
 
   const auto title_path = xdg_root / "milestone-title.err";
   REQUIRE(

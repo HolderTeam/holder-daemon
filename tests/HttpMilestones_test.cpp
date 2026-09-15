@@ -76,6 +76,26 @@ TEST_CASE("HTTP milestones persist through cards and feed the project calendar",
   REQUIRE(created["data"]["end_at"] == 220);
   REQUIRE(created["data"]["kind"] == "Service");
   const auto milestone_id = created["data"]["milestone_id"].get<std::string>();
+  const auto milestone_created_at = created["data"]["created_at"].get<long long>();
+
+  const auto updated = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/" + milestone_id,
+      {{"kind", "Renewal"}},
+      boost::beast::http::status::ok
+  );
+  REQUIRE(updated["data"]["milestone_id"] == milestone_id);
+  REQUIRE(updated["data"]["card_id"] == "card-a");
+  REQUIRE(updated["data"]["start_at"] == 200);
+  REQUIRE(updated["data"]["end_at"] == 220);
+  REQUIRE(updated["data"]["all_day"] == false);
+  REQUIRE(updated["data"]["kind"] == "Renewal");
+  REQUIRE(updated["data"]["description"] == "Annual service");
+  REQUIRE(updated["data"]["created_at"] == milestone_created_at);
+  REQUIRE(updated["data"]["updated_at"].get<long long>() >= milestone_created_at);
 
   const auto listed = http_json_request(
       running.bound.bind,
@@ -88,6 +108,7 @@ TEST_CASE("HTTP milestones persist through cards and feed the project calendar",
   );
   REQUIRE(listed["data"].size() == 1);
   REQUIRE(listed["data"][0]["milestone_id"] == milestone_id);
+  REQUIRE(listed["data"][0]["kind"] == "Renewal");
 
   const auto calendar = http_json_request(
       running.bound.bind,
@@ -167,6 +188,83 @@ TEST_CASE("HTTP milestone and calendar routes validate inputs", "[http][mileston
       boost::beast::http::status::bad_request
   );
   REQUIRE(bad_end["error"]["code"] == "bad_request");
+
+  const auto created = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/card-a/milestones",
+      {{"start_at", 200}, {"end_at", 220}, {"kind", "Review"}},
+      boost::beast::http::status::created
+  );
+  const auto milestone_id = created["data"]["milestone_id"].get<std::string>();
+
+  const auto invalid_update = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/" + milestone_id,
+      {{"start_at", 221}},
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(invalid_update["error"]["code"] == "bad_request");
+
+  const auto empty_update = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/" + milestone_id,
+      nlohmann::json::object(),
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(empty_update["error"]["code"] == "bad_request");
+
+  const auto unknown_field = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/" + milestone_id,
+      {{"title", "Not a milestone field"}},
+      boost::beast::http::status::bad_request
+  );
+  REQUIRE(unknown_field["error"]["code"] == "bad_request");
+
+  running.cards.create(card("card-b", "Other card", 100, 100), "Other\n");
+  const auto other = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards/card-b/milestones",
+      {{"start_at", 300}},
+      boost::beast::http::status::created
+  );
+  const auto other_milestone_id = other["data"]["milestone_id"].get<std::string>();
+  const auto wrong_card = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/" + other_milestone_id,
+      {{"kind", "Wrong card"}},
+      boost::beast::http::status::not_found
+  );
+  REQUIRE(wrong_card["error"]["code"] == "not_found");
+
+  const auto missing_milestone = http_json_request(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::patch,
+      "/cards/card-a/milestones/00000000-0000-4000-8000-000000000000",
+      {{"kind", "Missing"}},
+      boost::beast::http::status::not_found
+  );
+  REQUIRE(missing_milestone["error"]["code"] == "not_found");
 
   const auto missing_card = http_json_request(
       running.bound.bind,

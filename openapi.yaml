@@ -1061,6 +1061,30 @@ components:
         description:
           type: string
           nullable: true
+    MilestoneUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: Partial milestone update. Omitted properties remain unchanged; null clears a nullable property.
+      properties:
+        start_at:
+          type: integer
+          format: int64
+          description: Unix epoch seconds. When changing an all-day milestone, encode the local calendar date at local midnight.
+        end_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: Inclusive milestone end, or null to clear it. The resulting end must not precede start_at.
+        all_day:
+          type: boolean
+          description: Whether start_at and end_at carry local calendar-date semantics rather than timed-instant semantics.
+        kind:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
     MilestoneResponse:
       type: object
       required: [ok, data]
@@ -3570,6 +3594,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   /cards/{card_id}/milestones/{milestone_id}:
+    patch:
+      summary: Partially update a milestone on a live card
+      description: Updates only supplied fields while preserving milestone identity and creation metadata.
+      parameters:
+        - in: path
+          name: card_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: milestone_id
+          required: true
+          description: Canonical milestone identifier; it is not a card reference and is never abbreviated.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MilestoneUpdateRequest"
+      responses:
+        "200":
+          description: Updated milestone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MilestoneResponse"
+        "400":
+          description: Invalid or empty update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Live card or milestone not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Remove a milestone from a card
       parameters:

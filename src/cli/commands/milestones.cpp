@@ -26,6 +26,7 @@ struct MilestonesOptions {
 
 enum class MilestoneAction {
   Add,
+  Edit,
   Remove,
 };
 
@@ -34,8 +35,13 @@ struct MilestoneOptions {
   bool json_output = false;
   bool help = false;
   bool all_day = false;
+  bool timed = false;
+  bool clear_end = false;
+  bool clear_kind = false;
+  bool clear_description = false;
   std::string card_reference;
   std::string value;
+  std::optional<std::string> start;
   std::optional<std::string> end;
   std::optional<std::string> kind;
   std::optional<std::string> description;
@@ -54,6 +60,9 @@ std::string milestone_usage() {
   return "Usage:\n"
          "  holderctl milestone add CARD WHEN [--end WHEN] [--kind KIND] "
          "[--description TEXT] [--all-day] [--json]\n"
+         "  holderctl milestone edit CARD MILESTONE_ID [--start WHEN] [--end WHEN | "
+         "--clear-end] [--kind KIND | --clear-kind] [--description TEXT | "
+         "--clear-description] [--all-day | --timed] [--json]\n"
          "  holderctl milestone remove CARD MILESTONE_ID [--json]\n"
          "\n"
          "WHEN is YYYY-MM-DD for an all-day local date, or an RFC 3339 timestamp with an "
@@ -131,11 +140,22 @@ MilestoneOptions parse_milestone_options(int argc, char* argv[]) {
       options.help = true;
     } else if (arg == "--all-day") {
       options.all_day = true;
-    } else if (arg == "--end" || arg == "--kind" || arg == "--description") {
+    } else if (arg == "--timed") {
+      options.timed = true;
+    } else if (arg == "--clear-end") {
+      options.clear_end = true;
+    } else if (arg == "--clear-kind") {
+      options.clear_kind = true;
+    } else if (arg == "--clear-description") {
+      options.clear_description = true;
+    } else if (arg == "--start" || arg == "--end" || arg == "--kind" ||
+               arg == "--description") {
       if (i + 1 >= argc) throw std::runtime_error(milestone_usage());
       const std::string value = argv[++i];
       if (value.rfind("--", 0) == 0) throw std::runtime_error(milestone_usage());
-      if (arg == "--end")
+      if (arg == "--start")
+        options.start = value;
+      else if (arg == "--end")
         options.end = value;
       else if (arg == "--kind")
         options.kind = value;
@@ -149,15 +169,40 @@ MilestoneOptions parse_milestone_options(int argc, char* argv[]) {
   }
 
   if (options.help) return options;
-  if (positional.size() != 3 || (positional.front() != "add" && positional.front() != "remove")) {
+  if (positional.size() != 3 ||
+      (positional.front() != "add" && positional.front() != "edit" &&
+       positional.front() != "remove")) {
     throw std::runtime_error(milestone_usage());
   }
-  options.action = positional.front() == "add" ? MilestoneAction::Add : MilestoneAction::Remove;
+  if (positional.front() == "add")
+    options.action = MilestoneAction::Add;
+  else if (positional.front() == "edit")
+    options.action = MilestoneAction::Edit;
+  else
+    options.action = MilestoneAction::Remove;
   options.card_reference = positional.at(1);
   options.value = positional.at(2);
   if (options.action == MilestoneAction::Remove &&
-      (options.all_day || options.end.has_value() || options.kind.has_value() ||
-       options.description.has_value())) {
+      (options.all_day || options.timed || options.start.has_value() || options.end.has_value() ||
+       options.clear_end || options.kind.has_value() || options.clear_kind ||
+       options.description.has_value() || options.clear_description)) {
+    throw std::runtime_error(milestone_usage());
+  }
+  if (options.action == MilestoneAction::Add &&
+      (options.timed || options.start.has_value() || options.clear_end || options.clear_kind ||
+       options.clear_description)) {
+    throw std::runtime_error(milestone_usage());
+  }
+  if ((options.end.has_value() && options.clear_end) ||
+      (options.kind.has_value() && options.clear_kind) ||
+      (options.description.has_value() && options.clear_description) ||
+      (options.all_day && options.timed)) {
+    throw std::runtime_error(milestone_usage());
+  }
+  if (options.action == MilestoneAction::Edit && !options.start.has_value() &&
+      !options.end.has_value() && !options.clear_end && !options.kind.has_value() &&
+      !options.clear_kind && !options.description.has_value() && !options.clear_description &&
+      !options.all_day && !options.timed) {
     throw std::runtime_error(milestone_usage());
   }
   return options;
@@ -395,6 +440,84 @@ int command_milestone(const holder::core::Paths& paths, int argc, char* argv[]) 
       } else {
         std::cout << "Milestone " << options.value << " was not present on "
                   << display_card_id(card_id) << ".\n";
+      }
+      return 0;
+    }
+
+    if (options.action == MilestoneAction::Edit) {
+      nlohmann::json body = nlohmann::json::object();
+      std::optional<ParsedMilestoneWhen> start;
+      std::optional<ParsedMilestoneWhen> end;
+      if (options.start.has_value()) {
+        start = parse_cli_milestone_when(*options.start);
+        body["start_at"] = start->epoch_seconds;
+      }
+      if (options.end.has_value()) {
+        end = parse_cli_milestone_when(*options.end);
+        body["end_at"] = end->epoch_seconds;
+      } else if (options.clear_end) {
+        body["end_at"] = nullptr;
+      }
+
+      if (start.has_value() && end.has_value() && start->kind != end->kind) {
+        throw CliError(
+            "invalid_milestone_time",
+            "Milestone start and end must both be dates or both be timed.",
+            {{"start", *options.start}, {"end", *options.end}},
+            "Milestone start and end must both be dates or both be timed."
+        );
+      }
+      std::optional<MilestoneWhenKind> supplied_time_kind;
+      if (start.has_value())
+        supplied_time_kind = start->kind;
+      else if (end.has_value())
+        supplied_time_kind = end->kind;
+      if (options.all_day && supplied_time_kind == MilestoneWhenKind::Timed) {
+        throw CliError(
+            "invalid_milestone_time",
+            "--all-day requires YYYY-MM-DD values.",
+            {},
+            "--all-day requires YYYY-MM-DD values."
+        );
+      }
+      if (options.timed && supplied_time_kind == MilestoneWhenKind::AllDay) {
+        throw CliError(
+            "invalid_milestone_time",
+            "--timed requires RFC 3339 values with an explicit offset.",
+            {},
+            "--timed requires RFC 3339 values with an explicit offset."
+        );
+      }
+      if (options.all_day)
+        body["all_day"] = true;
+      else if (options.timed)
+        body["all_day"] = false;
+      else if (start.has_value())
+        body["all_day"] = start->kind == MilestoneWhenKind::AllDay;
+
+      if (options.kind.has_value())
+        body["kind"] = *options.kind;
+      else if (options.clear_kind)
+        body["kind"] = nullptr;
+      if (options.description.has_value())
+        body["description"] = *options.description;
+      else if (options.clear_description)
+        body["description"] = nullptr;
+
+      const auto payload = milestone_api_request(
+          paths,
+          boost::beast::http::verb::patch,
+          "/cards/" + url_encode_component(card_id) + "/milestones/" +
+              url_encode_component(options.value),
+          boost::beast::http::status::ok,
+          body
+      );
+      if (options.json_output) {
+        std::cout << payload.dump(2) << "\n";
+      } else {
+        const auto& data = payload.at("data");
+        std::cout << "Updated milestone " << json_string(data, "milestone_id") << " on "
+                  << display_card_id(card_id) << " at " << milestone_range(data) << ".\n";
       }
       return 0;
     }
