@@ -69,6 +69,7 @@ class ProjectRoutesTestGitOps final : public holder::git::GitOps {
     }
   }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
+  holder::git::RemoteProbeResult probe_remote_url(const std::string&) override { return probe_result; }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
     return push_result;
   }

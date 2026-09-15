@@ -56,6 +56,10 @@ class RecordingGitOps final : public holder::git::GitOps {
     last_name = name;
     return probe_result;
   }
+  holder::git::RemoteProbeResult probe_remote_url(const std::string& url) override {
+    last_url = url;
+    return probe_result;
+  }
   holder::git::PushResult push_branch(
       const std::string& name,
       const std::string& branch,
@@ -105,6 +109,10 @@ TEST_CASE("ExecutorGitOps delegates all operations through SerialExecutor", "[gi
   REQUIRE(inner.last_name == "origin");
   REQUIRE(probe.status == holder::git::RemoteProbeStatus::Reachable);
   REQUIRE(probe.remote_has_head == true);
+  const auto url_probe = git.probe_remote_url("https://example.com/other.git");
+  REQUIRE(inner.last_url == "https://example.com/other.git");
+  REQUIRE(url_probe.status == holder::git::RemoteProbeStatus::Reachable);
+  REQUIRE(url_probe.remote_has_head);
 
   const auto push = git.push_branch("origin", "cards", true);
   REQUIRE(inner.last_name == "origin");

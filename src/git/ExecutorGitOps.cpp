@@ -63,6 +63,12 @@ RemoteProbeResult ExecutorGitOps::probe_remote(const std::string& name) {
   });
 }
 
+RemoteProbeResult ExecutorGitOps::probe_remote_url(const std::string& url) {
+  return executor_.call([&]() {
+    return inner_.probe_remote_url(url);
+  });
+}
+
 PushResult ExecutorGitOps::push_branch(
     const std::string& name,
     const std::string& branch,

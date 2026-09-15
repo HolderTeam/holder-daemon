@@ -110,6 +110,8 @@ class DiagnosticGitOps final : public holder::git::GitOps {
   std::string set_error;
   std::string remove_error;
   std::filesystem::path root;
+  holder::git::RemoteProbeResult probe_result{holder::git::RemoteProbeStatus::Reachable, true, {}};
+  holder::git::PushResult push_result{holder::git::PushStatus::Pushed, 0, 0, "abc123", {}};
   void open_or_init(const std::filesystem::path& path) override { root = path; }
   void write_file(const std::filesystem::path&, const std::string&) override {}
   void stage_path(const std::filesystem::path&) override {}
@@ -123,8 +125,11 @@ class DiagnosticGitOps final : public holder::git::GitOps {
   }
   void pull_remote_ff_only(const std::string&) override {}
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return {}; }
+  holder::git::RemoteProbeResult probe_remote_url(const std::string&) override {
+    return probe_result;
+  }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
-    return {};
+    return push_result;
   }
   std::filesystem::path repo_dir() const override { return root; }
 };
@@ -343,4 +348,302 @@ TEST_CASE("project remote update contract rejects malformed input", "[http][sync
   const auto name_only =
       fixture.request(http::verb::patch, work_id, {{"name", "Work"}, {"updated_at", 2}});
   CHECK_FALSE(name_only["data"].contains("git_remote_changed"));
+}
+
+TEST_CASE(
+    "holderctl sync tests and pushes a local remote over HTTP",
+    "[holderctl][sync][push][probe]"
+) {
+  SyncFixture fixture;
+  const auto config = fixture.paths.config_dir / "holderctl.json";
+  std::ofstream(config) << R"({"current_project_id":"home-id"})";
+  const auto before_selection = read_text(config);
+  const auto before_project = fixture.request(http::verb::get, work_id);
+  const auto remote_path = fixture.dir / "remote.git";
+  git_repository* remote = nullptr;
+  REQUIRE(git_repository_init(&remote, remote_path.string().c_str(), 1) == 0);
+  git_repository_free(remote);
+  const std::string select = " --project 'Work Project'";
+  const std::string url = " '" + remote_path.string() + "'";
+  auto result = fixture.run("test" + url + select + " --json");
+  REQUIRE(result.code == 0);
+  CHECK(result.error.empty());
+  CHECK(
+      nlohmann::json::parse(result.output) == fixture.request(
+                                                  http::verb::post,
+                                                  work_id + "/git/test-remote",
+                                                  {{"remote_url", remote_path.string()}}
+                                              )
+  );
+  CHECK(nlohmann::json::parse(result.output)["data"]["remote_has_head"] == false);
+  CHECK(fixture.request(http::verb::get, work_id) == before_project);
+  CHECK_FALSE(std::filesystem::exists(fixture.dir / "work" / ".git"));
+
+  result = fixture.run("test 'nosuchscheme://example.invalid/repo.git'" + select + " --json");
+  REQUIRE(result.code == 1);
+  CHECK(result.output.empty());
+  CHECK(nlohmann::json::parse(result.error)["error"]["code"] == "invalid_remote_url");
+  CHECK(fixture.request(http::verb::get, work_id) == before_project);
+
+  REQUIRE(fixture.run("remote" + url + select).code == 0);
+  holder::git::GitRepo local;
+  local.open_or_init(fixture.dir / "work");
+  local.write_file("seed.txt", "seed");
+  local.stage_path("seed.txt");
+  local.commit("Seed local project");
+  const auto before_git_config = read_text(fixture.dir / "work" / ".git" / "config");
+  result = fixture.run("test" + url + select);
+  REQUIRE(result.code == 0);
+  CHECK(result.output.find("Test: reachable\nRemote refs: none\n") != std::string::npos);
+  CHECK(read_text(fixture.dir / "work" / ".git" / "config") == before_git_config);
+  CliResult first{}, second{};
+  std::thread first_push([&] {
+    first = fixture.run("push" + select + " --json", "first-push");
+  });
+  std::thread second_push([&] {
+    second = fixture.run("push" + select + " --json", "second-push");
+  });
+  first_push.join();
+  second_push.join();
+  REQUIRE(first.code == 0);
+  REQUIRE(second.code == 0);
+  CHECK(first.error.empty());
+  CHECK(second.error.empty());
+  const auto first_payload = nlohmann::json::parse(first.output);
+  const bool first_changed = first_payload["data"]["status"] == "pushed";
+  const auto second_payload = nlohmann::json::parse(second.output);
+  CHECK((first_changed ? second_payload : first_payload)["data"]["status"] == "up_to_date");
+  const auto pushed = first_changed ? first_payload : second_payload;
+  CHECK(pushed["ok"] == true);
+  CHECK(pushed["data"]["project_id"] == work_id);
+  CHECK(pushed["data"]["status"] == "pushed");
+  REQUIRE(pushed["data"]["local_head_commit"].is_string());
+  REQUIRE(git_repository_open(&remote, remote_path.string().c_str()) == 0);
+  git_reference* head = nullptr;
+  REQUIRE(git_repository_head(&head, remote) == 0);
+  CHECK(pushed["data"]["local_head_commit"] == git_oid_tostr_s(git_reference_target(head)));
+  git_reference_free(head);
+  git_repository_free(remote);
+  result = fixture.run("push" + select);
+  REQUIRE(result.code == 0);
+  CHECK(result.output.find("Push: up_to_date\n") != std::string::npos);
+  local.write_file("seed.txt", "uncommitted edits");
+  result = fixture.run("push" + select + " --json");
+  REQUIRE(result.code == 0);
+  CHECK(nlohmann::json::parse(result.output)["data"]["status"] == "up_to_date");
+  CHECK(
+      nlohmann::json::parse(result.output)["data"]["local_head_commit"] ==
+      pushed["data"]["local_head_commit"]
+  );
+  CHECK(read_text(fixture.dir / "work" / "seed.txt") == "uncommitted edits");
+  CHECK(
+      fixture.request(http::verb::get, work_id)["data"]["sync"]["uncommitted_changes_count"]
+          .get<int>() > 0
+  );
+  result = fixture.run("test" + select + " --json");
+  REQUIRE(result.code == 0);
+  CHECK(nlohmann::json::parse(result.output)["data"]["remote_has_head"] == true);
+  CHECK(fixture.request(http::verb::get, "home-id")["data"]["git_remote_url"].is_null());
+  CHECK_FALSE(std::filesystem::exists(fixture.dir / "home" / ".git"));
+  CHECK(read_text(config) == before_selection);
+}
+
+TEST_CASE("holderctl sync test preserves structured Git failures", "[holderctl][sync][probe]") {
+  DiagnosticGitOps git;
+  using Status = holder::git::RemoteProbeStatus;
+  SECTION("authentication") { git.probe_result.status = Status::AuthFailed; }
+  SECTION("missing repository") { git.probe_result.status = Status::NotFound; }
+  SECTION("network") { git.probe_result.status = Status::NetworkError; }
+  SECTION("invalid remote") { git.probe_result.status = Status::InvalidRemoteUrl; }
+  SECTION("unknown failure") { git.probe_result.status = Status::UnknownError; }
+  git.probe_result.error_message = "Git rejected https://user:private-secret@example.com/repo.git";
+  SyncFixture fixture(&git);
+  const auto before = fixture.request(http::verb::get, work_id);
+  const std::string url = "https://user:private-secret@example.com/repo.git";
+  const auto status = holder::git::remote_probe_status_name(git.probe_result.status);
+  auto expected =
+      fixture.request(http::verb::post, work_id + "/git/test-remote", {{"remote_url", url}});
+  expected["data"]["remote_url"] = "[redacted]";
+  expected["data"]["error_message"] = "[redacted]";
+  for (const auto* mode : {"", " --json"}) {
+    const auto result = fixture.run("test '" + url + "' --project " + work_id + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    CHECK(result.error.find("private-secret") == std::string::npos);
+    CHECK(result.error.find(fixture.token) == std::string::npos);
+    if (std::string(mode).empty())
+      CHECK(result.error.find("Test: " + std::string(status)) != std::string::npos);
+    else {
+      const auto error = nlohmann::json::parse(result.error);
+      CHECK(error["ok"] == false);
+      CHECK(error["error"]["code"] == status);
+      CHECK(error["error"]["details"]["result"] == expected);
+    }
+  }
+  CHECK(fixture.request(http::verb::get, work_id) == before);
+  CHECK_FALSE(std::filesystem::exists(fixture.dir / "work" / ".git"));
+}
+
+TEST_CASE("holderctl sync push preserves results and conflict state", "[holderctl][sync][push]") {
+  DiagnosticGitOps git;
+  using Status = holder::git::PushStatus;
+  SECTION("pushed") { git.push_result.status = Status::Pushed; }
+  SECTION("up to date") { git.push_result.status = Status::UpToDate; }
+  SECTION("authentication") { git.push_result.status = Status::AuthFailed; }
+  SECTION("missing repository") { git.push_result.status = Status::NotFound; }
+  SECTION("network") { git.push_result.status = Status::NetworkError; }
+  SECTION("non fast forward") { git.push_result.status = Status::NonFastForward; }
+  SECTION("unknown failure") { git.push_result.status = Status::UnknownError; }
+  git.push_result.ahead_count = 3;
+  git.push_result.behind_count = 2;
+  const bool success = git.push_result.status == Status::Pushed ||
+                       git.push_result.status == Status::UpToDate;
+  git.push_result.error_message = success ? "" : "Bearer private-secret";
+  SyncFixture fixture(&git);
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote(work_id, "https://user:private-secret@example.com/repo.git", 1);
+  auto expected = fixture.request(http::verb::post, work_id + "/git/push");
+  expected["data"]["remote_url"] = "[redacted]";
+  if (!success) expected["data"]["error_message"] = "[redacted]";
+  for (const auto* mode : {"", " --json"}) {
+    const auto result = fixture.run("push --project " + work_id + mode);
+    REQUIRE(result.code == (success ? 0 : 1));
+    const auto& diagnostic = success ? result.output : result.error;
+    CHECK(diagnostic.find("private-secret") == std::string::npos);
+    CHECK(diagnostic.find(fixture.token) == std::string::npos);
+    CHECK((success ? result.error : result.output).empty());
+    if (std::string(mode).empty()) {
+      CHECK(
+          diagnostic.find(
+              "Push: " + std::string(holder::git::push_status_name(git.push_result.status))
+          ) != std::string::npos
+      );
+      CHECK(diagnostic.find("Ahead: 3\nBehind: 2\n") != std::string::npos);
+      if (git.push_result.status == Status::NonFastForward)
+        CHECK(diagnostic.find("Next action: pull_then_retry") != std::string::npos);
+    } else {
+      const auto payload = nlohmann::json::parse(diagnostic);
+      if (success)
+        CHECK(payload == expected);
+      else {
+        CHECK(payload["error"]["code"] == holder::git::push_status_name(git.push_result.status));
+        CHECK(payload["error"]["details"]["result"] == expected);
+      }
+    }
+  }
+  CHECK(
+      fixture.request(http::verb::get, work_id)["data"]["sync"]["last_push_status"] ==
+      holder::git::push_status_name(git.push_result.status)
+  );
+  CHECK(fixture.request(http::verb::get, "home-id")["data"]["sync"]["updated_at"].is_null());
+}
+
+TEST_CASE("holderctl sync test redacts successful remote URLs", "[holderctl][sync][probe]") {
+  DiagnosticGitOps git;
+  SyncFixture fixture(&git);
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote("home-id", "https://user:private-secret@example.com/repo.git", 1);
+  const auto before = fixture.request(http::verb::get, "home-id");
+  auto expected = fixture.request(http::verb::post, "home-id/git/test-remote");
+  expected["data"]["remote_url"] = "[redacted]";
+  const auto json = fixture.run("test --json");
+  REQUIRE(json.code == 0);
+  CHECK(json.error.empty());
+  CHECK(nlohmann::json::parse(json.output) == expected);
+  const auto human = fixture.run("test");
+  REQUIRE(human.code == 0);
+  CHECK(
+      human.output ==
+      "Project: home-id\nRemote: [redacted]\nTest: reachable\nRemote refs: present\n"
+  );
+  CHECK(fixture.request(http::verb::get, "home-id") == before);
+}
+
+TEST_CASE(
+    "holderctl sync test and push preserve typed HTTP failures",
+    "[holderctl][sync][push][probe]"
+) {
+  std::string action;
+  SECTION("test") { action = "test"; }
+  SECTION("push") { action = "push"; }
+  SyncFixture fixture;
+  std::ofstream(fixture.paths.config_dir / "holderctl.json")
+      << R"({"current_project_id":"home-id"})";
+  for (const auto* mode : {"", " --json"}) {
+    auto result = fixture.run(action + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    if (std::string(mode) == " --json")
+      CHECK(nlohmann::json::parse(result.error)["error"]["code"] == "remote_unset");
+    fixture.write_info("wrong-private-token");
+    result = fixture.run(action + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    CHECK(result.error.find("wrong-private-token") == std::string::npos);
+    if (std::string(mode) == " --json")
+      CHECK(nlohmann::json::parse(result.error)["error"]["code"] == "unauthorized");
+    fixture.write_info(fixture.token);
+    result = fixture.run(action + " --project Missing" + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    if (std::string(mode) == " --json")
+      CHECK(nlohmann::json::parse(result.error)["error"]["code"] == "not_found");
+  }
+  CHECK_FALSE(std::filesystem::exists(fixture.dir / "home" / ".git"));
+  fixture.thread->stop();
+  for (const auto* mode : {"", " --json"}) {
+    const auto result = fixture.run(action + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    if (std::string(mode) == " --json")
+      CHECK(nlohmann::json::parse(result.error)["error"]["code"] == "network_error");
+  }
+}
+
+TEST_CASE(
+    "project Git actions reject malformed input without mutations",
+    "[http][sync][push][probe]"
+) {
+  DiagnosticGitOps git;
+  SyncFixture fixture(&git);
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote(work_id, "https://example.com/original.git", 1);
+  const auto before = fixture.request(http::verb::get, work_id);
+  for (const auto& route : {"/git/test-remote", "/git/push"}) {
+    const auto target = work_id + route;
+    for (const auto& body :
+         {nlohmann::json(42), nlohmann::json::array({42}), nlohmann::json{{"branch", false}}}) {
+      CHECK(
+          fixture.request(http::verb::post, target, body, http::status::bad_request)["error"]
+                                                                                    ["code"] ==
+          "bad_request"
+      );
+      CHECK(fixture.request(http::verb::get, work_id) == before);
+    }
+  }
+  CHECK(
+      fixture.request(
+          http::verb::post,
+          work_id + "/git/test-remote",
+          {{"remote_url", 42}},
+          http::status::bad_request
+      )["ok"] == false
+  );
+  CHECK(
+      fixture.request(
+          http::verb::post,
+          work_id + "/git/push",
+          {{"set_upstream", "yes"}},
+          http::status::bad_request
+      )["ok"] == false
+  );
+  CHECK(
+      fixture.request(
+          http::verb::post,
+          work_id + "/git/test-remote",
+          {{"remote_url", nullptr}}
+      )["data"]["status"] == "remote_unset"
+  );
+  CHECK(fixture.request(http::verb::get, work_id) == before);
+  CHECK_FALSE(std::filesystem::exists(fixture.dir / "work" / ".git"));
 }
