@@ -360,6 +360,7 @@ TEST_CASE(
   const auto before_selection = read_text(config);
   const auto before_project = fixture.request(http::verb::get, work_id);
   const auto remote_path = fixture.dir / "remote.git";
+  holder::git::GitRepo local;
   git_repository* remote = nullptr;
   REQUIRE(git_repository_init(&remote, remote_path.string().c_str(), 1) == 0);
   git_repository_free(remote);
@@ -386,7 +387,6 @@ TEST_CASE(
   CHECK(fixture.request(http::verb::get, work_id) == before_project);
 
   REQUIRE(fixture.run("remote" + url + select).code == 0);
-  holder::git::GitRepo local;
   local.open_or_init(fixture.dir / "work");
   local.write_file("seed.txt", "seed");
   local.stage_path("seed.txt");
