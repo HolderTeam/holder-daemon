@@ -17,6 +17,7 @@ int command_project(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_projects(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_use(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_current(const holder::core::Paths& paths, int argc);
+int command_sync(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_cards(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_search(const holder::core::Paths& paths, int argc, char* argv[]);
 int command_card(const holder::core::Paths& paths, int argc, char* argv[]);

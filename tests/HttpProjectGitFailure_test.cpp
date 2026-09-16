@@ -50,7 +50,7 @@ class FailingGitOps final : public holder::git::GitOps {
 
 } // namespace
 
-TEST_CASE("Project patch propagates git remove_remote failure", "[git][http]") {
+TEST_CASE("Project patch preserves stored remote when git remove_remote fails", "[git][http]") {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
@@ -78,10 +78,8 @@ TEST_CASE("Project patch propagates git remove_remote failure", "[git][http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
 
   nlohmann::json patch_body = {{"git_remote_url", nullptr}, {"updated_at", 2}};
 
@@ -98,13 +96,11 @@ TEST_CASE("Project patch propagates git remove_remote failure", "[git][http]") {
 
   const auto fetched = repo.get("proj-1");
   REQUIRE(fetched.has_value());
-  REQUIRE(!fetched->git_remote_url.has_value());
-
-  std::raise(SIGTERM);
-  server_thread.join();
+  REQUIRE(fetched->git_remote_url == project.git_remote_url);
+  REQUIRE(fetched->updated_at == project.updated_at);
 }
 
-TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
+TEST_CASE("Project patch preserves stored remote when git set_remote fails", "[git][http]") {
   const auto dir = holder::test::make_temp_dir();
   const auto db_path = dir / "holder.db";
   auto db = holder::test::open_db_with_schema(db_path);
@@ -131,10 +127,8 @@ TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
+  REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
 
   nlohmann::json patch_body = {{"git_remote_url", "git@example.com:repo.git"}, {"updated_at", 2}};
 
@@ -151,11 +145,8 @@ TEST_CASE("Project patch propagates git set_remote failure", "[git][http]") {
 
   const auto fetched = repo.get("proj-1");
   REQUIRE(fetched.has_value());
-  REQUIRE(fetched->git_remote_url.has_value());
-  REQUIRE(fetched->git_remote_url.value() == "git@example.com:repo.git");
-
-  std::raise(SIGTERM);
-  server_thread.join();
+  REQUIRE_FALSE(fetched->git_remote_url.has_value());
+  REQUIRE(fetched->updated_at == project.updated_at);
 }
 
 TEST_CASE("Global recovery import keeps success when git remote setup fails", "[git][http]") {

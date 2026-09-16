@@ -650,6 +650,7 @@ bool handle_project_routes(
       try {
         const auto body = req.body().empty() ? nlohmann::json::object()
                                              : nlohmann::json::parse(req.body());
+        if (!body.is_object()) throw std::invalid_argument("Expected a JSON object.");
         const std::string branch = body.contains("branch") && !body.at("branch").is_null()
                                        ? body.at("branch").get<std::string>()
                                        : "";
@@ -663,6 +664,12 @@ bool handle_project_routes(
         auto project = project_opt.value();
         auto& git = resolve_git(git_ops);
         auto operation = git.lock_operation(project.root_path);
+        const auto refreshed = repo.get(project_id);
+        if (!refreshed) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        project = *refreshed;
 
         std::optional<std::string> remote_url = project.git_remote_url;
         if (body.contains("remote_url")) {
@@ -671,10 +678,6 @@ bool handle_project_routes(
           } else {
             remote_url = body.at("remote_url").get<std::string>();
           }
-
-          // Optional override in this call also updates persisted project remote.
-          repo.update_git_remote(project_id, remote_url, support::now_epoch_seconds());
-          project = repo.get(project_id).value_or(project);
         }
 
         if (!remote_url.has_value() || remote_url->empty()) {
@@ -690,9 +693,7 @@ bool handle_project_routes(
           return true;
         }
 
-        git.open_or_init(project.root_path);
-        git.set_remote("origin", remote_url.value());
-        const auto probe = git.probe_remote("origin");
+        const auto probe = git.probe_remote_url(remote_url.value());
         const auto payload = git_test_remote_payload(
             project_id,
             remote_url,
@@ -710,6 +711,7 @@ bool handle_project_routes(
       try {
         const auto body = req.body().empty() ? nlohmann::json::object()
                                              : nlohmann::json::parse(req.body());
+        if (!body.is_object()) throw std::invalid_argument("Expected a JSON object.");
         const std::string branch = body.contains("branch") && !body.at("branch").is_null()
                                        ? body.at("branch").get<std::string>()
                                        : "";
@@ -725,7 +727,14 @@ bool handle_project_routes(
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
           return true;
         }
-        const auto& project = project_opt.value();
+        auto& git = resolve_git(git_ops);
+        auto operation = git.lock_operation(project_opt->root_path);
+        const auto refreshed = repo.get(project_id);
+        if (!refreshed) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+        const auto& project = *refreshed;
         if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
           sync_repo.record_push_result(
               project_id,
@@ -748,8 +757,6 @@ bool handle_project_routes(
           return true;
         }
 
-        auto& git = resolve_git(git_ops);
-        auto operation = git.lock_operation(project.root_path);
         git.open_or_init(project.root_path);
         git.set_remote("origin", project.git_remote_url.value());
         const auto push = git.push_branch("origin", branch, set_upstream);
@@ -1011,6 +1018,18 @@ bool handle_project_routes(
                                                      : project_opt->root_path;
               auto& git = resolve_git(git_ops);
               auto operation = git.lock_operation(repo_root);
+              // Observe remote configuration under the same repository lock as
+              // the mutation, so concurrent requests report the actual change.
+              const auto locked_project = repo.get(project_id);
+              if (!locked_project.has_value()) {
+                res = support::error_response(
+                    http::status::not_found,
+                    "not_found",
+                    "Project not found."
+                );
+                return true;
+              }
+              std::optional<bool> git_remote_changed;
               if (has_name) {
                 repo.update_name(project_id, body.at("name").get<std::string>(), updated_at);
               }
@@ -1020,17 +1039,6 @@ bool handle_project_routes(
                     body.at("root_path").get<std::string>(),
                     updated_at
                 );
-              }
-              if (has_git_remote) {
-                if (body.at("git_remote_url").is_null()) {
-                  repo.update_git_remote(project_id, std::nullopt, updated_at);
-                } else {
-                  repo.update_git_remote(
-                      project_id,
-                      std::optional<std::string>(body.at("git_remote_url").get<std::string>()),
-                      updated_at
-                  );
-                }
               }
               if (has_git_provider) {
                 if (body.at("git_provider").is_null()) {
@@ -1067,12 +1075,20 @@ bool handle_project_routes(
                 }
               }
               if (has_git_remote) {
+                const auto remote = body.at("git_remote_url").is_null()
+                                        ? std::optional<std::string>{}
+                                        : std::optional<std::string>{
+                                              body.at("git_remote_url").get<std::string>()
+                                          };
                 git.open_or_init(repo_root);
-                if (body.at("git_remote_url").is_null()) {
+                if (!remote.has_value()) {
                   git.remove_remote("origin");
                 } else {
-                  git.set_remote("origin", body.at("git_remote_url").get<std::string>());
+                  git.set_remote("origin", *remote);
                 }
+                git_remote_changed = locked_project->git_remote_url != remote;
+                // Persist the remote only after Git accepts it.
+                repo.update_git_remote(project_id, remote, updated_at);
               }
               const std::string effective_privacy_mode =
                   has_privacy_mode ? body.at("privacy_mode").get<std::string>()
@@ -1104,6 +1120,9 @@ bool handle_project_routes(
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};
+              if (git_remote_changed.has_value()) {
+                payload["data"]["git_remote_changed"] = *git_remote_changed;
+              }
               res = support::json_response(http::status::ok, payload);
             }
           }

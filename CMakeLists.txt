@@ -444,6 +444,7 @@ add_executable(holderctl
   src/cli/commands/recovery.cpp
   src/cli/commands/reindex.cpp
   src/cli/commands/resource.cpp
+  src/cli/commands/sync.cpp
   src/cli/commands/tags.cpp
   src/cli/commands/trash.cpp
   src/cli/commands/SystemCommands.cpp

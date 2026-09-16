@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -44,6 +45,94 @@ void require_json_response_ref(
 }
 
 } // namespace
+
+TEST_CASE("OpenAPI contracts project remote mutation results", "[openapi][sync][remote]") {
+  const auto document = load_openapi();
+  const auto operation = document["paths"]["/projects/{project_id}"]["patch"];
+  CHECK(parameter_named(operation, "project_id")["required"].as<bool>());
+  CHECK(
+      operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>() ==
+      "#/components/schemas/ProjectUpdateRequest"
+  );
+  require_json_response_ref(operation, "200", "ProjectUpdateResponse");
+  for (const auto* status : {"400", "401", "404"}) {
+    require_json_response_ref(operation, status, "ErrorResponse");
+  }
+  const auto schemas = document["components"]["schemas"];
+  CHECK(schemas["ProjectUpdateRequest"]["properties"]["git_remote_url"]["nullable"].as<bool>());
+  const auto data = schemas["ProjectUpdateResponse"]["properties"]["data"];
+  CHECK(required_properties(data) == std::vector<std::string>{"project_id"});
+  CHECK(data["properties"]["git_remote_changed"]["type"].as<std::string>() == "boolean");
+  const auto description = data["properties"]["git_remote_changed"]["description"].as<std::string>(
+  );
+  CHECK(description.find("Present when git_remote_url is supplied") != std::string::npos);
+  CHECK(description.find("same value returns false") != std::string::npos);
+}
+
+TEST_CASE(
+    "OpenAPI contracts read-only remote tests and push results",
+    "[openapi][sync][probe][push]"
+) {
+  const auto document = load_openapi();
+  const auto schemas = document["components"]["schemas"];
+  for (const auto& entry : std::vector<std::pair<std::string, std::string>>{
+           {"test-remote", "ProjectGitTestRemote"},
+           {"push", "ProjectGitPush"}
+       }) {
+    const auto operation = document["paths"]["/projects/{project_id}/git/" + entry.first]["post"];
+    CHECK(parameter_named(operation, "project_id")["required"].as<bool>());
+    CHECK(
+        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>(
+        ) == "#/components/schemas/" + entry.second + "Request"
+    );
+    require_json_response_ref(operation, "200", entry.second + "Response");
+    for (const auto* status : {"400", "401", "404"})
+      require_json_response_ref(operation, status, "ErrorResponse");
+    const auto data = schemas[entry.second + "Response"]["properties"]["data"]["properties"];
+    CHECK(data["project_id"]["type"].as<std::string>() == "string");
+    CHECK(data["remote_url"]["nullable"].as<bool>());
+    CHECK(data["error_code"]["nullable"].as<bool>());
+    CHECK(data["error_message"]["nullable"].as<bool>());
+  }
+  const auto override_url = schemas["ProjectGitTestRemoteRequest"]["properties"]["remote_url"];
+  CHECK(override_url["nullable"].as<bool>());
+  const auto description = override_url["description"].as<std::string>();
+  CHECK(description.find("read-only") != std::string::npos);
+  CHECK(description.find("unchanged") != std::string::npos);
+  const auto probe = schemas["ProjectGitTestRemoteResponse"]["properties"]["data"]["properties"];
+  CHECK(
+      probe["status"]["enum"].as<std::vector<std::string>>() ==
+      std::vector<std::string>{
+          "reachable",
+          "auth_failed",
+          "not_found",
+          "network_error",
+          "invalid_remote_url",
+          "remote_unset",
+          "unknown_error"
+      }
+  );
+  CHECK(probe["remote_has_head"]["type"].as<std::string>() == "boolean");
+  const auto push = schemas["ProjectGitPushResponse"]["properties"]["data"]["properties"];
+  CHECK(
+      push["status"]["enum"].as<std::vector<std::string>>() ==
+      std::vector<std::string>{
+          "pushed",
+          "up_to_date",
+          "auth_failed",
+          "not_found",
+          "network_error",
+          "non_fast_forward",
+          "remote_unset",
+          "unknown_error"
+      }
+  );
+  CHECK(push["ahead_count"]["type"].as<std::string>() == "integer");
+  CHECK(push["behind_count"]["type"].as<std::string>() == "integer");
+  CHECK(push["local_head_commit"]["type"].as<std::string>() == "string");
+  CHECK(push["local_head_commit"]["nullable"].as<bool>());
+  CHECK(push["next_action"]["nullable"].as<bool>());
+}
 
 TEST_CASE(
     "OpenAPI contracts binary asset content metadata and structured failures",
