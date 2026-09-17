@@ -134,6 +134,55 @@ TEST_CASE(
   CHECK(push["next_action"]["nullable"].as<bool>());
 }
 
+TEST_CASE("OpenAPI contracts forced project sync operations", "[openapi][sync][forced]") {
+  const auto document = load_openapi();
+  const auto schemas = document["components"]["schemas"];
+  for (const auto* action : {"pull", "sync"}) {
+    const auto operation =
+        document["paths"]["/projects/{project_id}/git/" + std::string(action)]["post"];
+    REQUIRE(operation.IsDefined());
+    CHECK(parameter_named(operation, "project_id")["required"].as<bool>());
+    CHECK(
+        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>(
+        ) == "#/components/schemas/ProjectGitSyncRequest"
+    );
+    require_json_response_ref(operation, "200", "ProjectGitSyncOperationResponse");
+    for (const auto* status : {"400", "401", "404"})
+      require_json_response_ref(operation, status, "ErrorResponse");
+  }
+
+  const auto data = schemas["ProjectGitSyncOperationResponse"]["properties"]["data"];
+  CHECK(
+      required_properties(data) ==
+      std::vector<std::string>{
+          "branch",
+          "error_code",
+          "error_message",
+          "project_id",
+          "pull",
+          "push",
+          "status"
+      }
+  );
+  const auto pull = data["properties"]["pull"];
+  CHECK(
+      required_properties(pull) ==
+      std::vector<std::string>{"attempted", "conflicts_resolved", "error_message", "status"}
+  );
+  const auto push = data["properties"]["push"];
+  CHECK(
+      required_properties(push) ==
+      std::vector<std::string>{
+          "ahead_count",
+          "attempted",
+          "behind_count",
+          "error_message",
+          "local_head_commit",
+          "status"
+      }
+  );
+}
+
 TEST_CASE(
     "OpenAPI contracts binary asset content metadata and structured failures",
     "[openapi][resources][export]"

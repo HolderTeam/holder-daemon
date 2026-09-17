@@ -1799,6 +1799,80 @@ components:
             next_action:
               type: string
               nullable: true
+    ProjectGitSyncRequest:
+      type: object
+      properties:
+        branch:
+          type: string
+          nullable: true
+          description: Optional branch to push for a full forced sync. Pull uses the checked-out branch.
+        set_upstream:
+          type: boolean
+          nullable: true
+          description: Optional push behavior; defaults to true.
+    ProjectGitSyncOperationResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          type: object
+          required: [project_id, branch, status, error_code, error_message, pull, push]
+          properties:
+            project_id:
+              type: string
+            remote_url:
+              type: string
+              nullable: true
+            branch:
+              type: string
+            status:
+              type: string
+              enum: [succeeded, failed]
+            error_code:
+              type: string
+              nullable: true
+              description: Stable operation failure code. Git failures are returned in a successful HTTP envelope.
+            error_message:
+              type: string
+              nullable: true
+            pull:
+              type: object
+              required: [attempted, status, conflicts_resolved, error_message]
+              properties:
+                attempted:
+                  type: boolean
+                status:
+                  type: string
+                  enum: [not_attempted, succeeded, remote_unset, failed]
+                conflicts_resolved:
+                  type: integer
+                error_message:
+                  type: string
+                  nullable: true
+            push:
+              type: object
+              required: [attempted, status, ahead_count, behind_count, local_head_commit, error_message]
+              properties:
+                attempted:
+                  type: boolean
+                status:
+                  type: string
+                  nullable: true
+                  enum:
+                    [pushed, up_to_date, auth_failed, not_found, network_error, non_fast_forward, remote_unset, unknown_error]
+                ahead_count:
+                  type: integer
+                behind_count:
+                  type: integer
+                local_head_commit:
+                  type: string
+                  nullable: true
+                error_message:
+                  type: string
+                  nullable: true
     ProjectGitSyncStatusResponse:
       type: object
       required: [ok, data]
@@ -3349,6 +3423,88 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/pull:
+    post:
+      summary: Pull and reconcile a project immediately
+      description: Fetches the configured remote, fast-forwards or applies Holder's card-level conflict resolution, then reconciles the SQLite index before returning. Concurrent Git operations for the same project are serialized.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectGitSyncRequest"
+      responses:
+        "200":
+          description: Pull completed with structured status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitSyncOperationResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{project_id}/git/sync:
+    post:
+      summary: Pull, reconcile, and push a project immediately
+      description: Pulls and reconciles first. Push is attempted only when pull succeeds. Concurrent Git operations for the same project are serialized.
+      parameters:
+        - in: path
+          name: project_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectGitSyncRequest"
+      responses:
+        "200":
+          description: Forced sync completed with structured phase statuses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGitSyncOperationResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
           content:
             application/json:
               schema:

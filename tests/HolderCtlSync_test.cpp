@@ -4,9 +4,13 @@
 #include "platform/ServerInfo.h"
 #include "project/ProjectSyncRepo.h"
 
+#include <atomic>
+#include <chrono>
 #include <git2.h>
 #include <memory>
 #include <sstream>
+#include <thread>
+#include <vector>
 
 namespace {
 namespace http = boost::beast::http;
@@ -109,7 +113,9 @@ class DiagnosticGitOps final : public holder::git::GitOps {
  public:
   std::string set_error;
   std::string remove_error;
+  std::string pull_error;
   std::filesystem::path root;
+  std::vector<std::string> calls;
   holder::git::RemoteProbeResult probe_result{holder::git::RemoteProbeStatus::Reachable, true, {}};
   holder::git::PushResult push_result{holder::git::PushStatus::Pushed, 0, 0, "abc123", {}};
   void open_or_init(const std::filesystem::path& path) override { root = path; }
@@ -118,18 +124,51 @@ class DiagnosticGitOps final : public holder::git::GitOps {
   void remove_path(const std::filesystem::path&) override {}
   void commit(const std::string&) override {}
   void set_remote(const std::string&, const std::string&) override {
+    calls.push_back("remote");
     if (!set_error.empty()) throw std::runtime_error(set_error);
   }
   void remove_remote(const std::string&) override {
     if (!remove_error.empty()) throw std::runtime_error(remove_error);
   }
-  void pull_remote_ff_only(const std::string&) override {}
+  void pull_remote_ff_only(const std::string&) override {
+    calls.push_back("pull");
+    if (!pull_error.empty()) throw std::runtime_error(pull_error);
+  }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return {}; }
   holder::git::RemoteProbeResult probe_remote_url(const std::string&) override {
     return probe_result;
   }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    calls.push_back("push");
     return push_result;
+  }
+  std::filesystem::path repo_dir() const override { return root; }
+};
+
+class ConcurrentPullGitOps final : public holder::git::GitOps {
+ public:
+  std::atomic<int> active_pulls{0};
+  std::atomic<int> max_active_pulls{0};
+  std::filesystem::path root;
+
+  void open_or_init(const std::filesystem::path& path) override { root = path; }
+  void write_file(const std::filesystem::path&, const std::string&) override {}
+  void stage_path(const std::filesystem::path&) override {}
+  void remove_path(const std::filesystem::path&) override {}
+  void commit(const std::string&) override {}
+  void set_remote(const std::string&, const std::string&) override {}
+  void remove_remote(const std::string&) override {}
+  void pull_remote_ff_only(const std::string&) override {
+    const int active = active_pulls.fetch_add(1) + 1;
+    int observed = max_active_pulls.load();
+    while (active > observed && !max_active_pulls.compare_exchange_weak(observed, active)) {
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    active_pulls.fetch_sub(1);
+  }
+  holder::git::RemoteProbeResult probe_remote(const std::string&) override { return {}; }
+  holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    return {};
   }
   std::filesystem::path repo_dir() const override { return root; }
 };
@@ -440,6 +479,35 @@ TEST_CASE(
       fixture.request(http::verb::get, work_id)["data"]["sync"]["uncommitted_changes_count"]
           .get<int>() > 0
   );
+  local.write_file("seed.txt", "seed");
+  const auto peer_path = fixture.dir / "peer";
+  holder::git::GitRepo peer;
+  peer.open_or_init(peer_path);
+  peer.set_remote("origin", remote_path.string());
+  peer.pull_remote_ff_only("origin");
+  peer.write_file("from-peer.txt", "remote change");
+  peer.stage_path("from-peer.txt");
+  peer.commit("Add remote change");
+  REQUIRE(peer.push_branch("origin", "", true).status == holder::git::PushStatus::Pushed);
+
+  result = fixture.run("pull" + select + " --json");
+  REQUIRE(result.code == 0);
+  auto pull_payload = nlohmann::json::parse(result.output);
+  CHECK(pull_payload["data"]["pull"]["status"] == "succeeded");
+  CHECK(pull_payload["data"]["push"]["attempted"] == false);
+  CHECK(read_text(fixture.dir / "work" / "from-peer.txt") == "remote change");
+
+  local.write_file("from-local.txt", "local change");
+  local.stage_path("from-local.txt");
+  local.commit("Add local change");
+  result = fixture.run("now" + select + " --json");
+  REQUIRE(result.code == 0);
+  auto now_payload = nlohmann::json::parse(result.output);
+  CHECK(now_payload["data"]["pull"]["status"] == "succeeded");
+  CHECK(now_payload["data"]["push"]["status"] == "pushed");
+  peer.pull_remote_ff_only("origin");
+  CHECK(read_text(peer_path / "from-local.txt") == "local change");
+
   result = fixture.run("test" + select + " --json");
   REQUIRE(result.code == 0);
   CHECK(nlohmann::json::parse(result.output)["data"]["remote_has_head"] == true);
@@ -559,13 +627,92 @@ TEST_CASE("holderctl sync test redacts successful remote URLs", "[holderctl][syn
   CHECK(fixture.request(http::verb::get, "home-id") == before);
 }
 
+TEST_CASE("holderctl sync pull and now return structured results", "[holderctl][sync][forced]") {
+  DiagnosticGitOps git;
+  SyncFixture fixture(&git);
+  std::filesystem::create_directories(fixture.dir / "work");
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote(work_id, "https://user:private-secret@example.com/repo.git", 1);
+
+  auto result = fixture.run("pull --project " + work_id + " --json");
+  REQUIRE(result.code == 0);
+  CHECK(result.error.empty());
+  auto payload = nlohmann::json::parse(result.output);
+  CHECK(payload["data"]["remote_url"] == "[redacted]");
+  CHECK(payload["data"]["status"] == "succeeded");
+  CHECK(payload["data"]["pull"]["status"] == "succeeded");
+  CHECK(payload["data"]["push"]["attempted"] == false);
+  CHECK(git.calls == std::vector<std::string>{"remote", "pull"});
+
+  git.calls.clear();
+  result = fixture.run("now --project " + work_id);
+  REQUIRE(result.code == 0);
+  CHECK(result.error.empty());
+  CHECK(result.output.find("Pull: succeeded\nPush: pushed\n") != std::string::npos);
+  CHECK(git.calls == std::vector<std::string>{"remote", "pull", "remote", "push"});
+}
+
 TEST_CASE(
-    "holderctl sync test and push preserve typed HTTP failures",
-    "[holderctl][sync][push][probe]"
+    "holderctl sync now stops after a failed pull and redacts diagnostics",
+    "[holderctl][sync][forced]"
+) {
+  DiagnosticGitOps git;
+  git.pull_error = "Rejected https://user:private-secret@example.com/repo.git";
+  SyncFixture fixture(&git);
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote(work_id, "https://example.com/repo.git", 1);
+
+  for (const auto* mode : {"", " --json"}) {
+    git.calls.clear();
+    const auto result = fixture.run("now --project " + work_id + mode);
+    REQUIRE(result.code == 1);
+    CHECK(result.output.empty());
+    CHECK(result.error.find("private-secret") == std::string::npos);
+    CHECK(git.calls == std::vector<std::string>{"remote", "pull"});
+    if (std::string(mode) == " --json") {
+      const auto error = nlohmann::json::parse(result.error);
+      CHECK(error["error"]["code"] == "pull_failed");
+      CHECK(error["error"]["details"]["result"]["data"]["push"]["attempted"] == false);
+      CHECK(error["error"]["details"]["result"]["data"]["pull"]["error_message"] == "[redacted]");
+    }
+  }
+}
+
+TEST_CASE("concurrent holderctl pulls serialize per project", "[holderctl][sync][forced]") {
+  ConcurrentPullGitOps git;
+  SyncFixture fixture(&git);
+  std::filesystem::create_directories(fixture.dir / "work");
+  holder::project::ProjectRepo(fixture.db)
+      .update_git_remote(work_id, "https://example.com/repo.git", 1);
+
+  CliResult first{}, second{};
+  std::thread first_thread([&] {
+    first = fixture.run("pull --project " + work_id + " --json", "first-pull");
+  });
+  std::thread second_thread([&] {
+    second = fixture.run("pull --project " + work_id + " --json", "second-pull");
+  });
+  first_thread.join();
+  second_thread.join();
+
+  REQUIRE(first.code == 0);
+  REQUIRE(second.code == 0);
+  CHECK(first.error.empty());
+  CHECK(second.error.empty());
+  CHECK(nlohmann::json::parse(first.output)["data"]["status"] == "succeeded");
+  CHECK(nlohmann::json::parse(second.output)["data"]["status"] == "succeeded");
+  CHECK(git.max_active_pulls.load() == 1);
+}
+
+TEST_CASE(
+    "holderctl sync Git actions preserve typed HTTP failures",
+    "[holderctl][sync][push][probe][forced]"
 ) {
   std::string action;
   SECTION("test") { action = "test"; }
   SECTION("push") { action = "push"; }
+  SECTION("pull") { action = "pull"; }
+  SECTION("now") { action = "now"; }
   SyncFixture fixture;
   std::ofstream(fixture.paths.config_dir / "holderctl.json")
       << R"({"current_project_id":"home-id"})";
@@ -609,7 +756,7 @@ TEST_CASE(
   holder::project::ProjectRepo(fixture.db)
       .update_git_remote(work_id, "https://example.com/original.git", 1);
   const auto before = fixture.request(http::verb::get, work_id);
-  for (const auto& route : {"/git/test-remote", "/git/push"}) {
+  for (const auto& route : {"/git/test-remote", "/git/pull", "/git/sync", "/git/push"}) {
     const auto target = work_id + route;
     for (const auto& body :
          {nlohmann::json(42), nlohmann::json::array({42}), nlohmann::json{{"branch", false}}}) {
