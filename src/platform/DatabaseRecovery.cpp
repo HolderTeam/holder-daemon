@@ -109,7 +109,7 @@ std::string read_text_file(const std::filesystem::path& path) {
 } // namespace
 
 void audit_durable_database_ownership(holder::platform::Db& db, const Paths& paths) {
-  holder::platform::audit_core_durable_ownership(db);
+  holder::platform::audit_core_durable_ownership(db, paths.quarantined_cards_log_path());
   require_no_daemon_sqlite_only_state(db, paths);
   if (!std::filesystem::is_regular_file(paths.project_registry_path())) {
     throw std::runtime_error("project registry has not been externalized");

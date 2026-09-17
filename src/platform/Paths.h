@@ -20,6 +20,9 @@ struct Paths {
     return config_dir / "database-rebuild-ready.json";
   }
   std::filesystem::path log_dir() const { return server_dir() / "logs"; }
+  std::filesystem::path quarantined_cards_log_path() const {
+    return server_dir() / "quarantined-cards.json";
+  }
 
   // For unix sockets, you may later prefer XDG_RUNTIME_DIR, but this is fine for now.
   std::filesystem::path socket_path() const { return server_dir() / "holder.sock"; }
