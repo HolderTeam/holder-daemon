@@ -5,6 +5,7 @@
 #include "ai/AiMessageRepo.h"
 #include "ai/AiThreadRepo.h"
 #include "card/CardPaths.h"
+#include "card/CardPlacementResolver.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
 #include "card/TagRepo.h"
@@ -169,64 +170,39 @@ std::optional<std::string> normalize_parent_id(const std::optional<std::string>&
   return raw.substr(start, end - start + 1);
 }
 
-std::optional<std::string> normalize_parent_id(const nlohmann::json& value) {
-  if (value.is_null()) {
-    return std::nullopt;
-  }
-  return normalize_parent_id(std::optional<std::string>(value.get<std::string>()));
+// The move route's intent-resolution algorithm (target/parent lookups, cycle detection,
+// sort_key arithmetic) now lives in holder::card::CardPlacementResolver (holder-core), shared
+// with holder-android; this route just parses the request, calls it, and maps its
+// std::runtime_error vocabulary onto this route's existing HTTP responses. See the "/move"
+// handler below.
+holder::card::CardPlacementIntent card_placement_intent_from_string(const std::string& intent) {
+  if (intent == "into") return holder::card::CardPlacementIntent::Into;
+  if (intent == "before") return holder::card::CardPlacementIntent::Before;
+  if (intent == "after") return holder::card::CardPlacementIntent::After;
+  if (intent == "to_start") return holder::card::CardPlacementIntent::ToStart;
+  if (intent == "to_end") return holder::card::CardPlacementIntent::ToEnd;
+  if (intent == "left") return holder::card::CardPlacementIntent::Left;
+  if (intent == "right") return holder::card::CardPlacementIntent::Right;
+  if (intent == "up_level") return holder::card::CardPlacementIntent::UpLevel;
+  throw std::runtime_error("invalid_move_intent");
 }
 
-bool is_descendant_of(
-    const std::unordered_map<std::string, holder::model::Card>& cards_by_id,
-    std::optional<std::string> candidate_parent_card_id,
-    const std::string& card_id
-) {
-  int guard = 0;
-  while (candidate_parent_card_id.has_value() && guard < 1024) {
-    if (candidate_parent_card_id.value() == card_id) {
-      return true;
-    }
-    const auto it = cards_by_id.find(candidate_parent_card_id.value());
-    if (it == cards_by_id.end()) {
-      return false; // LCOV_EXCL_LINE
-    }
-    candidate_parent_card_id = normalize_parent_id(it->second.parent_card_id);
-    guard++;
-  }
-  return false;
+bool card_placement_intent_needs_target(holder::card::CardPlacementIntent intent) {
+  return intent == holder::card::CardPlacementIntent::Into ||
+         intent == holder::card::CardPlacementIntent::Before ||
+         intent == holder::card::CardPlacementIntent::After;
 }
 
-double sort_key_around_target(
-    const std::vector<holder::model::Card>& siblings,
-    const std::string& target_card_id,
-    bool after
-) {
-  size_t target_index = 0;
-  bool found = false;
-  for (size_t i = 0; i < siblings.size(); ++i) {
-    if (siblings[i].card_id == target_card_id) {
-      target_index = i;
-      found = true;
-      break;
-    }
+holder::card::CardPlacementRequest card_placement_request_from_json(const nlohmann::json& body) {
+  holder::card::CardPlacementRequest request;
+  request.intent = card_placement_intent_from_string(body.at("intent").get<std::string>());
+  if (body.contains("target_card_id") && !body.at("target_card_id").is_null()) {
+    request.target_card_id = body.at("target_card_id").get<std::string>();
   }
-  if (!found) {
-    throw std::runtime_error("invalid_target");
+  if (body.contains("parent_card_id") && !body.at("parent_card_id").is_null()) {
+    request.parent_card_id = body.at("parent_card_id").get<std::string>();
   }
-
-  double left = 0.0;
-  double right = 0.0;
-  if (after) {
-    left = siblings[target_index].sort_key;
-    right = (target_index + 1 < siblings.size()) ? siblings[target_index + 1].sort_key : left + 1.0;
-  } else {
-    right = siblings[target_index].sort_key;
-    left = (target_index > 0U) ? siblings[target_index - 1].sort_key : right - 1.0;
-  }
-  if (right - left < 0.0001) {
-    return after ? right + 1.0 : left - 1.0;
-  }
-  return (left + right) / 2.0;
+  return request;
 }
 
 std::optional<int> parse_limit_param(
@@ -788,6 +764,7 @@ bool handle_card_routes(
               "Method not allowed."
           );
         } else {
+          std::optional<holder::card::CardPlacementRequest> request;
           try {
             const auto body = nlohmann::json::parse(req.body());
             if (!body.contains("project_id") || !body.contains("intent")) {
@@ -800,241 +777,17 @@ bool handle_card_routes(
             }
 
             const std::string project_id = body.at("project_id").get<std::string>();
-            const std::string intent = body.at("intent").get<std::string>();
-
-            const auto source_opt = card_store->get(card_id);
-            if (!source_opt.has_value() || source_opt->deleted_at.has_value()) {
-              res =
-                  support::error_response(http::status::not_found, "not_found", "Card not found.");
-              return true;
-            }
-            const auto& source = source_opt.value();
-            if (source.project_id != project_id) {
-              res = support::error_response(
-                  http::status::unprocessable_entity,
-                  "cross_project_move_forbidden",
-                  "Source card is in a different project."
-              );
-              return true;
-            }
+            // Throws (caught below) for a non-string "intent" -- a plain nlohmann type_error,
+            // mapped to bad_request by the generic catch -- or an unrecognized intent string,
+            // a std::runtime_error("invalid_move_intent") mapped explicitly below.
+            request = card_placement_request_from_json(body);
 
             holder::card::CardRepo card_repo(db);
-            const auto cards = card_repo.list_all(project_id);
-            std::unordered_map<std::string, holder::model::Card> cards_by_id;
-            cards_by_id.reserve(cards.size());
-            for (const auto& c : cards) {
-              cards_by_id[c.card_id] = c;
-            }
+            holder::card::CardPlacementResolver resolver(card_repo);
+            const auto result = resolver.resolve(project_id, card_id, request.value());
 
-            auto siblings_for_parent = [&](const std::optional<std::string>& parent,
-                                           const std::string& exclude_card_id) {
-              std::vector<holder::model::Card> siblings;
-              for (const auto& c : cards) {
-                if (c.deleted_at.has_value()) {
-                  continue;
-                }
-                if (c.card_id == exclude_card_id) {
-                  continue;
-                }
-                if (normalize_parent_id(c.parent_card_id) == normalize_parent_id(parent)) {
-                  siblings.push_back(c);
-                }
-              }
-              std::sort(siblings.begin(), siblings.end(), [](const auto& a, const auto& b) {
-                if (a.sort_key < b.sort_key) return true;
-                if (a.sort_key > b.sort_key) return false;
-                if (a.updated_at > b.updated_at) return true;
-                if (a.updated_at < b.updated_at) return false;
-                return a.title < b.title;
-              });
-              return siblings;
-            }; // LCOV_EXCL_LINE
-
-            std::optional<std::string> next_parent = normalize_parent_id(source.parent_card_id);
-            std::optional<double> next_sort_key;
-            std::optional<std::string> moved_into_title;
-
-            auto write_move_response = [&](const holder::model::Card& moved_card) {
-              nlohmann::json data;
-              data["card_id"] = moved_card.card_id;
-              data["parent_card_id"] = moved_card.parent_card_id.has_value()
-                                           ? nlohmann::json(moved_card.parent_card_id.value())
-                                           : nlohmann::json(nullptr);
-              data["sort_key"] = moved_card.sort_key;
-              data["revision"] = moved_card.updated_at;
-              data["moved_into_title"] = moved_into_title.has_value()
-                                             ? nlohmann::json(moved_into_title.value())
-                                             : nlohmann::json(nullptr);
-
-              nlohmann::json payload;
-              payload["ok"] = true;
-              payload["data"] = std::move(data);
-              res = support::json_response(http::status::ok, payload);
-            };
-
-            if (intent == "into" || intent == "before" || intent == "after") {
-              if (!body.contains("target_card_id") || body.at("target_card_id").is_null()) {
-                res = support::error_response(
-                    http::status::bad_request,
-                    "missing_target_card_id",
-                    "target_card_id is required for this intent."
-                );
-                return true;
-              }
-              const std::string target_card_id = body.at("target_card_id").get<std::string>();
-              const auto it = cards_by_id.find(target_card_id);
-              if (it == cards_by_id.end() || it->second.deleted_at.has_value()) {
-                res = support::error_response(
-                    http::status::not_found,
-                    "target_not_found",
-                    "Target card not found."
-                );
-                return true;
-              }
-              const auto& target = it->second;
-              // cards_by_id is populated from list_all(project_id), so this branch is unreachable.
-              // LCOV_EXCL_START
-              if (target.project_id != project_id) {
-                res = support::error_response(
-                    http::status::unprocessable_entity,
-                    "cross_project_move_forbidden",
-                    "Target card is in a different project."
-                );
-                return true;
-              }
-              // LCOV_EXCL_STOP
-
-              if (intent == "into") {
-                next_parent = target.card_id;
-                if (is_descendant_of(cards_by_id, next_parent, source.card_id)) {
-                  res = support::error_response(
-                      http::status::unprocessable_entity,
-                      "move_would_create_cycle",
-                      "Move would create a cycle."
-                  );
-                  return true;
-                }
-                next_sort_key = card_repo.next_sort_key(project_id, next_parent);
-                moved_into_title = target.title;
-              } else {
-                next_parent = normalize_parent_id(target.parent_card_id);
-                const auto siblings = siblings_for_parent(next_parent, source.card_id);
-                next_sort_key = sort_key_around_target(siblings, target.card_id, intent == "after");
-              }
-            } else if (intent == "to_start" || intent == "to_end" || intent == "left" ||
-                       intent == "right") {
-              if (body.contains("parent_card_id")) {
-                next_parent = normalize_parent_id(body.at("parent_card_id"));
-              } else {
-                next_parent = normalize_parent_id(source.parent_card_id);
-              }
-              if (next_parent.has_value()) {
-                const auto parent_it = cards_by_id.find(next_parent.value());
-                if (parent_it == cards_by_id.end() || parent_it->second.deleted_at.has_value()) {
-                  res = support::error_response(
-                      http::status::not_found,
-                      "target_not_found",
-                      "Parent card not found."
-                  );
-                  return true;
-                }
-              }
-              const auto siblings_without_source = siblings_for_parent(next_parent, source.card_id);
-              if (intent == "to_start") {
-                if (siblings_without_source.empty()) {
-                  write_move_response(source);
-                  return true;
-                }
-                next_sort_key = siblings_without_source.front().sort_key - 1.0;
-              } else if (intent == "to_end") {
-                if (siblings_without_source.empty()) {
-                  write_move_response(source);
-                  return true;
-                }
-                next_sort_key = siblings_without_source.back().sort_key + 1.0;
-              } else {
-                auto siblings_with_source = siblings_for_parent(next_parent, "");
-                std::sort(
-                    siblings_with_source.begin(),
-                    siblings_with_source.end(),
-                    [](const auto& a, const auto& b) {
-                      if (a.sort_key < b.sort_key) return true;
-                      if (a.sort_key > b.sort_key) return false;
-                      if (a.updated_at > b.updated_at) return true;
-                      if (a.updated_at < b.updated_at) return false;
-                      return a.title < b.title;
-                    }
-                );
-                int source_index = -1;
-                for (int i = 0; i < static_cast<int>(siblings_with_source.size()); ++i) {
-                  if (siblings_with_source[static_cast<size_t>(i)].card_id == source.card_id) {
-                    source_index = i;
-                    break;
-                  }
-                }
-                if (source_index < 0) {
-                  write_move_response(source);
-                  return true;
-                }
-                if (intent == "left") {
-                  if (source_index == 0) {
-                    write_move_response(source);
-                    return true;
-                  }
-                  const auto& target = siblings_with_source[static_cast<size_t>(source_index - 1)];
-                  const auto siblings = siblings_for_parent(next_parent, source.card_id);
-                  next_sort_key = sort_key_around_target(siblings, target.card_id, false);
-                } else {
-                  if (source_index >= static_cast<int>(siblings_with_source.size()) - 1) {
-                    write_move_response(source);
-                    return true;
-                  }
-                  const auto& target = siblings_with_source[static_cast<size_t>(source_index) + 1];
-                  const auto siblings = siblings_for_parent(next_parent, source.card_id);
-                  next_sort_key = sort_key_around_target(siblings, target.card_id, true);
-                }
-              }
-            } else if (intent == "up_level") {
-              const auto current_parent = normalize_parent_id(source.parent_card_id);
-              if (!current_parent.has_value()) {
-                res = support::error_response(
-                    http::status::unprocessable_entity,
-                    "invalid_move_intent",
-                    "Card is already at project root."
-                );
-                return true;
-              }
-              const auto parent_it = cards_by_id.find(current_parent.value());
-              if (parent_it == cards_by_id.end() || parent_it->second.deleted_at.has_value()) {
-                next_parent = std::nullopt;
-              } else {
-                next_parent = normalize_parent_id(parent_it->second.parent_card_id);
-              }
-              next_sort_key = card_repo.next_sort_key(project_id, next_parent);
-              if (next_parent.has_value()) {
-                const auto dest_parent_it = cards_by_id.find(next_parent.value());
-                if (dest_parent_it != cards_by_id.end() &&
-                    !dest_parent_it->second.deleted_at.has_value()) {
-                  moved_into_title = dest_parent_it->second.title;
-                }
-              }
-            } else {
-              res = support::error_response(
-                  http::status::bad_request,
-                  "invalid_move_intent",
-                  "Unknown move intent."
-              );
-              return true;
-            }
-
-            // All move intents above either assign next_sort_key or return early.
-            // LCOV_EXCL_START
-            if (!next_sort_key.has_value()) {
-              next_sort_key = card_repo.next_sort_key(project_id, next_parent);
-            }
-            // LCOV_EXCL_STOP
             const long long updated_at = support::now_epoch_seconds();
-            card_store->move(card_id, true, next_parent, next_sort_key, updated_at);
+            card_store->move(card_id, true, result.parent_card_id, result.sort_key, updated_at);
             // Card was just moved; missing immediately after move is not expected in normal flow.
             // LCOV_EXCL_START
             const auto moved_opt = card_store->get(card_id);
@@ -1044,16 +797,73 @@ bool handle_card_routes(
               return true;
             }
             // LCOV_EXCL_STOP
-            write_move_response(moved_opt.value());
+            const auto& moved_card = moved_opt.value();
+
+            nlohmann::json data;
+            data["card_id"] = moved_card.card_id;
+            data["parent_card_id"] = moved_card.parent_card_id.has_value()
+                                         ? nlohmann::json(moved_card.parent_card_id.value())
+                                         : nlohmann::json(nullptr);
+            data["sort_key"] = moved_card.sort_key;
+            data["revision"] = moved_card.updated_at;
+            data["moved_into_title"] = result.moved_into_title.has_value()
+                                           ? nlohmann::json(result.moved_into_title.value())
+                                           : nlohmann::json(nullptr);
+
+            nlohmann::json payload;
+            payload["ok"] = true;
+            payload["data"] = std::move(data);
+            res = support::json_response(http::status::ok, payload);
           } catch (const holder::privacy::PrivacyError& ex) {
             res = privacy_error_response(ex); // LCOV_EXCL_LINE
           } catch (const std::runtime_error& ex) {
             const std::string msg = ex.what();
-            if (msg == "invalid_target") {
+            if (msg == "card_not_found") {
+              res =
+                  support::error_response(http::status::not_found, "not_found", "Card not found.");
+            } else if (msg == "cross_project_move_forbidden") {
+              res = support::error_response(
+                  http::status::unprocessable_entity,
+                  "cross_project_move_forbidden",
+                  "Source card is in a different project."
+              );
+            } else if (msg == "target_not_found") {
+              const bool target_style =
+                  request.has_value() && card_placement_intent_needs_target(request->intent);
+              res = support::error_response(
+                  http::status::not_found,
+                  "target_not_found",
+                  target_style ? "Target card not found." : "Parent card not found."
+              );
+            } else if (msg == "move_would_create_cycle") {
+              res = support::error_response(
+                  http::status::unprocessable_entity,
+                  "move_would_create_cycle",
+                  "Move would create a cycle."
+              );
+            } else if (msg == "invalid_target") {
               res = support::error_response(
                   http::status::unprocessable_entity,
                   "invalid_target",
                   "Target card is invalid for requested move."
+              );
+            } else if (msg == "missing_target_card_id") {
+              res = support::error_response(
+                  http::status::bad_request,
+                  "missing_target_card_id",
+                  "target_card_id is required for this intent."
+              );
+            } else if (msg == "already_at_project_root") {
+              res = support::error_response(
+                  http::status::unprocessable_entity,
+                  "invalid_move_intent",
+                  "Card is already at project root."
+              );
+            } else if (msg == "invalid_move_intent") {
+              res = support::error_response(
+                  http::status::bad_request,
+                  "invalid_move_intent",
+                  "Unknown move intent."
               );
             } else {
               // LCOV_EXCL_START
