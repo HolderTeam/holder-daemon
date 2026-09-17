@@ -461,7 +461,7 @@ void Session::write_prepared_response(
 Session::RequestLane Session::classify_request_lane(const Request& req, const std::string& path) {
   // Initial route-to-lane mapping:
   // - save: card writes except link graph mutations
-  // - background: AI routes, history reads, and links/backlinks refresh work
+  // - background: AI routes, history reads, links/backlinks refresh work, and forced Git sync
   // - foreground: everything else
   const auto method = req.method();
   const bool is_get_like = method == http::verb::get || method == http::verb::head;
@@ -470,11 +470,12 @@ Session::RequestLane Session::classify_request_lane(const Request& req, const st
   const bool is_history_route = path.find("/history/") != std::string::npos;
   const bool is_link_route = path.find("/links") != std::string::npos ||
                              path.find("/backlinks") != std::string::npos;
+  const bool is_forced_sync_route = path.ends_with("/git/pull") || path.ends_with("/git/sync");
 
   if (is_card_route && !is_get_like && !is_link_route) {
     return RequestLane::Save;
   }
-  if (is_ai_route || is_history_route || is_link_route) {
+  if (is_ai_route || is_history_route || is_link_route || is_forced_sync_route) {
     return RequestLane::Background;
   }
   return RequestLane::Foreground;

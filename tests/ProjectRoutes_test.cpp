@@ -17,6 +17,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 namespace http = boost::beast::http;
@@ -51,6 +52,7 @@ class ProjectRoutesTestGitOps final : public holder::git::GitOps {
   };
   bool throw_on_set_remote = false;
   bool throw_on_pull = false;
+  std::vector<std::string> calls;
 
   void open_or_init(const std::filesystem::path&) override {}
   void write_file(const std::filesystem::path&, const std::string&) override {}
@@ -58,12 +60,14 @@ class ProjectRoutesTestGitOps final : public holder::git::GitOps {
   void remove_path(const std::filesystem::path&) override {}
   void commit(const std::string&) override {}
   void set_remote(const std::string&, const std::string&) override {
+    calls.push_back("remote");
     if (throw_on_set_remote) {
       throw std::runtime_error("set_remote failed");
     }
   }
   void remove_remote(const std::string&) override {}
   void pull_remote_ff_only(const std::string&) override {
+    calls.push_back("pull");
     if (throw_on_pull) {
       throw std::runtime_error("pull failed");
     }
@@ -71,6 +75,7 @@ class ProjectRoutesTestGitOps final : public holder::git::GitOps {
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
   holder::git::RemoteProbeResult probe_remote_url(const std::string&) override { return probe_result; }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
+    calls.push_back("push");
     return push_result;
   }
   std::filesystem::path repo_dir() const override { return {}; }
@@ -84,12 +89,8 @@ TEST_CASE("ProjectRoutes returns false when path does not match", "[project-rout
 
   auto req = make_request(http::verb::get, "/not-projects");
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() {
-    return std::string("generated-id");
-  };
-  const auto param_get = [](const std::string&) {
-    return std::string();
-  };
+  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto param_get = [](const std::string&) { return std::string(); };
 
   const bool handled = holder::api::routes::handle_project_routes(
       "/not-projects",
@@ -228,6 +229,7 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
   project.created_at = 1;
   project.updated_at = 1;
   project.git_remote_url = std::string("git@example.com:test/repo.git");
+  std::filesystem::create_directories(project.root_path);
   repo.create(project);
 
   const auto uuid_v4 = []() {
@@ -367,6 +369,59 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(res.result() == http::status::bad_request);
   }
 
+  SECTION("forced pull returns structured success") {
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/pull", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "succeeded");
+    REQUIRE(payload["data"]["error_code"].is_null());
+    REQUIRE(payload["data"]["pull"]["attempted"] == true);
+    REQUIRE(payload["data"]["pull"]["status"] == "succeeded");
+    REQUIRE(payload["data"]["push"]["attempted"] == false);
+    REQUIRE(git.calls == std::vector<std::string>{"remote", "pull"});
+  }
+
+  SECTION("forced sync pulls before pushing") {
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/sync", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "succeeded");
+    REQUIRE(payload["data"]["pull"]["status"] == "succeeded");
+    REQUIRE(payload["data"]["push"]["attempted"] == true);
+    REQUIRE(payload["data"]["push"]["status"] == "pushed");
+    REQUIRE(git.calls == std::vector<std::string>{"remote", "pull", "remote", "push"});
+  }
+
+  SECTION("forced sync does not push after pull failure") {
+    git.throw_on_pull = true;
+    auto [status, payload] =
+        call(http::verb::post, "/projects/proj-1/git/sync", nlohmann::json::object());
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "failed");
+    REQUIRE(payload["data"]["error_code"] == "pull_failed");
+    REQUIRE(payload["data"]["pull"]["status"] == "failed");
+    REQUIRE(payload["data"]["push"]["attempted"] == false);
+    REQUIRE(git.calls == std::vector<std::string>{"remote", "pull"});
+  }
+
+  SECTION("forced sync rejects malformed input") {
+    auto req = make_request(http::verb::post, "/projects/proj-1/git/sync");
+    req.body() = "{";
+    req.prepare_payload();
+    http::response<http::string_body> res;
+    const bool handled = holder::api::routes::handle_project_routes(
+        "/projects/proj-1/git/sync",
+        req,
+        res,
+        db,
+        &git,
+        uuid_v4,
+        empty_param_get
+    );
+    REQUIRE(handled);
+    REQUIRE(res.result() == http::status::bad_request);
+  }
+
   SECTION("sync-status bad request catch with closed db") {
     db.close();
     auto [status, payload] = call(http::verb::get, "/projects/proj-1/git/sync-status");
@@ -459,8 +514,12 @@ TEST_CASE("ProjectRoutes lists project tags with card counts", "[project-routes]
 
   auto req = make_request(http::verb::get, "/projects/proj-1/tags");
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
   const bool handled = holder::api::routes::handle_project_routes(
       "/projects/proj-1/tags",
       req,

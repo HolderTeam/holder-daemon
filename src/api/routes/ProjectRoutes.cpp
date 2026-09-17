@@ -6,14 +6,16 @@
 
 #include "card/CardRepo.h"
 #include "git/RepoSyncMetrics.h"
+#include "index/FtsIndexer.h"
 #include "platform/Paths.h"
 #include "platform/ProjectRegistry.h"
 #include "privacy/ProjectPrivacy.h"
-#include "project/ProjectPaths.h"
 #include "project/ProjectManifest.h"
+#include "project/ProjectPaths.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectStore.h"
 #include "project/ProjectSyncRepo.h"
+#include "sync/ProjectSyncOperation.h"
 
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
@@ -135,6 +137,57 @@ nlohmann::json git_push_payload(
                                                             : nlohmann::json(nullptr)},
       {"next_action",
        next_action.has_value() ? nlohmann::json(next_action.value()) : nlohmann::json(nullptr)},
+  };
+  return payload;
+}
+
+nlohmann::json project_sync_operation_payload(
+    const holder::sync::ProjectSyncResult& result,
+    const std::string& branch
+) {
+  nlohmann::json error_code = nullptr;
+  nlohmann::json error_message = nullptr;
+  if (result.pull.attempted && result.pull.status != holder::sync::PullPhaseStatus::Succeeded) {
+    error_code = result.pull.status == holder::sync::PullPhaseStatus::RemoteUnset ? "remote_unset"
+                                                                                  : "pull_failed";
+    if (result.pull.error_message.has_value()) error_message = *result.pull.error_message;
+  } else if (result.push.attempted && result.push.status != holder::git::PushStatus::Pushed &&
+             result.push.status != holder::git::PushStatus::UpToDate) {
+    error_code = holder::git::push_status_name(result.push.status);
+    if (result.push.error_message.has_value()) error_message = *result.push.error_message;
+  }
+
+  nlohmann::json payload;
+  payload["ok"] = true;
+  payload["data"] = {
+      {"project_id", result.project_id},
+      {"remote_url",
+       result.remote_url.has_value() ? nlohmann::json(*result.remote_url) : nlohmann::json(nullptr)
+      },
+      {"branch", branch.empty() ? "local_default" : branch},
+      {"status", result.succeeded() ? "succeeded" : "failed"},
+      {"error_code", std::move(error_code)},
+      {"error_message", std::move(error_message)},
+      {"pull",
+       {{"attempted", result.pull.attempted},
+        {"status", holder::sync::pull_phase_status_name(result.pull.status)},
+        {"conflicts_resolved", result.pull.conflicts_resolved},
+        {"error_message",
+         result.pull.error_message.has_value() ? nlohmann::json(*result.pull.error_message)
+                                               : nlohmann::json(nullptr)}}},
+      {"push",
+       {{"attempted", result.push.attempted},
+        {"status",
+         result.push.attempted ? nlohmann::json(holder::git::push_status_name(result.push.status))
+                               : nlohmann::json(nullptr)},
+        {"ahead_count", result.push.ahead_count},
+        {"behind_count", result.push.behind_count},
+        {"local_head_commit",
+         result.push.local_head_commit.has_value() ? nlohmann::json(*result.push.local_head_commit)
+                                                   : nlohmann::json(nullptr)},
+        {"error_message",
+         result.push.error_message.has_value() ? nlohmann::json(*result.push.error_message)
+                                               : nlohmann::json(nullptr)}}},
   };
   return payload;
 }
@@ -317,9 +370,9 @@ bool handle_project_routes(
       if (const auto refreshed = repo.get(metadata.project_id); refreshed.has_value()) {
         holder::project::write_project_manifest(git, *refreshed);
         git.commit("Restore encrypted project metadata");
-        holder::core::ProjectRegistry(
-            holder::core::Paths::resolve("holder").project_registry_path()
-        ).remember(repo.list());
+        holder::core::ProjectRegistry(holder::core::Paths::resolve("holder").project_registry_path()
+        )
+            .remember(repo.list());
       }
 
       nlohmann::json payload;
@@ -583,9 +636,9 @@ bool handle_project_routes(
 
         holder::project::ProjectStore store(db, git_ops);
         project = store.create(std::move(project), uuid_v4, holder::core::default_projects_root());
-        holder::core::ProjectRegistry(
-            holder::core::Paths::resolve("holder").project_registry_path()
-        ).remember(holder::project::ProjectRepo(db).list());
+        holder::core::ProjectRegistry(holder::core::Paths::resolve("holder").project_registry_path()
+        )
+            .remember(holder::project::ProjectRepo(db).list());
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
@@ -704,6 +757,46 @@ bool handle_project_routes(
                                         : std::optional<std::string>(probe.error_message)
         );
         res = support::json_response(http::status::ok, payload);
+      } catch (const std::exception& ex) {
+        res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+      }
+    } else if ((subpath == "/git/pull" || subpath == "/git/sync") &&
+               req.method() == http::verb::post) {
+      try {
+        const auto body = req.body().empty() ? nlohmann::json::object()
+                                             : nlohmann::json::parse(req.body());
+        if (!body.is_object()) throw std::invalid_argument("Expected a JSON object.");
+        const std::string branch = body.contains("branch") && !body.at("branch").is_null()
+                                       ? body.at("branch").get<std::string>()
+                                       : "";
+        const bool set_upstream = body.contains("set_upstream") &&
+                                          !body.at("set_upstream").is_null()
+                                      ? body.at("set_upstream").get<bool>()
+                                      : true;
+
+        holder::project::ProjectRepo repo(db);
+        if (!repo.get(project_id).has_value()) {
+          res = support::error_response(http::status::not_found, "not_found", "Project not found.");
+          return true;
+        }
+
+        holder::index::FtsIndexer fts(db);
+        const auto result = holder::sync::run_project_sync(
+            db,
+            &fts,
+            resolve_git(git_ops),
+            project_id,
+            {.pull = true,
+             .push = subpath == "/git/sync",
+             .push_after_failed_pull = false,
+             .branch = branch,
+             .set_upstream = set_upstream,
+             .now = support::now_epoch_seconds()}
+        );
+        res = support::json_response(
+            http::status::ok,
+            project_sync_operation_payload(result, branch)
+        );
       } catch (const std::exception& ex) {
         res = support::error_response(http::status::bad_request, "bad_request", ex.what());
       }
@@ -1116,7 +1209,8 @@ bool handle_project_routes(
               git.commit("Update project metadata");
               holder::core::ProjectRegistry(
                   holder::core::Paths::resolve("holder").project_registry_path()
-              ).remember(repo.list());
+              )
+                  .remember(repo.list());
               nlohmann::json payload;
               payload["ok"] = true;
               payload["data"] = {{"project_id", project_id}};

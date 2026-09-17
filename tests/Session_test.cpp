@@ -387,6 +387,24 @@ TEST_CASE("Session prepare_request classifies history reads as background lane",
   REQUIRE(prepared->lane == holder::api::Session::RequestLane::Background);
 }
 
+TEST_CASE("Session prepare_request classifies forced sync as background lane", "[session]") {
+  for (const auto* action : {"pull", "sync"}) {
+    SocketPair pair;
+    const std::string req = "POST /projects/project-123/git/" + std::string(action) +
+                            " HTTP/1.1\r\n"
+                            "Host: localhost\r\n"
+                            "Content-Length: 2\r\n"
+                            "Connection: close\r\n"
+                            "\r\n"
+                            "{}";
+    boost::asio::write(pair.client, boost::asio::buffer(req));
+
+    auto prepared = holder::api::Session::prepare_request(std::move(pair.server));
+    REQUIRE(prepared.has_value());
+    REQUIRE(prepared->lane == holder::api::Session::RequestLane::Background);
+  }
+}
+
 TEST_CASE("Session prepare_request classifies project reads as foreground lane", "[session]") {
   SocketPair pair;
 

@@ -4,11 +4,10 @@
 #include "git/RepoSyncMetrics.h"
 #include "index/FtsIndexer.h"
 #include "platform/Db.h"
-#include "privacy/ProjectPrivacy.h"
 #include "project/ProjectRepo.h"
 #include "project/ProjectSyncRepo.h"
+#include "sync/ProjectSyncOperation.h"
 #include "sync/ProjectSyncPolicy.h"
-#include "sync/PullConflictResolution.h"
 
 #include <spdlog/spdlog.h>
 
@@ -22,10 +21,6 @@ namespace {
 
 std::atomic<bool> g_fail_post_pull_metrics_for_tests{false};
 std::atomic<bool> g_fail_post_push_metrics_for_tests{false};
-
-bool is_push_success(holder::git::PushStatus status) {
-  return status == holder::git::PushStatus::Pushed || status == holder::git::PushStatus::UpToDate;
-}
 
 holder::project::ProjectSyncActivityUpdate activity_update_from_metrics(
     const holder::git::RepoSyncMetrics& metrics,
@@ -99,43 +94,39 @@ void ProjectSyncWorker::run_startup_pull_pass() {
     if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
       continue;
     }
-    auto operation = git.lock_operation(project.root_path);
-    try {
-      git.open_or_init(project.root_path);
-      git.set_remote("origin", project.git_remote_url.value());
-      const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
-    } catch (const std::exception& ex) {
-      spdlog::warn(
-          "sync worker startup metrics refresh failed for {}: {}",
-          project.project_id,
-          ex.what()
-      );
+    {
+      auto operation = git.lock_operation(project.root_path);
+      try {
+        git.open_or_init(project.root_path);
+        git.set_remote("origin", project.git_remote_url.value());
+        const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
+        sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
+      } catch (const std::exception& ex) {
+        spdlog::warn(
+            "sync worker startup metrics refresh failed for {}: {}",
+            project.project_id,
+            ex.what()
+        );
+      }
     }
     const auto current = sync.get(project.project_id);
     if (current.has_value() && current->last_pull_at.has_value()) {
       continue;
     }
+    (void)holder::sync::run_project_sync(
+        db,
+        &fts,
+        git,
+        project.project_id,
+        {.pull = true,
+         .push = false,
+         .push_after_failed_pull = false,
+         .branch = "",
+         .set_upstream = true,
+         .now = now}
+    );
     try {
-      git.open_or_init(project.root_path);
-      git.set_remote("origin", project.git_remote_url.value());
-      git.pull_remote_ff_only("origin");
-      holder::sync::reconcile_index_after_pull(db, &fts, project);
-      sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
-    } catch (const holder::git::NonFastForwardPullError& diverged) {
-      holder::sync::resolve_pull_conflicts(db, &fts, project, git, diverged, now);
-      holder::sync::reconcile_index_after_pull(db, &fts, project);
-      sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
-    } catch (const std::exception& ex) {
-      sync.record_pull_result(
-          project.project_id,
-          "failed",
-          false,
-          std::optional<std::string>(ex.what()),
-          now
-      );
-    }
-    try {
+      auto operation = git.lock_operation(project.root_path);
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {
@@ -161,49 +152,58 @@ void ProjectSyncWorker::run_push_cycle() {
     if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
       continue;
     }
-    auto operation = git.lock_operation(project.root_path);
-    try {
-      git.open_or_init(project.root_path);
-      git.set_remote("origin", project.git_remote_url.value());
-      const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
-      sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
-    } catch (const std::exception& ex) {
-      spdlog::warn("sync worker metrics refresh failed for {}: {}", project.project_id, ex.what());
-      continue;
-    }
-
-    const auto state = sync.get(project.project_id);
-    if (should_attempt_pull(
-            {.last_pull_at = state.has_value() ? state->last_pull_at : std::optional<long long>{},
-             .next_pull_retry_at = state.has_value() ? state->next_pull_retry_at
-                                                     : std::optional<long long>{},
-             .now = now,
-             .pull_interval_seconds = pull_interval_seconds_}
-        )) {
+    {
+      auto operation = git.lock_operation(project.root_path);
       try {
         git.open_or_init(project.root_path);
         git.set_remote("origin", project.git_remote_url.value());
-        git.pull_remote_ff_only("origin");
-        holder::sync::reconcile_index_after_pull(db, &fts, project);
-        sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
-      } catch (const holder::git::NonFastForwardPullError& diverged) {
-        holder::sync::resolve_pull_conflicts(db, &fts, project, git, diverged, now);
-        holder::sync::reconcile_index_after_pull(db, &fts, project);
-        sync.record_pull_result(project.project_id, "succeeded", true, std::nullopt, now);
+        const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
+        sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
       } catch (const std::exception& ex) {
-        sync.record_pull_result(
+        spdlog::warn(
+            "sync worker metrics refresh failed for {}: {}",
             project.project_id,
-            "failed",
-            false,
-            std::optional<std::string>(ex.what()),
-            now
+            ex.what()
         );
+        continue;
       }
+    }
 
+    const auto state = sync.get(project.project_id);
+    const bool pull_due = should_attempt_pull(
+        {.last_pull_at = state.has_value() ? state->last_pull_at : std::optional<long long>{},
+         .next_pull_retry_at = state.has_value() ? state->next_pull_retry_at
+                                                 : std::optional<long long>{},
+         .now = now,
+         .pull_interval_seconds = pull_interval_seconds_}
+    );
+    const bool push_due = should_attempt_push(
+        {.last_push_at = state.has_value() ? state->last_push_at : std::optional<long long>{},
+         .next_retry_at = state.has_value() ? state->next_retry_at : std::optional<long long>{},
+         .now = now,
+         .push_interval_seconds = push_interval_seconds_}
+    );
+    if (!pull_due && !push_due) continue;
+
+    (void)holder::sync::run_project_sync(
+        db,
+        &fts,
+        git,
+        project.project_id,
+        {.pull = pull_due,
+         .push = push_due,
+         .push_after_failed_pull = true,
+         .branch = "",
+         .set_upstream = true,
+         .now = now}
+    );
+
+    if (pull_due) {
       try {
         if (g_fail_post_pull_metrics_for_tests.load(std::memory_order_relaxed)) {
           throw std::runtime_error("forced post-pull metrics failure for tests");
         }
+        auto operation = git.lock_operation(project.root_path);
         const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
         sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
       } catch (const std::exception& ex) {
@@ -215,43 +215,12 @@ void ProjectSyncWorker::run_push_cycle() {
       }
     }
 
-    if (!should_attempt_push(
-            {.last_push_at = state.has_value() ? state->last_push_at : std::optional<long long>{},
-             .next_retry_at = state.has_value() ? state->next_retry_at : std::optional<long long>{},
-             .now = now,
-             .push_interval_seconds = push_interval_seconds_}
-        )) {
-      continue;
-    }
-
-    try {
-      git.open_or_init(project.root_path);
-      git.set_remote("origin", project.git_remote_url.value());
-      if (project.privacy_mode == "encrypted_git") {
-        holder::privacy::assert_encryption_push_safe(project.root_path);
-      }
-      const auto result = git.push_branch("origin", "", true);
-      sync.record_push_result(
-          project.project_id,
-          holder::git::push_status_name(result.status),
-          is_push_success(result.status),
-          result.error_message.empty() ? std::optional<std::string>()
-                                       : std::optional<std::string>(result.error_message),
-          now
-      );
-    } catch (const std::exception& ex) {
-      sync.record_push_result(
-          project.project_id,
-          holder::git::push_status_name(holder::git::PushStatus::UnknownError),
-          false,
-          std::optional<std::string>(ex.what()),
-          now
-      );
-    }
+    if (!push_due) continue;
     try {
       if (g_fail_post_push_metrics_for_tests.load(std::memory_order_relaxed)) {
         throw std::runtime_error("forced post-push metrics failure for tests");
       }
+      auto operation = git.lock_operation(project.root_path);
       const auto metrics = holder::git::inspect_repo_sync_metrics(project.root_path, "origin");
       sync.update_activity_counts(project.project_id, activity_update_from_metrics(metrics, now));
     } catch (const std::exception& ex) {

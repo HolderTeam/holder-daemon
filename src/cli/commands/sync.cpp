@@ -17,12 +17,16 @@ const char* sync_usage() {
          "  holderctl sync remote [URL] [--project <id-or-name>] [--json]\n"
          "  holderctl sync disconnect [--project <id-or-name>] [--json]\n"
          "  holderctl sync test [URL] [--project <id-or-name>] [--json]\n"
+         "  holderctl sync pull [--project <id-or-name>] [--json]\n"
+         "  holderctl sync now [--project <id-or-name>] [--json]\n"
          "  holderctl sync push [--project <id-or-name>] [--json]\n"
-         "\nInspect Git sync state, configure or test the remote, and push commits.\n"
+         "\nInspect Git sync state, configure or test the remote, and force synchronization.\n"
          "Remote without a URL shows the configured remote; disconnect removes it.\n"
          "Test checks reachability without changing configuration or fetching.\n"
+         "Pull fetches and reconciles remote changes immediately.\n"
+         "Now pulls first and pushes only after a successful pull.\n"
          "Push sends commits on the default branch; it does not commit local edits.\n"
-         "Test and push failures exit nonzero. Git result failures retain the daemon\n"
+         "Test, pull, now, and push failures exit nonzero. Git result failures retain the daemon\n"
          "envelope under error.details.result with --json, on stderr. Successful JSON\n"
          "goes to stdout.\n"
          "Use --project to choose an exact project ID or name without changing the selection.\n"
@@ -41,6 +45,8 @@ const char* sync_usage() {
          "  holderctl sync disconnect --project \"Work\" --json\n"
          "  holderctl sync test --project \"Work\"\n"
          "  holderctl sync test https://example.com/team/work.git --json\n"
+         "  holderctl sync pull --project \"Work\"\n"
+         "  holderctl sync now --project \"Work\" --json\n"
          "  holderctl sync push --project \"Work\" --json";
 }
 
@@ -156,8 +162,9 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
         throw CliError("bad_request", sync_usage(), nlohmann::json::object(), "", 2);
       }
       project_reference = value;
-    } else if (action.empty() && (arg == "status" || arg == "remote" || arg == "disconnect" ||
-                                  arg == "test" || arg == "push")) {
+    } else if (action.empty() &&
+               (arg == "status" || arg == "remote" || arg == "disconnect" || arg == "test" ||
+                arg == "pull" || arg == "now" || arg == "push")) {
       action = arg;
     } else if ((action == "remote" || action == "test") && !remote_url &&
                !trim_ascii_whitespace(arg).empty() && arg.front() != '-') {
@@ -175,6 +182,45 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
   try {
     const auto project_id = sync_project_id(paths, project_reference);
     const auto target = "/projects/" + url_encode_component(project_id);
+    if (action == "pull" || action == "now") {
+      auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::post,
+          target + (action == "pull" ? "/git/pull" : "/git/sync"),
+          nlohmann::json::object()
+      );
+      auto& data = payload.at("data");
+      redact_diagnostics(data);
+
+      const auto& pull = data.at("pull");
+      const auto& push = data.at("push");
+      std::ostringstream human;
+      human << "Project: " << json_string(data, "project_id") << "\n";
+      human << "Pull: " << json_string(pull, "status") << "\n";
+      if (pull.at("conflicts_resolved").get<int>() != 0) {
+        human << "Conflicts resolved: " << pull.at("conflicts_resolved") << "\n";
+      }
+      if (action == "now") {
+        human << "Push: "
+              << (push.at("attempted").get<bool>() ? json_string(push, "status") : "not_attempted")
+              << "\n";
+      }
+      if (!data.at("error_code").is_null()) {
+        const auto message = json_string(data, "error_message", "Git operation failed.");
+        human << "Failure: " << message;
+        throw CliError(
+            json_string(data, "error_code"),
+            message,
+            {{"result", payload}},
+            human.str()
+        );
+      }
+      if (json_output)
+        std::cout << payload.dump(2) << "\n";
+      else
+        std::cout << human.str();
+      return 0;
+    }
     if (action == "test" || action == "push") {
       auto body = nlohmann::json::object();
       if (remote_url) body["remote_url"] = *remote_url;

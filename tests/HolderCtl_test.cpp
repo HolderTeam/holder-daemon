@@ -538,6 +538,8 @@ TEST_CASE("holderctl sync help and validation work without a daemon", "[holderct
         "sync remote --help",
         "sync disconnect --help",
         "sync test --help",
+        "sync pull --help",
+        "sync now --help",
         "sync push --help",
         "sync --project 'Work Project' status --help"}) {
     REQUIRE(run_command(bin + " " + args + redirects) == 0);
@@ -547,8 +549,6 @@ TEST_CASE("holderctl sync help and validation work without a daemon", "[holderct
   }
   for (const auto* args :
        {"sync",
-        "sync pull",
-        "sync now",
         "sync status extra",
         "sync status --unknown",
         "sync status status",
@@ -567,6 +567,10 @@ TEST_CASE("holderctl sync help and validation work without a daemon", "[holderct
         "sync test '   '",
         "sync test one two",
         "sync test --unknown",
+        "sync pull extra",
+        "sync pull --unknown",
+        "sync now extra",
+        "sync now --unknown",
         "sync push extra",
         "sync push --unknown",
         "sync disconnect --project"}) {
