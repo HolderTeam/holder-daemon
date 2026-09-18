@@ -82,11 +82,19 @@ TEST_CASE("HTTP resource attachments are isolated idempotent live-card operation
         http::status::unauthorized)["ok"] == false);
   }
   // Parallel read requests exercise listener request ownership and worker-owned DB handles.
-  std::vector<std::future<nlohmann::json>> reads;
+  std::vector<std::future<holder::test::HttpResult>> reads;
   for (int i = 0; i < 12; ++i) reads.push_back(std::async(std::launch::async, [&] {
-    return request(http::verb::get, list_path);
+    return holder::test::http_request_raw(
+        running.bound.bind, running.bound.port, token, http::verb::get, list_path
+    );
   }));
-  for (auto& read : reads) REQUIRE(read.get()["data"][0]["resource_id"] == resource_id);
+  for (auto& read : reads) {
+    const auto response = read.get();
+    INFO("Concurrent HTTP GET " << list_path << " returned " << response.status);
+    INFO("Concurrent HTTP response body: " << response.body);
+    REQUIRE(response.status == http::status::ok);
+    REQUIRE(nlohmann::json::parse(response.body)["data"][0]["resource_id"] == resource_id);
+  }
   // An unrelated resource reference survives detach; delete removes both kinds globally.
   request(http::verb::post, "/cards/" + card_id + "/links",
       {{"to_card_id", resource_id}, {"to_type", "resource"}, {"kind", "ref"}}, http::status::created);
