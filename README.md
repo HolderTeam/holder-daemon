@@ -11,7 +11,7 @@ Holderd is a local-first card server, primarily used as a backend for card appli
 
 Runtime/build dependencies used by this repo:
 
-- Boost (`system`, `filesystem`)
+- Boost 1.83+ (Asio/Beast headers, Filesystem, and Process)
 - OpenSSL
 - SQLite3
 - nlohmann-json
@@ -21,6 +21,7 @@ Runtime/build dependencies used by this repo:
 - md4c
 - libsodium
 - platform keyring support: libsecret on Linux, Keychain on macOS, Credential Manager on Windows
+- Catch2 (for the default test-enabled build)
 
 `./make.sh` also handles the `caste` dependency:
 
@@ -64,6 +65,32 @@ sudo apt install -y \
 ```
 
 Server will start at `127.0.0.1:11499` by default and print docs URL + auth token in the terminal log.
+
+## Quick Start (Fedora)
+
+```sh
+sudo dnf install -y \
+  gcc-c++ cmake ninja-build pkgconf-pkg-config git curl ccache \
+  boost-devel openssl-devel sqlite-devel json-devel spdlog-devel yaml-cpp-devel \
+  'pkgconfig(libgit2)' md4c-devel catch-devel libsodium-devel libsecret-devel
+
+git submodule update --init --recursive
+./make.sh
+```
+
+`boost-devel` supplies the Boost headers and compiled libraries. `json-devel`
+supplies nlohmann-json, and `catch-devel` supplies Catch2. The quoted
+`pkgconfig(libgit2)` capability selects the development package across Fedora
+package naming changes (Fedora 45 prerelease uses `libgit2_1.9-devel`).
+
+`make.sh` automatically enables ccache when available. Use `HOLDER_CCACHE=1` to
+require it, and `ccache --show-stats` to inspect cache use.
+
+Optional coverage tools (`gcovr` adds the JSON report):
+
+```sh
+sudo dnf install -y lcov gcovr
+```
 
 ## Quick Start (FreeBSD)
 
