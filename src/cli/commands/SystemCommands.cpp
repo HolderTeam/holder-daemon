@@ -91,8 +91,10 @@ int command_database(int argc, char* argv[], const char* holderctl_path) {
   bool dry_run = false;
   for (int i = 3; i < argc; ++i) {
     const std::string arg = argv[i];
-    if (arg == "--dry-run") dry_run = true;
-    else throw std::runtime_error("Unknown database rebuild option: " + arg);
+    if (arg == "--dry-run")
+      dry_run = true;
+    else
+      throw std::runtime_error("Unknown database rebuild option: " + arg);
   }
 
   boost::filesystem::path daemon;
@@ -105,7 +107,8 @@ int command_database(int argc, char* argv[], const char* holderctl_path) {
 #else
       const auto sibling = ctl.parent_path() / "holderd";
 #endif
-      if (std::filesystem::is_regular_file(sibling)) daemon = boost::filesystem::path(sibling.string());
+      if (std::filesystem::is_regular_file(sibling))
+        daemon = boost::filesystem::path(sibling.string());
     }
   }
   if (daemon.empty()) daemon = boost::process::v2::environment::find_executable("holderd");

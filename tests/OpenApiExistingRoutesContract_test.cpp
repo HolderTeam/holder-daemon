@@ -191,9 +191,18 @@ TEST_CASE(
   const auto op = document["paths"]["/resources/{resource_id}/assets/{asset_id}/content"]["get"];
   CHECK(parameter_named(op, "resource_id")["required"].as<bool>());
   CHECK(parameter_named(op, "asset_id")["required"].as<bool>());
-  CHECK(op["responses"]["200"]["headers"]["Content-Type"]["schema"]["type"].as<std::string>() == "string");
-  CHECK(op["responses"]["200"]["headers"]["Content-Disposition"]["schema"]["type"].as<std::string>() == "string");
-  CHECK(op["responses"]["200"]["content"]["application/octet-stream"]["schema"]["format"].as<std::string>() == "binary");
+  CHECK(
+      op["responses"]["200"]["headers"]["Content-Type"]["schema"]["type"].as<std::string>() ==
+      "string"
+  );
+  CHECK(
+      op["responses"]["200"]["headers"]["Content-Disposition"]["schema"]["type"].as<std::string>(
+      ) == "string"
+  );
+  CHECK(
+      op["responses"]["200"]["content"]["application/octet-stream"]["schema"]["format"]
+          .as<std::string>() == "binary"
+  );
   for (const auto& code : {"400", "401", "404", "409", "422", "502", "503", "507"}) {
     require_json_response_ref(op, code, "ErrorResponse");
   }
@@ -211,18 +220,24 @@ TEST_CASE(
   CHECK(parameter_named(list, "limit")["schema"]["default"].as<int>() == 100);
   CHECK(parameter_named(list, "offset")["schema"]["minimum"].as<int>() == 0);
   require_json_response_ref(list, "200", "ResourceListResponse");
-  for (const auto& status : {"400", "401", "404", "422"}) require_json_response_ref(list, status, "ErrorResponse");
+  for (const auto& status : {"400", "401", "404", "422"})
+    require_json_response_ref(list, status, "ErrorResponse");
   const auto schemas = document["components"]["schemas"];
   CHECK(schemas["ResourceListResponse"]["properties"]["next_offset"]["nullable"].as<bool>());
-  CHECK(required_properties(schemas["ResourceAttachmentResponse"]["properties"]["data"]) ==
-      std::vector<std::string>{"card_id", "changed", "outcome", "resource_id"});
+  CHECK(
+      required_properties(schemas["ResourceAttachmentResponse"]["properties"]["data"]) ==
+      std::vector<std::string>{"card_id", "changed", "outcome", "resource_id"}
+  );
   for (const auto& method : {"post", "delete"}) {
     const auto op = document["paths"]["/cards/{card_id}/resources"][method];
     CHECK(parameter_named(op, "card_id")["required"].as<bool>());
-    CHECK(required_properties(op["requestBody"]["content"]["application/json"]["schema"]) ==
-        std::vector<std::string>{"project_id", "resource_id"});
+    CHECK(
+        required_properties(op["requestBody"]["content"]["application/json"]["schema"]) ==
+        std::vector<std::string>{"project_id", "resource_id"}
+    );
     require_json_response_ref(op, "200", "ResourceAttachmentResponse");
-    for (const auto& status : {"400", "401", "404", "422"}) require_json_response_ref(op, status, "ErrorResponse");
+    for (const auto& status : {"400", "401", "404", "422"})
+      require_json_response_ref(op, status, "ErrorResponse");
   }
 }
 
@@ -458,8 +473,7 @@ TEST_CASE(
   REQUIRE(milestone_id.IsDefined());
   CHECK(milestone_id["schema"]["format"].as<std::string>() == "uuid");
   CHECK(
-      milestone_id["description"].as<std::string>().find("never abbreviated") !=
-      std::string::npos
+      milestone_id["description"].as<std::string>().find("never abbreviated") != std::string::npos
   );
 
   const auto milestone_update = schemas["MilestoneUpdateRequest"];

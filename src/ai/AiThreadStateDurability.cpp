@@ -31,15 +31,16 @@ std::string encode(
   nlohmann::json body = {
       {"version", 1},
       {"thread_id", state.thread_id},
-      {"rolling_summary", state.rolling_summary.has_value()
-                              ? nlohmann::json(*state.rolling_summary)
-                              : nlohmann::json(nullptr)},
-      {"pinned_facts_json", state.pinned_facts_json.has_value()
-                                ? nlohmann::json(*state.pinned_facts_json)
-                                : nlohmann::json(nullptr)},
-      {"last_compacted_message_id", state.last_compacted_message_id.has_value()
-                                          ? nlohmann::json(*state.last_compacted_message_id)
-                                          : nlohmann::json(nullptr)},
+      {"rolling_summary",
+       state.rolling_summary.has_value() ? nlohmann::json(*state.rolling_summary)
+                                         : nlohmann::json(nullptr)},
+      {"pinned_facts_json",
+       state.pinned_facts_json.has_value() ? nlohmann::json(*state.pinned_facts_json)
+                                           : nlohmann::json(nullptr)},
+      {"last_compacted_message_id",
+       state.last_compacted_message_id.has_value()
+           ? nlohmann::json(*state.last_compacted_message_id)
+           : nlohmann::json(nullptr)},
       {"updated_at", state.updated_at},
   };
   const auto plain = body.dump(2) + '\n';
@@ -97,12 +98,18 @@ void upsert_projection(
     throw std::runtime_error("prepare AI thread state restore failed");
   }
   sqlite3_bind_text(stmt, 1, state.thread_id.c_str(), -1, SQLITE_TRANSIENT);
-  if (state.rolling_summary) sqlite3_bind_text(stmt, 2, state.rolling_summary->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 2);
-  if (state.pinned_facts_json) sqlite3_bind_text(stmt, 3, state.pinned_facts_json->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 3);
-  if (state.last_compacted_message_id) sqlite3_bind_text(stmt, 4, state.last_compacted_message_id->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 4);
+  if (state.rolling_summary)
+    sqlite3_bind_text(stmt, 2, state.rolling_summary->c_str(), -1, SQLITE_TRANSIENT);
+  else
+    sqlite3_bind_null(stmt, 2);
+  if (state.pinned_facts_json)
+    sqlite3_bind_text(stmt, 3, state.pinned_facts_json->c_str(), -1, SQLITE_TRANSIENT);
+  else
+    sqlite3_bind_null(stmt, 3);
+  if (state.last_compacted_message_id)
+    sqlite3_bind_text(stmt, 4, state.last_compacted_message_id->c_str(), -1, SQLITE_TRANSIENT);
+  else
+    sqlite3_bind_null(stmt, 4);
   sqlite3_bind_int64(stmt, 5, state.updated_at);
   const int rc = sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -155,7 +162,8 @@ std::size_t backfill_thread_compaction_states(holder::platform::Db& db) {
     if (!project.has_value()) continue;
     if (std::filesystem::is_regular_file(
             std::filesystem::path(project->root_path) / relative_path(state.thread_id)
-        )) continue;
+        ))
+      continue;
     if (persist_thread_compaction_state(db, state)) ++count;
   }
   sqlite3_finalize(stmt);
@@ -200,8 +208,7 @@ bool all_thread_compaction_states_are_durable(holder::platform::Db& db) {
   bool durable = true;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const std::string id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-    const std::filesystem::path root =
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+    const std::filesystem::path root = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
     if (!std::filesystem::is_regular_file(root / relative_path(id))) {
       durable = false;
       break;

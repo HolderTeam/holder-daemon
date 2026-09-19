@@ -64,26 +64,32 @@ long long scalar_count(holder::platform::Db& db, const std::string& sql) {
 void require_no_daemon_sqlite_only_state(holder::platform::Db& db, const Paths& paths) {
   std::vector<std::pair<std::string, std::string>> checks;
   if (!holder::ai::all_thread_compaction_states_are_durable(db)) {
-    checks.push_back({
-        "AI thread compaction state", "SELECT COUNT(*) FROM ai_thread_compaction_state;"
-    });
+    checks.push_back(
+        {"AI thread compaction state", "SELECT COUNT(*) FROM ai_thread_compaction_state;"}
+    );
   }
   if (!holder::ai::all_nudge_dismissals_are_durable(db)) {
-    checks.push_back({
-        "dismissed AI nudges", "SELECT COUNT(*) FROM ai_nudges WHERE dismissed_at IS NOT NULL;"
-    });
+    checks.push_back(
+        {"dismissed AI nudges", "SELECT COUNT(*) FROM ai_nudges WHERE dismissed_at IS NOT NULL;"}
+    );
   }
   if (!std::filesystem::exists(paths.cloud_usage_ledger_path())) {
-    checks.insert(checks.begin(), {
-        {"cloud usage ledger", "SELECT COUNT(*) FROM ai_cloud_usage_events;"},
-    });
+    checks.insert(
+        checks.begin(),
+        {
+            {"cloud usage ledger", "SELECT COUNT(*) FROM ai_cloud_usage_events;"},
+        }
+    );
   }
   if (!std::filesystem::exists(paths.device_config_path())) {
-    checks.insert(checks.begin(), {
-        {"local AI model configuration", "SELECT COUNT(*) FROM ai_local_model_config;"},
-        {"manual AI runners", "SELECT COUNT(*) FROM ai_runners WHERE source <> 'auto_local';"},
-        {"AI provider settings", "SELECT COUNT(*) FROM ai_provider_settings;"},
-    });
+    checks.insert(
+        checks.begin(),
+        {
+            {"local AI model configuration", "SELECT COUNT(*) FROM ai_local_model_config;"},
+            {"manual AI runners", "SELECT COUNT(*) FROM ai_runners WHERE source <> 'auto_local';"},
+            {"AI provider settings", "SELECT COUNT(*) FROM ai_provider_settings;"},
+        }
+    );
   }
   std::vector<std::string> blockers;
   for (const auto& [label, sql] : checks) {
@@ -123,9 +129,7 @@ void audit_durable_database_ownership(holder::platform::Db& db, const Paths& pat
 }
 
 bool database_rebuild_is_ready(const Paths& paths) {
-  return holder::platform::database_rebuild_is_ready(
-      paths.database_rebuild_readiness_path()
-  );
+  return holder::platform::database_rebuild_is_ready(paths.database_rebuild_readiness_path());
 }
 
 void mark_database_rebuild_ready(const Paths& paths) {

@@ -2,10 +2,10 @@
 
 #include "ai/AiProviderCredentialRepo.h"
 #include "ai/AiProviderSettingRepo.h"
-#include "platform/DeviceConfigStore.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/ProviderUtils.h"
 #include "api/support/Time.h"
+#include "platform/DeviceConfigStore.h"
 #include "privacy/SecretStore.h"
 
 #include <boost/beast/http.hpp>

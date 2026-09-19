@@ -135,7 +135,8 @@ DriveResponse json_request(
     throw;
   } catch (const std::exception& ex) {
     throw StorageError(
-        StorageErrorCode::Unavailable, std::string("Drive request failed: ") + ex.what()
+        StorageErrorCode::Unavailable,
+        std::string("Drive request failed: ") + ex.what()
     );
   }
 }
@@ -153,7 +154,8 @@ std::string read_whole_file(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) {
     throw StorageError(
-        StorageErrorCode::Unavailable, "could not open staged file for Drive upload"
+        StorageErrorCode::Unavailable,
+        "could not open staged file for Drive upload"
     );
   }
   std::ostringstream contents;
@@ -166,7 +168,7 @@ std::optional<std::string> find_file_id_in_scope(
     const std::string& query
 ) {
   const std::string target = std::string(kFilesPath) + "?q=" + url_encode(query) +
-                              "&fields=" + url_encode("files(id)") + "&pageSize=1";
+                             "&fields=" + url_encode("files(id)") + "&pageSize=1";
   const auto response = json_request(http::verb::get, target, access_token, std::nullopt);
   check_ok(response, "search");
   nlohmann::json json;
@@ -189,7 +191,7 @@ std::string find_or_create_folder(
     const std::optional<std::string>& parent_id
 ) {
   std::string query = "name = '" + escape_drive_query_literal(name) + "' and mimeType = '" +
-                       std::string(kFolderMimeType) + "' and trashed = false";
+                      std::string(kFolderMimeType) + "' and trashed = false";
   query += parent_id.has_value()
                ? " and '" + escape_drive_query_literal(*parent_id) + "' in parents"
                : " and 'root' in parents";
@@ -218,8 +220,8 @@ std::optional<std::string> find_file_id(
     const std::string& name
 ) {
   const std::string query = "name = '" + escape_drive_query_literal(name) + "' and '" +
-                             escape_drive_query_literal(folder_id) +
-                             "' in parents and trashed = false";
+                            escape_drive_query_literal(folder_id) +
+                            "' in parents and trashed = false";
   return find_file_id_in_scope(access_token, query);
 }
 
@@ -230,9 +232,7 @@ std::string upload_file(
     const std::filesystem::path& staged_file
 ) {
   const auto file_bytes = read_whole_file(staged_file);
-  const nlohmann::json metadata = {
-      {"name", name}, {"parents", nlohmann::json::array({folder_id})}
-  };
+  const nlohmann::json metadata = {{"name", name}, {"parents", nlohmann::json::array({folder_id})}};
 
   std::string body;
   body += "--";
@@ -249,7 +249,9 @@ std::string upload_file(
 
   try {
     http::request<http::string_body> req{
-        http::verb::post, std::string(kUploadPath) + "?uploadType=multipart", 11
+        http::verb::post,
+        std::string(kUploadPath) + "?uploadType=multipart",
+        11
     };
     req.set(http::field::host, kHost);
     req.set(http::field::authorization, "Bearer " + access_token);
@@ -271,7 +273,8 @@ std::string upload_file(
     throw;
   } catch (const std::exception& ex) {
     throw StorageError(
-        StorageErrorCode::Unavailable, std::string("Drive upload failed: ") + ex.what()
+        StorageErrorCode::Unavailable,
+        std::string("Drive upload failed: ") + ex.what()
     );
   }
 }
@@ -285,7 +288,8 @@ void replace_file_content(
   try {
     http::request<http::string_body> req{
         http::verb::patch,
-        std::string(kUploadPath) + "/" + file_id + "?uploadType=media", 11
+        std::string(kUploadPath) + "/" + file_id + "?uploadType=media",
+        11
     };
     req.set(http::field::host, kHost);
     req.set(http::field::authorization, "Bearer " + access_token);
@@ -302,7 +306,8 @@ void replace_file_content(
     throw;
   } catch (const std::exception& ex) {
     throw StorageError(
-        StorageErrorCode::Unavailable, std::string("Drive update failed: ") + ex.what()
+        StorageErrorCode::Unavailable,
+        std::string("Drive update failed: ") + ex.what()
     );
   }
 }
@@ -314,7 +319,9 @@ void download_file(
 ) {
   try {
     http::request<http::empty_body> req{
-        http::verb::get, std::string(kFilesPath) + "/" + file_id + "?alt=media", 11
+        http::verb::get,
+        std::string(kFilesPath) + "/" + file_id + "?alt=media",
+        11
     };
     req.set(http::field::host, kHost);
     req.set(http::field::authorization, "Bearer " + access_token);
@@ -326,7 +333,9 @@ void download_file(
     http::response_parser<http::file_body> parser;
     parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
     parser.get().body().open(
-        destination_file.string().c_str(), beast::file_mode::write, file_error
+        destination_file.string().c_str(),
+        beast::file_mode::write,
+        file_error
     );
     if (file_error) {
       throw std::runtime_error(
@@ -340,7 +349,8 @@ void download_file(
       std::error_code ignored;
       std::filesystem::remove(destination_file, ignored);
       throw StorageError(
-          status_to_error_code(status), "Drive download failed: HTTP " + std::to_string(status)
+          status_to_error_code(status),
+          "Drive download failed: HTTP " + std::to_string(status)
       );
     }
   } catch (const StorageError&) {
@@ -351,14 +361,19 @@ void download_file(
     std::error_code ignored;
     std::filesystem::remove(destination_file, ignored);
     throw StorageError(
-        StorageErrorCode::Unavailable, std::string("Drive download failed: ") + ex.what()
+        StorageErrorCode::Unavailable,
+        std::string("Drive download failed: ") + ex.what()
     );
   }
 }
 
 void delete_file(const std::string& access_token, const std::string& file_id) {
-  const auto response =
-      json_request(http::verb::delete_, std::string(kFilesPath) + "/" + file_id, access_token, std::nullopt);
+  const auto response = json_request(
+      http::verb::delete_,
+      std::string(kFilesPath) + "/" + file_id,
+      access_token,
+      std::nullopt
+  );
   if (response.status == 404) return; // already gone: not a failure
   check_ok(response, "delete");
 }

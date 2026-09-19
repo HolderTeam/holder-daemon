@@ -69,11 +69,11 @@ nlohmann::json as_json(const DismissedNudge& nudge) {
       {"title", nudge.title},
       {"body", nudge.body},
       {"meta_json", nlohmann::json::parse(nudge.meta_json)},
-      {"basis_fingerprint", nudge.basis_fingerprint
-                                ? nlohmann::json(*nudge.basis_fingerprint)
-                                : nlohmann::json(nullptr)},
-      {"basis_commit", nudge.basis_commit ? nlohmann::json(*nudge.basis_commit)
-                                            : nlohmann::json(nullptr)},
+      {"basis_fingerprint",
+       nudge.basis_fingerprint ? nlohmann::json(*nudge.basis_fingerprint) : nlohmann::json(nullptr)
+      },
+      {"basis_commit",
+       nudge.basis_commit ? nlohmann::json(*nudge.basis_commit) : nlohmann::json(nullptr)},
       {"created_at", nudge.created_at},
       {"dismissed_at", nudge.dismissed_at},
   };
@@ -155,17 +155,21 @@ void insert(holder::platform::Db& db, const DismissedNudge& nudge) {
   sqlite3_bind_text(stmt, 1, nudge.nudge_id.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, nudge.kind.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, nudge.project_id.c_str(), -1, SQLITE_TRANSIENT);
-  if (nudge.card_id) sqlite3_bind_text(stmt, 4, nudge.card_id->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 4);
+  if (nudge.card_id)
+    sqlite3_bind_text(stmt, 4, nudge.card_id->c_str(), -1, SQLITE_TRANSIENT);
+  else
+    sqlite3_bind_null(stmt, 4);
   sqlite3_bind_text(stmt, 5, nudge.title.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 6, nudge.body.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 7, nudge.meta_json.c_str(), -1, SQLITE_TRANSIENT);
   if (nudge.basis_fingerprint)
     sqlite3_bind_text(stmt, 8, nudge.basis_fingerprint->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 8);
+  else
+    sqlite3_bind_null(stmt, 8);
   if (nudge.basis_commit)
     sqlite3_bind_text(stmt, 9, nudge.basis_commit->c_str(), -1, SQLITE_TRANSIENT);
-  else sqlite3_bind_null(stmt, 9);
+  else
+    sqlite3_bind_null(stmt, 9);
   sqlite3_bind_int64(stmt, 10, nudge.created_at);
   sqlite3_bind_int64(stmt, 11, nudge.dismissed_at);
   const int rc = sqlite3_step(stmt);
@@ -196,7 +200,9 @@ std::size_t backfill_nudge_dismissals(holder::platform::Db& db) {
   if (sqlite3_prepare_v2(
           db.handle(),
           "SELECT nudge_id FROM ai_nudges WHERE dismissed_at IS NOT NULL ORDER BY nudge_id;",
-          -1, &stmt, nullptr
+          -1,
+          &stmt,
+          nullptr
       ) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal backfill failed");
   }
@@ -209,7 +215,8 @@ std::size_t backfill_nudge_dismissals(holder::platform::Db& db) {
     if (!project.has_value()) continue;
     if (std::filesystem::is_regular_file(
             std::filesystem::path(project->root_path) / relative_path(id)
-        )) continue;
+        ))
+      continue;
     if (persist_nudge_dismissal(db, id)) ++count;
   }
   sqlite3_finalize(stmt);
@@ -241,18 +248,16 @@ std::size_t restore_nudge_dismissals(holder::platform::Db& db) {
 
 bool all_nudge_dismissals_are_durable(holder::platform::Db& db) {
   sqlite3_stmt* stmt = nullptr;
-  static constexpr const char* SQL =
-      "SELECT n.nudge_id, p.root_path FROM ai_nudges n "
-      "JOIN projects p ON p.project_id=n.project_id "
-      "WHERE n.dismissed_at IS NOT NULL ORDER BY n.nudge_id;";
+  static constexpr const char* SQL = "SELECT n.nudge_id, p.root_path FROM ai_nudges n "
+                                     "JOIN projects p ON p.project_id=n.project_id "
+                                     "WHERE n.dismissed_at IS NOT NULL ORDER BY n.nudge_id;";
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal ownership audit failed");
   }
   bool durable = true;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const std::string id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-    const std::filesystem::path root =
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+    const std::filesystem::path root = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
     if (!std::filesystem::is_regular_file(root / relative_path(id))) {
       durable = false;
       break;

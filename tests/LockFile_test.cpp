@@ -4,8 +4,8 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "platform/LockFile.h"
 #include "TestCommand.h"
+#include "platform/LockFile.h"
 
 #include <chrono>
 #include <cstdlib>

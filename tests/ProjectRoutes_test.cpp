@@ -73,7 +73,9 @@ class ProjectRoutesTestGitOps final : public holder::git::GitOps {
     }
   }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return probe_result; }
-  holder::git::RemoteProbeResult probe_remote_url(const std::string&) override { return probe_result; }
+  holder::git::RemoteProbeResult probe_remote_url(const std::string&) override {
+    return probe_result;
+  }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
     calls.push_back("push");
     return push_result;
@@ -89,8 +91,12 @@ TEST_CASE("ProjectRoutes returns false when path does not match", "[project-rout
 
   auto req = make_request(http::verb::get, "/not-projects");
   http::response<http::string_body> res;
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
-  const auto param_get = [](const std::string&) { return std::string(); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
+  const auto param_get = [](const std::string&) {
+    return std::string();
+  };
 
   const bool handled = holder::api::routes::handle_project_routes(
       "/not-projects",

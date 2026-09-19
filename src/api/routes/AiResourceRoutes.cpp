@@ -6,8 +6,8 @@
 
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
-#include "resource/AssetImportService.h"
 #include "resource/AssetEnvelope.h"
+#include "resource/AssetImportService.h"
 #include "resource/LocalDirectoryProvider.h"
 #include "resource/LocationBindingStore.h"
 #include "resource/LocationRepo.h"
@@ -17,21 +17,21 @@
 #include "storage/S3CompatibleProvider.h"
 #include "storage/google/GoogleDriveProvider.h"
 
-#include <boost/beast/http.hpp>
 #include <boost/asio/write.hpp>
+#include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <mutex>
-#include <memory>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -101,7 +101,10 @@ void stream_file_response(
     input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
     const auto count = input.gcount();
     if (count > 0) {
-      boost::asio::write(socket, boost::asio::buffer(buffer.data(), static_cast<std::size_t>(count)));
+      boost::asio::write(
+          socket,
+          boost::asio::buffer(buffer.data(), static_cast<std::size_t>(count))
+      );
     }
   }
   if (!input.eof()) throw std::runtime_error("failed while reading recovered asset");
@@ -123,7 +126,8 @@ nlohmann::json import_job_json(const ImportJob& job) {
   return {
       {"job_id", job.job_id},
       {"status", job.status},
-      {"resource_id", job.resource_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.resource_id)},
+      {"resource_id",
+       job.resource_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.resource_id)},
       {"asset_id", job.asset_id.empty() ? nlohmann::json(nullptr) : nlohmann::json(job.asset_id)},
       {"duplicate_reused", job.duplicate_reused},
       {"link_created", job.link_created},
@@ -275,17 +279,16 @@ std::unique_ptr<holder::resource::StorageProvider> storage_provider(
       return value->second;
     };
     holder::storage::S3CompatibleConfig config;
-    config.endpoint = binding.values.contains("endpoint")
-                          ? binding.values.at("endpoint")
-                          : required_config("endpoint");
+    config.endpoint = binding.values.contains("endpoint") ? binding.values.at("endpoint")
+                                                          : required_config("endpoint");
     config.region = required_config("region");
     config.bucket = required_config("bucket");
     if (location.configuration.contains("addressing_style")) {
       config.addressing_style = location.configuration.at("addressing_style");
     }
-    config.allow_insecure_localhost =
-        location.configuration.contains("allow_insecure_localhost") &&
-        location.configuration.at("allow_insecure_localhost") == "true";
+    config.allow_insecure_localhost = location.configuration.contains("allow_insecure_localhost") &&
+                                      location.configuration.at("allow_insecure_localhost") ==
+                                          "true";
     holder::storage::S3Credentials credentials;
     credentials.access_key_id = required_secret("access_key_id");
     credentials.secret_access_key = required_secret("secret_access_key");
@@ -308,7 +311,9 @@ std::unique_ptr<holder::resource::StorageProvider> storage_provider(
     holder::storage::google::GoogleDriveCredentials credentials;
     credentials.refresh_token = refresh_token->second;
     return std::make_unique<holder::storage::google::GoogleDriveProvider>(
-        config, credentials, holder::storage::google::google_oauth_client_from_env()
+        config,
+        credentials,
+        holder::storage::google::google_oauth_client_from_env()
     );
   }
   throw std::runtime_error("unsupported storage provider");
@@ -318,11 +323,12 @@ std::string location_object_key(
     const holder::model::Location& location,
     const std::string& relative_key
 ) {
-  auto prefix = location.configuration.contains("prefix")
-                    ? location.configuration.at("prefix")
-                    : std::string();
-  while (!prefix.empty() && prefix.front() == '/') prefix.erase(prefix.begin());
-  while (!prefix.empty() && prefix.back() == '/') prefix.pop_back();
+  auto prefix = location.configuration.contains("prefix") ? location.configuration.at("prefix")
+                                                          : std::string();
+  while (!prefix.empty() && prefix.front() == '/')
+    prefix.erase(prefix.begin());
+  while (!prefix.empty() && prefix.back() == '/')
+    prefix.pop_back();
   return prefix.empty() ? relative_key : prefix + "/" + relative_key;
 }
 
@@ -330,42 +336,54 @@ http::response<http::string_body> route_error(const std::exception& ex) {
   const std::string message = ex.what();
   if (const auto* storage = dynamic_cast<const holder::resource::StorageError*>(&ex)) {
     switch (storage->code()) {
-      case holder::resource::StorageErrorCode::Unavailable:
-        return support::error_response(
-            http::status::service_unavailable, "storage_unavailable", message
-        );
-      case holder::resource::StorageErrorCode::Authentication:
-        return support::error_response(
-            http::status::bad_gateway, "storage_authentication_failed", message
-        );
-      case holder::resource::StorageErrorCode::Permission:
-        return support::error_response(
-            http::status::bad_gateway, "storage_permission_denied", message
-        );
-      case holder::resource::StorageErrorCode::Capacity:
-        return support::error_response(
-            static_cast<http::status>(507), "storage_capacity_exceeded", message
-        );
-      case holder::resource::StorageErrorCode::Integrity:
-        return support::error_response(
-            http::status::unprocessable_entity, "storage_integrity_failed", message
-        );
-      case holder::resource::StorageErrorCode::Conflict:
-        return support::error_response(http::status::conflict, "storage_conflict", message);
-      case holder::resource::StorageErrorCode::InvalidConfiguration:
-        return support::error_response(
-            http::status::bad_request, "storage_configuration_invalid", message
-        );
-      case holder::resource::StorageErrorCode::Transient:
-        return support::error_response(
-            http::status::service_unavailable, "storage_transient_failure", message
-        );
+    case holder::resource::StorageErrorCode::Unavailable:
+      return support::error_response(
+          http::status::service_unavailable,
+          "storage_unavailable",
+          message
+      );
+    case holder::resource::StorageErrorCode::Authentication:
+      return support::error_response(
+          http::status::bad_gateway,
+          "storage_authentication_failed",
+          message
+      );
+    case holder::resource::StorageErrorCode::Permission:
+      return support::error_response(
+          http::status::bad_gateway,
+          "storage_permission_denied",
+          message
+      );
+    case holder::resource::StorageErrorCode::Capacity:
+      return support::error_response(
+          static_cast<http::status>(507),
+          "storage_capacity_exceeded",
+          message
+      );
+    case holder::resource::StorageErrorCode::Integrity:
+      return support::error_response(
+          http::status::unprocessable_entity,
+          "storage_integrity_failed",
+          message
+      );
+    case holder::resource::StorageErrorCode::Conflict:
+      return support::error_response(http::status::conflict, "storage_conflict", message);
+    case holder::resource::StorageErrorCode::InvalidConfiguration:
+      return support::error_response(
+          http::status::bad_request,
+          "storage_configuration_invalid",
+          message
+      );
+    case holder::resource::StorageErrorCode::Transient:
+      return support::error_response(
+          http::status::service_unavailable,
+          "storage_transient_failure",
+          message
+      );
     }
   }
   if (message.find("storage location configuration required") != std::string::npos) {
-    return support::error_response(
-        http::status::conflict, "storage_binding_required", message
-    );
+    return support::error_response(http::status::conflict, "storage_binding_required", message);
   }
   if (message.rfind("conflict:", 0) == 0) {
     return support::error_response(http::status::conflict, "conflict", message);
@@ -410,7 +428,8 @@ bool handle_ai_resource_routes(
   if (path == "/resources" && req.method() == http::verb::get) {
     const std::string project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
     try {
@@ -429,12 +448,16 @@ bool handle_ai_resource_routes(
       if (!card_id.empty()) {
         const auto card = holder::card::CardRepo(db).get(card_id);
         if (!card.has_value() || card->deleted_at.has_value()) {
-          res = support::error_response(http::status::not_found, "not_found", "Live card not found.");
+          res =
+              support::error_response(http::status::not_found, "not_found", "Live card not found.");
           return true;
         }
         if (card->project_id != project_id) {
-          res = support::error_response(http::status::unprocessable_entity,
-              "cross_project_resource_forbidden", "Card is in a different project.");
+          res = support::error_response(
+              http::status::unprocessable_entity,
+              "cross_project_resource_forbidden",
+              "Card is in a different project."
+          );
           return true;
         }
         parse_page("limit", limit);
@@ -442,8 +465,9 @@ bool handle_ai_resource_routes(
       } else if (!param_get("limit").empty() || !param_get("offset").empty()) {
         throw std::invalid_argument("limit and offset require card_id.");
       }
-      const auto resources = card_id.empty() ? repo.list(project_id)
-          : repo.list_for_card(project_id, card_id, limit, offset);
+      const auto resources = card_id.empty()
+                                 ? repo.list(project_id)
+                                 : repo.list_for_card(project_id, card_id, limit, offset);
       const auto references = resource_references_json(db, project_id);
       nlohmann::json data = nlohmann::json::array();
       for (const auto& resource : resources) {
@@ -459,7 +483,8 @@ bool handle_ai_resource_routes(
         payload["limit"] = limit;
         payload["offset"] = offset;
         payload["next_offset"] = resources.size() == static_cast<std::size_t>(limit)
-            ? nlohmann::json(static_cast<long long>(offset) + limit) : nlohmann::json(nullptr);
+                                     ? nlohmann::json(static_cast<long long>(offset) + limit)
+                                     : nlohmann::json(nullptr);
       }
       res = support::json_response(http::status::ok, payload);
     } catch (const std::exception& ex) {
@@ -473,7 +498,9 @@ bool handle_ai_resource_routes(
       const auto body = nlohmann::json::parse(req.body());
       if (!body.contains("project_id") || !body.contains("type") || !body.contains("label")) {
         res = support::error_response(
-            http::status::bad_request, "bad_request", "Missing required fields."
+            http::status::bad_request,
+            "bad_request",
+            "Missing required fields."
         );
         return true;
       }
@@ -484,8 +511,7 @@ bool handle_ai_resource_routes(
       bundle.resource.type = body.at("type").get<std::string>();
       bundle.resource.label = body.at("label").get<std::string>();
       if (body.contains("metadata")) {
-        bundle.resource.metadata =
-            body.at("metadata").get<holder::model::ResourceMetadata>();
+        bundle.resource.metadata = body.at("metadata").get<holder::model::ResourceMetadata>();
       }
       bundle.resource.created_at = body.value("created_at", support::now_epoch_seconds());
       bundle.resource.updated_at = body.value("updated_at", bundle.resource.created_at);
@@ -495,7 +521,8 @@ bool handle_ai_resource_routes(
         holder::resource::ResourceRepo(db).add(bundle.resource);
       }
       res = support::json_response(
-          http::status::created, {{"ok", true}, {"data", resource_json(bundle)}}
+          http::status::created,
+          {{"ok", true}, {"data", resource_json(bundle)}}
       );
     } catch (const std::exception& ex) {
       res = route_error(ex);
@@ -506,7 +533,8 @@ bool handle_ai_resource_routes(
   if (path == "/locations" && req.method() == http::verb::get) {
     const auto project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
     try {
@@ -546,8 +574,7 @@ bool handle_ai_resource_routes(
         throw std::invalid_argument("unsupported storage provider");
       }
       if (body.contains("configuration")) {
-        location.configuration =
-            body.at("configuration").get<std::map<std::string, std::string>>();
+        location.configuration = body.at("configuration").get<std::map<std::string, std::string>>();
       }
       location.created_at = body.value("created_at", support::now_epoch_seconds());
       location.updated_at = body.value("updated_at", location.created_at);
@@ -578,7 +605,8 @@ bool handle_ai_resource_routes(
       }
       bindings->set_preferred(project_id, location_id, support::now_epoch_seconds());
       res = support::json_response(
-          http::status::ok, {{"ok", true}, {"data", {{"location_id", location_id}}}}
+          http::status::ok,
+          {{"ok", true}, {"data", {{"location_id", location_id}}}}
       );
     } catch (const std::exception& ex) {
       res = route_error(ex);
@@ -627,14 +655,8 @@ bool handle_ai_resource_routes(
         };
       }
       std::thread import_thread(
-          [job_id,
-           request,
-           location_copy,
-           binding_copy,
-           db_path,
-           cache,
-           uuid_v4,
-           git_ops]() mutable {
+          [job_id, request, location_copy, binding_copy, db_path, cache, uuid_v4, git_ops](
+          ) mutable {
             try {
               holder::platform::Db job_db;
               job_db.open(db_path);
@@ -647,15 +669,15 @@ bool handle_ai_resource_routes(
                   git_ops,
                   [job_id](holder::resource::AssetImportStage stage) {
                     switch (stage) {
-                      case holder::resource::AssetImportStage::Staging:
-                        update_import_job(job_id, "staging");
-                        break;
-                      case holder::resource::AssetImportStage::Storing:
-                        update_import_job(job_id, "storing");
-                        break;
-                      case holder::resource::AssetImportStage::Committing:
-                        update_import_job(job_id, "committing");
-                        break;
+                    case holder::resource::AssetImportStage::Staging:
+                      update_import_job(job_id, "staging");
+                      break;
+                    case holder::resource::AssetImportStage::Storing:
+                      update_import_job(job_id, "storing");
+                      break;
+                    case holder::resource::AssetImportStage::Committing:
+                      update_import_job(job_id, "committing");
+                      break;
                     }
                   }
               );
@@ -708,16 +730,15 @@ bool handle_ai_resource_routes(
       res = support::error_response(http::status::not_found, "not_found", "Import job not found.");
     } else {
       res = support::json_response(
-          http::status::ok, {{"ok", true}, {"data", import_job_json(found->second)}}
+          http::status::ok,
+          {{"ok", true}, {"data", import_job_json(found->second)}}
       );
     }
     return true;
   }
 
-  if (path.rfind("/resources/", 0) == 0 &&
-      path.find("/assets/") != std::string::npos &&
-      path.ends_with("/content") &&
-      req.method() == http::verb::get) {
+  if (path.rfind("/resources/", 0) == 0 && path.find("/assets/") != std::string::npos &&
+      path.ends_with("/content") && req.method() == http::verb::get) {
     try {
       if (!bindings || git_ops == nullptr || socket == nullptr || streamed == nullptr) {
         throw std::runtime_error("asset retrieval services unavailable");
@@ -732,17 +753,18 @@ bool handle_ai_resource_routes(
       );
       const auto bundle = holder::resource::ResourceRepo(db).get_bundle(resource_id);
       if (!bundle.has_value()) throw std::runtime_error("resource not found");
-      const auto asset = std::find_if(bundle->assets.begin(), bundle->assets.end(), [&](const auto& item) {
-        return item.asset_id == asset_id;
-      });
+      const auto asset =
+          std::find_if(bundle->assets.begin(), bundle->assets.end(), [&](const auto& item) {
+            return item.asset_id == asset_id;
+          });
       if (asset == bundle->assets.end()) throw std::runtime_error("asset not found in resource");
       const auto requested_placement = param_get("placement_id");
-      const auto placement = std::find_if(
-          asset->placements.begin(), asset->placements.end(), [&](const auto& item) {
+      const auto placement =
+          std::find_if(asset->placements.begin(), asset->placements.end(), [&](const auto& item) {
             return requested_placement.empty() || item.placement_id == requested_placement;
-          }
-      );
-      if (placement == asset->placements.end()) throw std::runtime_error("asset placement not found");
+          });
+      if (placement == asset->placements.end())
+        throw std::runtime_error("asset placement not found");
       const auto location = holder::resource::LocationRepo(db).get(placement->location_id);
       if (!location.has_value() || location->project_id != bundle->resource.project_id) {
         throw std::runtime_error("storage location not found in project");
@@ -755,9 +777,8 @@ bool handle_ai_resource_routes(
       cleanup_asset_cache(cache);
       const auto recovered = cache / (uuid_v4() + ".recovered");
       try {
-        holder::resource::AssetImportService(db, cache, uuid_v4, nullptr, git_ops).retrieve(
-            resource_id, asset_id, placement->placement_id, *provider, recovered
-        );
+        holder::resource::AssetImportService(db, cache, uuid_v4, nullptr, git_ops)
+            .retrieve(resource_id, asset_id, placement->placement_id, *provider, recovered);
         *streamed = true;
         stream_file_response(*socket, recovered, *asset);
         std::filesystem::remove(recovered);
@@ -780,8 +801,8 @@ bool handle_ai_resource_routes(
     const auto suffix = path.substr(std::string("/locations/").size());
     const auto separator = suffix.find('/');
     const auto location_id = suffix.substr(0, separator);
-    const auto action =
-        separator == std::string::npos ? std::string() : suffix.substr(separator + 1);
+    const auto action = separator == std::string::npos ? std::string()
+                                                       : suffix.substr(separator + 1);
     if (location_id.empty()) {
       res = support::error_response(http::status::not_found, "not_found", "Route not found.");
       return true;
@@ -811,8 +832,8 @@ bool handle_ai_resource_routes(
         res = support::json_response(
             http::status::ok,
             {{"ok", true},
-             {"data",
-              {{"location_id", location_id}, {"bound", true}, {"binding_preview", preview}}}}
+             {"data", {{"location_id", location_id}, {"bound", true}, {"binding_preview", preview}}}
+            }
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);
@@ -830,7 +851,8 @@ bool handle_ai_resource_routes(
           bindings->clear_preferred(location->project_id);
         }
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", {{"location_id", location_id}}}}
+            http::status::ok,
+            {{"ok", true}, {"data", {{"location_id", location_id}}}}
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);
@@ -844,7 +866,8 @@ bool handle_ai_resource_routes(
         const auto location = holder::resource::LocationRepo(db).get(location_id);
         if (!location.has_value()) throw std::runtime_error("location not found");
         const auto binding = bindings->get(location->project_id, location_id);
-        if (!binding.has_value()) throw std::runtime_error("storage location configuration required");
+        if (!binding.has_value())
+          throw std::runtime_error("storage location configuration required");
         auto provider = storage_provider(*location, *binding);
         const auto probe_dir = holder::core::Paths::resolve("holder").cache_dir / "asset-probes";
         std::filesystem::create_directories(probe_dir);
@@ -876,7 +899,8 @@ bool handle_ai_resource_routes(
         std::error_code ignored;
         std::filesystem::remove(probe_file, ignored);
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", {{"available", true}}}}
+            http::status::ok,
+            {{"ok", true}, {"data", {{"available", true}}}}
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);
@@ -937,7 +961,8 @@ bool handle_ai_resource_routes(
         }
         if (bindings) bindings->unbind(location->project_id, location_id);
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", {{"location_id", location_id}}}}
+            http::status::ok,
+            {{"ok", true}, {"data", {{"location_id", location_id}}}}
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);
@@ -961,7 +986,8 @@ bool handle_ai_resource_routes(
         res = support::error_response(http::status::not_found, "not_found", "Resource not found.");
       } else {
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", resource_json(*bundle)}}
+            http::status::ok,
+            {{"ok", true}, {"data", resource_json(*bundle)}}
         );
       }
       return true;
@@ -991,7 +1017,8 @@ bool handle_ai_resource_routes(
           repo.put_bundle(*bundle);
         }
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", resource_json(*bundle)}}
+            http::status::ok,
+            {{"ok", true}, {"data", resource_json(*bundle)}}
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);
@@ -1006,7 +1033,8 @@ bool handle_ai_resource_routes(
           holder::resource::ResourceRepo(db).remove(resource_id);
         }
         res = support::json_response(
-            http::status::ok, {{"ok", true}, {"data", {{"resource_id", resource_id}}}}
+            http::status::ok,
+            {{"ok", true}, {"data", {{"resource_id", resource_id}}}}
         );
       } catch (const std::exception& ex) {
         res = route_error(ex);

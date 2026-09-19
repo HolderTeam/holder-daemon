@@ -289,14 +289,8 @@ std::wstring utf8_to_wide_for_shell(const std::string& value) {
   }
 
   std::wstring out(static_cast<std::size_t>(required), L'\0');
-  const int written = MultiByteToWideChar(
-      CP_UTF8,
-      MB_ERR_INVALID_CHARS,
-      value.c_str(),
-      -1,
-      out.data(),
-      required
-  );
+  const int written =
+      MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(), -1, out.data(), required);
   if (written != required) {
     throw std::runtime_error("Failed to write UTF-16 URI for ShellExecuteW");
   }

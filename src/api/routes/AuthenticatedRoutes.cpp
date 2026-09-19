@@ -55,7 +55,8 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
   const std::string resource = first_segment(path);
 
   if (resource == "projects" || resource == "recovery-token") {
-    if (resource == "projects" && handle_history_routes(path, req, res, db, param, card_store)) return {};
+    if (resource == "projects" && handle_history_routes(path, req, res, db, param, card_store))
+      return {};
     if (handle_project_routes(path, req, res, db, git_ops, uuid_v4, param)) return {};
   } else if (resource == "rebuild") {
     if (handle_rebuild_routes(path, req, res, db, fts)) return {};
@@ -83,8 +84,18 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
   } else if (resource == "resources" || resource == "locations" || resource == "imports") {
     bool streamed = false;
     if (handle_ai_resource_routes(
-            path, req, res, db, uuid_v4, param, secret_store, git_ops, &socket, &streamed
-        )) return {.streamed = streamed};
+            path,
+            req,
+            res,
+            db,
+            uuid_v4,
+            param,
+            secret_store,
+            git_ops,
+            &socket,
+            &streamed
+        ))
+      return {.streamed = streamed};
   } else if (resource == "trash") {
     if (handle_trash_routes(path, req, res, db, card_store, fts, param)) return {};
   } else if (resource == "calendar") {

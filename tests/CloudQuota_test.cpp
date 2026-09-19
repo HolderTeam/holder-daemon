@@ -121,17 +121,23 @@ TEST_CASE("CloudQuota durable ledger restores usage after SQLite loss", "[cloud_
   apply_schema(original);
   holder::api::support::initialize_cloud_usage_ledger(original, ledger);
   holder::api::support::record_cloud_usage_event(
-      original, "provider", "model", 12, 8, 100, "ledger-test"
+      original,
+      "provider",
+      "model",
+      12,
+      8,
+      100,
+      "ledger-test"
   );
-  REQUIRE(holder::api::support::load_cloud_window_usage(original, "provider", "model", 0).tokens == 20);
+  REQUIRE(
+      holder::api::support::load_cloud_window_usage(original, "provider", "model", 0).tokens == 20
+  );
 
   holder::platform::Db rebuilt;
   rebuilt.open(dir / "rebuilt.db");
   apply_schema(rebuilt);
   holder::api::support::restore_cloud_usage_ledger(rebuilt, ledger);
-  const auto usage = holder::api::support::load_cloud_window_usage(
-      rebuilt, "provider", "model", 0
-  );
+  const auto usage = holder::api::support::load_cloud_window_usage(rebuilt, "provider", "model", 0);
   REQUIRE(usage.requests == 1);
   REQUIRE(usage.tokens == 20);
 }

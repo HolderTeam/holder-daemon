@@ -26,7 +26,8 @@ std::string download_filename(const std::string& disposition) {
   if (start == std::string::npos) return {};
   const auto value_start = start + 10;
   const auto end = disposition.find('"', value_start);
-  return end == std::string::npos ? std::string() : disposition.substr(value_start, end - value_start);
+  return end == std::string::npos ? std::string()
+                                  : disposition.substr(value_start, end - value_start);
 }
 
 class StagedFile {
@@ -43,8 +44,12 @@ class StagedFile {
     file_ = directory_ / "payload";
 #ifndef _WIN32
     std::error_code error;
-    std::filesystem::permissions(directory_, std::filesystem::perms::owner_all,
-        std::filesystem::perm_options::replace, error);
+    std::filesystem::permissions(
+        directory_,
+        std::filesystem::perms::owner_all,
+        std::filesystem::perm_options::replace,
+        error
+    );
     if (error) {
       std::error_code ignored;
       std::filesystem::remove(directory_, ignored);
@@ -62,14 +67,22 @@ class StagedFile {
   const std::filesystem::path& path() const { return file_; }
   void commit() {
 #ifdef _WIN32
-    if (!MoveFileExW(file_.c_str(), output_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-      throw CliError("output_failed", "Could not replace export destination.",
-          {{"system_error", GetLastError()}});
+    if (!MoveFileExW(
+            file_.c_str(),
+            output_.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+        )) {
+      throw CliError(
+          "output_failed",
+          "Could not replace export destination.",
+          {{"system_error", GetLastError()}}
+      );
     }
 #else
     std::error_code error;
     std::filesystem::rename(file_, output_, error);
-    if (error) throw CliError("output_failed", "Could not replace export destination: " + error.message());
+    if (error)
+      throw CliError("output_failed", "Could not replace export destination: " + error.message());
 #endif
   }
 
@@ -82,7 +95,8 @@ class StagedFile {
 } // namespace
 
 DownloadMetadata http_download(
-    const DaemonConnection& connection, const std::string& target,
+    const DaemonConnection& connection,
+    const std::string& target,
     std::chrono::seconds timeout,
     const std::function<void(const char*, std::size_t)>& sink
 ) try {
@@ -97,7 +111,9 @@ DownloadMetadata http_download(
     context.restart();
     stream.expires_after(timeout);
     boost::system::error_code result = boost::asio::error::operation_aborted;
-    initiate([&](boost::system::error_code error, auto...) { result = error; });
+    initiate([&](boost::system::error_code error, auto...) {
+      result = error;
+    });
     context.run();
     return result;
   };
@@ -106,18 +122,24 @@ DownloadMetadata http_download(
     if (error) throw boost::system::system_error(error);
   };
   const auto endpoints = resolver.resolve(connection.bind, std::to_string(connection.port));
-  checked([&](auto handler) { stream.async_connect(endpoints, std::move(handler)); });
+  checked([&](auto handler) {
+    stream.async_connect(endpoints, std::move(handler));
+  });
   http::request<http::empty_body> request{http::verb::get, target, 11};
   request.set(http::field::host, connection.bind);
   request.set(http::field::user_agent, "holderctl");
   request.set(http::field::authorization, "Bearer " + connection.token);
   request.keep_alive(false);
-  checked([&](auto handler) { http::async_write(stream, request, std::move(handler)); });
+  checked([&](auto handler) {
+    http::async_write(stream, request, std::move(handler));
+  });
 
   boost::beast::flat_buffer buffer;
   http::response_parser<http::buffer_body> parser;
   parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
-  checked([&](auto handler) { http::async_read_header(stream, buffer, parser, std::move(handler)); });
+  checked([&](auto handler) {
+    http::async_read_header(stream, buffer, parser, std::move(handler));
+  });
   const bool success = parser.get().result() == http::status::ok;
   DownloadMetadata metadata;
   metadata.content_type = std::string(parser.get()[http::field::content_type]);
@@ -166,21 +188,26 @@ DownloadMetadata http_download(
 }
 
 DownloadMetadata download_to_file(
-    const DaemonConnection& connection, const std::string& target,
-    const std::filesystem::path& output, std::chrono::seconds timeout
+    const DaemonConnection& connection,
+    const std::string& target,
+    const std::filesystem::path& output,
+    std::chrono::seconds timeout
 ) try {
   StagedFile staging(output);
   std::ofstream file(staging.path(), std::ios::binary | std::ios::trunc);
   if (!file) throw CliError("output_failed", "Could not open export staging file.");
 #ifndef _WIN32
-  std::filesystem::permissions(staging.path(),
+  std::filesystem::permissions(
+      staging.path(),
       std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-      std::filesystem::perm_options::replace);
+      std::filesystem::perm_options::replace
+  );
 #endif
-  const auto metadata = http_download(connection, target, timeout, [&](const char* bytes, std::size_t count) {
-    file.write(bytes, static_cast<std::streamsize>(count));
-    if (!file) throw CliError("output_failed", "Could not write export staging file.");
-  });
+  const auto metadata =
+      http_download(connection, target, timeout, [&](const char* bytes, std::size_t count) {
+        file.write(bytes, static_cast<std::streamsize>(count));
+        if (!file) throw CliError("output_failed", "Could not write export staging file.");
+      });
   file.close();
   if (!file) throw CliError("output_failed", "Could not close export staging file.");
   staging.commit();

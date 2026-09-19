@@ -1,11 +1,11 @@
 #pragma once
 
+#include "git/GitOps.h"
 #include "platform/Db.h"
 #include "privacy/SecretStore.h"
-#include "git/GitOps.h"
 
-#include <boost/beast/http.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/beast/http.hpp>
 
 #include <functional>
 #include <string>

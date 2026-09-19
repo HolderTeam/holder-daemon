@@ -172,10 +172,7 @@ TEST_CASE("Session handles normal request/response path", "[session]") {
   REQUIRE(response.find("401 Unauthorized") != std::string::npos);
 }
 
-TEST_CASE(
-    "Session bypasses bearer auth for the Google Drive OAuth callback route",
-    "[session]"
-) {
+TEST_CASE("Session bypasses bearer auth for the Google Drive OAuth callback route", "[session]") {
   SocketPair pair;
   holder::platform::Db db;
   holder::api::Router router;
@@ -223,10 +220,7 @@ TEST_CASE(
   REQUIRE(response.find("Connection expired") != std::string::npos);
 }
 
-TEST_CASE(
-    "Session still requires bearer auth for other /locations routes",
-    "[session]"
-) {
+TEST_CASE("Session still requires bearer auth for other /locations routes", "[session]") {
   SocketPair pair;
   holder::platform::Db db;
   holder::api::Router router;
@@ -374,11 +368,10 @@ TEST_CASE("Session prepare_request classifies links reads as background lane", "
 TEST_CASE("Session prepare_request classifies history reads as background lane", "[session]") {
   SocketPair pair;
 
-  const std::string req =
-      "GET /projects/project-123/history/cards/card-123 HTTP/1.1\r\n"
-      "Host: localhost\r\n"
-      "Connection: close\r\n"
-      "\r\n";
+  const std::string req = "GET /projects/project-123/history/cards/card-123 HTTP/1.1\r\n"
+                          "Host: localhost\r\n"
+                          "Connection: close\r\n"
+                          "\r\n";
   boost::asio::write(pair.client, boost::asio::buffer(req));
 
   auto prepared = holder::api::Session::prepare_request(std::move(pair.server));

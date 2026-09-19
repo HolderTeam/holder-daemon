@@ -148,8 +148,7 @@ MilestoneOptions parse_milestone_options(int argc, char* argv[]) {
       options.clear_kind = true;
     } else if (arg == "--clear-description") {
       options.clear_description = true;
-    } else if (arg == "--start" || arg == "--end" || arg == "--kind" ||
-               arg == "--description") {
+    } else if (arg == "--start" || arg == "--end" || arg == "--kind" || arg == "--description") {
       if (i + 1 >= argc) throw std::runtime_error(milestone_usage());
       const std::string value = argv[++i];
       if (value.rfind("--", 0) == 0) throw std::runtime_error(milestone_usage());
@@ -169,9 +168,8 @@ MilestoneOptions parse_milestone_options(int argc, char* argv[]) {
   }
 
   if (options.help) return options;
-  if (positional.size() != 3 ||
-      (positional.front() != "add" && positional.front() != "edit" &&
-       positional.front() != "remove")) {
+  if (positional.size() != 3 || (positional.front() != "add" && positional.front() != "edit" &&
+                                 positional.front() != "remove")) {
     throw std::runtime_error(milestone_usage());
   }
   if (positional.front() == "add")

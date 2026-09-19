@@ -1,7 +1,7 @@
 #include "api/routes/ai/threads/AiThreadCollectionRoutes.h"
 
-#include "ai/AiThreadRepo.h"
 #include "ai/AiThreadDurability.h"
+#include "ai/AiThreadRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 

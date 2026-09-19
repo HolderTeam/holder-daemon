@@ -1,8 +1,8 @@
-#include "http_test_helpers.h"
 #include "TestCommand.h"
+#include "http_test_helpers.h"
 
-#include "model/Location.h"
 #include "identity/Uuid.h"
+#include "model/Location.h"
 #include "resource/AssetEnvelope.h"
 #include "resource/LocationRepo.h"
 #include "resource/ResourceStore.h"
@@ -36,7 +36,10 @@ std::string quote_export_path(const std::filesystem::path& path) {
 
 } // namespace
 
-TEST_CASE("holderctl resource export streams verified assets and isolates binary stdout", "[holderctl][export]") {
+TEST_CASE(
+    "holderctl resource export streams verified assets and isolates binary stdout",
+    "[holderctl][export]"
+) {
   namespace http = boost::beast::http;
   const auto dir = holder::test::make_temp_dir();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (dir / "data").string());
@@ -58,9 +61,11 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
   holder::resource::LocationRepo(db).put(location);
 
   std::string binary;
-  for (int i = 0; i < 256; ++i) binary.push_back(static_cast<char>(i));
+  for (int i = 0; i < 256; ++i)
+    binary.push_back(static_cast<char>(i));
   std::string large(9 * 1024 * 1024 + 7, '\0');
-  for (std::size_t i = 0; i < large.size(); ++i) large[i] = static_cast<char>(i % 256);
+  for (std::size_t i = 0; i < large.size(); ++i)
+    large[i] = static_cast<char>(i % 256);
   auto make_bundle = [&](const std::string& resource_id, const std::vector<std::string>& contents) {
     holder::model::ResourceBundle bundle;
     bundle.resource.resource_id = resource_id;
@@ -75,8 +80,13 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
       asset.media_type = "application/octet-stream";
       const auto source = dir / (asset.asset_id + ".source");
       write_export_bytes(source, bytes);
-      const auto staged = holder::resource::stage_asset_file(source, objects / asset.asset_id,
-          project, resource_id, asset.asset_id);
+      const auto staged = holder::resource::stage_asset_file(
+          source,
+          objects / asset.asset_id,
+          project,
+          resource_id,
+          asset.asset_id
+      );
       asset.byte_size = staged.plaintext.byte_size;
       asset.plaintext_sha256 = staged.plaintext.sha256;
       holder::model::Placement placement;
@@ -108,14 +118,23 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
   const std::string token = "export-token";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &cards, &fts);
   holder::api::HttpServer::BoundInfo bound;
-  try { bound = server.start(); }
-  catch (const std::exception& error) { SKIP("Local HTTP socket unavailable: " + std::string(error.what())); }
+  try {
+    bound = server.start();
+  } catch (const std::exception& error) {
+    SKIP("Local HTTP socket unavailable: " + std::string(error.what()));
+  }
   holder::core::SignalHandler signals;
   holder::test::HttpServerThreadGuard thread(server, signals);
   REQUIRE(holder::test::wait_for_http_listener(bound.bind, bound.port));
-  holder::test::http_json_request(bound.bind, bound.port, token, http::verb::put,
+  holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      http::verb::put,
       "/locations/" + location.location_id + "/binding",
-      {{"values", {{"root_path", objects.string()}}}, {"preview", "Exports"}}, http::status::ok);
+      {{"values", {{"root_path", objects.string()}}}, {"preview", "Exports"}},
+      http::status::ok
+  );
 
   const auto info = dir / "data" / "holder" / "server" / "holder.json";
   std::filesystem::create_directories(info.parent_path());
@@ -124,19 +143,30 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
 #else
   const int pid = getpid();
 #endif
-  write_export_bytes(info, nlohmann::json({{"pid", pid}, {"bind", bound.bind},
-      {"port", bound.port}, {"auth_token", token}}).dump());
+  write_export_bytes(
+      info,
+      nlohmann::json(
+          {{"pid", pid}, {"bind", bound.bind}, {"port", bound.port}, {"auth_token", token}}
+      ).dump()
+  );
 #ifndef _WIN32
   std::filesystem::permissions(info.parent_path(), std::filesystem::perms::owner_all);
-  std::filesystem::permissions(info, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+  std::filesystem::permissions(
+      info,
+      std::filesystem::perms::owner_read | std::filesystem::perms::owner_write
+  );
 #endif
   const auto stdout_file = dir / "stdout.bin";
   const auto stderr_file = dir / "stderr.txt";
   const auto output = dir / "export with spaces.bin";
   const std::string command = quote_export_path(HOLDER_CTL_PATH) + " resource export ";
   auto run = [&](const std::string& arguments, int expected = 0) {
-    REQUIRE(holder::test::run_system_command(command + arguments + " > " + quote_export_path(stdout_file) +
-        " 2> " + quote_export_path(stderr_file)) == expected);
+    REQUIRE(
+        holder::test::run_system_command(
+            command + arguments + " > " + quote_export_path(stdout_file) + " 2> " +
+            quote_export_path(stderr_file)
+        ) == expected
+    );
     return read_export_bytes(stdout_file);
   };
   auto run_error = [&](const std::string& arguments, const std::string& code) {
@@ -156,7 +186,9 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
   REQUIRE(run(resource_id + " --output " + quote_export_path(output)).empty());
   REQUIRE(read_export_bytes(output) == binary);
   REQUIRE(read_export_bytes(stderr_file).find("Exported resource:") == 0);
-  const auto result = nlohmann::json::parse(run(resource_id + " --output " + quote_export_path(output) + " --json"));
+  const auto result = nlohmann::json::parse(
+      run(resource_id + " --output " + quote_export_path(output) + " --json")
+  );
   REQUIRE(read_export_bytes(stderr_file).empty());
   REQUIRE(result["ok"] == true);
   REQUIRE(result["data"]["resource_id"] == resource_id);
@@ -171,17 +203,31 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
   REQUIRE(read_export_bytes(output).empty());
   REQUIRE(run(big.resource.resource_id) == large);
   REQUIRE(read_export_bytes(stderr_file).empty());
-  const auto large_result = nlohmann::json::parse(run(big.resource.resource_id + " --output " + quote_export_path(output) + " --json"));
+  const auto large_result = nlohmann::json::parse(
+      run(big.resource.resource_id + " --output " + quote_export_path(output) + " --json")
+  );
   REQUIRE(large_result["data"]["byte_size"] == large.size());
   REQUIRE(read_export_bytes(output) == large);
-  const auto ambiguous = run_error(multiple.resource.resource_id + " --output " + quote_export_path(output), "ambiguous_asset");
+  const auto ambiguous = run_error(
+      multiple.resource.resource_id + " --output " + quote_export_path(output),
+      "ambiguous_asset"
+  );
   REQUIRE(ambiguous["error"]["details"]["candidates"].size() == 2);
   REQUIRE(run(multiple.resource.resource_id + " " + multiple.assets[0].asset_id) == binary);
   REQUIRE(run(multiple.resource.resource_id + " " + multiple.assets[1].asset_id).empty());
-  run_error(external.resource.resource_id + " --output " + quote_export_path(output), "no_exportable_asset");
-  run_error(resource_id + " " + multiple.assets[0].asset_id + " --output " + quote_export_path(output), "asset_not_found");
+  run_error(
+      external.resource.resource_id + " --output " + quote_export_path(output),
+      "no_exportable_asset"
+  );
+  run_error(
+      resource_id + " " + multiple.assets[0].asset_id + " --output " + quote_export_path(output),
+      "asset_not_found"
+  );
   run_error("missing --output " + quote_export_path(output), "not_found");
-  run_error(foreign.resource.resource_id + " --output " + quote_export_path(output), "cross_project_resource_forbidden");
+  run_error(
+      foreign.resource.resource_id + " --output " + quote_export_path(output),
+      "cross_project_resource_forbidden"
+  );
   run_error(resource_id, "invalid_arguments");
   run_error(resource_id + " --output -", "invalid_arguments");
   run_error(resource_id + " --output", "invalid_arguments");
@@ -196,8 +242,12 @@ TEST_CASE("holderctl resource export streams verified assets and isolates binary
   REQUIRE(read_export_bytes(output) == "original");
   write_export_bytes(objects / big.assets[0].placements[0].object_key, "damaged stored asset");
   // The existing core envelope verifier reports an unclassified runtime error as bad_request.
-  const auto damaged = run_error(big.resource.resource_id + " --output " + quote_export_path(output), "bad_request");
-  REQUIRE(damaged["error"]["message"].get<std::string>().find("integrity check failed") != std::string::npos);
+  const auto damaged =
+      run_error(big.resource.resource_id + " --output " + quote_export_path(output), "bad_request");
+  REQUIRE(
+      damaged["error"]["message"].get<std::string>().find("integrity check failed") !=
+      std::string::npos
+  );
   REQUIRE(read_export_bytes(output) == "original");
   for (const auto& entry : std::filesystem::directory_iterator(dir)) {
     REQUIRE(entry.path().filename().string().find(".holderctl-export-") != 0);

@@ -1592,13 +1592,18 @@ TEST_CASE("CardRoutes residual branch coverage", "[card-routes]") {
   }
 }
 
-TEST_CASE("CardRoutes exposes indexed tags on cards and supports tag filtering", "[card-routes][tags]") {
+TEST_CASE(
+    "CardRoutes exposes indexed tags on cards and supports tag filtering",
+    "[card-routes][tags]"
+) {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
   holder::test::create_project(db, "proj-1", (dir / "repo").string());
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
 
   auto call = [&](http::verb method,
                   const std::string& path,
@@ -1670,7 +1675,9 @@ TEST_CASE("CardRoutes preserves CardStore tag mutation outcomes", "[card-routes]
   holder::test::create_project(db, "proj-2", (dir / "repo-2").string());
   holder::index::FtsIndexer fts(db);
   holder::card::CardStore card_store(db, &fts);
-  const auto uuid_v4 = []() { return std::string("generated-id"); };
+  const auto uuid_v4 = []() {
+    return std::string("generated-id");
+  };
 
   const std::string card_id = "11111111-1111-4111-8111-111111111111";
   const std::string prose_card_id = "22222222-2222-4222-8222-222222222222";
@@ -1685,14 +1692,7 @@ TEST_CASE("CardRoutes preserves CardStore tag mutation outcomes", "[card-routes]
       "A prose #Reference remains here.",
       11
   );
-  holder::test::create_card_fixture(
-      card_store,
-      other_card_id,
-      "proj-2",
-      "Other",
-      "Other body",
-      12
-  );
+  holder::test::create_card_fixture(card_store, other_card_id, "proj-2", "Other", "Other body", 12);
   holder::test::create_card_fixture(
       card_store,
       trashed_card_id,
@@ -1720,80 +1720,55 @@ TEST_CASE("CardRoutes preserves CardStore tag mutation outcomes", "[card-routes]
     return std::make_pair(res.result(), nlohmann::json::parse(res.body()));
   };
 
-  const auto [add_status, added] = call(
-      card_id,
-      http::verb::post,
-      {{"project_id", "proj-1"}, {"tag", "Android"}}
-  );
+  const auto [add_status, added] =
+      call(card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "Android"}});
   REQUIRE(add_status == http::status::ok);
   const nlohmann::json expected_added = {
       {"ok", true},
-      {"data",
-       {{"card_id", card_id}, {"tag", "android"}, {"outcome", "added"}, {"changed", true}}}
+      {"data", {{"card_id", card_id}, {"tag", "android"}, {"outcome", "added"}, {"changed", true}}}
   };
   REQUIRE(added == expected_added);
   REQUIRE(card_store.get_content(*card_store.get(card_id)).value() == "Body\n\n#android");
 
-  const auto [repeat_status, repeated] = call(
-      card_id,
-      http::verb::post,
-      {{"project_id", "proj-1"}, {"tag", "ANDROID"}}
-  );
+  const auto [repeat_status, repeated] =
+      call(card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "ANDROID"}});
   REQUIRE(repeat_status == http::status::ok);
   REQUIRE(repeated["data"]["outcome"] == "already_present");
   REQUIRE(repeated["data"]["changed"] == false);
 
-  const auto [remove_status, removed] = call(
-      card_id,
-      http::verb::delete_,
-      {{"project_id", "proj-1"}, {"tag", "ANDROID"}}
-  );
+  const auto [remove_status, removed] =
+      call(card_id, http::verb::delete_, {{"project_id", "proj-1"}, {"tag", "ANDROID"}});
   REQUIRE(remove_status == http::status::ok);
   REQUIRE(removed["data"]["outcome"] == "removed");
   REQUIRE(removed["data"]["changed"] == true);
   REQUIRE(card_store.get_content(*card_store.get(card_id)).value() == "Body");
 
-  const auto [missing_status, missing] = call(
-      card_id,
-      http::verb::delete_,
-      {{"project_id", "proj-1"}, {"tag", "android"}}
-  );
+  const auto [missing_status, missing] =
+      call(card_id, http::verb::delete_, {{"project_id", "proj-1"}, {"tag", "android"}});
   REQUIRE(missing_status == http::status::ok);
   REQUIRE(missing["data"]["outcome"] == "not_present");
   REQUIRE(missing["data"]["changed"] == false);
 
   const auto prose_before = card_store.get_content(*card_store.get(prose_card_id));
-  const auto [prose_status, prose] = call(
-      prose_card_id,
-      http::verb::delete_,
-      {{"project_id", "proj-1"}, {"tag", "Reference"}}
-  );
+  const auto [prose_status, prose] =
+      call(prose_card_id, http::verb::delete_, {{"project_id", "proj-1"}, {"tag", "Reference"}});
   REQUIRE(prose_status == http::status::ok);
   REQUIRE(prose["data"]["outcome"] == "present_outside_editable_tag_line");
   REQUIRE(prose["data"]["changed"] == false);
   REQUIRE(card_store.get_content(*card_store.get(prose_card_id)) == prose_before);
 
-  const auto [invalid_status, invalid] = call(
-      card_id,
-      http::verb::post,
-      {{"project_id", "proj-1"}, {"tag", "123invalid"}}
-  );
+  const auto [invalid_status, invalid] =
+      call(card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "123invalid"}});
   REQUIRE(invalid_status == http::status::bad_request);
   REQUIRE(invalid["error"]["code"] == "invalid_tag");
 
-  const auto [cross_status, cross] = call(
-      other_card_id,
-      http::verb::post,
-      {{"project_id", "proj-1"}, {"tag", "work"}}
-  );
+  const auto [cross_status, cross] =
+      call(other_card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "work"}});
   REQUIRE(cross_status == http::status::unprocessable_entity);
   REQUIRE(cross["error"]["code"] == "cross_project_tag_forbidden");
 
-  const auto [trashed_status, trashed] = call(
-      trashed_card_id,
-      http::verb::post,
-      {{"project_id", "proj-1"}, {"tag", "work"}}
-  );
+  const auto [trashed_status, trashed] =
+      call(trashed_card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "work"}});
   REQUIRE(trashed_status == http::status::not_found);
   REQUIRE(trashed["error"]["code"] == "not_found");
 
@@ -1801,11 +1776,8 @@ TEST_CASE("CardRoutes preserves CardStore tag mutation outcomes", "[card-routes]
   REQUIRE(fields_status == http::status::bad_request);
   REQUIRE(fields["error"]["code"] == "bad_request");
 
-  const auto [method_status, method] = call(
-      card_id,
-      http::verb::get,
-      {{"project_id", "proj-1"}, {"tag", "work"}}
-  );
+  const auto [method_status, method] =
+      call(card_id, http::verb::get, {{"project_id", "proj-1"}, {"tag", "work"}});
   REQUIRE(method_status == http::status::method_not_allowed);
   REQUIRE(method["error"]["code"] == "method_not_allowed");
 }

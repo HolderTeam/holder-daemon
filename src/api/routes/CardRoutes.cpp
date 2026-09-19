@@ -8,8 +8,8 @@
 #include "card/CardPlacementResolver.h"
 #include "card/CardRepo.h"
 #include "card/LinkRepo.h"
-#include "card/TagRepo.h"
 #include "card/TagExtractor.h"
+#include "card/TagRepo.h"
 #include "identity/Uuid.h"
 #include "privacy/PrivacyError.h"
 #include "project/ProjectRepo.h"
@@ -676,11 +676,8 @@ bool handle_card_routes(
           holder::project::ProjectRepo project_repo(db);
           const auto project = project_repo.get(card.project_id);
           if (!project.has_value()) {
-            res = support::error_response(
-                http::status::not_found,
-                "not_found",
-                "Project not found."
-            );
+            res =
+                support::error_response(http::status::not_found, "not_found", "Project not found.");
             return true;
           }
           card.card_id = holder::identity::generate_id(project->id_scheme);
@@ -828,8 +825,8 @@ bool handle_card_routes(
                   "Source card is in a different project."
               );
             } else if (msg == "target_not_found") {
-              const bool target_style =
-                  request.has_value() && card_placement_intent_needs_target(request->intent);
+              const bool target_style = request.has_value() &&
+                                        card_placement_intent_needs_target(request->intent);
               res = support::error_response(
                   http::status::not_found,
                   "target_not_found",
@@ -906,11 +903,8 @@ bool handle_card_routes(
             }
             const auto card_opt = card_store->get(card_id);
             if (!card_opt.has_value() || card_opt->deleted_at.has_value()) {
-              res = support::error_response(
-                  http::status::not_found,
-                  "not_found",
-                  "Card not found."
-              );
+              res =
+                  support::error_response(http::status::not_found, "not_found", "Card not found.");
               return true;
             }
             if (card_opt->project_id != project_id) {
@@ -980,8 +974,11 @@ bool handle_card_routes(
         }
       } else if (tail == "/resources") {
         if (req.method() != http::verb::post && req.method() != http::verb::delete_) {
-          res = support::error_response(http::status::method_not_allowed,
-              "method_not_allowed", "Use POST to attach or DELETE to detach.");
+          res = support::error_response(
+              http::status::method_not_allowed,
+              "method_not_allowed",
+              "Use POST to attach or DELETE to detach."
+          );
           return true;
         }
         try {
@@ -993,24 +990,35 @@ bool handle_card_routes(
           }
           const auto card = card_store->get(card_id);
           if (!card.has_value() || card->deleted_at.has_value()) {
-            res = support::error_response(http::status::not_found, "not_found", "Live card not found.");
+            res = support::error_response(
+                http::status::not_found,
+                "not_found",
+                "Live card not found."
+            );
             return true;
           }
           const auto resource = holder::resource::ResourceRepo(db).get(resource_id);
           if (!resource.has_value()) {
-            res = support::error_response(http::status::not_found, "not_found", "Resource not found.");
+            res = support::error_response(
+                http::status::not_found,
+                "not_found",
+                "Resource not found."
+            );
             return true;
           }
           if (card->project_id != project_id || resource->project_id != project_id) {
-            res = support::error_response(http::status::unprocessable_entity,
-                "cross_project_resource_forbidden", "Card and resource must belong to the selected project.");
+            res = support::error_response(
+                http::status::unprocessable_entity,
+                "cross_project_resource_forbidden",
+                "Card and resource must belong to the selected project."
+            );
             return true;
           }
           holder::card::LinkRepo links(db);
           const auto outgoing = links.list_outgoing(project_id, card_id);
           const bool present = std::any_of(outgoing.begin(), outgoing.end(), [&](const auto& link) {
             return link.to_card_id == resource_id && link.to_type == "resource" &&
-                link.kind == "attachment";
+                   link.kind == "attachment";
           });
           const bool attaching = req.method() == http::verb::post;
           const bool changed = attaching != present;
@@ -1029,10 +1037,17 @@ bool handle_card_routes(
             }
             card_store->update_links(card_id, support::now_epoch_seconds());
           }
-          res = support::json_response(http::status::ok, {{"ok", true}, {"data", {
-              {"card_id", card_id}, {"resource_id", resource_id}, {"changed", changed},
-              {"outcome", attaching ? (changed ? "attached" : "already_attached")
-                                    : (changed ? "detached" : "not_attached")}}}});
+          res = support::json_response(
+              http::status::ok,
+              {{"ok", true},
+               {"data",
+                {{"card_id", card_id},
+                 {"resource_id", resource_id},
+                 {"changed", changed},
+                 {"outcome",
+                  attaching ? (changed ? "attached" : "already_attached")
+                            : (changed ? "detached" : "not_attached")}}}}
+          );
         } catch (const holder::privacy::PrivacyError& ex) {
           res = privacy_error_response(ex);
         } catch (const std::exception& ex) {

@@ -80,5 +80,7 @@ TEST_CASE("build_authorization_url carries every required parameter", "[oauth]")
   // redirect_uri and scope are percent-encoded in the query string, so check for their
   // encoded form rather than the raw value.
   REQUIRE(url.find("redirect_uri=http%3A%2F%2F127.0.0.1%3A4321") != std::string::npos);
-  REQUIRE(url.find("scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file") != std::string::npos);
+  REQUIRE(
+      url.find("scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file") != std::string::npos
+  );
 }
