@@ -72,7 +72,8 @@ Server will start at `127.0.0.1:11499` by default and print docs URL + auth toke
 sudo dnf install -y \
   gcc-c++ cmake ninja-build pkgconf-pkg-config git curl ccache \
   boost-devel openssl-devel sqlite-devel json-devel spdlog-devel yaml-cpp-devel \
-  'pkgconfig(libgit2)' md4c-devel catch-devel libsodium-devel libsecret-devel
+  'pkgconfig(libgit2)' md4c-devel catch-devel libsodium-devel libsecret-devel \
+  clang18-tools-extra
 
 git submodule update --init --recursive
 ./make.sh

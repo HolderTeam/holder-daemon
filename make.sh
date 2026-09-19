@@ -385,13 +385,15 @@ tidy_all() {
 }
 
 format_files() {
-  local format_bin="clang-format"
+  local format_bin="clang-format-18"
   local mode="${1:?}"
   local file_list
   local status
 
-  if command -v clang-format-18 >/dev/null 2>&1; then
-    format_bin="clang-format-18"
+  if ! command -v "${format_bin}" >/dev/null 2>&1; then
+    echo "Missing dependency: clang-format-18 is required for ./make.sh format and format-check." >&2
+    echo "Install clang-format-18 and ensure it is available on PATH." >&2
+    exit 1
   fi
 
   case "${mode}" in
