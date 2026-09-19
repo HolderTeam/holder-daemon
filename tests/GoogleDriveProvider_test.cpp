@@ -69,16 +69,12 @@ TEST_CASE("Google Drive provider round-trips an object", "[google_drive][integra
       holder::storage::google::GoogleOAuthClient{client_id, client_secret}
   );
 
-  const auto nonce =
-      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-  const auto root =
-      std::filesystem::temp_directory_path() / ("holder_google_drive_test_" + nonce);
+  const auto nonce = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  const auto root = std::filesystem::temp_directory_path() / ("holder_google_drive_test_" + nonce);
   std::filesystem::create_directories(root);
   const auto source = root / "source.bin";
   const auto recovered = root / "recovered.bin";
-  std::ofstream(source, std::ios::binary)
-      << "Holder Google Drive integration test\n"
-      << nonce;
+  std::ofstream(source, std::ios::binary) << "Holder Google Drive integration test\n" << nonce;
   const auto digest = holder::resource::digest_file(source);
   const auto object_key = "holder-integration-tests-" + nonce + ".bin";
 

@@ -2,8 +2,8 @@
 
 #include "platform/Db.h"
 
-#include <optional>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace holder::api::support {
@@ -22,14 +22,8 @@ struct CloudModelCooldownState {
   long long updated_at = 0;
 };
 
-void initialize_cloud_usage_ledger(
-    holder::platform::Db& db,
-    const std::filesystem::path& path
-);
-void restore_cloud_usage_ledger(
-    holder::platform::Db& db,
-    const std::filesystem::path& path
-);
+void initialize_cloud_usage_ledger(holder::platform::Db& db, const std::filesystem::path& path);
+void restore_cloud_usage_ledger(holder::platform::Db& db, const std::filesystem::path& path);
 
 CloudQuotaWindowUsage load_cloud_window_usage(
     holder::platform::Db& db,

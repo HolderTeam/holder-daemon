@@ -73,17 +73,15 @@ HistoryOptions parse_history_options(int argc, char* argv[]) {
   }
 
   if (options.help) return options;
-  if (!positional.empty() &&
-      (positional.front() == "show" || positional.front() == "diff" ||
-       positional.front() == "restore")) {
+  if (!positional.empty() && (positional.front() == "show" || positional.front() == "diff" ||
+                              positional.front() == "restore")) {
     const auto& action = positional.front();
-    options.action = action == "show"      ? HistoryAction::Show
-                     : action == "diff"    ? HistoryAction::Diff
-                                            : HistoryAction::Restore;
-    const bool valid_count =
-        (options.action == HistoryAction::Diff &&
-         (positional.size() == 3 || positional.size() == 4)) ||
-        (options.action != HistoryAction::Diff && positional.size() == 3);
+    options.action = action == "show"   ? HistoryAction::Show
+                     : action == "diff" ? HistoryAction::Diff
+                                        : HistoryAction::Restore;
+    const bool valid_count = (options.action == HistoryAction::Diff &&
+                              (positional.size() == 3 || positional.size() == 4)) ||
+                             (options.action != HistoryAction::Diff && positional.size() == 3);
     if (!valid_count || options.limit.has_value() || options.cursor.has_value() ||
         options.kind.has_value()) {
       throw std::runtime_error(history_usage());
@@ -202,8 +200,8 @@ void print_card_history(const nlohmann::json& data) {
   for (const auto& entry : entries) {
     std::cout << short_revision(json_string(entry, "last_oid")) << "\t"
               << entry.value("commit_count", 0) << "\t" << json_string(entry, "kind") << "\t"
-              << entry.value("ended_at", 0LL) << "\t"
-              << table_text(json_string(entry, "summary")) << "\n";
+              << entry.value("ended_at", 0LL) << "\t" << table_text(json_string(entry, "summary"))
+              << "\n";
   }
   print_continuation(data);
 }
@@ -239,11 +237,11 @@ void print_comparison(const nlohmann::json& data) {
 
 void print_restore(const nlohmann::json& data) {
   std::cout << "Restored card " << display_card_id(json_string(data, "card_id")) << ": "
-            << json_string(data, "title") << "\nSource revision: "
-            << json_string(data, "restored_from_oid") << "\nResult revision: "
-            << json_string(data, "result_oid") << "\nState: "
-            << (data.contains("deleted_at") && !data.at("deleted_at").is_null() ? "trashed"
-                                                                                : "live")
+            << json_string(data, "title")
+            << "\nSource revision: " << json_string(data, "restored_from_oid")
+            << "\nResult revision: " << json_string(data, "result_oid") << "\nState: "
+            << (data.contains("deleted_at") && !data.at("deleted_at").is_null() ? "trashed" : "live"
+               )
             << "\n";
 }
 

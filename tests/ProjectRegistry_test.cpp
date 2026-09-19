@@ -41,8 +41,12 @@ TEST_CASE("ProjectRegistry preserves and updates project roots", "[project][regi
 
   const auto roots = registry.roots();
   REQUIRE(roots.size() == 2);
-  REQUIRE(std::find(roots.begin(), roots.end(), canonical_test_path(first.root_path)) != roots.end());
-  REQUIRE(std::find(roots.begin(), roots.end(), canonical_test_path(second.root_path)) != roots.end());
+  REQUIRE(
+      std::find(roots.begin(), roots.end(), canonical_test_path(first.root_path)) != roots.end()
+  );
+  REQUIRE(
+      std::find(roots.begin(), roots.end(), canonical_test_path(second.root_path)) != roots.end()
+  );
 }
 
 TEST_CASE("ProjectRegistry rejects unsupported content", "[project][registry]") {

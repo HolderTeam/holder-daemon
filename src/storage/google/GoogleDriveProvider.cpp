@@ -59,7 +59,8 @@ void GoogleDriveProvider::get(
   const auto file_id = find_file_id(token, config_.folder_id, object_key);
   if (!file_id.has_value()) {
     throw holder::resource::StorageError(
-        holder::resource::StorageErrorCode::Integrity, "no Drive file named " + object_key
+        holder::resource::StorageErrorCode::Integrity,
+        "no Drive file named " + object_key
     );
   }
   download_file(token, *file_id, destination_file);

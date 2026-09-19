@@ -77,8 +77,8 @@ std::vector<std::filesystem::path> ProjectRegistry::roots() const {
   const auto body = load_registry(path_);
   std::vector<std::filesystem::path> result;
   for (const auto& item : body.at("projects")) {
-    if (!item.is_object() || !item.contains("root_path") ||
-        !item.at("root_path").is_string() || item.at("root_path").get<std::string>().empty()) {
+    if (!item.is_object() || !item.contains("root_path") || !item.at("root_path").is_string() ||
+        item.at("root_path").get<std::string>().empty()) {
       throw std::runtime_error("invalid project registry entry: " + path_.string());
     }
     result.emplace_back(item.at("root_path").get<std::string>());
@@ -96,8 +96,9 @@ void ProjectRegistry::remember(const std::vector<holder::model::Project>& projec
         !item.at("project_id").is_string() || !item.at("root_path").is_string()) {
       throw std::runtime_error("invalid project registry entry: " + path_.string());
     }
-    by_id[item.at("project_id").get<std::string>()] =
-        canonical_path_string(item.at("root_path").get<std::string>());
+    by_id[item.at("project_id").get<std::string>()] = canonical_path_string(
+        item.at("root_path").get<std::string>()
+    );
   }
   for (const auto& project : projects) {
     if (project.project_id.empty() || project.root_path.empty()) {

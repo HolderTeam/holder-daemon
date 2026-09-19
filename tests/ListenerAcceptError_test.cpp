@@ -9,8 +9,8 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include <csignal>
 #include <chrono>
+#include <csignal>
 #include <filesystem>
 #include <thread>
 

@@ -18,15 +18,18 @@ struct DownloadMetadata {
 // Only successful response bytes reach the sink. JSON API failures retain their typed errors.
 // Timeout applies to each socket operation; transfer buffers remain bounded regardless of size.
 DownloadMetadata http_download(
-    const DaemonConnection& connection, const std::string& target,
+    const DaemonConnection& connection,
+    const std::string& target,
     std::chrono::seconds timeout,
     const std::function<void(const char*, std::size_t)>& sink
 );
 
 // Stages beside the destination; a failed or interrupted download leaves it untouched.
 DownloadMetadata download_to_file(
-    const DaemonConnection& connection, const std::string& target,
-    const std::filesystem::path& output, std::chrono::seconds timeout
+    const DaemonConnection& connection,
+    const std::string& target,
+    const std::filesystem::path& output,
+    std::chrono::seconds timeout
 );
 
 } // namespace holder::cli

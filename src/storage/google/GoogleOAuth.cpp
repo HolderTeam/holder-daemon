@@ -57,7 +57,8 @@ std::string base64url_no_pad(const std::vector<unsigned char>& bytes) {
   std::string standard;
   standard.resize(4 * ((bytes.size() + 2) / 3));
   const auto written = EVP_EncodeBlock(
-      reinterpret_cast<unsigned char*>(standard.data()), bytes.data(),
+      reinterpret_cast<unsigned char*>(standard.data()),
+      bytes.data(),
       static_cast<int>(bytes.size())
   );
   standard.resize(static_cast<std::size_t>(written));
@@ -87,7 +88,8 @@ std::vector<unsigned char> random_bytes(std::size_t count) {
 
 std::vector<unsigned char> sha256_bytes(const std::string& value) {
   std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(
-      EVP_MD_CTX_new(), EVP_MD_CTX_free
+      EVP_MD_CTX_new(),
+      EVP_MD_CTX_free
   );
   if (!context || EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
       EVP_DigestUpdate(context.get(), value.data(), value.size()) != 1) {
@@ -181,19 +183,23 @@ GoogleTokenResponse token_request(const std::vector<std::pair<std::string, std::
   std::string body;
   std::string error;
   if (!https_post_form(
-          "oauth2.googleapis.com", "/token", form_encode(fields), &status, &body, &error
+          "oauth2.googleapis.com",
+          "/token",
+          form_encode(fields),
+          &status,
+          &body,
+          &error
       )) {
     throw StorageError(
-        StorageErrorCode::Unavailable, "Google token endpoint unreachable: " + error
+        StorageErrorCode::Unavailable,
+        "Google token endpoint unreachable: " + error
     );
   }
   if (status == 400 || status == 401) {
     // Google returns 400 for both a malformed request and an invalid/expired/revoked
     // grant (e.g. a revoked refresh token) -- either way, re-authorizing is the fix, not
     // a retry, so both map to Authentication rather than a generic failure.
-    throw StorageError(
-        StorageErrorCode::Authentication, "Google token request rejected: " + body
-    );
+    throw StorageError(StorageErrorCode::Authentication, "Google token request rejected: " + body);
   }
   if (status != 200) {
     throw StorageError(
@@ -234,9 +240,7 @@ PkceChallenge generate_pkce_challenge() {
   return out;
 }
 
-std::string generate_state() {
-  return base64url_no_pad(random_bytes(24));
-}
+std::string generate_state() { return base64url_no_pad(random_bytes(24)); }
 
 std::string build_authorization_url(
     const GoogleOAuthClient& client,

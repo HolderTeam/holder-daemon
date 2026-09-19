@@ -2,7 +2,9 @@
 
 #include "platform/Db.h"
 
-namespace holder::card { class CardStore; }
+namespace holder::card {
+class CardStore;
+}
 
 #include <boost/beast/http.hpp>
 

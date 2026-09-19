@@ -1,13 +1,13 @@
-#include "http_test_helpers.h"
 #include "TestCommand.h"
+#include "http_test_helpers.h"
 
+#include "card/LinkRepo.h"
 #include "git/GitOps.h"
 #include "git/GitRepo.h"
 #include "model/Resource.h"
-#include "resource/ResourceRepo.h"
-#include "resource/LocationRepo.h"
-#include "card/LinkRepo.h"
 #include "project/ProjectSyncRepo.h"
+#include "resource/LocationRepo.h"
+#include "resource/ResourceRepo.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <git2.h>
@@ -70,9 +70,7 @@ class HolderCtlTimeZoneGuard {
   std::optional<std::string> old_;
 };
 
-int run_command(const std::string& cmd) {
-  return holder::test::run_system_command(cmd);
-}
+int run_command(const std::string& cmd) { return holder::test::run_system_command(cmd); }
 
 std::string read_text(const std::filesystem::path& path) {
   std::ifstream in(path);
@@ -1655,9 +1653,7 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
   REQUIRE(read_text(cards_path).find(other_id) == std::string::npos);
 
   const auto cards_json_path = xdg_root / "tagged-cards.json";
-  REQUIRE(
-      run_command(bin + " tags android --json > \"" + cards_json_path.string() + "\"") == 0
-  );
+  REQUIRE(run_command(bin + " tags android --json > \"" + cards_json_path.string() + "\"") == 0);
   const auto cards_json = nlohmann::json::parse(read_text(cards_json_path));
   REQUIRE(cards_json["ok"] == true);
   REQUIRE(cards_json["data"].size() == 2);
@@ -1673,16 +1669,13 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
   REQUIRE(tags_json["data"][0]["card_count"] == 2);
 
   const auto add_path = xdg_root / "tag-add.out";
-  REQUIRE(
-      run_command(bin + " tag add 'First Tagged' Work > \"" + add_path.string() + "\"") == 0
-  );
+  REQUIRE(run_command(bin + " tag add 'First Tagged' Work > \"" + add_path.string() + "\"") == 0);
   REQUIRE(read_text(add_path) == "Added tag #work to 12345678.\n");
 
   const auto repeat_path = xdg_root / "tag-repeat.json";
   REQUIRE(
-      run_command(
-          bin + " tag add 'First Tagged' WORK --json > \"" + repeat_path.string() + "\""
-      ) == 0
+      run_command(bin + " tag add 'First Tagged' WORK --json > \"" + repeat_path.string() + "\"") ==
+      0
   );
   const auto repeated = nlohmann::json::parse(read_text(repeat_path));
   REQUIRE(repeated["ok"] == true);
@@ -1704,17 +1697,13 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
 
   const auto missing_path = xdg_root / "tag-missing.out";
   REQUIRE(
-      run_command(
-          bin + " tag remove 'First Tagged' work > \"" + missing_path.string() + "\""
-      ) == 0
+      run_command(bin + " tag remove 'First Tagged' work > \"" + missing_path.string() + "\"") == 0
   );
   REQUIRE(read_text(missing_path) == "Tag #work is not present on 12345678.\n");
 
   const auto prose_path = xdg_root / "tag-prose.out";
   REQUIRE(
-      run_command(
-          bin + " tag remove 'Prose Tagged' PROSE > \"" + prose_path.string() + "\""
-      ) == 0
+      run_command(bin + " tag remove 'Prose Tagged' PROSE > \"" + prose_path.string() + "\"") == 0
   );
   REQUIRE(
       read_text(prose_path) ==
@@ -1722,8 +1711,7 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
       "line; edit the card text directly.\n"
   );
   REQUIRE(
-      card_store.get_content(*card_store.get(prose_id)).value() ==
-      "Keep #Prose in this sentence."
+      card_store.get_content(*card_store.get(prose_id)).value() == "Keep #Prose in this sentence."
   );
 
   const auto invalid_path = xdg_root / "tag-invalid.json";
@@ -1740,8 +1728,7 @@ TEST_CASE("holderctl tags query and mutate live card tags", "[holderctl][tags]")
   const auto ambiguous_path = xdg_root / "tag-ambiguous.json";
   REQUIRE(
       run_command(
-          bin + " tag add 12345678 work --json >/dev/null 2> \"" +
-          ambiguous_path.string() + "\""
+          bin + " tag add 12345678 work --json >/dev/null 2> \"" + ambiguous_path.string() + "\""
       ) == 1
   );
   const auto ambiguous = nlohmann::json::parse(read_text(ambiguous_path));
@@ -1879,9 +1866,7 @@ TEST_CASE(
 
   const auto list_path = xdg_root / "milestones.json";
   REQUIRE(
-      run_command(
-          bin + " milestones 'Release Card' --json > \"" + list_path.string() + "\""
-      ) == 0
+      run_command(bin + " milestones 'Release Card' --json > \"" + list_path.string() + "\"") == 0
   );
   const auto listed = nlohmann::json::parse(read_text(list_path));
   REQUIRE(listed["data"].size() == 2);
@@ -1892,8 +1877,8 @@ TEST_CASE(
   const auto edit_partial_path = xdg_root / "milestone-edit-partial.json";
   REQUIRE(
       run_command(
-          bin + " milestone edit 'Release Card' " + timed_id +
-          " --kind appointment --json > \"" + edit_partial_path.string() + "\""
+          bin + " milestone edit 'Release Card' " + timed_id + " --kind appointment --json > \"" +
+          edit_partial_path.string() + "\""
       ) == 0
   );
   const auto partial = nlohmann::json::parse(read_text(edit_partial_path));
@@ -1970,8 +1955,7 @@ TEST_CASE(
   REQUIRE(
       run_command(
           bin + " milestone edit 'Release Card' " + timed_id +
-          " --clear-end --clear-description --json > \"" +
-          cleared_path.string() + "\""
+          " --clear-end --clear-description --json > \"" + cleared_path.string() + "\""
       ) == 0
   );
   const auto cleared = nlohmann::json::parse(read_text(cleared_path));
@@ -2077,8 +2061,8 @@ TEST_CASE(
   const auto trashed_path = xdg_root / "milestone-card-trashed.json";
   REQUIRE(
       run_command(
-          bin + " milestones 'Trashed Release' --json >/dev/null 2> \"" +
-          trashed_path.string() + "\""
+          bin + " milestones 'Trashed Release' --json >/dev/null 2> \"" + trashed_path.string() +
+          "\""
       ) == 1
   );
   const auto trashed = nlohmann::json::parse(read_text(trashed_path));
@@ -2163,8 +2147,7 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
   const std::string tree_oid = git_oid_tostr_s(git_commit_tree_id(head));
   git_commit_free(head);
   git_repository_free(raw);
-  const auto ambiguous_revision =
-      write_holderctl_ambiguous_revision_prefix(project_root, tree_oid);
+  const auto ambiguous_revision = write_holderctl_ambiguous_revision_prefix(project_root, tree_oid);
 
   const std::string token = "historytoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &card_store, &fts);
@@ -2194,14 +2177,14 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
 
   const auto help_path = xdg_root / "history-help.out";
   REQUIRE(run_command(bin + " history --help > \"" + help_path.string() + "\"") == 0);
-  CHECK(read_text(help_path).find("holderctl history diff CARD REVISION [REVISION]") !=
-        std::string::npos);
+  CHECK(
+      read_text(help_path).find("holderctl history diff CARD REVISION [REVISION]") !=
+      std::string::npos
+  );
 
   const auto project_json_path = xdg_root / "project-history.json";
   REQUIRE(
-      run_command(
-          bin + " history --limit 1 --json > \"" + project_json_path.string() + "\""
-      ) == 0
+      run_command(bin + " history --limit 1 --json > \"" + project_json_path.string() + "\"") == 0
   );
   const auto project_page = nlohmann::json::parse(read_text(project_json_path));
   REQUIRE(project_page["ok"] == true);
@@ -2219,15 +2202,10 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
   );
   const auto next_page = nlohmann::json::parse(read_text(next_page_path));
   REQUIRE(next_page["data"]["activities"].size() == 1);
-  CHECK(next_page["data"]["activities"][0]["oid"] !=
-        project_page["data"]["activities"][0]["oid"]);
+  CHECK(next_page["data"]["activities"][0]["oid"] != project_page["data"]["activities"][0]["oid"]);
 
   const auto filtered_path = xdg_root / "project-history-filtered.out";
-  REQUIRE(
-      run_command(
-          bin + " history --kind unknown > \"" + filtered_path.string() + "\""
-      ) == 0
-  );
+  REQUIRE(run_command(bin + " history --kind unknown > \"" + filtered_path.string() + "\"") == 0);
   const auto filtered = read_text(filtered_path);
   CHECK(filtered.find("REVISION\tAUTHOR\tCOMMITTED\tKINDS\tMESSAGE\n") == 0);
   CHECK(filtered.find("unknown\tExternal history note") != std::string::npos);
@@ -2274,8 +2252,9 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
       ) == 0
   );
   const auto change_text = read_text(change_path);
-  CHECK(change_text.find("From: " + creation_oid + "\nTo: " + edit_oid + "\n") !=
-        std::string::npos);
+  CHECK(
+      change_text.find("From: " + creation_oid + "\nTo: " + edit_oid + "\n") != std::string::npos
+  );
   CHECK(change_text.find("-First saved body") != std::string::npos);
   CHECK(change_text.find("+Second saved body") != std::string::npos);
   CHECK(change_text.find("+# History Card") == std::string::npos);
@@ -2283,8 +2262,8 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
   const auto since_path = xdg_root / "history-since.json";
   REQUIRE(
       run_command(
-          bin + " history diff 'History Card' " + creation_oid + " " +
-          edit_oid.substr(0, 8) + " --json > \"" + since_path.string() + "\""
+          bin + " history diff 'History Card' " + creation_oid + " " + edit_oid.substr(0, 8) +
+          " --json > \"" + since_path.string() + "\""
       ) == 0
   );
   const auto since = nlohmann::json::parse(read_text(since_path));
@@ -2298,24 +2277,24 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
           missing_path.string() + "\""
       ) == 1
   );
-  CHECK(nlohmann::json::parse(read_text(missing_path))["error"]["code"] ==
-        "revision_not_found");
+  CHECK(nlohmann::json::parse(read_text(missing_path))["error"]["code"] == "revision_not_found");
 
   const auto revision_ambiguous_path = xdg_root / "history-revision-ambiguous.json";
   REQUIRE(
       run_command(
-          bin + " history diff 'History Card' " + ambiguous_revision +
-          " --json >/dev/null 2> \"" + revision_ambiguous_path.string() + "\""
+          bin + " history diff 'History Card' " + ambiguous_revision + " --json >/dev/null 2> \"" +
+          revision_ambiguous_path.string() + "\""
       ) == 1
   );
-  CHECK(nlohmann::json::parse(read_text(revision_ambiguous_path))["error"]["code"] ==
-        "revision_ambiguous");
+  CHECK(
+      nlohmann::json::parse(read_text(revision_ambiguous_path))["error"]["code"] ==
+      "revision_ambiguous"
+  );
 
   const auto card_ambiguous_path = xdg_root / "history-card-ambiguous.json";
   REQUIRE(
       run_command(
-          bin + " history aaaaaaaa --json >/dev/null 2> \"" +
-          card_ambiguous_path.string() + "\""
+          bin + " history aaaaaaaa --json >/dev/null 2> \"" + card_ambiguous_path.string() + "\""
       ) == 1
   );
   const auto card_ambiguous = nlohmann::json::parse(read_text(card_ambiguous_path));
@@ -2340,16 +2319,18 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
           restore_missing_path.string() + "\""
       ) == 1
   );
-  CHECK(nlohmann::json::parse(read_text(restore_missing_path))["error"]["code"] ==
-        "revision_not_found");
+  CHECK(
+      nlohmann::json::parse(read_text(restore_missing_path))["error"]["code"] ==
+      "revision_not_found"
+  );
   REQUIRE(card_store.get(card_id).has_value());
   CHECK(card_store.get(card_id)->deleted_at.has_value());
 
   const auto restore_json_path = xdg_root / "history-restore.json";
   REQUIRE(
       run_command(
-          bin + " history restore 'History Card' " + creation_oid.substr(0, 8) +
-          " --json > \"" + restore_json_path.string() + "\""
+          bin + " history restore 'History Card' " + creation_oid.substr(0, 8) + " --json > \"" +
+          restore_json_path.string() + "\""
       ) == 0
   );
   const auto restored = nlohmann::json::parse(read_text(restore_json_path));
@@ -3115,18 +3096,41 @@ TEST_CASE("holderctl new and append capture cards in Home by default", "[holderc
   server_thread.join();
 }
 
-TEST_CASE("holderctl resource help covers every command without requiring a daemon", "[holderctl][resource-help]") {
+TEST_CASE(
+    "holderctl resource help covers every command without requiring a daemon",
+    "[holderctl][resource-help]"
+) {
   const auto root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (root / "data").string());
   const auto output = root / "help.out";
   const auto error = root / "help.err";
-  const std::vector<std::string> commands = {"list", "attach", "detach", "export", "add",
-      "show", "edit", "open", "delete", "import", "location", "location list",
-      "location add-local", "location add-s3", "location test", "location prefer", "location delete"};
+  const std::vector<std::string> commands = {
+      "list",
+      "attach",
+      "detach",
+      "export",
+      "add",
+      "show",
+      "edit",
+      "open",
+      "delete",
+      "import",
+      "location",
+      "location list",
+      "location add-local",
+      "location add-s3",
+      "location test",
+      "location prefer",
+      "location delete"
+  };
   for (const auto& command : commands) {
     INFO(command);
-    REQUIRE(run_command(std::string("\"") + HOLDER_CTL_PATH + "\" resource " + command +
-        " --help > \"" + output.string() + "\" 2> \"" + error.string() + "\"") == 0);
+    REQUIRE(
+        run_command(
+            std::string("\"") + HOLDER_CTL_PATH + "\" resource " + command + " --help > \"" +
+            output.string() + "\" 2> \"" + error.string() + "\""
+        ) == 0
+    );
     const auto help = read_text(output);
     REQUIRE(read_text(error).empty());
     REQUIRE(help.find("Examples:\n") != std::string::npos);
@@ -3139,7 +3143,10 @@ TEST_CASE("holderctl resource help covers every command without requiring a daem
   }
 }
 
-TEST_CASE("holderctl resource lists large projects and traverses attachment pages without omissions", "[holderctl][resource-pagination]") {
+TEST_CASE(
+    "holderctl resource lists large projects and traverses attachment pages without omissions",
+    "[holderctl][resource-pagination]"
+) {
   const auto root = prepare_xdg_tree();
   holder::test::EnvGuard data_env("XDG_DATA_HOME", (root / "data").string());
   holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (root / "config").string());
@@ -3167,7 +3174,8 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
   for (int i = 0; i < 1205; ++i) {
     const auto suffix = std::to_string(i);
     holder::model::Resource resource;
-    resource.resource_id = "12345678-1234-4234-8234-" + std::string(12 - suffix.size(), '0') + suffix;
+    resource.resource_id = "12345678-1234-4234-8234-" + std::string(12 - suffix.size(), '0') +
+                           suffix;
     resource.project_id = "home-id";
     resource.type = "url";
     resource.label = "Resource " + suffix;
@@ -3176,7 +3184,7 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
     resources.add(resource);
     all_ids.push_back(resource.resource_id);
     const auto row = resource.resource_id + "\turl\t" + resource.label + "\t" +
-        resource.metadata["identifier"][0] + "\n";
+                     resource.metadata["identifier"][0] + "\n";
     project_table += row;
     // Every attachment sorts beyond the first 1,000 project resources.
     if (i >= 1000) {
@@ -3217,8 +3225,11 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
   const std::string token = "paginationtoken";
   holder::api::HttpServer server("127.0.0.1", 0, db, token, &cards, &fts);
   holder::api::HttpServer::BoundInfo bound;
-  try { bound = server.start(); }
-  catch (const std::exception& ex) { SKIP(std::string("Socket bind not available: ") + ex.what()); }
+  try {
+    bound = server.start();
+  } catch (const std::exception& ex) {
+    SKIP(std::string("Socket bind not available: ") + ex.what());
+  }
   holder::core::SignalHandler signals;
   holder::test::HttpServerThreadGuard server_thread(server, signals);
   REQUIRE(holder::test::wait_for_http_health_ready(bound.bind, bound.port, token));
@@ -3232,13 +3243,18 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
   const auto output = root / "list.out";
   const auto error = root / "list.err";
   auto run = [&](const std::string& args, int expected = 0) {
-    REQUIRE(run_command(std::string("\"") + HOLDER_CTL_PATH + "\" resource " + args +
-        " > \"" + output.string() + "\" 2> \"" + error.string() + "\"") == expected);
+    REQUIRE(
+        run_command(
+            std::string("\"") + HOLDER_CTL_PATH + "\" resource " + args + " > \"" +
+            output.string() + "\" 2> \"" + error.string() + "\""
+        ) == expected
+    );
     return read_text(output);
   };
   auto ids = [](const nlohmann::json& payload) {
     std::vector<std::string> result;
-    for (const auto& item : payload.at("data")) result.push_back(item.at("resource_id").get<std::string>());
+    for (const auto& item : payload.at("data"))
+      result.push_back(item.at("resource_id").get<std::string>());
     return result;
   };
   const auto project = nlohmann::json::parse(run("list --json"));
@@ -3260,33 +3276,51 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
     REQUIRE(page["limit"] == 100);
     REQUIRE(page["offset"] == offset);
     const auto count = std::min(100, 205 - offset);
-    const std::vector<std::string> expected(attached_ids.begin() + offset, attached_ids.begin() + offset + count);
+    const std::vector<std::string> expected(
+        attached_ids.begin() + offset,
+        attached_ids.begin() + offset + count
+    );
     REQUIRE(ids(page) == expected);
-    if (count == 100) REQUIRE(page["next_offset"] == offset + count);
-    else REQUIRE(page["next_offset"].is_null());
+    if (count == 100)
+      REQUIRE(page["next_offset"] == offset + count);
+    else
+      REQUIRE(page["next_offset"].is_null());
     REQUIRE(read_text(error).empty());
     seen.insert(seen.end(), expected.begin(), expected.end());
     std::string table = heading;
-    for (int i = offset; i < offset + count; ++i) table += attached_rows[i];
+    for (int i = offset; i < offset + count; ++i)
+      table += attached_rows[i];
     REQUIRE(run(args) == table);
-    if (count == 100) REQUIRE(read_text(error) == "More attachments may be available; use --offset " +
-        std::to_string(offset + count) + ".\n");
-    else REQUIRE(read_text(error).empty());
+    if (count == 100)
+      REQUIRE(
+          read_text(error) == "More attachments may be available; use --offset " +
+                                  std::to_string(offset + count) + ".\n"
+      );
+    else
+      REQUIRE(read_text(error).empty());
   }
   REQUIRE(seen == attached_ids);
   REQUIRE(std::set<std::string>(seen.begin(), seen.end()).size() == 205);
-  REQUIRE(ids(nlohmann::json::parse(run("list 'Many Attachments' --limit 1000 --json"))) == attached_ids);
+  REQUIRE(
+      ids(nlohmann::json::parse(run("list 'Many Attachments' --limit 1000 --json"))) == attached_ids
+  );
   const auto beyond = nlohmann::json::parse(run("list abcdef12 --offset 205 --json"));
   REQUIRE(beyond["data"].empty());
   REQUIRE(beyond["next_offset"].is_null());
   REQUIRE(run("list abcdef12 --offset 205") == "No resources.\n");
   REQUIRE(read_text(error).empty());
-  const auto empty_filtered = nlohmann::json::parse(run("list abcdef12 --filter example.com/1204 --json"));
+  const auto empty_filtered = nlohmann::json::parse(
+      run("list abcdef12 --filter example.com/1204 --json")
+  );
   REQUIRE(empty_filtered["data"].empty());
   REQUIRE(empty_filtered["next_offset"] == 100); // Filtering must retain continuation metadata.
-  REQUIRE(ids(nlohmann::json::parse(run("list abcdef12 --offset 200 --filter example.com/1204 --json"))) ==
-      std::vector<std::string>{attached_ids.back()});
-  REQUIRE(run("list abcdef12 --offset 200 --filter example.com/1204") == heading + attached_rows.back());
+  REQUIRE(
+      ids(nlohmann::json::parse(run("list abcdef12 --offset 200 --filter example.com/1204 --json"))
+      ) == std::vector<std::string>{attached_ids.back()}
+  );
+  REQUIRE(
+      run("list abcdef12 --offset 200 --filter example.com/1204") == heading + attached_rows.back()
+  );
   run("list abcdef12 --limit 1001 --json", 1);
   REQUIRE(nlohmann::json::parse(read_text(error))["error"]["code"] == "invalid_arguments");
   run("list --limit 100 --json", 1);
@@ -3301,7 +3335,7 @@ TEST_CASE("holderctl resource lists large projects and traverses attachment page
     REQUIRE(location["project_id"] == "home-id");
     REQUIRE(location_ids.insert(location["location_id"].get<std::string>()).second);
     location_table += location["location_id"].get<std::string>() + "\tlocal_directory\t" +
-        location["name"].get<std::string>() + "\tbinding required\n";
+                      location["name"].get<std::string>() + "\tbinding required\n";
   }
   REQUIRE(run("location list") == location_table);
   REQUIRE(read_text(error).empty());
@@ -3370,43 +3404,79 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
 
   const auto attachment_out = xdg_root / "attachment-json.out";
   auto attachment_command = [&](const std::string& args, int expected = 0) {
-    REQUIRE(run_command(bin + " resource " + args + " > \"" + attachment_out.string() +
-        "\" 2> \"" + (xdg_root / "attachment-error.out").string() + "\"") == expected);
+    REQUIRE(
+        run_command(
+            bin + " resource " + args + " > \"" + attachment_out.string() + "\" 2> \"" +
+            (xdg_root / "attachment-error.out").string() + "\""
+        ) == expected
+    );
     return read_text(attachment_out);
   };
   REQUIRE(nlohmann::json::parse(attachment_command("list 'Import Target' --json"))["data"].empty());
-  auto attachment_json = nlohmann::json::parse(attachment_command("attach abcdef12 " + resource_id + " --json"));
+  auto attachment_json = nlohmann::json::parse(
+      attachment_command("attach abcdef12 " + resource_id + " --json")
+  );
   REQUIRE(attachment_json["data"]["card_id"] == import_target.card_id);
   REQUIRE(attachment_json["data"]["resource_id"] == resource_id);
   REQUIRE(attachment_json["data"]["changed"] == true);
-  REQUIRE(nlohmann::json::parse(attachment_command("attach 'Import Target' " + resource_id + " --json"))["data"]["changed"] == false);
+  REQUIRE(
+      nlohmann::json::parse(attachment_command("attach 'Import Target' " + resource_id + " --json")
+      )["data"]["changed"] == false
+  );
   REQUIRE(attachment_command("list 'Import Target'").find(resource_id) != std::string::npos);
   attachment_json = nlohmann::json::parse(attachment_command("list abcdef12 --limit 1 --json"));
   REQUIRE(attachment_json["data"][0]["resource_id"] == resource_id);
   REQUIRE(attachment_json["card_id"] == import_target.card_id);
   REQUIRE(attachment_json["next_offset"] == 1);
-  REQUIRE(nlohmann::json::parse(attachment_command("list abcdef12 --limit 1 --offset 1 --json"))["data"].empty());
+  REQUIRE(nlohmann::json::parse(attachment_command("list abcdef12 --limit 1 --offset 1 --json")
+  )["data"]
+              .empty());
   REQUIRE(attachment_command("detach 'Import Target' " + resource_id).find("detached") == 0);
-  REQUIRE(nlohmann::json::parse(attachment_command("detach abcdef12 " + resource_id + " --json"))["data"]["changed"] == false);
+  REQUIRE(
+      nlohmann::json::parse(attachment_command("detach abcdef12 " + resource_id + " --json")
+      )["data"]["changed"] == false
+  );
   REQUIRE(nlohmann::json::parse(attachment_command("list 'Import Target' --json"))["data"].empty());
   REQUIRE(nlohmann::json::parse(attachment_command("list --json"))["data"].size() == 1);
   attachment_command("attach abcdef12 missing --json", 1);
-  REQUIRE(nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] == "not_found");
+  REQUIRE(
+      nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] ==
+      "not_found"
+  );
   attachment_command("attach abcdef12 " + resource_id.substr(0, 8) + " --json", 1);
-  REQUIRE(nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] == "not_found");
+  REQUIRE(
+      nlohmann::json::parse(read_text(xdg_root / "attachment-error.out"))["error"]["code"] ==
+      "not_found"
+  );
   attachment_command("list abcdef12 --limit 0 --json", 1);
   attachment_command("attach missing " + resource_id + " --json", 1);
   // Resolve ambiguous titles through the shared daemon resolver, never client-side listings.
-  const auto duplicate = holder::test::http_json_request(bound.bind, bound.port, token,
-      boost::beast::http::verb::post, "/cards", {{"project_id", "home-id"},
-      {"title", "Import Target"}, {"content", "Duplicate\n"}}, boost::beast::http::status::created);
-  for (const auto& args : std::vector<std::string>{"list 'Import Target' --json", "attach 'Import Target' " + resource_id + " --json",
-                           "detach 'Import Target' " + resource_id + " --json"}) {
+  const auto duplicate = holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::post,
+      "/cards",
+      {{"project_id", "home-id"}, {"title", "Import Target"}, {"content", "Duplicate\n"}},
+      boost::beast::http::status::created
+  );
+  for (const auto& args : std::vector<std::string>{
+           "list 'Import Target' --json",
+           "attach 'Import Target' " + resource_id + " --json",
+           "detach 'Import Target' " + resource_id + " --json"
+       }) {
     attachment_command(args, 1);
     REQUIRE(read_text(xdg_root / "attachment-error.out").find("ambiguous") != std::string::npos);
   }
-  holder::test::http_json_request(bound.bind, bound.port, token, boost::beast::http::verb::delete_,
-      "/cards/" + duplicate["data"]["card_id"].get<std::string>(), {}, boost::beast::http::status::ok);
+  holder::test::http_json_request(
+      bound.bind,
+      bound.port,
+      token,
+      boost::beast::http::verb::delete_,
+      "/cards/" + duplicate["data"]["card_id"].get<std::string>(),
+      {},
+      boost::beast::http::status::ok
+  );
 
   const auto add_json_out = xdg_root / "resource-add-json.out";
   REQUIRE(
@@ -3567,7 +3637,10 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       run_command(bin + " resource delete " + resource_id + " > \"" + delete_out.string() + "\"") ==
       0
   );
-  REQUIRE(read_text(delete_out) == "Deleted resource: " + resource_id + " (globally, including all relationships)\n");
+  REQUIRE(
+      read_text(delete_out) ==
+      "Deleted resource: " + resource_id + " (globally, including all relationships)\n"
+  );
 
   REQUIRE(run_command(bin + " resource show " + resource_id + " >/dev/null 2>/dev/null") == 1);
   REQUIRE(run_command(bin + " resource open empty-uri >/dev/null 2>/dev/null") == 1);
@@ -3601,9 +3674,12 @@ TEST_CASE("holderctl resource manages resources in Home by default", "[holderctl
       ) == 0
   );
   REQUIRE(read_text(import_out).find("Attached resource: ") == 0);
-  const auto imported_list = nlohmann::json::parse(attachment_command("list 'Import Target' --json"));
+  const auto imported_list = nlohmann::json::parse(attachment_command("list 'Import Target' --json")
+  );
   REQUIRE(imported_list["data"].size() == 1);
-  const auto import_json = nlohmann::json::parse(attachment_command("import 'Import Target' \"" + import_source.string() + "\" --json"));
+  const auto import_json = nlohmann::json::parse(
+      attachment_command("import 'Import Target' \"" + import_source.string() + "\" --json")
+  );
   REQUIRE(import_json["data"]["card_id"] == import_target.card_id);
   REQUIRE(import_json["data"]["resource_id"] == imported_list["data"][0]["resource_id"]);
   REQUIRE(import_json["data"]["changed"] == false);

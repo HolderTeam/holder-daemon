@@ -120,8 +120,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -230,8 +232,10 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -300,8 +304,10 @@ TEST_CASE("AiRunPostRoute direct returns runner_unavailable when cloud catalog m
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
 
@@ -418,8 +424,10 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   seed_provider_credential(db, *secret_store, "second", "test-key", 1, 1);
@@ -476,8 +484,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -617,8 +627,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -720,8 +732,10 @@ TEST_CASE("AiRunPostRoute local path rejects unknown forced model", "[http]") {
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
 
@@ -808,8 +822,10 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
@@ -884,8 +900,10 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     holder::ai::AiProviderCredentialRepo(db).upsert("switchyard", "preview", 1, 1);
@@ -934,8 +952,10 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
@@ -999,8 +1019,10 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
@@ -1064,8 +1086,10 @@ TEST_CASE("AiRunPostRoute direct validates cloud secrets and runner-model select
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     holder::ai::AiRunnerRepo(db).upsert(holder::model::AiRunner{
@@ -1139,8 +1163,10 @@ TEST_CASE(
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1245,8 +1271,10 @@ TEST_CASE(
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1348,8 +1376,10 @@ TEST_CASE(
 
     holder::platform::Db db = holder::test::open_db_with_schema(db_path);
     db.exec(
-        std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                    "VALUES('proj-1', 'Project', '") +
+        std::string(
+            "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+            "VALUES('proj-1', 'Project', '"
+        ) +
         repo_dir.string() + "', 'plain', 1, 1);"
     );
     db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1534,8 +1564,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records below_threshold reason", "[ht
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1656,8 +1688,10 @@ TEST_CASE("AiRunPostRoute cloud failure records cooldown for selected model", "[
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -1798,8 +1832,10 @@ TEST_CASE("AiRunPostRoute cloud path records attempt rejection reasons on failed
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -1979,8 +2015,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_interval_not_elapsed reas
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2114,8 +2152,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records min_delta_not_met reason", "[
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2249,8 +2289,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records cooldown_active reason", "[ht
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2394,8 +2436,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2535,8 +2579,10 @@ TEST_CASE("AiRunPostRoute cloud compaction summary refresh rejects rpm limit", "
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2619,8 +2665,10 @@ TEST_CASE("AiRunPostRoute local write-header failure returns early", "[http]") {
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
 
@@ -2671,8 +2719,10 @@ TEST_CASE("AiRunPostRoute local path marks run failed when all models fail", "[h
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2781,8 +2831,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2889,8 +2941,10 @@ TEST_CASE(
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -2989,8 +3043,10 @@ TEST_CASE("AiRunPostRoute local replies use configured strong model", "[http]") 
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -3099,8 +3155,10 @@ TEST_CASE("AiRunPostRoute title generation honors configured fast model runner",
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -3281,8 +3339,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records quality_guard_failed reason",
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -3418,8 +3478,10 @@ TEST_CASE("AiRunPostRoute cloud compaction records failed summary refresh cooldo
 
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -3505,8 +3567,10 @@ TEST_CASE("HTTP ai runs post stores run and messages", "[http]") {
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO cards(card_id, project_id, title, rel_path, created_at, updated_at) "
@@ -3634,8 +3698,10 @@ TEST_CASE("HTTP ai runs provider request forces cloud even when local runner is 
   const auto repo_dir = dir / "repo";
   std::filesystem::create_directories(repo_dir);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   seed_provider_credential(db, *secret_store, "switchyard", "test-key", 1, 1);
@@ -4006,8 +4072,10 @@ TEST_CASE(
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "
@@ -4149,8 +4217,10 @@ TEST_CASE("HTTP ai runs can target a manual runner by runner_id", "[http]") {
   std::filesystem::create_directories(repo_dir);
   holder::platform::Db db = holder::test::open_db_with_schema(db_path);
   db.exec(
-      std::string("INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
-                  "VALUES('proj-1', 'Project', '") +
+      std::string(
+          "INSERT INTO projects(project_id, name, root_path, privacy_mode, created_at, updated_at) "
+          "VALUES('proj-1', 'Project', '"
+      ) +
       repo_dir.string() + "', 'plain', 1, 1);"
   );
   db.exec("INSERT INTO ai_threads(thread_id, project_id, title, created_at, updated_at) "

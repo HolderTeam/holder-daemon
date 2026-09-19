@@ -17,10 +17,7 @@ inline DatabaseHealthResult inspect_database_health(const std::filesystem::path&
   return holder::platform::inspect_database_health(path);
 }
 
-void audit_durable_database_ownership(
-    holder::platform::Db& db,
-    const holder::core::Paths& paths
-);
+void audit_durable_database_ownership(holder::platform::Db& db, const holder::core::Paths& paths);
 bool database_rebuild_is_ready(const holder::core::Paths& paths);
 void mark_database_rebuild_ready(const holder::core::Paths& paths);
 

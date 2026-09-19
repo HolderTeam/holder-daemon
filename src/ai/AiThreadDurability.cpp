@@ -11,10 +11,7 @@
 namespace holder::ai {
 namespace {
 
-holder::model::Project require_project(
-    holder::platform::Db& db,
-    const std::string& project_id
-) {
+holder::model::Project require_project(holder::platform::Db& db, const std::string& project_id) {
   const auto project = holder::project::ProjectRepo(db).get(project_id);
   if (!project.has_value()) throw std::runtime_error("project not found for AI thread");
   return *project;

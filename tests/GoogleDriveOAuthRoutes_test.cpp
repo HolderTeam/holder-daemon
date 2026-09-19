@@ -150,8 +150,10 @@ TEST_CASE(
       nlohmann::json::object(),
       boost::beast::http::status::bad_request
   );
-  REQUIRE(response["error"]["message"].get<std::string>().find("HOLDER_GOOGLE_OAUTH_CLIENT_ID")
-          != std::string::npos);
+  REQUIRE(
+      response["error"]["message"].get<std::string>().find("HOLDER_GOOGLE_OAUTH_CLIENT_ID") !=
+      std::string::npos
+  );
 }
 
 TEST_CASE(
@@ -210,8 +212,8 @@ TEST_CASE(
       running.bound.port,
       "",
       boost::beast::http::verb::get,
-      "/locations/" + location_id +
-          "/oauth/google-drive/callback?state=not-" + real_state + "&code=some-code"
+      "/locations/" + location_id + "/oauth/google-drive/callback?state=not-" + real_state +
+          "&code=some-code"
   );
   REQUIRE(response.status == boost::beast::http::status::bad_request);
   REQUIRE(response.body.find("Connection failed") != std::string::npos);
@@ -247,8 +249,8 @@ TEST_CASE(
       running.bound.port,
       "",
       boost::beast::http::verb::get,
-      "/locations/" + location_id +
-          "/oauth/google-drive/callback?state=" + real_state + "&error=access_denied"
+      "/locations/" + location_id + "/oauth/google-drive/callback?state=" + real_state +
+          "&error=access_denied"
   );
   REQUIRE(response.status == boost::beast::http::status::ok);
   REQUIRE(response.body.find("cancelled") != std::string::npos);
