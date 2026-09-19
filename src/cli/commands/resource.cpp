@@ -1,13 +1,13 @@
 #include "cli/commands/Commands.h"
 
-#include "cli/commands/Support.h"
 #include "cli/commands/Download.h"
+#include "cli/commands/Support.h"
 
 #include <nlohmann/json.hpp>
 
-#include <chrono>
-#include <charconv>
 #include <algorithm>
+#include <charconv>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -162,7 +162,10 @@ ResourceListOptions parse_resource_list_options(int argc, char* argv[]) {
     } else if (!arg.empty() && arg.front() != '-' && !options.card_reference.has_value()) {
       options.card_reference = arg;
     } else {
-      throw CliError("invalid_arguments", "Usage: holderctl resource list [CARD] [--json] [--filter QUERY] [--limit N] [--offset N]");
+      throw CliError(
+          "invalid_arguments",
+          "Usage: holderctl resource list [CARD] [--json] [--filter QUERY] [--limit N] [--offset N]"
+      );
     }
   }
   if (options.page_requested && !options.card_reference.has_value()) {
@@ -340,14 +343,12 @@ std::string metadata_first(const nlohmann::json& resource, const std::string& pr
 }
 
 void print_resource_row(const nlohmann::json& resource) {
-  std::cout << json_string(resource, "resource_id") << "\t" << json_string(resource, "type")
-            << "\t" << json_string(resource, "label") << "\t"
-            << metadata_first(resource, "identifier") << "\n";
+  std::cout << json_string(resource, "resource_id") << "\t" << json_string(resource, "type") << "\t"
+            << json_string(resource, "label") << "\t" << metadata_first(resource, "identifier")
+            << "\n";
 }
 
-void open_resource_uri(const std::string& uri) {
-  open_external_uri(uri);
-}
+void open_resource_uri(const std::string& uri) { open_external_uri(uri); }
 
 } // namespace
 
@@ -360,8 +361,9 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
   if (subcommand == "--help" || subcommand == "-h" ||
       (argc == 4 && (std::string(argv[3]) == "--help" || std::string(argv[3]) == "-h")) ||
       (subcommand == "location" && argc == 5 &&
-          (std::string(argv[4]) == "--help" || std::string(argv[4]) == "-h"))) {
-    std::cout << resource_usage() << "\n"
+       (std::string(argv[4]) == "--help" || std::string(argv[4]) == "-h"))) {
+    std::cout
+        << resource_usage() << "\n"
         << "  list [CARD] [--json] [--filter QUERY] [--limit N] [--offset N]\n"
         << "    Without CARD: project resources. With CARD: live-card attachments (default limit 100).\n"
         << "    --limit (1..1000) and --offset require CARD; --filter searches only the returned page.\n"
@@ -410,51 +412,75 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::string output = "-";
       bool output_seen = false;
       std::vector<std::string> positional;
-      const std::string usage = "Usage: holderctl resource export RESOURCE_ID [ASSET_ID] [--output PATH|-] [--json]";
+      const std::string usage =
+          "Usage: holderctl resource export RESOURCE_ID [ASSET_ID] [--output PATH|-] [--json]";
       for (int i = 3; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "--json") json_output = true;
+        if (arg == "--json")
+          json_output = true;
         else if (arg == "--output" && !output_seen && i + 1 < argc) {
           output = argv[++i];
           output_seen = true;
           if (output.empty() || output.rfind("--", 0) == 0) {
-            throw CliError("invalid_arguments", "--output requires a path or - (use ./ for paths beginning with --)");
+            throw CliError(
+                "invalid_arguments",
+                "--output requires a path or - (use ./ for paths beginning with --)"
+            );
           }
-        } else if (arg.empty() || arg.front() == '-') throw CliError("invalid_arguments", usage);
-        else positional.push_back(arg);
+        } else if (arg.empty() || arg.front() == '-')
+          throw CliError("invalid_arguments", usage);
+        else
+          positional.push_back(arg);
       }
       if (positional.empty() || positional.size() > 2) throw CliError("invalid_arguments", usage);
       if (json_output && output == "-") {
-        throw CliError("invalid_arguments", "--json requires --output PATH; stdout is reserved for asset bytes.");
+        throw CliError(
+            "invalid_arguments",
+            "--json requires --output PATH; stdout is reserved for asset bytes."
+        );
       }
       const auto project_id = json_string(require_current_project_payload(paths), "project_id");
-      const auto payload = card_api_request(paths, boost::beast::http::verb::get,
-          "/resources/" + url_encode_component(positional[0]));
+      const auto payload = card_api_request(
+          paths,
+          boost::beast::http::verb::get,
+          "/resources/" + url_encode_component(positional[0])
+      );
       const auto& resource = payload.at("data");
       const auto resource_id = json_string(resource, "resource_id");
       if (json_string(resource, "project_id") != project_id) {
-        throw CliError("cross_project_resource_forbidden", "Resource is in a different project.",
-            {{"resource_id", resource_id}, {"project_id", project_id}});
+        throw CliError(
+            "cross_project_resource_forbidden",
+            "Resource is in a different project.",
+            {{"resource_id", resource_id}, {"project_id", project_id}}
+        );
       }
       const auto& assets = resource.at("assets");
       std::string asset_id;
-      if (positional.size() == 2) asset_id = positional[1];
-      else if (assets.size() == 1) asset_id = json_string(assets.at(0), "asset_id");
+      if (positional.size() == 2)
+        asset_id = positional[1];
+      else if (assets.size() == 1)
+        asset_id = json_string(assets.at(0), "asset_id");
       else {
-        throw CliError(assets.empty() ? "no_exportable_asset" : "ambiguous_asset",
-            assets.empty() ? "Resource has no stored assets to export." : "Resource has multiple assets; pass ASSET_ID.",
-            {{"resource_id", resource_id}, {"candidates", assets}});
+        throw CliError(
+            assets.empty() ? "no_exportable_asset" : "ambiguous_asset",
+            assets.empty() ? "Resource has no stored assets to export."
+                           : "Resource has multiple assets; pass ASSET_ID.",
+            {{"resource_id", resource_id}, {"candidates", assets}}
+        );
       }
       const auto selected = std::find_if(assets.begin(), assets.end(), [&](const auto& asset) {
         return json_string(asset, "asset_id") == asset_id;
       });
       if (selected == assets.end()) {
-        throw CliError("asset_not_found", "Asset not found in resource.",
-            {{"resource_id", resource_id}, {"asset_id", asset_id}});
+        throw CliError(
+            "asset_not_found",
+            "Asset not found in resource.",
+            {{"resource_id", resource_id}, {"asset_id", asset_id}}
+        );
       }
       const auto connection = read_secure_daemon_connection(paths);
       const auto target = "/resources/" + url_encode_component(resource_id) + "/assets/" +
-          url_encode_component(asset_id) + "/content";
+                          url_encode_component(asset_id) + "/content";
       const auto timeout = std::chrono::seconds(300);
       DownloadMetadata metadata;
       if (output == "-") {
@@ -463,21 +489,31 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
           throw CliError("output_failed", "Could not set stdout to binary mode.");
         }
 #endif
-        metadata = http_download(connection, target, timeout, [](const char* bytes, std::size_t count) {
-          std::cout.write(bytes, static_cast<std::streamsize>(count));
-          if (!std::cout) throw CliError("output_failed", "Could not write asset bytes to stdout.");
-        });
+        metadata =
+            http_download(connection, target, timeout, [](const char* bytes, std::size_t count) {
+              std::cout.write(bytes, static_cast<std::streamsize>(count));
+              if (!std::cout)
+                throw CliError("output_failed", "Could not write asset bytes to stdout.");
+            });
         std::cout.flush();
         if (!std::cout) throw CliError("output_failed", "Could not flush asset bytes to stdout.");
       } else {
         metadata = download_to_file(connection, target, output, timeout);
         if (json_output) {
-          std::cout << nlohmann::json({{"ok", true}, {"data", {
-              {"resource_id", resource_id}, {"asset_id", asset_id}, {"output", output},
-              {"changed", true}, {"byte_size", metadata.byte_size},
-              {"content_type", metadata.content_type}, {"filename", metadata.filename},
-              {"content_disposition", metadata.content_disposition}}}}).dump(2) << "\n";
-        } else std::cerr << "Exported resource: " << resource_id << " to " << output << "\n";
+          std::cout << nlohmann::json({{"ok", true},
+                                       {"data",
+                                        {{"resource_id", resource_id},
+                                         {"asset_id", asset_id},
+                                         {"output", output},
+                                         {"changed", true},
+                                         {"byte_size", metadata.byte_size},
+                                         {"content_type", metadata.content_type},
+                                         {"filename", metadata.filename},
+                                         {"content_disposition", metadata.content_disposition}}}}
+                       ).dump(2)
+                    << "\n";
+        } else
+          std::cerr << "Exported resource: " << resource_id << " to " << output << "\n";
       }
       return 0;
     }
@@ -486,23 +522,37 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       std::vector<std::string> positional;
       for (int i = 3; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "--json") json_output = true;
+        if (arg == "--json")
+          json_output = true;
         else if (arg.empty() || arg.front() == '-') {
-          throw CliError("invalid_arguments", "Usage: holderctl resource " + subcommand + " CARD RESOURCE_ID [--json]");
-        } else positional.push_back(arg);
+          throw CliError(
+              "invalid_arguments",
+              "Usage: holderctl resource " + subcommand + " CARD RESOURCE_ID [--json]"
+          );
+        } else
+          positional.push_back(arg);
       }
       if (positional.size() != 2) {
-        throw CliError("invalid_arguments", "Usage: holderctl resource " + subcommand + " CARD RESOURCE_ID [--json]");
+        throw CliError(
+            "invalid_arguments",
+            "Usage: holderctl resource " + subcommand + " CARD RESOURCE_ID [--json]"
+        );
       }
       const auto project_id = json_string(require_current_project_payload(paths), "project_id");
-      const auto card_id = resolve_card_reference(paths, project_id, positional[0], CardReferenceScope::Live);
-      const auto payload = card_api_request(paths,
-          subcommand == "attach" ? boost::beast::http::verb::post : boost::beast::http::verb::delete_,
+      const auto card_id =
+          resolve_card_reference(paths, project_id, positional[0], CardReferenceScope::Live);
+      const auto payload = card_api_request(
+          paths,
+          subcommand == "attach" ? boost::beast::http::verb::post
+                                 : boost::beast::http::verb::delete_,
           "/cards/" + url_encode_component(card_id) + "/resources",
-          {{"project_id", project_id}, {"resource_id", positional[1]}});
-      if (json_output) std::cout << payload.dump(2) << "\n";
-      else std::cout << json_string(payload.at("data"), "outcome") << ": "
-          << json_string(payload.at("data"), "resource_id") << "\n";
+          {{"project_id", project_id}, {"resource_id", positional[1]}}
+      );
+      if (json_output)
+        std::cout << payload.dump(2) << "\n";
+      else
+        std::cout << json_string(payload.at("data"), "outcome") << ": "
+                  << json_string(payload.at("data"), "resource_id") << "\n";
       return 0;
     }
     if (subcommand == "import") {
@@ -519,11 +569,16 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       bool json_output = false;
       for (int i = 5; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "--json") json_output = true;
+        if (arg == "--json")
+          json_output = true;
         else if (arg == "--location" && i + 1 < argc && location_id.empty()) {
           location_id = argv[++i];
           if (location_id.empty()) throw CliError("invalid_arguments", "--location requires an ID");
-        } else throw CliError("invalid_arguments", "Usage: holderctl resource import CARD FILE [--location ID] [--json]");
+        } else
+          throw CliError(
+              "invalid_arguments",
+              "Usage: holderctl resource import CARD FILE [--location ID] [--json]"
+          );
       }
       if (location_id.empty()) {
         const auto locations = card_api_request(
@@ -602,8 +657,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         } else {
           for (const auto& location : payload.at("data")) {
             std::cout << json_string(location, "location_id") << "\t"
-                      << json_string(location, "provider") << "\t"
-                      << json_string(location, "name") << "\t"
+                      << json_string(location, "provider") << "\t" << json_string(location, "name")
+                      << "\t"
                       << (location.value("bound", false) ? "configured" : "binding required")
                       << "\n";
           }
@@ -612,8 +667,7 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       }
       if (action == "add-local") {
         if (argc != 6) {
-          throw std::runtime_error(
-              "Usage: holderctl resource location add-local <name> <directory>"
+          throw std::runtime_error("Usage: holderctl resource location add-local <name> <directory>"
           );
         }
         const auto root = std::filesystem::absolute(argv[5]).lexically_normal();
@@ -688,7 +742,9 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         );
         const auto location_id = json_string(created.at("data"), "location_id");
         nlohmann::json values = {
-            {"access_key_id", argv[8]}, {"secret_access_key", std::string(secret)}};
+            {"access_key_id", argv[8]},
+            {"secret_access_key", std::string(secret)}
+        };
         if (const char* session = std::getenv("HOLDER_S3_SESSION_TOKEN");
             session != nullptr && std::string(session).length() > 0) {
           values["session_token"] = session;
@@ -697,8 +753,7 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
             paths,
             boost::beast::http::verb::put,
             "/locations/" + url_encode_component(location_id) + "/binding",
-            {{"values", values},
-             {"preview", std::string(argv[5]) + "/" + std::string(argv[7])}}
+            {{"values", values}, {"preview", std::string(argv[5]) + "/" + std::string(argv[7])}}
         );
         (void)card_api_request(
             paths,
@@ -748,12 +803,21 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       nlohmann::json payload;
       if (options.card_reference.has_value()) {
         const auto project_id = json_string(require_current_project_payload(paths), "project_id");
-        const auto card_id = resolve_card_reference(paths, project_id, *options.card_reference, CardReferenceScope::Live);
-        payload = card_api_request(paths, boost::beast::http::verb::get,
+        const auto card_id = resolve_card_reference(
+            paths,
+            project_id,
+            *options.card_reference,
+            CardReferenceScope::Live
+        );
+        payload = card_api_request(
+            paths,
+            boost::beast::http::verb::get,
             "/resources?project_id=" + url_encode_component(project_id) + "&card_id=" +
-            url_encode_component(card_id) + "&limit=" + std::to_string(options.limit) +
-            "&offset=" + std::to_string(options.offset));
-      } else payload = list_current_project_resources_payload(paths);
+                url_encode_component(card_id) + "&limit=" + std::to_string(options.limit) +
+                "&offset=" + std::to_string(options.offset)
+        );
+      } else
+        payload = list_current_project_resources_payload(paths);
       if (options.filter.empty()) {
         if (options.json_output) {
           std::cout << payload.dump(2) << "\n";
@@ -775,7 +839,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
 
       const auto& resources = payload.at("data");
       if (payload.contains("next_offset") && !payload.at("next_offset").is_null()) {
-        std::cerr << "More attachments may be available; use --offset " << payload.at("next_offset") << ".\n";
+        std::cerr << "More attachments may be available; use --offset " << payload.at("next_offset")
+                  << ".\n";
       }
       if (!resources.is_array() || resources.empty()) {
         std::cout << "No resources.\n";
@@ -796,7 +861,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
       // LCOV_EXCL_START
       nlohmann::json metadata = nlohmann::json::object();
       metadata["identifier"] = nlohmann::json::array({options.uri});
-      if (options.desc.has_value()) metadata["description"] = nlohmann::json::array({*options.desc});
+      if (options.desc.has_value())
+        metadata["description"] = nlohmann::json::array({*options.desc});
       nlohmann::json body = {
           {"project_id", project_id},
           {"type", options.kind},
@@ -855,7 +921,8 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
     if (subcommand == "edit") {
       const auto options = parse_resource_edit_options(argc, argv);
       const auto resources_payload = list_current_project_resources_payload(paths);
-      const auto existing = find_resource_in_payload(resources_payload.at("data"), options.resource_id);
+      const auto existing =
+          find_resource_in_payload(resources_payload.at("data"), options.resource_id);
 
       nlohmann::json body;
       body["updated_at"] = now_epoch_seconds();
@@ -901,8 +968,11 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
 
     if (subcommand == "delete") {
       const bool json_output = argc == 5 && std::string(argv[4]) == "--json";
-      const auto resource_id = parse_single_resource_id(json_output ? 4 : argc, argv,
-          "Usage: holderctl resource delete RESOURCE_ID [--json] (deletes globally, not just one attachment)");
+      const auto resource_id = parse_single_resource_id(
+          json_output ? 4 : argc,
+          argv,
+          "Usage: holderctl resource delete RESOURCE_ID [--json] (deletes globally, not just one attachment)"
+      );
       const auto resources_payload = list_current_project_resources_payload(paths);
       (void)find_resource_in_payload(resources_payload.at("data"), resource_id);
       const auto payload = card_api_request(
@@ -910,8 +980,11 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
           boost::beast::http::verb::delete_,
           "/resources/" + url_encode_component(resource_id)
       );
-      if (json_output) std::cout << payload.dump(2) << "\n";
-      else std::cout << "Deleted resource: " << resource_id << " (globally, including all relationships)\n";
+      if (json_output)
+        std::cout << payload.dump(2) << "\n";
+      else
+        std::cout << "Deleted resource: " << resource_id
+                  << " (globally, including all relationships)\n";
       return 0;
     }
   } catch (const CliError&) {

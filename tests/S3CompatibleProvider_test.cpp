@@ -34,10 +34,7 @@ std::string required_environment(const char* name) {
 class BodylessHeadServer {
  public:
   BodylessHeadServer()
-      : acceptor_(
-            context_,
-            {boost::asio::ip::make_address("127.0.0.1"), 0}
-        ),
+      : acceptor_(context_, {boost::asio::ip::make_address("127.0.0.1"), 0}),
         thread_([this]() {
           serve();
         }) {}
@@ -49,18 +46,14 @@ class BodylessHeadServer {
   BodylessHeadServer(const BodylessHeadServer&) = delete;
   BodylessHeadServer& operator=(const BodylessHeadServer&) = delete;
 
-  std::uint16_t port() const {
-    return acceptor_.local_endpoint().port();
-  }
+  std::uint16_t port() const { return acceptor_.local_endpoint().port(); }
 
   void finish() {
     if (thread_.joinable()) thread_.join();
     if (error_) std::rethrow_exception(error_);
   }
 
-  const std::string& request_method() const {
-    return request_method_;
-  }
+  const std::string& request_method() const { return request_method_; }
 
  private:
   void serve() {
@@ -80,12 +73,11 @@ class BodylessHeadServer {
       // HEAD response headers but no body bytes. Keep the connection alive
       // briefly to reproduce the behaviour that made a normal body parser
       // wait against MinIO.
-      const std::string response =
-          "HTTP/1.1 200 OK\r\n"
-          "Content-Length: 4096\r\n"
-          "Content-Type: application/octet-stream\r\n"
-          "Connection: keep-alive\r\n"
-          "\r\n";
+      const std::string response = "HTTP/1.1 200 OK\r\n"
+                                   "Content-Length: 4096\r\n"
+                                   "Content-Type: application/octet-stream\r\n"
+                                   "Connection: keep-alive\r\n"
+                                   "\r\n";
       boost::asio::write(socket, boost::asio::buffer(response));
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -105,10 +97,7 @@ class BodylessHeadServer {
 
 } // namespace
 
-TEST_CASE(
-    "S3-compatible provider accepts bodyless HEAD with object Content-Length",
-    "[s3]"
-) {
+TEST_CASE("S3-compatible provider accepts bodyless HEAD with object Content-Length", "[s3]") {
   BodylessHeadServer server;
   holder::storage::S3CompatibleConfig config{
       .endpoint = "http://127.0.0.1:" + std::to_string(server.port()),
@@ -152,9 +141,7 @@ TEST_CASE("S3-compatible provider round-trips an object", "[s3][integration]") {
   };
   holder::storage::S3CompatibleProvider provider(config, credentials);
 
-  const auto nonce = std::to_string(
-      std::chrono::steady_clock::now().time_since_epoch().count()
-  );
+  const auto nonce = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
   const auto root = std::filesystem::temp_directory_path() / ("holder_s3_test_" + nonce);
   std::filesystem::create_directories(root);
   const auto source = root / "source.bin";

@@ -46,10 +46,7 @@ class GoogleDriveProvider final : public holder::resource::StorageProvider {
       long long stored_size,
       const std::string& stored_sha256
   ) override;
-  void get(
-      const std::string& object_key,
-      const std::filesystem::path& destination_file
-  ) override;
+  void get(const std::string& object_key, const std::filesystem::path& destination_file) override;
   bool exists(const std::string& object_key) override;
   void remove(const std::string& object_key) override;
 

@@ -55,8 +55,7 @@ nlohmann::json load_ledger(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in) throw std::runtime_error("failed to open cloud usage ledger");
   auto body = nlohmann::json::parse(in);
-  if (body.value("version", 0) != 1 || !body.contains("events") ||
-      !body.at("events").is_array()) {
+  if (body.value("version", 0) != 1 || !body.contains("events") || !body.at("events").is_array()) {
     throw std::runtime_error("unsupported cloud usage ledger format");
   }
   return body;
@@ -141,24 +140,20 @@ long long failure_cooldown_seconds(
 
 } // namespace
 
-void restore_cloud_usage_ledger(
-    holder::platform::Db& db,
-    const std::filesystem::path& path
-) {
+void restore_cloud_usage_ledger(holder::platform::Db& db, const std::filesystem::path& path) {
   std::lock_guard lock(usage_ledger_mutex);
   const auto body = load_ledger(path);
-  for (const auto& event : body.at("events")) insert_event(db, event);
+  for (const auto& event : body.at("events"))
+    insert_event(db, event);
 }
 
-void initialize_cloud_usage_ledger(
-    holder::platform::Db& db,
-    const std::filesystem::path& path
-) {
+void initialize_cloud_usage_ledger(holder::platform::Db& db, const std::filesystem::path& path) {
   std::lock_guard lock(usage_ledger_mutex);
   usage_ledger_path = path;
   if (std::filesystem::exists(path)) {
     const auto body = load_ledger(path);
-    for (const auto& event : body.at("events")) insert_event(db, event);
+    for (const auto& event : body.at("events"))
+      insert_event(db, event);
     return;
   }
 

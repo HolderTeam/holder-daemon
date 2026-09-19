@@ -61,9 +61,8 @@ std::optional<long long> parse_required_epoch(
     http::response<http::string_body>& res
 ) {
   if (raw.empty()) {
-    res = support::error_response(
-        http::status::bad_request, "bad_request", "Missing " + name + "."
-    );
+    res =
+        support::error_response(http::status::bad_request, "bad_request", "Missing " + name + ".");
     return std::nullopt;
   }
   try {
@@ -73,16 +72,15 @@ std::optional<long long> parse_required_epoch(
     return value;
   } catch (const std::exception&) {
     res = support::error_response(
-        http::status::bad_request, "bad_request", name + " must be an epoch-second integer."
+        http::status::bad_request,
+        "bad_request",
+        name + " must be an epoch-second integer."
     );
     return std::nullopt;
   }
 }
 
-std::optional<std::string> nullable_string(
-    const nlohmann::json& body,
-    const std::string& name
-) {
+std::optional<std::string> nullable_string(const nlohmann::json& body, const std::string& name) {
   if (!body.contains(name) || body.at(name).is_null()) return std::nullopt;
   if (!body.at(name).is_string()) throw std::invalid_argument(name + " must be a string or null.");
   const auto value = body.at(name).get<std::string>();
@@ -128,9 +126,8 @@ bool handle_milestone_routes(
   if (path == "/calendar" && req.method() == http::verb::get) {
     const auto project_id = param_get("project_id");
     if (project_id.empty()) {
-      res = support::error_response(
-          http::status::bad_request, "bad_request", "Missing project_id."
-      );
+      res =
+          support::error_response(http::status::bad_request, "bad_request", "Missing project_id.");
       return true;
     }
     const auto from = parse_required_epoch(param_get("from"), "from", res);
@@ -139,7 +136,9 @@ bool handle_milestone_routes(
     if (!to.has_value()) return true;
     if (*from > *to) {
       res = support::error_response(
-          http::status::bad_request, "bad_request", "from must not be after to."
+          http::status::bad_request,
+          "bad_request",
+          "from must not be after to."
       );
       return true;
     }
@@ -159,7 +158,8 @@ bool handle_milestone_routes(
         if (card.created_at >= *from && card.created_at <= *to) {
           created_cards.push_back(card_activity_json(card));
         }
-        if (card.updated_at != card.created_at && card.updated_at >= *from && card.updated_at <= *to) {
+        if (card.updated_at != card.created_at && card.updated_at >= *from &&
+            card.updated_at <= *to) {
           updated_cards.push_back(card_activity_json(card));
         }
       }
@@ -169,10 +169,7 @@ bool handle_milestone_routes(
            holder::card::MilestoneRepo(db).list_in_range(project_id, *from, *to)) {
         const auto title = active_titles.find(milestone.card_id);
         if (title == active_titles.end()) continue;
-        milestones.push_back(milestone_json(
-            milestone,
-            std::optional<std::string>(title->second)
-        ));
+        milestones.push_back(milestone_json(milestone, std::optional<std::string>(title->second)));
       }
       res = support::json_response(
           http::status::ok,
@@ -219,7 +216,9 @@ bool handle_milestone_routes(
     if (!milestone_id.has_value() && req.method() == http::verb::post) {
       if (card_store == nullptr) {
         res = support::error_response(
-            http::status::not_implemented, "not_implemented", "Card store unavailable."
+            http::status::not_implemented,
+            "not_implemented",
+            "Card store unavailable."
         );
         return true;
       }
@@ -255,7 +254,8 @@ bool handle_milestone_routes(
       repo.replace_for_card(card->project_id, card_id, milestones);
       card_store->update_milestones(card_id, support::now_epoch_seconds());
       res = support::json_response(
-          http::status::created, {{"ok", true}, {"data", milestone_json(milestone)}}
+          http::status::created,
+          {{"ok", true}, {"data", milestone_json(milestone)}}
       );
       return true;
     }
@@ -263,7 +263,9 @@ bool handle_milestone_routes(
     if (milestone_id.has_value() && req.method() == http::verb::delete_) {
       if (card_store == nullptr) {
         res = support::error_response(
-            http::status::not_implemented, "not_implemented", "Card store unavailable."
+            http::status::not_implemented,
+            "not_implemented",
+            "Card store unavailable."
         );
         return true;
       }
@@ -273,7 +275,9 @@ bool handle_milestone_routes(
           std::remove_if(
               milestones.begin(),
               milestones.end(),
-              [&](const auto& milestone) { return milestone.milestone_id == *milestone_id; }
+              [&](const auto& milestone) {
+                return milestone.milestone_id == *milestone_id;
+              }
           ),
           milestones.end()
       );
@@ -293,7 +297,9 @@ bool handle_milestone_routes(
     if (milestone_id.has_value() && req.method() == http::verb::patch) {
       if (card_store == nullptr) {
         res = support::error_response(
-            http::status::not_implemented, "not_implemented", "Card store unavailable."
+            http::status::not_implemented,
+            "not_implemented",
+            "Card store unavailable."
         );
         return true;
       }
@@ -341,16 +347,19 @@ bool handle_milestone_routes(
       }
 
       const auto updated = card_store->update_milestone(
-          card->project_id, card_id, *milestone_id, update, support::now_epoch_seconds()
+          card->project_id,
+          card_id,
+          *milestone_id,
+          update,
+          support::now_epoch_seconds()
       );
       if (!updated.has_value()) {
-        res = support::error_response(
-            http::status::not_found, "not_found", "Milestone not found."
-        );
+        res = support::error_response(http::status::not_found, "not_found", "Milestone not found.");
         return true;
       }
       res = support::json_response(
-          http::status::ok, {{"ok", true}, {"data", milestone_json(*updated)}}
+          http::status::ok,
+          {{"ok", true}, {"data", milestone_json(*updated)}}
       );
       return true;
     }

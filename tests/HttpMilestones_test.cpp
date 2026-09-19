@@ -48,7 +48,10 @@ holder::model::Card card(
 
 } // namespace
 
-TEST_CASE("HTTP milestones persist through cards and feed the project calendar", "[http][milestones]") {
+TEST_CASE(
+    "HTTP milestones persist through cards and feed the project calendar",
+    "[http][milestones]"
+) {
   const auto dir = make_temp_dir();
   auto db = open_db_with_schema(dir / "holder.db");
   create_project(db, "proj-1", (dir / "project_repo").string());

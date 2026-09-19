@@ -1,8 +1,8 @@
 #include "api/routes/ai/messages/AiMessageCaptureRoutes.h"
 
 #include "ai/AiMessageRepo.h"
-#include "ai/AiThreadRepo.h"
 #include "ai/AiThreadDurability.h"
+#include "ai/AiThreadRepo.h"
 #include "api/support/HttpResponses.h"
 #include "api/support/Time.h"
 #include "project/ProjectRepo.h"

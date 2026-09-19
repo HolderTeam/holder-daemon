@@ -1,5 +1,5 @@
-#include "http_test_helpers.h"
 #include "TestCommand.h"
+#include "http_test_helpers.h"
 
 #include "api/HttpServer.h"
 #include "card/CardRepo.h"
@@ -28,9 +28,7 @@
 
 namespace {
 
-int run_command(const std::string& cmd) {
-  return holder::test::run_system_command(cmd);
-}
+int run_command(const std::string& cmd) { return holder::test::run_system_command(cmd); }
 
 class CwdGuard {
  public:
@@ -157,7 +155,10 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   REQUIRE(cards2.size() == 1);
 }
 
-TEST_CASE("holderctl database rebuild dry-run invokes the offline daemon command", "[cli][database]") {
+TEST_CASE(
+    "holderctl database rebuild dry-run invokes the offline daemon command",
+    "[cli][database]"
+) {
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";
   std::filesystem::create_directories(xdg_root);
@@ -168,11 +169,8 @@ TEST_CASE("holderctl database rebuild dry-run invokes the offline daemon command
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
   CwdGuard cwd(repo_root);
 
-  REQUIRE(run_command("\"" + std::string(HOLDER_CTL_PATH) +
-                      "\" database rebuild --dry-run") == 0);
-  REQUIRE_FALSE(std::filesystem::exists(
-      xdg_root / "data" / "holder" / "server" / "holder.db"
-  ));
+  REQUIRE(run_command("\"" + std::string(HOLDER_CTL_PATH) + "\" database rebuild --dry-run") == 0);
+  REQUIRE_FALSE(std::filesystem::exists(xdg_root / "data" / "holder" / "server" / "holder.db"));
 }
 
 TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migrations]") {
@@ -217,7 +215,8 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
   holder::platform::Db upgraded_db;
   upgraded_db.open(db_path);
   REQUIRE_NOTHROW(holder::platform::Migrations::ensure_schema_version(
-      upgraded_db, holder::platform::Migrations::latest_schema_version
+      upgraded_db,
+      holder::platform::Migrations::latest_schema_version
   ));
   holder::card::TagRepo tag_repo(upgraded_db);
   REQUIRE(

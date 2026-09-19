@@ -94,7 +94,11 @@ std::optional<std::string> parse_callback_location_id(const std::string& path) {
   return path.substr(kPrefix.size(), path.size() - kPrefix.size() - kSuffix.size());
 }
 
-http::response<http::string_body> html_response(http::status status, const std::string& title, const std::string& message) {
+http::response<http::string_body> html_response(
+    http::status status,
+    const std::string& title,
+    const std::string& message
+) {
   http::response<http::string_body> res{status, 11};
   res.set(http::field::content_type, "text/html; charset=utf-8");
   res.keep_alive(false);
@@ -131,12 +135,19 @@ bool handle_google_drive_oauth_authorize_route(
     {
       std::lock_guard<std::mutex> lock(pending_oauth_mutex);
       pending_oauth_attempts[location_id] = PendingOAuthAttempt{
-          pkce.code_verifier, state, location->project_id, support::now_epoch_seconds()
+          pkce.code_verifier,
+          state,
+          location->project_id,
+          support::now_epoch_seconds()
       };
     }
 
     const auto authorization_url = holder::storage::google::build_authorization_url(
-        client, redirect_uri, kDriveFileScope, pkce.code_challenge, state
+        client,
+        redirect_uri,
+        kDriveFileScope,
+        pkce.code_challenge,
+        state
     );
 
     res = support::json_response(
@@ -229,7 +240,10 @@ bool handle_google_drive_oauth_callback_route(
     const auto client = holder::storage::google::google_oauth_client_from_env();
     const auto redirect_uri = oauth_redirect_uri(req, *location_id);
     const auto token = holder::storage::google::exchange_authorization_code(
-        client, redirect_uri, code, attempt.code_verifier
+        client,
+        redirect_uri,
+        code,
+        attempt.code_verifier
     );
     if (token.refresh_token.empty()) {
       // Google only issues a refresh_token when the user actually sees and grants the
@@ -242,8 +256,9 @@ bool handle_google_drive_oauth_callback_route(
       );
     }
 
-    const auto folder_id =
-        holder::storage::google::find_or_create_holder_resources_folder(token.access_token);
+    const auto folder_id = holder::storage::google::find_or_create_holder_resources_folder(
+        token.access_token
+    );
 
     auto location = holder::resource::LocationRepo(db).get(*location_id);
     if (!location.has_value()) {
@@ -261,9 +276,8 @@ bool handle_google_drive_oauth_callback_route(
     binding.provider = "google-drive";
     binding.values = {{"refresh_token", token.refresh_token}};
     holder::resource::LocationBindingStore bindings(*secret_store);
-    bindings.bind(
-        attempt.project_id, *location_id, binding, "Connected", support::now_epoch_seconds()
-    );
+    bindings
+        .bind(attempt.project_id, *location_id, binding, "Connected", support::now_epoch_seconds());
 
     res = html_response(
         http::status::ok,

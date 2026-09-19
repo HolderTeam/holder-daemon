@@ -1,7 +1,7 @@
 #include "app/DaemonApp.h"
 
-#include "ai/AiProviderCredentialRecovery.h"
 #include "ai/AiNudgeDurability.h"
+#include "ai/AiProviderCredentialRecovery.h"
 #include "ai/AiThreadDurability.h"
 #include "ai/AiThreadStateDurability.h"
 #include "api/HttpServer.h"
@@ -13,14 +13,14 @@
 #include "card/TagExtractor.h"
 #include "card/TagRepo.h"
 #include "core/ConcurrencyProfilePolicy.h"
+#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "index/Reindexer.h"
-#include "git/GitOps.h"
 #include "llm/LocalModelRunner.h"
 #include "llm/LocalRunnerClient.h"
 #include "llm/RunnerRegistry.h"
-#include "platform/Db.h"
 #include "platform/DatabaseRecovery.h"
+#include "platform/Db.h"
 #include "platform/DeviceConfigStore.h"
 #include "platform/InstalledDataPath.h"
 #include "platform/LockFile.h"
@@ -30,8 +30,8 @@
 #include "platform/ServerInfo.h"
 #include "platform/Signal.h"
 #include "privacy/SecretStore.h"
-#include "project/ProjectRepo.h"
 #include "project/ProjectManifest.h"
+#include "project/ProjectRepo.h"
 #include "project/StartupRecovery.h"
 #include "sync/ProjectSyncWorker.h"
 
@@ -39,8 +39,8 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include <chrono>
 #include <atomic>
+#include <chrono>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -77,8 +77,7 @@ std::filesystem::path find_schema_sql() {
   if (fs::exists(p2)) return p2;
 
   // Or if run from the daemon source tree with its bundled holder-core dependency.
-  fs::path p3 =
-      fs::current_path() / "submodules" / "holder-core" / "schema" / "schema.sql";
+  fs::path p3 = fs::current_path() / "submodules" / "holder-core" / "schema" / "schema.sql";
   if (fs::exists(p3)) return p3;
 
   // Support the sibling holder-core layout used for local development.
@@ -221,9 +220,8 @@ int run_daemon(int argc, char* argv[]) {
   const auto schema_path = find_schema_sql();
   auto secret_store = holder::privacy::make_default_secret_store(paths.server_dir());
   if (rebuild_database_only) {
-    const auto report = holder::core::rebuild_database(
-        paths, schema_path, *secret_store, rebuild_dry_run
-    );
+    const auto report =
+        holder::core::rebuild_database(paths, schema_path, *secret_store, rebuild_dry_run);
     std::cout << report.to_json() << '\n';
     spdlog::shutdown();
     return 0;
@@ -254,7 +252,8 @@ int run_daemon(int argc, char* argv[]) {
   holder::platform::Migrations::ensure_schema(db, schema_path);
   const bool schema_migrated = holder::platform::Migrations::migrate_to_latest(db);
   holder::platform::Migrations::ensure_schema_version(
-      db, holder::platform::Migrations::latest_schema_version
+      db,
+      holder::platform::Migrations::latest_schema_version
   );
   holder::core::initialize_device_config(db, paths.device_config_path());
   holder::api::support::initialize_cloud_usage_ledger(db, paths.cloud_usage_ledger_path());

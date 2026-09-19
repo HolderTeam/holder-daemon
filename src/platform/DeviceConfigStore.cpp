@@ -164,7 +164,8 @@ void restore_unlocked(holder::platform::Db& db, const std::filesystem::path& pat
   }
 
   holder::ai::AiProviderSettingRepo settings(db);
-  for (const auto& existing : settings.list()) settings.remove(existing.provider);
+  for (const auto& existing : settings.list())
+    settings.remove(existing.provider);
   for (const auto& value : body.value("provider_settings", nlohmann::json::array())) {
     settings.upsert(
         value.at("provider").get<std::string>(),

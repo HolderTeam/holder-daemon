@@ -49,7 +49,8 @@ void write_raw_request(boost::asio::ip::tcp::socket& socket, const std::string& 
 class ListenerRunGuard {
  public:
   ListenerRunGuard(holder::api::Listener& listener, std::thread thread)
-      : listener_(listener), thread_(std::move(thread)) {}
+      : listener_(listener),
+        thread_(std::move(thread)) {}
 
   ListenerRunGuard(const ListenerRunGuard&) = delete;
   ListenerRunGuard& operator=(const ListenerRunGuard&) = delete;
@@ -1360,7 +1361,10 @@ TEST_CASE(
   router.add(
       http::verb::get,
       "/foreground-fast",
-      [&fast_foreground_started](const holder::api::Router::Request&, holder::api::Router::Response& res) {
+      [&fast_foreground_started](
+          const holder::api::Router::Request&,
+          holder::api::Router::Response& res
+      ) {
         fast_foreground_started.store(true);
         res.result(http::status::ok);
         res.set(http::field::content_type, "application/json");

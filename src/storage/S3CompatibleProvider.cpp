@@ -11,8 +11,8 @@
 #include <openssl/ssl.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <iomanip>
@@ -67,11 +67,12 @@ Endpoint parse_endpoint(const std::string& value, bool allow_insecure_localhost)
   if (colon != std::string::npos) endpoint.port = authority.substr(colon + 1);
   if (endpoint.host.empty()) {
     throw holder::resource::StorageError(
-        holder::resource::StorageErrorCode::InvalidConfiguration, "S3 endpoint host is empty"
+        holder::resource::StorageErrorCode::InvalidConfiguration,
+        "S3 endpoint host is empty"
     );
   }
-  const bool localhost =
-      endpoint.host == "localhost" || endpoint.host == "127.0.0.1" || endpoint.host == "::1";
+  const bool localhost = endpoint.host == "localhost" || endpoint.host == "127.0.0.1" ||
+                         endpoint.host == "::1";
   if (!endpoint.tls && !(localhost && allow_insecure_localhost)) {
     throw holder::resource::StorageError(
         holder::resource::StorageErrorCode::InvalidConfiguration,
@@ -139,7 +140,8 @@ void map_status(unsigned int status, const std::string& operation) {
   }
   if (status == 404) {
     throw holder::resource::StorageError(
-        holder::resource::StorageErrorCode::Unavailable, "S3 object not found"
+        holder::resource::StorageErrorCode::Unavailable,
+        "S3 object not found"
     );
   }
   if (status == 429 || status >= 500) {
@@ -174,11 +176,9 @@ unsigned int read_status_response(
 
 } // namespace
 
-S3CompatibleProvider::S3CompatibleProvider(
-    S3CompatibleConfig config,
-    S3Credentials credentials
-)
-    : config_(std::move(config)), credentials_(std::move(credentials)) {
+S3CompatibleProvider::S3CompatibleProvider(S3CompatibleConfig config, S3Credentials credentials)
+    : config_(std::move(config)),
+      credentials_(std::move(credentials)) {
   if (config_.endpoint.empty() || config_.region.empty() || config_.bucket.empty() ||
       credentials_.access_key_id.empty() || credentials_.secret_access_key.empty()) {
     throw holder::resource::StorageError(
@@ -206,7 +206,8 @@ unsigned int S3CompatibleProvider::request(
   auto endpoint = parse_endpoint(config_.endpoint, config_.allow_insecure_localhost);
   if (object_key.empty() || object_key.front() == '/') {
     throw holder::resource::StorageError(
-        holder::resource::StorageErrorCode::InvalidConfiguration, "invalid S3 object key"
+        holder::resource::StorageErrorCode::InvalidConfiguration,
+        "invalid S3 object key"
     );
   }
   std::string host = endpoint.host;
@@ -332,7 +333,8 @@ unsigned int S3CompatibleProvider::request(
     }
   }
   throw holder::resource::StorageError(
-      holder::resource::StorageErrorCode::Unavailable, "S3 request failed"
+      holder::resource::StorageErrorCode::Unavailable,
+      "S3 request failed"
   );
 }
 
@@ -342,12 +344,12 @@ void S3CompatibleProvider::put(
     long long stored_size,
     const std::string& stored_sha256
 ) {
-  const auto status =
-      request("PUT", object_key, &staged_file, nullptr, stored_size, stored_sha256);
+  const auto status = request("PUT", object_key, &staged_file, nullptr, stored_size, stored_sha256);
   map_status(status, "PUT");
   if (!exists(object_key)) {
     throw holder::resource::StorageError(
-        holder::resource::StorageErrorCode::Integrity, "S3 object was not visible after PUT"
+        holder::resource::StorageErrorCode::Integrity,
+        "S3 object was not visible after PUT"
     );
   }
 }
@@ -356,8 +358,7 @@ void S3CompatibleProvider::get(
     const std::string& object_key,
     const std::filesystem::path& destination_file
 ) {
-  const auto status =
-      request("GET", object_key, nullptr, &destination_file, 0, kEmptySha256);
+  const auto status = request("GET", object_key, nullptr, &destination_file, 0, kEmptySha256);
   if (status < 200 || status >= 300) {
     std::error_code ignored;
     std::filesystem::remove(destination_file, ignored);

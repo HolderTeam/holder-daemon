@@ -5,13 +5,13 @@
 #include <catch2/catch.hpp>
 #endif
 
-#include "card/CardRepo.h"
-#include "card/CardStore.h"
-#include "api/support/CloudQuota.h"
-#include "api/support/ThreadCompaction.h"
 #include "ai/AiNudgeRepo.h"
 #include "ai/AiThreadDurability.h"
 #include "ai/AiThreadRepo.h"
+#include "api/support/CloudQuota.h"
+#include "api/support/ThreadCompaction.h"
+#include "card/CardRepo.h"
+#include "card/CardStore.h"
 #include "http_test_helpers.h"
 #include "platform/DatabaseRecovery.h"
 #include "platform/DeviceConfigStore.h"
@@ -24,7 +24,10 @@
 #include <filesystem>
 #include <fstream>
 
-TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[database][recovery]") {
+TEST_CASE(
+    "DatabaseRecovery rebuilds a fresh projection and retains backup",
+    "[database][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   holder::core::Paths paths;
   paths.data_dir = dir / "data";
@@ -48,7 +51,11 @@ TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[d
   input.created_at = 10;
   input.updated_at = 10;
   const auto project = projects.create(
-      input, [] { return std::string("unused-id"); }, projects_root
+      input,
+      [] {
+        return std::string("unused-id");
+      },
+      projects_root
   );
 
   holder::card::CardStore cards(original, nullptr);
@@ -61,9 +68,7 @@ TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[d
   cards.create(card, "# Survives\n\nDatabase corruption.\n");
   holder::core::ProjectRegistry(paths.project_registry_path()).remember({project});
   holder::core::initialize_device_config(original, paths.device_config_path());
-  holder::api::support::initialize_cloud_usage_ledger(
-      original, paths.cloud_usage_ledger_path()
-  );
+  holder::api::support::initialize_cloud_usage_ledger(original, paths.cloud_usage_ledger_path());
   original.close();
 
   auto secrets = holder::privacy::make_default_secret_store(paths.server_dir());
@@ -72,16 +77,20 @@ TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[d
   REQUIRE(dry_run.projects == 1);
   REQUIRE(dry_run.cards == 1);
   REQUIRE(dry_run.backup_path.empty());
-  REQUIRE(holder::core::inspect_database_health(paths.db_path()).health ==
-          holder::core::DatabaseHealth::Healthy);
+  REQUIRE(
+      holder::core::inspect_database_health(paths.db_path()).health ==
+      holder::core::DatabaseHealth::Healthy
+  );
 
   const auto report = holder::core::rebuild_database(paths, SCHEMA_SQL_PATH, *secrets, false);
   REQUIRE(report.projects == 1);
   REQUIRE(report.cards == 1);
   REQUIRE_FALSE(report.backup_path.empty());
   REQUIRE(std::filesystem::exists(report.backup_path / "holder.db"));
-  REQUIRE(holder::core::inspect_database_health(paths.db_path()).health ==
-          holder::core::DatabaseHealth::Healthy);
+  REQUIRE(
+      holder::core::inspect_database_health(paths.db_path()).health ==
+      holder::core::DatabaseHealth::Healthy
+  );
 
   holder::platform::Db rebuilt;
   rebuilt.open(paths.db_path());
@@ -95,7 +104,10 @@ TEST_CASE("DatabaseRecovery rebuilds a fresh projection and retains backup", "[d
   REQUIRE(recovered_card->project_id == project.project_id);
 }
 
-TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable owners", "[database][recovery]") {
+TEST_CASE(
+    "DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable owners",
+    "[database][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   holder::core::Paths paths;
   paths.data_dir = dir / "data";
@@ -116,7 +128,11 @@ TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable
   input.created_at = 10;
   input.updated_at = 10;
   const auto project = holder::project::ProjectStore(db).create(
-      input, [] { return std::string("unused"); }, projects_root
+      input,
+      [] {
+        return std::string("unused");
+      },
+      projects_root
   );
   holder::model::Card card;
   card.card_id = "22222222-2222-4222-8222-222222222222";
@@ -129,7 +145,13 @@ TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable
   holder::core::initialize_device_config(db, paths.device_config_path());
   holder::api::support::initialize_cloud_usage_ledger(db, paths.cloud_usage_ledger_path());
   holder::api::support::record_cloud_usage_event(
-      db, "provider", "model", 7, 5, 30, "corrupt-recovery"
+      db,
+      "provider",
+      "model",
+      7,
+      5,
+      30,
+      "corrupt-recovery"
   );
 
   holder::model::AiThread thread;
@@ -167,8 +189,10 @@ TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable
     std::ofstream damaged(paths.db_path(), std::ios::binary | std::ios::trunc);
     damaged << "not a sqlite database";
   }
-  REQUIRE(holder::core::inspect_database_health(paths.db_path()).health ==
-          holder::core::DatabaseHealth::Corrupt);
+  REQUIRE(
+      holder::core::inspect_database_health(paths.db_path()).health ==
+      holder::core::DatabaseHealth::Corrupt
+  );
 
   auto secrets = holder::privacy::make_default_secret_store(paths.server_dir());
   const auto report = holder::core::rebuild_database(paths, SCHEMA_SQL_PATH, *secrets, false);
@@ -187,12 +211,15 @@ TEST_CASE("DatabaseRecovery quarantines corrupt SQLite and rebuilds from durable
   const auto restored_nudge = holder::ai::AiNudgeRepo(recovered).find_by_id("nudge-corrupt");
   REQUIRE(restored_nudge.has_value());
   REQUIRE(restored_nudge->dismissed);
-  REQUIRE(holder::api::support::load_cloud_window_usage(
-              recovered, "provider", "model", 0
-          ).tokens == 12);
+  REQUIRE(
+      holder::api::support::load_cloud_window_usage(recovered, "provider", "model", 0).tokens == 12
+  );
 }
 
-TEST_CASE("DatabaseRecovery identifies corrupt SQLite without replacing it", "[database][recovery]") {
+TEST_CASE(
+    "DatabaseRecovery identifies corrupt SQLite without replacing it",
+    "[database][recovery]"
+) {
   const auto dir = holder::test::make_temp_dir();
   holder::core::Paths paths;
   paths.data_dir = dir / "data";
@@ -204,8 +231,10 @@ TEST_CASE("DatabaseRecovery identifies corrupt SQLite without replacing it", "[d
     out << "this is not sqlite";
   }
   const auto before_size = std::filesystem::file_size(paths.db_path());
-  REQUIRE(holder::core::inspect_database_health(paths.db_path()).health ==
-          holder::core::DatabaseHealth::Corrupt);
+  REQUIRE(
+      holder::core::inspect_database_health(paths.db_path()).health ==
+      holder::core::DatabaseHealth::Corrupt
+  );
 
   auto secrets = holder::privacy::make_default_secret_store(paths.server_dir());
   REQUIRE_THROWS(holder::core::rebuild_database(paths, SCHEMA_SQL_PATH, *secrets, false));

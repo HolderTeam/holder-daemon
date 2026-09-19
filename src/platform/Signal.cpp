@@ -41,27 +41,27 @@ std::atomic<bool> g_console_handler_installed{false};
 
 BOOL WINAPI handle_console_control(DWORD event) {
   switch (event) {
-    case CTRL_C_EVENT:
+  case CTRL_C_EVENT:
 #if defined(SIGINT)
-      request_global_stop(SIGINT);
+    request_global_stop(SIGINT);
 #else
-      request_global_stop(0);
+    request_global_stop(0);
 #endif
-      return TRUE;
-    case CTRL_BREAK_EVENT:
-      request_global_stop(kWindowsCtrlBreak);
-      return TRUE;
-    case CTRL_CLOSE_EVENT:
-      request_global_stop(kWindowsCtrlClose);
-      return TRUE;
-    case CTRL_LOGOFF_EVENT:
-      request_global_stop(kWindowsCtrlLogoff);
-      return TRUE;
-    case CTRL_SHUTDOWN_EVENT:
-      request_global_stop(kWindowsCtrlShutdown);
-      return TRUE;
-    default:
-      return FALSE;
+    return TRUE;
+  case CTRL_BREAK_EVENT:
+    request_global_stop(kWindowsCtrlBreak);
+    return TRUE;
+  case CTRL_CLOSE_EVENT:
+    request_global_stop(kWindowsCtrlClose);
+    return TRUE;
+  case CTRL_LOGOFF_EVENT:
+    request_global_stop(kWindowsCtrlLogoff);
+    return TRUE;
+  case CTRL_SHUTDOWN_EVENT:
+    request_global_stop(kWindowsCtrlShutdown);
+    return TRUE;
+  default:
+    return FALSE;
   }
 }
 #endif
@@ -103,9 +103,7 @@ bool SignalHandler::is_requested() const { return g_signal_requested.load(); }
 
 int SignalHandler::last_signal() const { return g_last_signal.load(); }
 
-void SignalHandler::request_stop(int signum) noexcept {
-  request_global_stop(signum);
-}
+void SignalHandler::request_stop(int signum) noexcept { request_global_stop(signum); }
 
 void SignalHandler::handle(int signum) {
   if (

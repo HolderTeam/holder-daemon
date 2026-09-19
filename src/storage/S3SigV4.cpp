@@ -18,7 +18,8 @@ namespace {
 std::string hex(const unsigned char* bytes, std::size_t size) {
   std::ostringstream out;
   out << std::hex << std::setfill('0');
-  for (std::size_t index = 0; index < size; ++index) out << std::setw(2) << +bytes[index];
+  for (std::size_t index = 0; index < size; ++index)
+    out << std::setw(2) << +bytes[index];
   return out.str();
 }
 
@@ -67,7 +68,8 @@ std::string trim_and_collapse(std::string value) {
 
 std::string sha256_hex(const std::string& value) {
   std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(
-      EVP_MD_CTX_new(), EVP_MD_CTX_free
+      EVP_MD_CTX_new(),
+      EVP_MD_CTX_free
   );
   if (!context || EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
       EVP_DigestUpdate(context.get(), value.data(), value.size()) != 1) {
@@ -111,22 +113,22 @@ S3SigningResult sign_s3_request_v4(const S3SigningInput& input) {
                                  input.canonical_query + "\n" + canonical_headers + "\n" +
                                  signed_headers + "\n" + input.payload_sha256;
   const auto scope = input.date + "/" + input.region + "/s3/aws4_request";
-  const auto string_to_sign =
-      "AWS4-HMAC-SHA256\n" + input.amz_date + "\n" + scope + "\n" +
-      sha256_hex(canonical_request);
+  const auto string_to_sign = "AWS4-HMAC-SHA256\n" + input.amz_date + "\n" + scope + "\n" +
+                              sha256_hex(canonical_request);
 
   const auto initial_key = "AWS4" + input.secret_access_key;
   const auto date_key = hmac(
-      reinterpret_cast<const unsigned char*>(initial_key.data()), initial_key.size(), input.date
+      reinterpret_cast<const unsigned char*>(initial_key.data()),
+      initial_key.size(),
+      input.date
   );
   const auto region_key = hmac(date_key.data(), date_key.size(), input.region);
   const auto service_key = hmac(region_key.data(), region_key.size(), "s3");
   const auto signing_key = hmac(service_key.data(), service_key.size(), "aws4_request");
   const auto signature = hmac(signing_key.data(), signing_key.size(), string_to_sign);
   return {
-      "AWS4-HMAC-SHA256 Credential=" + input.access_key_id + "/" + scope +
-          ", SignedHeaders=" + signed_headers + ", Signature=" +
-          hex(signature.data(), signature.size()),
+      "AWS4-HMAC-SHA256 Credential=" + input.access_key_id + "/" + scope + ", SignedHeaders=" +
+          signed_headers + ", Signature=" + hex(signature.data(), signature.size()),
       canonical_request,
       string_to_sign,
       signed_headers,

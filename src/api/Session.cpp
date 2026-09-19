@@ -376,7 +376,13 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
     // Everything else under /locations/, including starting the OAuth flow itself, still
     // requires the normal token. See GoogleDriveOAuthRoutes.h's own doc comments.
     if (!routes::handle_google_drive_oauth_callback_route(
-            path_, query_string_, req_, res, db_, secret_store_, git_ops_
+            path_,
+            query_string_,
+            req_,
+            res,
+            db_,
+            secret_store_,
+            git_ops_
         )) {
       if (!support::is_authorized_bearer(req_, auth_token_)) {
         res = support::error_response(
