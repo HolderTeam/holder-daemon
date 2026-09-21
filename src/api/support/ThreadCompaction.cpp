@@ -334,17 +334,18 @@ std::string build_structured_summary_refresh_prompt(
     const std::optional<std::string>& current_summary,
     const std::string& new_context
 ) {
-  std::string prompt = "Refresh the rolling summary for future turns.\n"
-                       "Return plain text only in this exact structure:\n"
-                       "## Decisions\n"
-                       "- ...\n"
-                       "## Constraints\n"
-                       "- ...\n"
-                       "## Open Questions\n"
-                       "- ...\n"
-                       "## Next Actions\n"
-                       "- ...\n"
-                       "Keep bullet points concise and durable.\n";
+  std::string prompt = // LCOV_EXCL_LINE: multiline string-initializer bookkeeping duplicate.
+      "Refresh the rolling summary for future turns.\n"
+      "Return plain text only in this exact structure:\n"
+      "## Decisions\n"
+      "- ...\n"
+      "## Constraints\n"
+      "- ...\n"
+      "## Open Questions\n"
+      "- ...\n"
+      "## Next Actions\n"
+      "- ...\n"
+      "Keep bullet points concise and durable.\n";
   if (current_summary.has_value() && !current_summary->empty()) {
     prompt += "\nCurrent summary:\n";
     prompt += current_summary.value();

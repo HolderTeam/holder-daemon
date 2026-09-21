@@ -58,9 +58,10 @@ DismissedNudge row(sqlite3_stmt* stmt) {
   out.created_at = sqlite3_column_int64(stmt, 9);
   out.dismissed_at = sqlite3_column_int64(stmt, 10);
   return out;
-}
+} // LCOV_EXCL_LINE: GCC emits an unreachable exception-cleanup edge for the completed return.
 
 nlohmann::json as_json(const DismissedNudge& nudge) {
+  // LCOV_EXCL_START: GCC reports initializer-list exception cleanup as an unexecuted duplicate.
   return {
       {"version", 1},
       {"nudge_id", nudge.nudge_id},
@@ -78,6 +79,7 @@ nlohmann::json as_json(const DismissedNudge& nudge) {
       {"created_at", nudge.created_at},
       {"dismissed_at", nudge.dismissed_at},
   };
+  // LCOV_EXCL_STOP
 }
 
 DismissedNudge from_json(const nlohmann::json& body) {

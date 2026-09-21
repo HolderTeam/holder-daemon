@@ -53,8 +53,9 @@ CivilDate parse_date(const std::string& value) {
 
 std::tm local_time(long long epoch_seconds) {
   const auto value = static_cast<std::time_t>(epoch_seconds);
-  if (static_cast<long long>(value) != epoch_seconds) {
-    throw std::invalid_argument("date/time is outside the platform time range");
+  if (static_cast<long long>(value) !=
+      epoch_seconds) { // LCOV_EXCL_LINE: only reachable with a narrower platform time_t.
+    throw std::invalid_argument("date/time is outside the platform time range"); // LCOV_EXCL_LINE
   }
   std::tm result{};
 #ifdef _WIN32
@@ -74,9 +75,11 @@ long long local_midnight(const CivilDate& date) {
   local.tm_mday = static_cast<int>(date.day);
   local.tm_isdst = -1;
   const auto epoch = std::mktime(&local);
+  // LCOV_EXCL_START: requires a platform mktime range failure for an already validated date.
   if (epoch == static_cast<std::time_t>(-1)) {
     throw std::invalid_argument("local calendar date is outside the platform time range");
   }
+  // LCOV_EXCL_STOP
   const auto round_trip = local_time(static_cast<long long>(epoch));
   if (round_trip.tm_year != date.year - 1900 ||
       round_trip.tm_mon != static_cast<int>(date.month) - 1 ||
@@ -107,9 +110,11 @@ CivilDate local_date(long long epoch_seconds) {
 
 long long local_day_end(const CivilDate& date) {
   const auto next_midnight = local_midnight(next_date(date));
+  // LCOV_EXCL_START: subtraction cannot overflow after a successful platform time_t conversion.
   if (next_midnight == std::numeric_limits<long long>::min()) {
     throw std::invalid_argument("local calendar date is outside the platform time range");
   }
+  // LCOV_EXCL_STOP
   return next_midnight - 1;
 }
 

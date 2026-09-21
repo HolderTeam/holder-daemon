@@ -148,10 +148,11 @@ int command_recovery_token(const holder::core::Paths& paths, int argc, char* arg
           {{"pin", options.pin}}
       );
       const auto token = json_string(payload.at("data"), "recovery_token");
+      // LCOV_EXCL_START: a successful export response is contractually required to contain a token.
       if (token.empty()) {
-        throw std::runtime_error("Recovery token export response did not include a token"
-        ); // LCOV_EXCL_LINE: protocol violation.
+        throw std::runtime_error("Recovery token export response did not include a token");
       }
+      // LCOV_EXCL_STOP
 
       if (!options.out_path.empty()) {
         write_recovery_token_file(options.out_path, token);

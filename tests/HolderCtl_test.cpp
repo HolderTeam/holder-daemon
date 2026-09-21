@@ -1890,6 +1890,23 @@ TEST_CASE(
   REQUIRE(partial["data"]["kind"] == "appointment");
   REQUIRE(partial["data"]["description"].is_null());
 
+  const auto inferred_path = xdg_root / "milestone-edit-inferred.json";
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --start 2026-06-02T10:00:00Z --end 2026-06-02T11:00:00Z --timed --json > \"" +
+          inferred_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(nlohmann::json::parse(read_text(inferred_path))["data"]["all_day"] == false);
+  REQUIRE(
+      run_command(
+          bin + " milestone edit 'Release Card' " + timed_id +
+          " --start 2026-06-02 --end 2026-06-03 --json > \"" + inferred_path.string() + "\""
+      ) == 0
+  );
+  REQUIRE(nlohmann::json::parse(read_text(inferred_path))["data"]["all_day"] == true);
+
   const auto edit_all_day_path = xdg_root / "milestone-edit-all-day.out";
   REQUIRE(
       run_command(
@@ -1920,6 +1937,8 @@ TEST_CASE(
 
   db.exec("UPDATE cards SET updated_at=1780398000 WHERE card_id="
           "'aaaaaaaa-1111-4111-8111-111111111111';");
+  db.exec("UPDATE cards SET created_at=1780398000, updated_at=1780398000 WHERE card_id="
+          "'aaaaaaaa-3333-4333-8333-333333333333';");
   const auto calendar_path = xdg_root / "calendar.json";
   REQUIRE(
       run_command(
@@ -2291,6 +2310,7 @@ TEST_CASE("holderctl history exposes project and card revision workflows", "[hol
       "revision_ambiguous"
   );
 
+  card_store.trash(ambiguous_two, 29);
   const auto card_ambiguous_path = xdg_root / "history-card-ambiguous.json";
   REQUIRE(
       run_command(
@@ -4084,6 +4104,33 @@ TEST_CASE("holderctl openapi rejects unknown options", "[holderctl]") {
 }
 
 #if defined(__linux__)
+TEST_CASE("holderctl reports missing required service executables", "[holderctl]") {
+  const auto root = prepare_xdg_tree();
+  const auto isolated_ctl = root / "isolated-bin/holderctl";
+  std::filesystem::create_directories(isolated_ctl.parent_path());
+  std::filesystem::copy_file(HOLDER_CTL_PATH, isolated_ctl);
+  std::filesystem::permissions(
+      isolated_ctl,
+      std::filesystem::perms::owner_all,
+      std::filesystem::perm_options::replace
+  );
+  holder::test::EnvGuard path_env("PATH", isolated_ctl.parent_path().string());
+  const auto error = root / "missing-tool.err";
+  REQUIRE(
+      run_command(
+          "\"" + isolated_ctl.string() + "\" restart >/dev/null 2>\"" + error.string() + "\""
+      ) == 1
+  );
+  CHECK(read_text(error).find("systemctl not found") != std::string::npos);
+  REQUIRE(
+      run_command(
+          "\"" + isolated_ctl.string() + "\" database rebuild >/dev/null 2>\"" + error.string() +
+          "\""
+      ) == 1
+  );
+  CHECK(read_text(error).find("holderd was not found") != std::string::npos);
+}
+
 TEST_CASE("holderctl restart invokes the Linux user service", "[holderctl]") {
   const auto xdg_root = prepare_xdg_tree();
   const auto fake_bin = xdg_root / "bin";
@@ -4185,6 +4232,12 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
     nlohmann::json data;
     if (request.target() == "/projects")
       data = nlohmann::json::array({{{"project_id", "project"}, {"name", "Home"}}});
+    else if (request.target() == "/card-references/resolve" &&
+             nlohmann::json::parse(request.body()).value("reference", "") == "force-error")
+      return Server::response(
+          503,
+          R"({"ok":false,"error":{"code":"unavailable","message":"resolver unavailable"}})"
+      );
     else if (request.target() == "/card-references/resolve")
       data = {{"status", "resolved"}, {"card", {{"card_id", "card-one"}}}};
     else
@@ -4199,6 +4252,7 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
   const std::string bin = "\"" HOLDER_CTL_PATH "\"";
   for (const std::string args :
        {"milestones",
+        "milestones force-error",
         "milestones card extra",
         "milestones --unknown",
         "milestone",
@@ -4216,6 +4270,7 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
         "history show card",
         "history --limit --json",
         "resource export resource asset extra",
+        "resource export resource -bad",
         "resource location add-s3 name https://storage.invalid region bucket access",
         "resource attach card",
         "resource attach card id extra",
@@ -4240,6 +4295,7 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
         "milestone add card invalid-date",
         "milestone edit card id --end 2026-01-02 --timed",
         "milestone edit card id --start 2026-01-02T12:00:00Z --all-day",
+        "database",
         "database rebuild extra --dry-run",
         "database rebuild --unknown"}) {
     CAPTURE(args);
@@ -4252,6 +4308,86 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
     CHECK(run_command(bin + " " + command + " --help > \"" + output.string() + "\"") == 0);
     CHECK(read_text(output).find("Usage:") != std::string::npos);
   }
+  server.stop();
+  server.rethrow_error();
+}
+
+TEST_CASE("holderctl guards malformed daemon success payloads", "[holderctl][errors]") {
+  using Server = holder::test::StorageHttpTestServer;
+  const auto xdg = prepare_xdg_tree();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (xdg / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (xdg / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (xdg / "cache").string());
+  holder::test::EnvGuard secret("HOLDER_S3_SECRET_ACCESS_KEY", "");
+  std::ofstream(xdg / "config/holder/holderctl.json") << R"({"current_project_id":"project"})";
+  Server server([](const Server::Request& request) {
+    const auto target = std::string(request.target());
+    if (target == "/projects") {
+      return Server::response(
+          200,
+          R"({"ok":true,"data":[{"project_id":"project","name":"Home"}]})"
+      );
+    }
+    if (target == "/card-references/resolve") {
+      const auto body = nlohmann::json::parse(request.body());
+      if (body.value("reference", "") == "bad") {
+        return Server::response(200, R"({"ok":true,"data":null})");
+      }
+      return Server::response(
+          200,
+          R"({"ok":true,"data":{"status":"resolved","card":{"card_id":"card"}}})"
+      );
+    }
+    if (target.starts_with("/search")) return Server::response(200, R"({"ok":true})");
+    if (target == "/cards/card") {
+      return Server::response(200, R"({"ok":true,"data":{"project_id":"other"}})");
+    }
+    if (target == "/imports") {
+      return Server::response(202, R"({"ok":true,"data":{"job_id":"job"}})");
+    }
+    if (target == "/imports/job") {
+      return Server::response(
+          200,
+          R"({"ok":true,"data":{"status":"failed","error":"copy failed"}})"
+      );
+    }
+    if (target.starts_with("/resources?")) {
+      return Server::response(
+          200,
+          R"({"ok":true,"data":[{"resource_id":"resource","project_id":"project"}],"next_offset":null})"
+      );
+    }
+    return Server::response(200, R"({"ok":true,"data":{}})");
+  });
+  write_server_info(xdg / "data/holder/server/holder.json", 12345, server.address().port());
+#ifndef _WIN32
+  ::chmod((xdg / "data/holder/server").c_str(), S_IRWXU);
+  ::chmod((xdg / "data/holder/server/holder.json").c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const std::string bin = "\"" HOLDER_CTL_PATH "\"";
+  const auto output = xdg / "command.out";
+  const auto error = xdg / "command.err";
+  auto fails = [&](const std::string& args, const std::string& message) {
+    CAPTURE(args);
+    REQUIRE(
+        run_command(
+            bin + " " + args + " > \"" + output.string() + "\" 2> \"" + error.string() + "\""
+        ) == 1
+    );
+    CHECK(read_text(error).find(message) != std::string::npos);
+  };
+  fails("search words", "Failed to search cards:");
+  fails("card card", "Card is not in the current project:");
+  fails("append card text", "Failed to append to card:");
+  fails("link card bad", "Failed to link cards:");
+  fails("restore bad", "Failed to restore card:");
+  fails("resource import card /tmp/source --location location", "Asset import failed: copy failed");
+  fails(
+      "resource location add-s3 Archive https://storage.invalid region bucket access",
+      "HOLDER_S3_SECRET_ACCESS_KEY is required"
+  );
+  REQUIRE(run_command(bin + " resource delete resource --json > \"" + output.string() + "\"") == 0);
+  CHECK(nlohmann::json::parse(read_text(output))["ok"] == true);
   server.stop();
   server.rethrow_error();
 }

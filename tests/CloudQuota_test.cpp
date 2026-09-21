@@ -17,6 +17,8 @@ void apply_schema(holder::platform::Db& db) {
   db.exec(sql);
 }
 
+int interrupt_sqlite(void*) { return 1; }
+
 } // namespace
 
 TEST_CASE("CloudQuota cooldown failure backoff and clear", "[cloud_quota]") {
@@ -244,14 +246,15 @@ TEST_CASE("CloudQuota does not publish a ledger when its export query fails", "[
   const auto root = holder::test::make_temp_dir();
   const auto ledger = root / "ledger.json";
   auto db = holder::test::open_db_with_schema(root / "holder.db");
-  db.exec("DROP TABLE ai_cloud_usage_events; CREATE VIEW ai_cloud_usage_events AS "
-          "SELECT 'event' AS event_id, 'provider' AS provider, 'model' AS model_id, "
-          "1 AS prompt_tokens, 2 AS response_tokens, 3 AS total_tokens, 4 AS created_at "
-          "WHERE abs(-9223372036854775808)");
+  db.exec("INSERT INTO ai_cloud_usage_events VALUES('event','provider','model',1,2,3,4)");
+  sqlite3_progress_handler(db.handle(), 1, interrupt_sqlite, nullptr);
   CHECK_THROWS_WITH(
       holder::api::support::initialize_cloud_usage_ledger(db, ledger),
       Catch::Matchers::ContainsSubstring("cloud usage export failed")
   );
+  sqlite3_progress_handler(db.handle(), 0, nullptr, nullptr);
+  CHECK_FALSE(std::filesystem::exists(ledger));
+  holder::api::support::record_cloud_usage_event(db, "provider", "model", 1, 2, 5, "after-failure");
   CHECK_FALSE(std::filesystem::exists(ledger));
   for (auto* statement = sqlite3_next_stmt(db.handle(), nullptr); statement;
        statement = sqlite3_next_stmt(db.handle(), statement)) {

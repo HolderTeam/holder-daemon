@@ -10,6 +10,7 @@
 #include <boost/beast/http.hpp>
 #include <nlohmann/json.hpp>
 
+#include <fstream>
 #include <string>
 
 namespace {
@@ -450,6 +451,121 @@ TEST_CASE("Resource routes validate updates and report database failures", "[res
   f.db.exec("DROP TABLE resources; DROP TABLE storage_locations");
   CHECK(f.call(http::verb::delete_, "/resources/resource").result() == http::status::bad_request);
   CHECK(f.call(http::verb::get, "/locations").result() == http::status::bad_request);
+}
+
+TEST_CASE(
+    "Resource imports validate inputs and publish background failures",
+    "[resources][routes]"
+) {
+  LocationRouteFixture f;
+  holder::git::RealGitOps git;
+  const auto source = f.root / "source.txt";
+  std::ofstream(source) << "asset";
+
+  f.put("local_directory", {}, {{"root_path", (f.root / "objects").string()}});
+  CHECK(
+      f.call(
+           http::verb::post,
+           "/imports",
+           {{"project_id", "project"},
+            {"card_id", "card"},
+            {"location_id", "location"},
+            {"source_path", (f.root / "missing").string()}},
+           "project",
+           true,
+           {},
+           &git
+      )
+          .result() == http::status::bad_request
+  );
+  CHECK(
+      f.call(
+           http::verb::post,
+           "/imports",
+           {{"project_id", "other"},
+            {"card_id", "card"},
+            {"location_id", "location"},
+            {"source_path", source.string()}},
+           "other",
+           true,
+           {},
+           &git
+      )
+          .result() == http::status::not_found
+  );
+
+  f.put("unsupported", {}, {});
+  const auto started = f.call(
+      http::verb::post,
+      "/imports",
+      {{"project_id", "project"},
+       {"card_id", "card"},
+       {"location_id", "location"},
+       {"source_path", source.string()}},
+      "project",
+      true,
+      {},
+      &git
+  );
+  REQUIRE(started.result() == http::status::accepted);
+  const auto job_id = nlohmann::json::parse(started.body())["data"]["job_id"].get<std::string>();
+  holder::api::routes::wait_for_asset_import_jobs();
+  const auto job = nlohmann::json::parse(f.call(http::verb::get, "/imports/" + job_id).body());
+  CHECK(job["data"]["status"] == "failed");
+  CHECK_FALSE(job["data"]["error"].get<std::string>().empty());
+}
+
+TEST_CASE("Resource asset retrieval validates placement ownership", "[resources][routes]") {
+  LocationRouteFixture f;
+  holder::git::RealGitOps git;
+  f.put("local_directory", {}, {{"root_path", (f.root / "objects").string()}});
+  holder::model::ResourceBundle bundle{
+      .resource = {"resource", "project", "file", "Asset", {}, 1, 1},
+      .assets =
+          {{"asset",
+            "resource",
+            "asset.txt",
+            "text/plain",
+            5,
+            "hash",
+            1,
+            1,
+            {{"placement", "asset", "location", "object", "identity", 5, "hash", 1}}}}
+  };
+  holder::resource::ResourceRepo(f.db).put_bundle(bundle);
+  boost::asio::io_context io;
+  boost::asio::ip::tcp::socket socket(io);
+
+  auto retrieve = [&](const std::map<std::string, std::string>& params, bool& streamed) {
+    const std::string path = "/resources/resource/assets/asset/content";
+    auto request = make_request(http::verb::get, path);
+    http::response<http::string_body> response;
+    REQUIRE(holder::api::routes::handle_ai_resource_routes(
+        path,
+        request,
+        response,
+        f.db,
+        [] {
+          return std::string("recovered");
+        },
+        [&](const std::string& key) {
+          const auto found = params.find(key);
+          return found == params.end() ? std::string() : found->second;
+        },
+        f.secrets.get(),
+        &git,
+        &socket,
+        &streamed
+    ));
+    return response;
+  };
+
+  bool streamed = false;
+  CHECK(retrieve({{"placement_id", "other"}}, streamed).result() == http::status::not_found);
+  f.db.exec("PRAGMA foreign_keys=OFF; DELETE FROM storage_locations; PRAGMA foreign_keys=ON;");
+  CHECK(retrieve({}, streamed).result() == http::status::not_found);
+  streamed = true;
+  (void)retrieve({{"placement_id", "other"}}, streamed);
 }
 
 TEST_CASE("Location updates and removals persist their Git manifests", "[resources][routes]") {

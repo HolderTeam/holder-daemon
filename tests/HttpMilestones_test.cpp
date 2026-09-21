@@ -325,12 +325,22 @@ TEST_CASE("Milestone routes validate paths and unavailable card services", "[mil
   CHECK(
       call(http::verb::get, "/cards//milestones", &cards, "{}").second == http::status::bad_request
   );
+  CHECK(call(http::verb::get, "/calendar", &cards, "").second == http::status::bad_request);
   for (auto method : {http::verb::post, http::verb::patch, http::verb::delete_}) {
     const auto path = method == http::verb::post ? "/cards/card-one/milestones"
                                                  : "/cards/card-one/milestones/id";
     CHECK(call(method, path, nullptr, "{}").second == http::status::not_implemented);
   }
   CHECK_FALSE(call(http::verb::put, "/cards/card-one/milestones", &cards, "{}").first);
+  for (const std::string body :
+       {"{}",
+        R"({"start_at":"bad"})",
+        R"({"start_at":1,"end_at":"bad"})",
+        R"({"start_at":1,"all_day":12})"})
+    CHECK(
+        call(http::verb::post, "/cards/card-one/milestones", &cards, body).second ==
+        http::status::bad_request
+    );
   for (const std::string body :
        {"not-json",
         "[]",

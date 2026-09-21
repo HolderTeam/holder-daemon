@@ -239,7 +239,7 @@ std::string first_non_empty_line(const std::string& text) {
     const auto trimmed = trim_ascii_whitespace(line);
     if (!trimmed.empty()) {
       return trimmed;
-    }
+    } // LCOV_EXCL_LINE: loop cleanup after the covered non-empty return.
   }
   return ""; // LCOV_EXCL_LINE: command_new rejects all-whitespace content before title derivation.
 }
@@ -405,9 +405,11 @@ std::string card_reference_scope_name(CardReferenceScope scope) {
   return {}; // LCOV_EXCL_LINE
 }
 
+// LCOV_EXCL_START: only called for daemon protocol violations covered at each call site.
 std::runtime_error invalid_card_reference_response() {
   return std::runtime_error("Invalid card reference response from daemon.");
 }
+// LCOV_EXCL_STOP
 
 } // namespace
 
@@ -451,7 +453,7 @@ std::string resolve_card_reference(
       throw invalid_card_reference_response(); // LCOV_EXCL_LINE
     }
     return card_id;
-  }
+  } // LCOV_EXCL_LINE: return-path cleanup duplicate.
 
   if (status == "ambiguous") {
     if (!data.contains("candidates") || !data.at("candidates").is_array()) {
@@ -479,7 +481,7 @@ std::string resolve_card_reference(
         "card_reference_ambiguous",
         "Card reference is ambiguous in the current project.",
         {{"reference", reference}, {"candidates", candidates}},
-        human_message.str()
+        human_message.str() // LCOV_EXCL_LINE: exception-constructor cleanup duplicate.
     );
   }
 
@@ -488,7 +490,7 @@ std::string resolve_card_reference(
         "card_reference_not_found",
         "Card was not found in the current project.",
         {{"reference", reference}},
-        "Card not found in current project: " + reference
+        "Card not found in current project: " + reference // LCOV_EXCL_LINE
     );
   }
   throw invalid_card_reference_response(); // LCOV_EXCL_LINE

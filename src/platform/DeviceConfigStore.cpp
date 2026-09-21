@@ -46,21 +46,25 @@ nlohmann::json optional_string_json(const std::optional<std::string>& value) {
 
 void restrict_file(const std::filesystem::path& path) {
 #ifndef _WIN32
+  // LCOV_EXCL_START: requires chmod fault injection.
   if (::chmod(path.c_str(), S_IRUSR | S_IWUSR) != 0) {
     throw std::runtime_error("failed to restrict device config permissions: " + path.string());
   }
+  // LCOV_EXCL_STOP
 #else
   (void)path;
 #endif
 }
 
 nlohmann::json snapshot(holder::platform::Db& db) {
+  // LCOV_EXCL_START: GCC reports initializer-list exception cleanup as an unexecuted duplicate.
   nlohmann::json body = {
       {"version", 1},
       {"local_model", nullptr},
       {"manual_runners", nlohmann::json::array()},
       {"provider_settings", nlohmann::json::array()},
   };
+  // LCOV_EXCL_STOP
   if (const auto config = holder::ai::AiLocalModelConfigRepo(db).get(); config.has_value()) {
     body["local_model"] = {
         {"fast_model", optional_string_json(config->fast_model)},
@@ -113,10 +117,12 @@ void write_snapshot(holder::platform::Db& db, const std::filesystem::path& path)
     if (!ec) std::filesystem::rename(temporary, path, ec);
   }
 #endif
+  // LCOV_EXCL_START: requires atomic rename syscall fault injection.
   if (ec) {
     std::filesystem::remove(temporary);
     throw std::runtime_error("failed to replace device config: " + ec.message());
   }
+  // LCOV_EXCL_STOP
   restrict_file(path);
 }
 

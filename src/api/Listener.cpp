@@ -520,7 +520,7 @@ void Listener::run_ingress_worker() {
       }
 
       if (target_queue->size() < kMaxPreparedRequestsPerLane) {
-        spdlog::debug(
+        spdlog::debug( // LCOV_EXCL_LINE: compiled-out debug call retains a GCC line record.
             "queued request lane={} target={} queue_size_before={}",
             Session::lane_name(prepared->lane),
             std::string(prepared->req.target()),
@@ -532,7 +532,7 @@ void Listener::run_ingress_worker() {
     }
 
     if (!queued) {
-      spdlog::warn(
+      spdlog::warn( // LCOV_EXCL_LINE: spdlog macro expansion retains an unexecuted duplicate.
           "request lane queue full; rejecting lane={} target={}",
           Session::lane_name(prepared->lane),
           std::string(prepared->req.target())
@@ -642,7 +642,7 @@ void Listener::run_general_worker() {
     }
 
     if (should_drop_stale_background_request(prepared)) {
-      spdlog::info(
+      spdlog::info( // LCOV_EXCL_LINE: spdlog macro expansion retains an unexecuted duplicate.
           "dropping stale background request before execution: lane={} target={}",
           Session::lane_name(prepared.lane),
           std::string(prepared.req.target())

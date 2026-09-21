@@ -558,7 +558,9 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     return {
         .accepted = true,
         .should_nudge = should_nudge,
+        // LCOV_EXCL_START: GCC reports ternary designated-initializer cleanup as a duplicate.
         .reason = should_nudge ? "title_only_candidate_ready" : "title_only_not_actionable",
+        // LCOV_EXCL_STOP
         .nudge = std::nullopt
     };
   } // LCOV_EXCL_LINE
@@ -580,8 +582,10 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     return {
         .accepted = true,
         .should_nudge = should_nudge,
-        .reason = should_nudge ? "git_push_failure_candidate_ready"
-                               : "git_push_failure_not_actionable",
+        .reason = should_nudge
+                      ? "git_push_failure_candidate_ready" // LCOV_EXCL_LINE: designated-initializer
+                                                           // cleanup duplicate.
+                      : "git_push_failure_not_actionable",
         .nudge = std::nullopt
     };
   } // LCOV_EXCL_LINE
@@ -594,8 +598,10 @@ NudgeDecision NudgeService::evaluate_candidate(const NudgeCandidateInput& input)
     return {
         .accepted = true,
         .should_nudge = should_nudge,
-        .reason = should_nudge ? "title_suggestion_candidate_ready"
-                               : "title_suggestion_not_actionable",
+        .reason = should_nudge
+                      ? "title_suggestion_candidate_ready" // LCOV_EXCL_LINE: designated-initializer
+                                                           // cleanup duplicate.
+                      : "title_suggestion_not_actionable",
         .nudge = std::nullopt
     };
   } // LCOV_EXCL_LINE

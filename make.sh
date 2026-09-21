@@ -453,7 +453,7 @@ case "${MODE}" in
     ;;
   perf-privacy)
     build_all "${BUILD_TYPE}"
-    ./build/tests/holder_daemon_tests "CardStore encrypted project perf profile (manual)"
+    ./build/holder-core/tests/holder_core_tests "CardStore encrypted project perf profile (manual)"
     ;;
   coverage)
     coverage_all

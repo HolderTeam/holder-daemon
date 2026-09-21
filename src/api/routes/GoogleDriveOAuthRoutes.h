@@ -6,6 +6,7 @@
 
 #include <boost/beast/http.hpp>
 
+#include <optional>
 #include <string>
 
 namespace holder::api::routes {
@@ -20,7 +21,8 @@ bool handle_google_drive_oauth_authorize_route(
     const std::string& location_id,
     const boost::beast::http::request<boost::beast::http::string_body>& req,
     boost::beast::http::response<boost::beast::http::string_body>& res,
-    holder::platform::Db& db
+    holder::platform::Db& db,
+    std::optional<long long> now = std::nullopt
 );
 
 // GET /locations/{id}/oauth/google-drive/callback -- Google's redirect hits this
@@ -43,7 +45,8 @@ bool handle_google_drive_oauth_callback_route(
     boost::beast::http::response<boost::beast::http::string_body>& res,
     holder::platform::Db& db,
     holder::privacy::SecretStore* secret_store,
-    holder::git::GitOps* git_ops
+    holder::git::GitOps* git_ops,
+    std::optional<long long> now = std::nullopt
 );
 
 } // namespace holder::api::routes

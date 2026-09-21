@@ -61,13 +61,13 @@ TrashOptions parse_trash_options(int argc, char* argv[]) {
         "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
     );
   }
-  if ((options.subcommand == "list" || options.subcommand == "empty") &&
-      !options.card_id.empty(
-      )) { // LCOV_EXCL_LINE: parser rejects extra args before this defensive check.
+  // LCOV_EXCL_START: the parser rejects extra positional arguments before this defensive check.
+  if ((options.subcommand == "list" || options.subcommand == "empty") && !options.card_id.empty()) {
     throw std::runtime_error(
         "Usage: holderctl trash <card-reference>|list|restore <card-reference>|delete <card-reference>|empty [--json]"
-    ); // LCOV_EXCL_LINE
+    );
   }
+  // LCOV_EXCL_STOP
   return options;
 }
 

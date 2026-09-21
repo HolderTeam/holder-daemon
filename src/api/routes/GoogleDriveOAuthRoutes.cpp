@@ -58,7 +58,7 @@ std::string percent_decode(const std::string& value) {
     }
   }
   return out;
-}
+} // LCOV_EXCL_LINE: GCC emits an unreachable exception-cleanup edge for the completed return.
 
 struct PendingOAuthAttempt {
   std::string code_verifier;
@@ -108,7 +108,7 @@ http::response<http::string_body> html_response(
                title + "</h1><p>" + message + "</p></body></html>";
   res.prepare_payload();
   return res;
-}
+} // LCOV_EXCL_LINE: GCC emits an unreachable exception-cleanup edge for the completed return.
 
 } // namespace
 
@@ -116,7 +116,8 @@ bool handle_google_drive_oauth_authorize_route(
     const std::string& location_id,
     const http::request<http::string_body>& req,
     http::response<http::string_body>& res,
-    holder::platform::Db& db
+    holder::platform::Db& db,
+    std::optional<long long> now
 ) {
   try {
     const auto location = holder::resource::LocationRepo(db).get(location_id);
@@ -138,7 +139,7 @@ bool handle_google_drive_oauth_authorize_route(
           pkce.code_verifier,
           state,
           location->project_id,
-          support::now_epoch_seconds()
+          now.value_or(support::now_epoch_seconds())
       };
     }
 
@@ -167,7 +168,8 @@ bool handle_google_drive_oauth_callback_route(
     http::response<http::string_body>& res,
     holder::platform::Db& db,
     holder::privacy::SecretStore* secret_store,
-    holder::git::GitOps* git_ops
+    holder::git::GitOps* git_ops,
+    std::optional<long long> now
 ) {
   const auto location_id = parse_callback_location_id(path);
   if (!location_id.has_value() || req.method() != http::verb::get) {
@@ -198,7 +200,7 @@ bool handle_google_drive_oauth_callback_route(
     pending_oauth_attempts.erase(found);
   }
 
-  if (support::now_epoch_seconds() - attempt.created_at > kPendingOAuthTtlSeconds) {
+  if (now.value_or(support::now_epoch_seconds()) - attempt.created_at > kPendingOAuthTtlSeconds) {
     res = html_response(
         http::status::bad_request,
         "Connection expired",

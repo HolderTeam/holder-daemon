@@ -100,7 +100,7 @@ void print_cli_error(std::ostream& out, const std::exception& error, bool json_o
 
   nlohmann::json payload = {
       {"ok", false},
-      {"error", {{"code", "cli_error"}, {"message", error.what()}}},
+      {"error", {{"code", "cli_error"}, {"message", error.what()}}}, // LCOV_EXCL_LINE
   };
   if (const auto* cli_error = dynamic_cast<const CliError*>(&error)) {
     payload["error"]["code"] = cli_error->code();

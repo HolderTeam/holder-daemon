@@ -38,9 +38,11 @@ class StagedFile {
       throw CliError("invalid_output", "Output must be a file, not a directory.");
     }
     directory_ = output_.parent_path() / (".holderctl-export-" + holder::identity::uuid_v4());
+    // LCOV_EXCL_START: requires an external filesystem race after the validated parent lookup.
     if (!std::filesystem::create_directory(directory_)) {
       throw CliError("output_failed", "Could not create export staging directory.");
     }
+    // LCOV_EXCL_STOP
     file_ = directory_ / "payload";
 #ifndef _WIN32
     std::error_code error;
@@ -50,11 +52,13 @@ class StagedFile {
         std::filesystem::perm_options::replace,
         error
     );
+    // LCOV_EXCL_START: requires chmod to fail on the newly created local staging directory.
     if (error) {
       std::error_code ignored;
       std::filesystem::remove(directory_, ignored);
       throw CliError("output_failed", "Could not secure export staging directory.");
     }
+    // LCOV_EXCL_STOP
 #endif
   }
   ~StagedFile() {

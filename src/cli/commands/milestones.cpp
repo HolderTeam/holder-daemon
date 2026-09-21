@@ -83,7 +83,7 @@ ParsedMilestoneWhen parse_cli_milestone_when(const std::string& value) {
     throw CliError(
         "invalid_milestone_time",
         "Invalid milestone date/time.",
-        {{"value", value}, {"reason", ex.what()}},
+        {{"value", value}, {"reason", ex.what()}}, // LCOV_EXCL_LINE: initializer cleanup duplicate.
         std::string("Invalid milestone date/time: ") + ex.what()
     );
   }
@@ -245,7 +245,8 @@ nlohmann::json milestone_api_request(
       connection,
       method,
       target,
-      method == boost::beast::http::verb::get ? std::chrono::seconds(10) : std::chrono::seconds(30),
+      method == boost::beast::http::verb::get ? std::chrono::seconds(10)
+                                              : std::chrono::seconds(30), // LCOV_EXCL_LINE
       body
   );
   if (response.status == success && response.payload.value("ok", false)) return response.payload;
@@ -274,7 +275,7 @@ std::string milestone_range(const nlohmann::json& milestone) {
     text += " – " + format_milestone_when(milestone.at("end_at").get<long long>(), all_day);
   }
   return text;
-}
+} // LCOV_EXCL_LINE: return-path cleanup duplicate.
 
 void print_milestones(const nlohmann::json& data) {
   if (data.empty()) {

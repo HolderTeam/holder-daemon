@@ -824,6 +824,21 @@ TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][
   CHECK(error["code"] == "history_key_unavailable");
 }
 
+TEST_CASE("HistoryRoutes maps privacy failures by recoverability", "[http][history]") {
+  using Code = holder::privacy::PrivacyErrorCode;
+  const auto missing = holder::api::routes::history_privacy_error_response(
+      holder::privacy::PrivacyError(Code::KeyringUnavailable, "missing keyring")
+  );
+  CHECK(missing.result() == http::status::conflict);
+  CHECK(nlohmann::json::parse(missing.body())["error"]["code"] == "history_key_unavailable");
+
+  const auto invalid = holder::api::routes::history_privacy_error_response(
+      holder::privacy::PrivacyError(Code::EnvelopeInvalid, "bad envelope")
+  );
+  CHECK(invalid.result() == http::status::service_unavailable);
+  CHECK(nlohmann::json::parse(invalid.body())["error"]["code"] == "history_unavailable");
+}
+
 TEST_CASE("HistoryRoutes reports malformed historical card data", "[http][history]") {
   const auto dir = holder::test::make_temp_dir();
   auto db = holder::test::open_db_with_schema(dir / "holder.db");
@@ -927,6 +942,13 @@ TEST_CASE(
   auto params = [](const std::string&) {
     return std::string();
   };
+  CHECK_FALSE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history/cards/card-one/unknown",
+      request,
+      response,
+      db,
+      params
+  ));
   REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params));
   CHECK(response.result() == http::status::method_not_allowed);
   request.method(http::verb::post);
@@ -934,4 +956,16 @@ TEST_CASE(
   CHECK(response.result() == http::status::not_implemented);
   REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params, &cards));
   CHECK(response.result() == http::status::bad_request);
+
+  holder::git::GitRepo git;
+  git.open_or_init(root / "project");
+  history_commit(git, "different-card", "body\n", "Add a different card");
+  const auto oid = git.head_oid();
+  REQUIRE(oid.has_value());
+  auto oid_param = [&](const std::string& key) {
+    return key == "oid" ? *oid : std::string();
+  };
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, oid_param, &cards)
+  );
+  CHECK(response.result() == http::status::not_found);
 }

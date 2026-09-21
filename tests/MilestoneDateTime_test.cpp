@@ -68,6 +68,8 @@ TEST_CASE(
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("06/01/2026"), std::invalid_argument);
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-02-29"), std::invalid_argument);
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T25:00:00Z"), std::invalid_argument);
+  CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T12:00:00"), std::invalid_argument);
+  CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T12:00:00X"), std::invalid_argument);
   CHECK_THROWS_AS(
       holder::cli::parse_milestone_when("2026-06-01T12:00:00+24:00"),
       std::invalid_argument

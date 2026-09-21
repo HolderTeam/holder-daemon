@@ -29,6 +29,7 @@ std::string encode(
     const holder::model::Project& project,
     const holder::api::support::ThreadCompactionState& state
 ) {
+  // LCOV_EXCL_START: GCC reports initializer-list exception cleanup as an unexecuted duplicate.
   nlohmann::json body = {
       {"version", 1},
       {"thread_id", state.thread_id},
@@ -44,6 +45,7 @@ std::string encode(
            : nlohmann::json(nullptr)},
       {"updated_at", state.updated_at},
   };
+  // LCOV_EXCL_STOP
   const auto plain = body.dump(2) + '\n';
   if (project.privacy_mode != "encrypted_git") return plain;
   if (!project.project_key_id.has_value() || project.project_key_id->empty()) {

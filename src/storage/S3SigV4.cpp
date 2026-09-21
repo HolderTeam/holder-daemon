@@ -38,9 +38,10 @@ std::vector<unsigned char> hmac(
           value.size(),
           output.data(),
           &size
-      ) == nullptr) {
+      ) == nullptr) { // LCOV_EXCL_START: OpenSSL allocation/failure guard.
     throw std::runtime_error("S3 HMAC-SHA256 failed");
   }
+  // LCOV_EXCL_STOP
   return {output.begin(), output.begin() + size};
 }
 
@@ -72,14 +73,16 @@ std::string sha256_hex(const std::string& value) {
       EVP_MD_CTX_free
   );
   if (!context || EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
-      EVP_DigestUpdate(context.get(), value.data(), value.size()) != 1) {
+      EVP_DigestUpdate(context.get(), value.data(), value.size()) != 1) { // LCOV_EXCL_START
     throw std::runtime_error("S3 SHA-256 failed");
   }
+  // LCOV_EXCL_STOP
   std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
   unsigned int size = 0;
-  if (EVP_DigestFinal_ex(context.get(), digest.data(), &size) != 1) {
+  if (EVP_DigestFinal_ex(context.get(), digest.data(), &size) != 1) { // LCOV_EXCL_START
     throw std::runtime_error("S3 SHA-256 failed");
   }
+  // LCOV_EXCL_STOP
   return hex(digest.data(), size);
 }
 

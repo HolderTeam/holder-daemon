@@ -5,11 +5,14 @@
 #include "card/CardRepo.h"
 #include "card/CardStore.h"
 #include "card/TagRepo.h"
+#include "git/GitOps.h"
 #include "index/FtsIndexer.h"
 #include "platform/Db.h"
 #include "platform/LockFile.h"
 #include "platform/Migrations.h"
 #include "platform/Paths.h"
+#include "platform/ProjectRegistry.h"
+#include "project/ProjectManifest.h"
 #include "project/ProjectRepo.h"
 
 #include <chrono>
@@ -191,6 +194,7 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
   const auto db_path = xdg_root / "data" / "holder" / "server" / "holder.db";
   std::string project_id;
   std::string card_id;
+  std::filesystem::path project_root;
   {
     holder::platform::Db db;
     db.open(db_path);
@@ -199,6 +203,7 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
     const auto projects = project_repo.list();
     REQUIRE(projects.size() == 1);
     project_id = projects[0].project_id;
+    project_root = projects[0].root_path;
     const auto cards = card_repo.list_all(project_id);
     REQUIRE(cards.size() == 1);
     card_id = cards[0].card_id;
@@ -206,9 +211,27 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
     holder::index::FtsIndexer fts(db);
     holder::card::CardStore card_store(db, &fts);
     card_store.update_content(card_id, "Migration content #legacy-tag", std::nullopt, 100);
+    holder::model::Card missing;
+    missing.card_id = "missing-content-card";
+    missing.project_id = project_id;
+    missing.title = "Missing content";
+    missing.created_at = 101;
+    missing.updated_at = 101;
+    card_store.create(missing, "temporary");
+    const auto missing_row = card_store.get(missing.card_id);
+    REQUIRE(missing_row.has_value());
+    std::filesystem::remove(project_root / missing_row->rel_path);
+    db.exec(
+        "INSERT INTO cards(card_id,project_id,title,rel_path,sort_key,created_at,updated_at) "
+        "VALUES('invalid-path-card','" +
+        project_id + "','Invalid path','../outside.md',999,102,102);"
+    );
     db.exec("DROP TABLE card_tags;");
     db.exec("UPDATE schema_version SET version = 1;");
   }
+
+  std::filesystem::remove(project_root / holder::project::kProjectManifestPath);
+  REQUIRE_FALSE(holder::project::has_project_manifest(project_root));
 
   REQUIRE(run_command(cmd) == 0);
 
@@ -222,6 +245,42 @@ TEST_CASE("CLI upgrades a v1 database and backfills card tags", "[cli][migration
   REQUIRE(
       tag_repo.list_tags_for_card(project_id, card_id) == std::vector<std::string>{"legacy-tag"}
   );
+  REQUIRE(holder::project::has_project_manifest(project_root));
+}
+
+TEST_CASE("CLI startup recovers projects from the durable registry", "[cli][recovery]") {
+  const auto dir = holder::test::make_temp_dir();
+  const auto xdg_root = dir / "xdg";
+  holder::test::EnvGuard data_env("XDG_DATA_HOME", (xdg_root / "data").string());
+  holder::test::EnvGuard config_env("XDG_CONFIG_HOME", (xdg_root / "config").string());
+  holder::test::EnvGuard cache_env("XDG_CACHE_HOME", (xdg_root / "cache").string());
+  holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
+  const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  CwdGuard cwd(repo_root);
+
+  auto paths = holder::core::Paths::resolve("holder");
+  paths.ensure_dirs();
+  {
+    auto db = holder::test::open_db_with_schema(paths.db_path());
+    db.close();
+  }
+  holder::model::Project project;
+  project.project_id = "registry-project";
+  project.name = "Registry project";
+  project.root_path = (dir / "external-project").string();
+  project.privacy_mode = "plain";
+  project.created_at = 1;
+  project.updated_at = 1;
+  holder::git::RealGitOps git;
+  git.open_or_init(project.root_path);
+  holder::project::write_project_manifest(git, project);
+  git.commit("Create durable project metadata");
+  holder::core::ProjectRegistry(paths.project_registry_path()).remember({project});
+
+  REQUIRE(run_command("\"" + std::string(HOLDER_BIN_PATH) + "\" --reindex") == 0);
+  holder::platform::Db recovered;
+  recovered.open(paths.db_path());
+  REQUIRE(holder::project::ProjectRepo(recovered).get(project.project_id).has_value());
 }
 
 TEST_CASE("CLI --help and unknown args branches", "[cli]") {

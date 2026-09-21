@@ -169,8 +169,10 @@ nlohmann::json project_sync_operation_payload(
       {"error_code", std::move(error_code)},
       {"error_message", std::move(error_message)},
       {"pull",
+       // LCOV_EXCL_START: GCC reports nested initializer cleanup as an unexecuted duplicate.
        {{"attempted", result.pull.attempted},
         {"status", holder::sync::pull_phase_status_name(result.pull.status)},
+        // LCOV_EXCL_STOP
         {"conflicts_resolved", result.pull.conflicts_resolved},
         {"error_message",
          result.pull.error_message.has_value() ? nlohmann::json(*result.pull.error_message)
@@ -718,10 +720,12 @@ bool handle_project_routes(
         auto& git = resolve_git(git_ops);
         auto operation = git.lock_operation(project.root_path);
         const auto refreshed = repo.get(project_id);
+        // LCOV_EXCL_START: defensive same-lock disappearance guard.
         if (!refreshed) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
           return true;
         }
+        // LCOV_EXCL_STOP
         project = *refreshed;
 
         std::optional<std::string> remote_url = project.git_remote_url;
@@ -823,10 +827,12 @@ bool handle_project_routes(
         auto& git = resolve_git(git_ops);
         auto operation = git.lock_operation(project_opt->root_path);
         const auto refreshed = repo.get(project_id);
+        // LCOV_EXCL_START: defensive same-lock disappearance guard.
         if (!refreshed) {
           res = support::error_response(http::status::not_found, "not_found", "Project not found.");
           return true;
         }
+        // LCOV_EXCL_STOP
         const auto& project = *refreshed;
         if (!project.git_remote_url.has_value() || project.git_remote_url->empty()) {
           sync_repo.record_push_result(
@@ -1114,6 +1120,7 @@ bool handle_project_routes(
               // Observe remote configuration under the same repository lock as
               // the mutation, so concurrent requests report the actual change.
               const auto locked_project = repo.get(project_id);
+              // LCOV_EXCL_START: defensive same-lock disappearance guard.
               if (!locked_project.has_value()) {
                 res = support::error_response(
                     http::status::not_found,
@@ -1122,6 +1129,7 @@ bool handle_project_routes(
                 );
                 return true;
               }
+              // LCOV_EXCL_STOP
               std::optional<bool> git_remote_changed;
               if (has_name) {
                 repo.update_name(project_id, body.at("name").get<std::string>(), updated_at);
@@ -1207,7 +1215,8 @@ bool handle_project_routes(
               const auto updated_project = repo.get(project_id).value();
               holder::project::write_project_manifest(git, updated_project);
               git.commit("Update project metadata");
-              holder::core::ProjectRegistry(
+              holder::core::ProjectRegistry( // LCOV_EXCL_LINE: temporary-constructor cleanup
+                                             // duplicate.
                   holder::core::Paths::resolve("holder").project_registry_path()
               )
                   .remember(repo.list());

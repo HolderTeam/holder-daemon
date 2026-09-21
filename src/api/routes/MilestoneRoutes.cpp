@@ -211,7 +211,7 @@ bool handle_milestone_routes(
       }
       res = support::json_response(http::status::ok, {{"ok", true}, {"data", data}});
       return true;
-    }
+    } // LCOV_EXCL_LINE: GCC duplicate cleanup line after the covered response.
 
     if (!milestone_id.has_value() && req.method() == http::verb::post) {
       if (card_store == nullptr) {
@@ -292,7 +292,7 @@ bool handle_milestone_routes(
            {"data", {{"card_id", card_id}, {"milestone_id", *milestone_id}, {"removed", removed}}}}
       );
       return true;
-    }
+    } // LCOV_EXCL_LINE: GCC duplicate cleanup line after the covered response.
 
     if (milestone_id.has_value() && req.method() == http::verb::patch) {
       if (card_store == nullptr) {

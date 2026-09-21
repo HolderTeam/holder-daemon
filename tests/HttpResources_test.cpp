@@ -1,6 +1,7 @@
 #include "http_test_helpers.h"
 
 #include "model/Card.h"
+#include "platform/Paths.h"
 #include <future>
 
 using holder::test::create_project;
@@ -435,6 +436,29 @@ TEST_CASE(
   REQUIRE(duplicate_job["duplicate_reused"] == true);
   REQUIRE(duplicate_job["link_created"] == false);
 
+  for (const auto& [extra_id, title] : std::vector<std::pair<std::string, std::string>>{
+           {"card-alpha", "Alpha"},
+           {"card-homework", "Homework"}
+       }) {
+    holder::model::Card extra;
+    extra.card_id = extra_id;
+    extra.project_id = "proj-1";
+    extra.title = title;
+    extra.created_at = 20;
+    extra.updated_at = 20;
+    setup_cards.create(extra, title + "\n");
+    const auto attached = http_json_request(
+        running.bound.bind,
+        running.bound.port,
+        token,
+        boost::beast::http::verb::post,
+        "/cards/" + extra_id + "/resources",
+        {{"project_id", "proj-1"}, {"resource_id", job["resource_id"]}},
+        boost::beast::http::status::ok
+    );
+    REQUIRE(attached["data"]["changed"] == true);
+  }
+
   const auto resources = http_json_request(
       running.bound.bind,
       running.bound.port,
@@ -446,11 +470,35 @@ TEST_CASE(
   );
   REQUIRE(resources["data"].size() == 1);
   REQUIRE(resources["data"][0]["assets"][0]["media_type"] == "application/pdf");
-  REQUIRE(resources["data"][0]["referenced_by_cards"].size() == 1);
-  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["card_id"] == "card-1234");
-  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["title"] == "Homework");
+  REQUIRE(resources["data"][0]["referenced_by_cards"].size() == 3);
+  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["card_id"] == "card-alpha");
+  REQUIRE(resources["data"][0]["referenced_by_cards"][0]["title"] == "Alpha");
   REQUIRE(
-      resources["data"][0]["referenced_by_cards"][0]["link_kinds"] ==
+      resources["data"][0]["referenced_by_cards"][1]["link_kinds"] ==
       nlohmann::json::array({"attachment"})
   );
+
+  const auto cache = holder::core::Paths::resolve("holder").cache_dir / "asset-cache";
+  std::filesystem::create_directories(cache / "directory-entry");
+  const auto stale = cache / "stale.tmp";
+  const auto fresh = cache / "fresh.tmp";
+  std::ofstream(stale) << "stale";
+  std::ofstream(fresh) << "fresh";
+  std::filesystem::last_write_time(
+      stale,
+      std::filesystem::file_time_type::clock::now() - std::chrono::hours(48)
+  );
+  const auto downloaded = holder::test::http_request_raw(
+      running.bound.bind,
+      running.bound.port,
+      token,
+      boost::beast::http::verb::get,
+      "/resources/" + job["resource_id"].get<std::string>() + "/assets/" +
+          job["asset_id"].get<std::string>() + "/content"
+  );
+  REQUIRE(downloaded.status == boost::beast::http::status::ok);
+  REQUIRE(downloaded.body == "%PDF-1.7\nHolder test\n");
+  CHECK_FALSE(std::filesystem::exists(stale));
+  CHECK(std::filesystem::exists(fresh));
+  CHECK(std::filesystem::is_directory(cache / "directory-entry"));
 }

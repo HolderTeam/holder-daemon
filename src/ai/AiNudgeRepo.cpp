@@ -116,10 +116,11 @@ Nudge AiNudgeRepo::create_or_get(const Nudge& nudge) {
   sqlite3_finalize(stmt);
 
   auto stored = find_by_id(nudge.nudge_id);
+  // LCOV_EXCL_START: a successful insert of this primary key guarantees the subsequent lookup.
   if (!stored.has_value()) {
-    throw std::runtime_error("insert ai_nudge failed: row not found after insert"
-    ); // LCOV_EXCL_LINE
+    throw std::runtime_error("insert ai_nudge failed: row not found after insert");
   }
+  // LCOV_EXCL_STOP
   return stored.value();
 }
 

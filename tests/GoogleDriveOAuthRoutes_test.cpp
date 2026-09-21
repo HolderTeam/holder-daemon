@@ -291,6 +291,14 @@ TEST_CASE(
     missing_refresh = true;
   }
   SECTION("token endpoint rejection") { rejected_token = true; }
+  const bool successful_exchange = !(
+      missing_code || missing_secrets || removed_location || missing_refresh || rejected_token
+  );
+  std::unique_ptr<holder::git::RealGitOps> git_ops;
+  if (successful_exchange) {
+    git_ops = std::make_unique<holder::git::RealGitOps>();
+    git_ops->open_or_init(root / "project");
+  }
   holder::test::GoogleStorageTestServer fixture([&](const Server::Request& request) {
     if (request.target() == "/token")
       return Server::response(rejected_token ? 400 : 200, token_body);
@@ -314,11 +322,9 @@ TEST_CASE(
       response,
       db,
       missing_secrets ? nullptr : secrets.get(),
-      nullptr
+      git_ops.get()
   ));
-  const bool success = !(
-      missing_code || missing_secrets || removed_location || missing_refresh || rejected_token
-  );
+  const bool success = successful_exchange;
   CHECK(
       response.result() == (success        ? http::status::ok
                             : missing_code ? http::status::bad_request
@@ -392,4 +398,35 @@ TEST_CASE(
   ));
   CHECK(routes::handle_google_drive_oauth_authorize_route("missing", request, response, db));
   CHECK(response.result() == http::status::bad_request);
+}
+
+TEST_CASE("Google Drive OAuth callback expires stale pending state", "[google_drive][routes]") {
+  namespace http = boost::beast::http;
+  namespace routes = holder::api::routes;
+  const auto root = make_temp_dir();
+  auto db = open_db_with_schema(root / "holder.db");
+  create_project(db, "project", (root / "project").string());
+  holder::resource::LocationRepo(db).put({"location", "project", "Drive", "google-drive", {}, 1, 1}
+  );
+  EnvGuard client_id("HOLDER_GOOGLE_OAUTH_CLIENT_ID", "client");
+  EnvGuard client_secret("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET", "secret");
+  http::request<http::string_body> request{http::verb::post, "/", 11};
+  http::response<http::string_body> response;
+  REQUIRE(routes::handle_google_drive_oauth_authorize_route("location", request, response, db, 1));
+  const auto authorization =
+      nlohmann::json::parse(response.body())["data"]["authorization_url"].get<std::string>();
+  const auto state = extract_query_value(authorization, "state");
+  request.method(http::verb::get);
+  REQUIRE(routes::handle_google_drive_oauth_callback_route(
+      "/locations/location/oauth/google-drive/callback",
+      "state=" + state + "&code=unused",
+      request,
+      response,
+      db,
+      nullptr,
+      nullptr,
+      602
+  ));
+  CHECK(response.result() == http::status::bad_request);
+  CHECK(response.body().find("took too long") != std::string::npos);
 }
