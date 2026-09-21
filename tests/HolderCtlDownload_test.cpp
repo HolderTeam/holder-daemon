@@ -273,3 +273,50 @@ TEST_CASE(
   }
   require_no_staging_files(directory);
 }
+
+TEST_CASE(
+    "holderctl download rejects directory and invalid parent outputs",
+    "[holderctl][download]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  holder::cli::DaemonConnection unused;
+  CHECK_THROWS_AS(
+      holder::cli::download_to_file(unused, "/asset", root, std::chrono::seconds(1)),
+      holder::cli::CliError
+  );
+  std::ofstream(root / "parent-file") << "retain";
+  CHECK_THROWS_AS(
+      holder::cli::download_to_file(
+          unused,
+          "/asset",
+          root / "parent-file/output",
+          std::chrono::seconds(1)
+      ),
+      holder::cli::CliError
+  );
+  CHECK(read_binary(root / "parent-file") == "retain");
+  require_no_staging_files(root);
+}
+
+TEST_CASE("holderctl download bounds server error bodies", "[holderctl][download]") {
+  const std::string body(1024 * 1024 + 1, 'e');
+  DownloadServer server(
+      "HTTP/1.1 500 Internal Server Error\r\nContent-Length: " + std::to_string(body.size()) +
+      "\r\nConnection: close\r\n\r\n" + body
+  );
+  bool called = false;
+  try {
+    holder::cli::http_download(
+        server.connection,
+        "/asset",
+        std::chrono::seconds(10),
+        [&](const char*, std::size_t) {
+          called = true;
+        }
+    );
+    FAIL("oversized error body was accepted");
+  } catch (const holder::cli::CliError& error) {
+    CHECK(std::string(error.what()).find("exceeds 1 MiB") != std::string::npos);
+  }
+  CHECK_FALSE(called);
+}

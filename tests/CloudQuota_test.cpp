@@ -239,3 +239,22 @@ TEST_CASE("CloudQuota imports existing usage and validates ledger contents", "[c
     REQUIRE_THROWS(holder::api::support::initialize_cloud_usage_ledger(fresh, root / "new.json"));
   }
 }
+
+TEST_CASE("CloudQuota does not publish a ledger when its export query fails", "[cloud_quota]") {
+  const auto root = holder::test::make_temp_dir();
+  const auto ledger = root / "ledger.json";
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  db.exec("DROP TABLE ai_cloud_usage_events; CREATE VIEW ai_cloud_usage_events AS "
+          "SELECT 'event' AS event_id, 'provider' AS provider, 'model' AS model_id, "
+          "1 AS prompt_tokens, 2 AS response_tokens, 3 AS total_tokens, 4 AS created_at "
+          "WHERE abs(-9223372036854775808)");
+  CHECK_THROWS_WITH(
+      holder::api::support::initialize_cloud_usage_ledger(db, ledger),
+      Catch::Matchers::ContainsSubstring("cloud usage export failed")
+  );
+  CHECK_FALSE(std::filesystem::exists(ledger));
+  for (auto* statement = sqlite3_next_stmt(db.handle(), nullptr); statement;
+       statement = sqlite3_next_stmt(db.handle(), statement)) {
+    CHECK_FALSE(sqlite3_stmt_busy(statement));
+  }
+}

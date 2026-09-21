@@ -1,18 +1,19 @@
 # Release-readiness handover — 2026-09-21
 
-## Scope and stopping point
+## Scope and current checkpoint
 
 The goal is 100% daemon line coverage plus the diagnostics exposed by `make.sh`.
-**This goal is not complete; do not describe the release as signed off.** Work was
-paused at the user's request to wrap up and document the remaining audit.
+**This goal is not complete; do not describe the release as signed off.** The user committed the checkpoint and asked to continue, updating this document
+regularly. The audit is active.
 
-Repository: `holder-daemon`. Base commit: `8a8ce99` (the CI build-target fix whose
-pipeline the user confirmed green). The changes described below are uncommitted.
+Repository: `holder-daemon`. Current checkpoint commit: `06507d7` (More fixes).
+The prior `8a8ce99` CI build-target fix had a green pipeline. Changes described in
+the checkpoint section below are committed; subsequent audit work is separate.
 The holder-core submodule remains `b7f0880b0e921f3e39f776528a6a374d3d30629c`.
 No sibling repository was changed in this pass. Follow repository `AGENTS.md`;
 core fixes belong in the canonical `../holder-core` checkout first.
 
-## Changes in the working tree
+## Changes committed at the checkpoint
 
 - **Production shutdown fix:** request workers previously let database-open or
   runner-registry initialization exceptions escape `std::thread`, aborting the
@@ -39,7 +40,7 @@ core fixes belong in the canonical `../holder-core` checkout first.
 | Check | Result and scope |
 | --- | --- |
 | Full coverage-build test suite after the shutdown fix | **1,401 registered; 1,399 passed, 2 live-cloud tests skipped; zero failures.** `/tmp/holder-daemon-wrapup-tests.log` |
-| Latest complete canonical coverage report | **97.8% lines: 15,853 / 16,211; 99.8% functions: 989 / 991.** This report predates the uncommitted additions; regenerate before quoting a new percentage. |
+| Latest complete canonical coverage report | **97.8% lines: 15,853 / 16,211; 99.8% functions: 989 / 991.** This report predates the checkpoint additions; regenerate before quoting a new percentage. |
 | Formatting | `./make.sh format-check` passes after correcting `EnvGuard` formatting. `/tmp/holder-daemon-wrapup-format.log` |
 | Whitespace | `git diff --check` passes. |
 | Earlier full ASan + UBSan + leak detection | 1,389 registered; 1,386 passed, 3 skipped; no sanitizer findings. This predates the current changes. `/tmp/holder-daemon-audit-asan-ubsan.log` |
@@ -52,7 +53,13 @@ The full ThreadSanitizer run after both fixes **passed all three CTest entries**
 suppression. Log: `/tmp/holder-daemon-wrapup-tsan.log`. The test-helper formatting
 change was whitespace-only and did not require repeating this run.
 
-Final ASan/UBSan/leak-check results are recorded below after completion.
+### Active runs after resuming
+
+- Full ASan/UBSan/LSan tests on `06507d7`: `/tmp/holder-daemon-wrapup-asan.log`.
+- Fresh full Valgrind build/run: `/tmp/holder-daemon-release-memcheck.log`.
+- Fresh canonical coverage: `/tmp/holder-daemon-release-coverage.log`.
+
+Results will replace these pending entries when each run finishes.
 
 Live Google Drive and S3 tests need credentials; the extensive local TLS/HTTP
 protocol tests run without them. ASan also skips core's non-token privacy-error
