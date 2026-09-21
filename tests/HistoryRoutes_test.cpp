@@ -730,6 +730,16 @@ TEST_CASE("HistoryRoutes rejects an oversized history comparison", "[http][histo
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
   REQUIRE(res.result() == http::status::payload_too_large);
   CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "history_response_too_large");
+  query.clear();
+  query["oid"] = *head_oid;
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/snapshot", req, res, db, param));
+  CHECK(res.result() == http::status::payload_too_large);
+  history_commit(git, card_id, "Another version\n", oversized);
+  query.clear();
+  for (const std::string path : {base, std::string("/projects/history-project/history")}) {
+    REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
+    CHECK(res.result() == http::status::payload_too_large);
+  }
 }
 
 TEST_CASE("HistoryRoutes leave SQLite files unchanged", "[http][history]") {

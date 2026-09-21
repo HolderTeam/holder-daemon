@@ -1757,6 +1757,19 @@ TEST_CASE("CardRoutes preserves CardStore tag mutation outcomes", "[card-routes]
   REQUIRE(prose["data"]["changed"] == false);
   REQUIRE(card_store.get_content(*card_store.get(prose_card_id)) == prose_before);
 
+  CHECK(
+      call(card_id, http::verb::delete_, {{"project_id", "proj-1"}, {"tag", "123invalid"}}).first ==
+      http::status::bad_request
+  );
+  CHECK(
+      call(card_id, http::verb::post, {{"project_id", ""}, {"tag", "work"}}).first ==
+      http::status::bad_request
+  );
+  CHECK(
+      call(card_id, http::verb::post, {{"project_id", 12}, {"tag", "work"}}).first ==
+      http::status::bad_request
+  );
+
   const auto [invalid_status, invalid] =
       call(card_id, http::verb::post, {{"project_id", "proj-1"}, {"tag", "123invalid"}});
   REQUIRE(invalid_status == http::status::bad_request);
