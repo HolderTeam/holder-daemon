@@ -317,7 +317,8 @@ struct HttpResult {
 
 class EnvGuard {
  public:
-  EnvGuard(const char* key, std::nullopt_t) : EnvGuard(key, std::string()) {
+  EnvGuard(const char* key, std::nullopt_t)
+      : EnvGuard(key, std::string()) {
     unset_env();
   }
   EnvGuard(const char* key, const std::string& value)

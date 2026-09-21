@@ -115,7 +115,14 @@ class DiagnosticGitOps final : public holder::git::GitOps {
   std::string remove_error;
   std::string pull_error;
   std::filesystem::path root;
-  std::vector<std::string> calls;
+  std::vector<std::string> calls() const {
+    std::lock_guard lock(calls_mutex_);
+    return calls_;
+  }
+  void clear_calls() {
+    std::lock_guard lock(calls_mutex_);
+    calls_.clear();
+  }
   holder::git::RemoteProbeResult probe_result{holder::git::RemoteProbeStatus::Reachable, true, {}};
   holder::git::PushResult push_result{holder::git::PushStatus::Pushed, 0, 0, "abc123", {}};
   void open_or_init(const std::filesystem::path& path) override { root = path; }
@@ -124,14 +131,14 @@ class DiagnosticGitOps final : public holder::git::GitOps {
   void remove_path(const std::filesystem::path&) override {}
   void commit(const std::string&) override {}
   void set_remote(const std::string&, const std::string&) override {
-    calls.push_back("remote");
+    record_call("remote");
     if (!set_error.empty()) throw std::runtime_error(set_error);
   }
   void remove_remote(const std::string&) override {
     if (!remove_error.empty()) throw std::runtime_error(remove_error);
   }
   void pull_remote_ff_only(const std::string&) override {
-    calls.push_back("pull");
+    record_call("pull");
     if (!pull_error.empty()) throw std::runtime_error(pull_error);
   }
   holder::git::RemoteProbeResult probe_remote(const std::string&) override { return {}; }
@@ -139,10 +146,20 @@ class DiagnosticGitOps final : public holder::git::GitOps {
     return probe_result;
   }
   holder::git::PushResult push_branch(const std::string&, const std::string&, bool) override {
-    calls.push_back("push");
+    record_call("push");
     return push_result;
   }
   std::filesystem::path repo_dir() const override { return root; }
+
+ private:
+  // The HTTP client's process exit is not an in-process synchronization primitive.
+  // Protect observations shared by the Git worker and the test thread.
+  void record_call(std::string call) {
+    std::lock_guard lock(calls_mutex_);
+    calls_.push_back(std::move(call));
+  }
+  mutable std::mutex calls_mutex_;
+  std::vector<std::string> calls_;
 };
 
 class ConcurrentPullGitOps final : public holder::git::GitOps {
@@ -642,14 +659,14 @@ TEST_CASE("holderctl sync pull and now return structured results", "[holderctl][
   CHECK(payload["data"]["status"] == "succeeded");
   CHECK(payload["data"]["pull"]["status"] == "succeeded");
   CHECK(payload["data"]["push"]["attempted"] == false);
-  CHECK(git.calls == std::vector<std::string>{"remote", "pull"});
+  CHECK(git.calls() == std::vector<std::string>{"remote", "pull"});
 
-  git.calls.clear();
+  git.clear_calls();
   result = fixture.run("now --project " + work_id);
   REQUIRE(result.code == 0);
   CHECK(result.error.empty());
   CHECK(result.output.find("Pull: succeeded\nPush: pushed\n") != std::string::npos);
-  CHECK(git.calls == std::vector<std::string>{"remote", "pull", "remote", "push"});
+  CHECK(git.calls() == std::vector<std::string>{"remote", "pull", "remote", "push"});
 }
 
 TEST_CASE(
@@ -663,12 +680,12 @@ TEST_CASE(
       .update_git_remote(work_id, "https://example.com/repo.git", 1);
 
   for (const auto* mode : {"", " --json"}) {
-    git.calls.clear();
+    git.clear_calls();
     const auto result = fixture.run("now --project " + work_id + mode);
     REQUIRE(result.code == 1);
     CHECK(result.output.empty());
     CHECK(result.error.find("private-secret") == std::string::npos);
-    CHECK(git.calls == std::vector<std::string>{"remote", "pull"});
+    CHECK(git.calls() == std::vector<std::string>{"remote", "pull"});
     if (std::string(mode) == " --json") {
       const auto error = nlohmann::json::parse(result.error);
       CHECK(error["error"]["code"] == "pull_failed");

@@ -377,38 +377,35 @@ int run_daemon(int argc, char* argv[]) {
 
   std::atomic<bool> database_health_failure{false};
   std::atomic<bool> database_health_stop_requested{false};
-  std::thread database_health_monitor_thread(
-      [&]() { // LCOV_EXCL_LINE: requires live filesystem corruption.
-        while (!database_health_stop_requested.load() && !signals.is_requested()) {
-          for (int tenth_seconds = 0;
-               tenth_seconds < 50 && !database_health_stop_requested.load() &&
-               !signals.is_requested();
-               ++tenth_seconds) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-          }
-          if (database_health_stop_requested.load() || signals.is_requested()) break;
-          const auto health = holder::core::inspect_database_health(paths.db_path());
-          if (health.health == holder::core::DatabaseHealth::Healthy) continue;
-          database_health_failure.store(true);
-          if (health.health == holder::core::DatabaseHealth::Corrupt) {
-            spdlog::critical(
-                "SQLite corruption detected during runtime; stopping all work so the database can "
-                "be quarantined and rebuilt on the next start: {}",
-                health.detail
-            );
-          } else {
-            spdlog::critical(
-                "SQLite health check failed during runtime; stopping without classifying the "
-                "failure as corruption: {}",
-                health.detail
-            );
-          }
-          signals.request_stop();
-          server.stop();
-          break;
-        }
+  std::thread database_health_monitor_thread([&]() {
+    while (!database_health_stop_requested.load() && !signals.is_requested()) {
+      for (int tenth_seconds = 0;
+           tenth_seconds < 50 && !database_health_stop_requested.load() && !signals.is_requested();
+           ++tenth_seconds) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-  );
+      if (database_health_stop_requested.load() || signals.is_requested()) break;
+      const auto health = holder::core::inspect_database_health(paths.db_path());
+      if (health.health == holder::core::DatabaseHealth::Healthy) continue;
+      database_health_failure.store(true);
+      if (health.health == holder::core::DatabaseHealth::Corrupt) {
+        spdlog::critical(
+            "SQLite corruption detected during runtime; stopping all work so the database can "
+            "be quarantined and rebuilt on the next start: {}",
+            health.detail
+        );
+      } else {
+        spdlog::critical(
+            "SQLite health check failed during runtime; stopping without classifying the "
+            "failure as corruption: {}",
+            health.detail
+        );
+      }
+      signals.request_stop();
+      server.stop();
+      break;
+    }
+  });
   StopFlagThreadGuard database_health_monitor(
       database_health_stop_requested,
       std::move(database_health_monitor_thread)

@@ -305,3 +305,70 @@ TEST_CASE("S3 provider removes partial downloads after a broken response", "[s3]
   server.rethrow_error();
   CHECK(server.requests().size() == 3);
 }
+
+TEST_CASE("S3 provider rejects invalid configuration and object keys", "[s3]") {
+  using Provider = holder::storage::S3CompatibleProvider;
+  using Error = holder::resource::StorageError;
+  holder::storage::S3CompatibleConfig
+      config{"https://storage.invalid", "region", "bucket", "path", false};
+  holder::storage::S3Credentials credentials{"access", "secret", std::nullopt};
+  SECTION("required configuration") {
+    for (auto* value :
+         {&config.endpoint,
+          &config.region,
+          &config.bucket,
+          &credentials.access_key_id,
+          &credentials.secret_access_key}) {
+      const auto saved = *value;
+      value->clear();
+      CHECK_THROWS_AS(Provider(config, credentials), Error);
+      *value = saved;
+    }
+  }
+  SECTION("addressing style") {
+    config.addressing_style = "unknown";
+    CHECK_THROWS_AS(Provider(config, credentials), Error);
+  }
+  SECTION("endpoint validation") {
+    for (const std::string endpoint :
+         {"ftp://storage.invalid", "https:///bucket", "http://storage.invalid", "http://localhost"
+         }) {
+      config.endpoint = endpoint;
+      CHECK_THROWS_AS(Provider(config, credentials), Error);
+    }
+    config.allow_insecure_localhost = true;
+    config.endpoint = "http://storage.invalid";
+    CHECK_THROWS_AS(Provider(config, credentials), Error);
+  }
+  SECTION("object keys") {
+    Provider provider(config, credentials);
+    CHECK_THROWS_AS(provider.exists(""), Error);
+    CHECK_THROWS_AS(provider.exists("/absolute"), Error);
+  }
+}
+
+TEST_CASE("S3 virtual host addressing signs the bucket hostname and object path", "[s3]") {
+  using Server = holder::test::StorageHttpTestServer;
+  holder::test::EnvGuard trust("SSL_CERT_FILE", Server::certificate_file());
+  Server server(
+      [](const Server::Request&) {
+        return Server::response(200);
+      },
+      true
+  );
+  // Prefixing the bucket creates 127.0.0.1 without depending on wildcard DNS.
+  holder::storage::S3CompatibleProvider provider(
+      {"https://0.0.1:" + std::to_string(server.address().port()) + "/base",
+       "region",
+       "127",
+       "virtual_host",
+       false},
+      {"access", "secret", std::nullopt}
+  );
+  CHECK(provider.exists("folder/a b"));
+  server.stop();
+  server.rethrow_error();
+  REQUIRE(server.requests().size() == 1);
+  CHECK(server.requests()[0].target() == "/base/folder/a%20b");
+  CHECK(server.requests()[0]["Host"] == "127.0.0.1:" + std::to_string(server.address().port()));
+}

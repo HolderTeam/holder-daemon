@@ -8,6 +8,7 @@ scripts/__pycache__
 build-coverage
 build-tidy
 build-san
+build-tsan
 build-warnings
 build-memcheck
 Testing

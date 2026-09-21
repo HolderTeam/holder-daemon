@@ -4212,6 +4212,11 @@ TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", 
         "history --unknown",
         "history --limit",
         "history card card --kind edits",
+        "history card --kind edits",
+        "history show card",
+        "history --limit --json",
+        "resource export resource asset extra",
+        "resource location add-s3 name https://storage.invalid region bucket access",
         "resource attach card",
         "resource attach card id extra",
         "resource detach card id --unknown",
@@ -4360,4 +4365,93 @@ TEST_CASE("holderctl reports daemon errors from each card and history command", 
   }
   server.stop();
   server.rethrow_error();
+}
+
+TEST_CASE(
+    "holderctl renders empty results and propagates malformed daemon payloads",
+    "[holderctl]"
+) {
+  using Server = holder::test::StorageHttpTestServer;
+  using Json = nlohmann::json;
+  const auto xdg = prepare_xdg_tree();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (xdg / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (xdg / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (xdg / "cache").string());
+  struct Case {
+    std::string args;
+    Json response;
+    std::string expected;
+    int code = 0;
+  };
+  const auto empty = Json::array();
+  const Json milestone = {
+      {"milestone_id", "due"},
+      {"start_at", 1780315200},
+      {"end_at", 1780318800},
+      {"kind", "due"},
+      {"description", "Delivery"}
+  };
+  for (const auto& item : std::vector<Case>{
+           {"tags", empty, "No tags."},
+           {"tags work", empty, "No cards tagged #work."},
+           {"tag add card work",
+            {{"card_id", "card-one"}, {"tag", "work"}, {"outcome", "already_present"}},
+            "already present"},
+           {"tag remove card work",
+            {{"card_id", "card-one"}, {"tag", "work"}, {"outcome", "removed"}},
+            "Removed tag"},
+           {"tag add card work", {{"outcome", "invalid"}}, "Invalid tag mutation", 1},
+           {"history", {{"activities", empty}, {"scan_limited", true}}, "History scan limit reached"
+           },
+           {"history card", {{"entries", empty}}, "No card history."},
+           {"history show card abcdef01",
+            {{"snapshot", {{"oid", "abcdef01"}, {"exists", false}}}},
+            "Card did not exist"},
+           {"history diff card abcdef01",
+            {{"from", {{"exists", false}}}, {"to", {{"oid", "abcdef01"}}}, {"lines", empty}},
+            "(card did not exist)"},
+           {"milestones card", Json::array({milestone}), "Delivery"},
+           {"milestone remove card due", {{"removed", true}}, "Removed milestone"},
+           {"calendar",
+            {{"milestones", empty}, {"created_cards", empty}, {"updated_cards", empty}},
+            "No calendar events."},
+           {"history", Json::object(), "Failed to inspect history", 1},
+           {"milestones card", Json::array({Json::object()}), "Failed to list milestones", 1},
+           {"milestone remove card due", "invalid", "Failed to update milestone", 1},
+           {"calendar", Json::object(), "Failed to read calendar", 1},
+           {"tags", Json::array({42}), "Failed to list tags", 1},
+           {"backlinks card", Json::array({42}), "Failed", 1},
+           {"link card other", "invalid", "HTTP 200", 1},
+           {"restore card", "invalid", "Restored card: card-one", 0}
+       }) {
+    CAPTURE(item.args);
+    Server server([&](const Server::Request& request) {
+      if (request.target() == "/projects")
+        return Server::response(
+            200,
+            R"({"ok":true,"data":[{"project_id":"project","name":"Home"}]})"
+        );
+      if (request.target() == "/card-references/resolve")
+        return Server::response(
+            200,
+            R"({"ok":true,"data":{"status":"resolved","card":{"card_id":"card-one"}}})"
+        );
+      return Server::response(200, Json{{"ok", true}, {"data", item.response}}.dump());
+    });
+    write_server_info(xdg / "data/holder/server/holder.json", 12345, server.address().port());
+#ifndef _WIN32
+    ::chmod((xdg / "data/holder/server").c_str(), S_IRWXU);
+    ::chmod((xdg / "data/holder/server/holder.json").c_str(), S_IRUSR | S_IWUSR);
+#endif
+    const auto output = xdg / "render.out";
+    const auto code = run_command(
+        "\"" HOLDER_CTL_PATH "\" " + item.args + " > \"" + output.string() + "\" 2>&1"
+    );
+    const auto text = read_text(output);
+    INFO(text);
+    CHECK(code == item.code);
+    CHECK(text.find(item.expected) != std::string::npos);
+    server.stop();
+    server.rethrow_error();
+  }
 }

@@ -299,3 +299,50 @@ TEST_CASE("DatabaseRecovery blocks known SQLite-only durable state", "[database]
       Catch::Matchers::ContainsSubstring("local AI model configuration")
   );
 }
+
+TEST_CASE(
+    "DatabaseRecovery audit requires each external owner and surfaces SQL failures",
+    "[database][recovery]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  holder::core::Paths paths;
+  paths.data_dir = root / "data";
+  paths.config_dir = root / "config";
+  paths.cache_dir = root / "cache";
+  paths.ensure_dirs();
+  auto db = holder::test::open_db_with_schema(paths.db_path());
+  SECTION("external owner files") {
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("project registry has not been externalized")
+    );
+    std::ofstream(paths.project_registry_path()) << "{}";
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("device configuration has not been externalized")
+    );
+    std::ofstream(paths.device_config_path()) << "{}";
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("cloud usage ledger has not been externalized")
+    );
+    std::ofstream(paths.cloud_usage_ledger_path()) << "{}";
+    REQUIRE_NOTHROW(holder::core::audit_durable_database_ownership(db, paths));
+  }
+  SECTION("query preparation failure") {
+    db.exec("DROP TABLE ai_provider_settings");
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("database ownership audit failed")
+    );
+  }
+  SECTION("query execution failure") {
+    db.exec(
+        "DROP TABLE ai_provider_settings; CREATE VIEW ai_provider_settings AS SELECT 1 WHERE abs(-9223372036854775808)"
+    );
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("database ownership audit failed")
+    );
+  }
+}

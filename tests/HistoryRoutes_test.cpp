@@ -912,3 +912,26 @@ TEST_CASE("HistoryRoutes restores a selected card version", "[http][history]") {
   git.open_existing(project_root);
   CHECK(git.head_oid() == data["result_oid"].get<std::string>());
 }
+
+TEST_CASE(
+    "HistoryRoutes rejects restore requests without required services or revisions",
+    "[http][history]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  holder::test::create_project(db, "history-project", (root / "project").string());
+  holder::card::CardStore cards(db, nullptr);
+  const auto path = "/projects/history-project/history/cards/card-one/restore";
+  http::request<http::string_body> request{http::verb::get, "/", 11};
+  http::response<http::string_body> response;
+  auto params = [](const std::string&) {
+    return std::string();
+  };
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params));
+  CHECK(response.result() == http::status::method_not_allowed);
+  request.method(http::verb::post);
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params));
+  CHECK(response.result() == http::status::not_implemented);
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params, &cards));
+  CHECK(response.result() == http::status::bad_request);
+}

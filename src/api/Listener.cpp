@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 
 #include <chrono>
+#include <exception>
 #include <string>
 #include <thread>
 
@@ -273,6 +274,23 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   writer_workers_.clear();
   io_workers_.clear();
 
+  std::mutex failure_mutex;
+  std::exception_ptr worker_failure;
+  std::atomic<bool> worker_failed{false};
+  auto database_worker = [&](auto run) {
+    return [&, run]() {
+      try {
+        (this->*run)();
+      } catch (...) {
+        // A failed database open or worker initialization must reach the caller
+        // after all threads have stopped, rather than terminate the process.
+        std::lock_guard lock(failure_mutex);
+        if (!worker_failure) worker_failure = std::current_exception();
+        worker_failed.store(true);
+      }
+    };
+  };
+
   ingress_workers_.reserve(concurrency_.ingress_workers);
   for (std::size_t i = 0; i < concurrency_.ingress_workers; ++i) {
     ingress_workers_.emplace_back([this]() {
@@ -282,16 +300,12 @@ void Listener::run(const holder::core::SignalHandler& signals) {
 
   save_workers_.reserve(concurrency_.save_workers);
   for (std::size_t i = 0; i < concurrency_.save_workers; ++i) {
-    save_workers_.emplace_back([this]() {
-      run_save_worker();
-    });
+    save_workers_.emplace_back(database_worker(&Listener::run_save_worker));
   }
 
   general_workers_.reserve(concurrency_.general_workers);
   for (std::size_t i = 0; i < concurrency_.general_workers; ++i) {
-    general_workers_.emplace_back([this]() {
-      run_general_worker();
-    });
+    general_workers_.emplace_back(database_worker(&Listener::run_general_worker));
   }
 
   writer_workers_.reserve(concurrency_.writer_workers);
@@ -309,7 +323,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     });
   }
 
-  while (!stop_requested_.load() && !signals.is_requested()) {
+  while (!stop_requested_.load() && !signals.is_requested() && !worker_failed.load()) {
     std::this_thread::sleep_for(kPollDelay);
   }
 
@@ -353,6 +367,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   writer_workers_.clear();
   io_workers_.clear();
   spdlog::info("listener shutdown requested");
+  if (worker_failure) std::rethrow_exception(worker_failure);
 }
 
 void Listener::stop() {

@@ -513,3 +513,69 @@ TEST_CASE("Listener start fails on invalid bind address", "[listener]") {
   holder::api::HttpServer server("invalid-bind", 0, db, "token", nullptr, nullptr);
   REQUIRE_THROWS(server.start());
 }
+
+#ifndef _WIN32
+TEST_CASE(
+    "CLI health monitor stops when its database becomes corrupt or disappears",
+    "[cli][recovery]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (root / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (root / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (root / "cache").string());
+  holder::test::EnvGuard keys("HOLDER_TEST_KEYSTORE_DIR", (root / "keys").string());
+  CwdGuard cwd(std::filesystem::path(__FILE__).parent_path().parent_path());
+  bool corrupt = false;
+  SECTION("corruption after a healthy check") { corrupt = true; }
+  SECTION("missing database") {}
+  const std::string binary = HOLDER_BIN_PATH;
+  const pid_t pid = fork();
+  REQUIRE(pid >= 0);
+  if (pid == 0) {
+    execl(binary.c_str(), binary.c_str(), "--bind", "127.0.0.1", "--port", "0", nullptr);
+    _exit(127);
+  }
+  struct ChildGuard {
+    pid_t pid;
+    bool reaped = false;
+    ~ChildGuard() {
+      if (!reaped) {
+        kill(pid, SIGKILL);
+        int status = 0;
+        waitpid(pid, &status, 0);
+      }
+    }
+  } child{pid};
+  const auto database = root / "data/holder/server/holder.db";
+  const auto info = root / "data/holder/server/holder.json";
+  const auto startup_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (!std::filesystem::exists(info) && std::chrono::steady_clock::now() < startup_deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(std::filesystem::exists(info));
+  if (corrupt) std::this_thread::sleep_for(std::chrono::seconds(6));
+  // Keep the live connection's inode intact; the monitor checks the public path.
+  std::filesystem::rename(database, root / "original.db");
+  if (corrupt) std::ofstream(database) << "not a SQLite database";
+  int status = 0;
+  const auto shutdown_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (std::chrono::steady_clock::now() < shutdown_deadline) {
+    if (waitpid(pid, &status, WNOHANG) == pid) {
+      child.reaped = true;
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  REQUIRE(child.reaped);
+  REQUIRE(WIFEXITED(status));
+  CHECK(WEXITSTATUS(status) != 0);
+}
+#endif
+
+TEST_CASE("CLI rejects dry-run without rebuilding", "[cli][recovery]") {
+  const auto root = holder::test::make_temp_dir();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (root / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (root / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (root / "cache").string());
+  CwdGuard cwd(std::filesystem::path(__FILE__).parent_path().parent_path());
+  CHECK(run_command("\"" + std::string(HOLDER_BIN_PATH) + "\" --dry-run") == 2);
+}

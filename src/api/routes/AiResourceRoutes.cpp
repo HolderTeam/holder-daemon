@@ -332,7 +332,9 @@ std::string location_object_key(
   return prefix.empty() ? relative_key : prefix + "/" + relative_key;
 }
 
-http::response<http::string_body> route_error(const std::exception& ex) {
+} // namespace
+
+http::response<http::string_body> resource_error_response(const std::exception& ex) {
   const std::string message = ex.what();
   if (const auto* storage = dynamic_cast<const holder::resource::StorageError*>(&ex)) {
     switch (storage->code()) {
@@ -393,8 +395,6 @@ http::response<http::string_body> route_error(const std::exception& ex) {
   }
   return support::error_response(http::status::bad_request, "bad_request", message);
 }
-
-} // namespace
 
 void wait_for_asset_import_jobs() {
   std::vector<std::thread> threads;
@@ -488,7 +488,7 @@ bool handle_ai_resource_routes(
       }
       res = support::json_response(http::status::ok, payload);
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -525,7 +525,7 @@ bool handle_ai_resource_routes(
           {{"ok", true}, {"data", resource_json(bundle)}}
       );
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -552,7 +552,7 @@ bool handle_ai_resource_routes(
           {{"ok", true}, {"data", std::move(data)}, {"preferred_location_id", preferred}}
       );
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -588,7 +588,7 @@ bool handle_ai_resource_routes(
           {{"ok", true}, {"data", location_json(location, bindings.get())}}
       );
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -609,7 +609,7 @@ bool handle_ai_resource_routes(
           {{"ok", true}, {"data", {{"location_id", location_id}}}}
       );
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -717,7 +717,7 @@ bool handle_ai_resource_routes(
             })}}
       );
     } catch (const std::exception& ex) {
-      res = route_error(ex);
+      res = resource_error_response(ex);
     }
     return true;
   }
@@ -791,7 +791,7 @@ bool handle_ai_resource_routes(
         boost::system::error_code ignored;
         socket->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ignored);
       } else {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
     }
     return true;
@@ -836,7 +836,7 @@ bool handle_ai_resource_routes(
             }
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -855,7 +855,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", {{"location_id", location_id}}}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -903,7 +903,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", {{"available", true}}}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -942,7 +942,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", location_json(*location, bindings.get())}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -965,7 +965,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", {{"location_id", location_id}}}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -1021,7 +1021,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", resource_json(*bundle)}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }
@@ -1037,7 +1037,7 @@ bool handle_ai_resource_routes(
             {{"ok", true}, {"data", {{"resource_id", resource_id}}}}
         );
       } catch (const std::exception& ex) {
-        res = route_error(ex);
+        res = resource_error_response(ex);
       }
       return true;
     }

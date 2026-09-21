@@ -1620,3 +1620,18 @@ TEST_CASE(
 
   // listener_guard's destructor stops the listener and joins its thread.
 }
+
+TEST_CASE("Listener joins its workers and reports database initialization failures", "[listener]") {
+  const auto dir = make_temp_dir();
+  auto db = open_db_with_schema(dir / "holder.db");
+  holder::llm::RunnerRegistry registry(&db, nullptr);
+  const std::string token = "testtoken";
+  holder::api::HttpServer server("127.0.0.1", 0, db, token, nullptr, nullptr, nullptr, &registry);
+  holder::core::SignalHandler signals;
+  server.start();
+  // The root connection is valid, but each request worker must initialize its
+  // own runner registry. Previously this exception escaped std::thread.
+  db.exec("DROP TABLE ai_runners");
+  REQUIRE_THROWS_AS(server.run(signals), std::runtime_error);
+  CHECK_NOTHROW(server.stop());
+}

@@ -109,6 +109,19 @@ HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san address,undefined
 HOLDER_SAN_BUILD_DIR=build-tsan ./make.sh san thread
 ```
 
+On Fedora, an uninstrumented glibc can produce a ThreadSanitizer report in
+`tzset_internal` during concurrent libgit2 signature creation. If the report matches
+the documented internal-lock case in holder-core, rerun with its explicit suppression:
+
+```sh
+HOLDER_SAN_BUILD_DIR=build-tsan \
+  HOLDER_TSAN_SUPPRESSIONS="$PWD/submodules/holder-core/tools/tsan/glibc.supp" \
+  HOLDER_CTEST_TIMEOUT=900 ./make.sh san thread
+```
+
+This suppression is opt-in and does not cover Holder code. See the rationale and
+source references in [glibc.supp](submodules/holder-core/tools/tsan/glibc.supp).
+
 ## Quick Start (FreeBSD)
 
 ```sh
