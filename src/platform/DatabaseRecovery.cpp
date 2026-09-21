@@ -150,6 +150,7 @@ DatabaseRebuildReport rebuild_database(
   request.project_roots = discover_roots(paths);
   // LCOV_EXCL_START: initializer-list cleanup duplicate emitted by GCC.
   request.required_authorities = {
+      // LCOV_EXCL_LINE: initializer-list cleanup duplicate.
       {"project registry", paths.project_registry_path()},
       {"device configuration", paths.device_config_path()},
       {"cloud usage ledger", paths.cloud_usage_ledger_path()},
