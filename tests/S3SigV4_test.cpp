@@ -51,3 +51,25 @@ TEST_CASE("S3 signer normalizes header names and whitespace", "[s3]") {
   REQUIRE(result.canonical_request.find("host:example.test\n") != std::string::npos);
   REQUIRE(result.authorization.find("Signature=") != std::string::npos);
 }
+
+TEST_CASE("S3 signer rejects incomplete requests and collapses interior whitespace", "[s3]") {
+  holder::storage::S3SigningInput input;
+  REQUIRE_THROWS_AS(holder::storage::sign_s3_request_v4(input), std::invalid_argument);
+  input.method = "GET";
+  input.canonical_uri = "/object";
+  input.region = "region";
+  input.access_key_id = "access";
+  input.secret_access_key = "secret";
+  input.amz_date = "20260921T000000Z";
+  input.date = "20260921";
+  input.payload_sha256 = holder::storage::sha256_hex("");
+  REQUIRE_THROWS_AS(holder::storage::sign_s3_request_v4(input), std::invalid_argument);
+  input.headers = {
+      {"host", "localhost"},
+      {"x-amz-date", input.amz_date},
+      {"x-amz-content-sha256", input.payload_sha256},
+      {"x-test", "  two\t \n words  "}
+  };
+  const auto signed_request = holder::storage::sign_s3_request_v4(input);
+  CHECK(signed_request.canonical_request.find("x-test:two words\n") != std::string::npos);
+}

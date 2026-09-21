@@ -90,7 +90,23 @@ require it, and `ccache --show-stats` to inspect cache use.
 Optional coverage tools (`gcovr` adds the JSON report):
 
 ```sh
-sudo dnf install -y lcov gcovr
+sudo dnf install -y lcov gcovr valgrind clang-tools-extra
+```
+
+On Fedora with GCC 16 headers, use the current Clang tools for static analysis;
+Clang 18 cannot parse those headers. Keep Clang 18 for the repository's formatting:
+
+```sh
+HOLDER_CLANG_TIDY=clang-tidy HOLDER_RUN_CLANG_TIDY=run-clang-tidy ./make.sh tidy
+./make.sh format-check
+```
+
+Memcheck defaults to a 900-second timeout per test. Set `HOLDER_CTEST_TIMEOUT`
+to override it. To retain separate address/undefined and thread sanitizer builds:
+
+```sh
+HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san address,undefined
+HOLDER_SAN_BUILD_DIR=build-tsan ./make.sh san thread
 ```
 
 ## Quick Start (FreeBSD)
@@ -209,6 +225,22 @@ HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san  # ASan + LSan build + tests
 
 The opt-in local MinIO and hosted S3-compatible storage test is documented in
 [`docs/s3-compatible-smoke-test.md`](docs/s3-compatible-smoke-test.md).
+
+With GCC 16, an ASan build can emit `-Wmaybe-uninitialized` warnings for
+`_M_invoker` and `_M_manager` in libstdc++'s regex headers when compiling core's
+`TagExtractor.cpp`. The same 14 warnings reproduce in a standalone `std::regex`
+program with `-O1 -fsanitize=address`, while the build without ASan is clean.
+This matches [GCC PR105616](https://gcc.gnu.org/pipermail/gcc-bugs/2022-November/804201.html);
+[GCC's documentation](https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html)
+also notes that sanitizers can increase false-positive uninitialized warnings.
+Keep other compiler warnings and runtime sanitizer reports enabled.
+
+`./make.sh san` enables ASan only and defaults to leak detection being off. For
+ASan, UBSan, and leak detection together, run:
+
+```sh
+HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san address,undefined
+```
 
 ## Daemons.
 

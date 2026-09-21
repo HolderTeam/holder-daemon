@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -132,14 +133,18 @@ std::optional<DismissedNudge> find(holder::platform::Db& db, const std::string& 
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal lookup failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   sqlite3_bind_text(stmt, 1, nudge_id.c_str(), -1, SQLITE_TRANSIENT);
   const int rc = sqlite3_step(stmt);
   if (rc == SQLITE_ROW) {
     auto out = row(stmt);
-    sqlite3_finalize(stmt);
+
     return out;
   }
-  sqlite3_finalize(stmt);
+
   return std::nullopt;
 }
 
@@ -152,6 +157,10 @@ void insert(holder::platform::Db& db, const DismissedNudge& nudge) {
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal restore failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   sqlite3_bind_text(stmt, 1, nudge.nudge_id.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 2, nudge.kind.c_str(), -1, SQLITE_TRANSIENT);
   sqlite3_bind_text(stmt, 3, nudge.project_id.c_str(), -1, SQLITE_TRANSIENT);
@@ -173,7 +182,7 @@ void insert(holder::platform::Db& db, const DismissedNudge& nudge) {
   sqlite3_bind_int64(stmt, 10, nudge.created_at);
   sqlite3_bind_int64(stmt, 11, nudge.dismissed_at);
   const int rc = sqlite3_step(stmt);
-  sqlite3_finalize(stmt);
+
   if (rc != SQLITE_DONE) throw std::runtime_error("restore nudge dismissal failed");
 }
 
@@ -206,6 +215,10 @@ std::size_t backfill_nudge_dismissals(holder::platform::Db& db) {
       ) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal backfill failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   std::size_t count = 0;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const std::string id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -219,7 +232,7 @@ std::size_t backfill_nudge_dismissals(holder::platform::Db& db) {
       continue;
     if (persist_nudge_dismissal(db, id)) ++count;
   }
-  sqlite3_finalize(stmt);
+
   return count;
 }
 
@@ -254,6 +267,10 @@ bool all_nudge_dismissals_are_durable(holder::platform::Db& db) {
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare nudge dismissal ownership audit failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   bool durable = true;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const std::string id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -263,7 +280,7 @@ bool all_nudge_dismissals_are_durable(holder::platform::Db& db) {
       break;
     }
   }
-  sqlite3_finalize(stmt);
+
   return durable;
 }
 

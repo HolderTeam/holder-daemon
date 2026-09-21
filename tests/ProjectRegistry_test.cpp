@@ -59,3 +59,23 @@ TEST_CASE("ProjectRegistry rejects unsupported content", "[project][registry]") 
   holder::core::ProjectRegistry registry(path);
   REQUIRE_THROWS(registry.roots());
 }
+
+TEST_CASE(
+    "ProjectRegistry rejects malformed entries and incomplete projects",
+    "[project][registry]"
+) {
+  const auto path = holder::test::make_temp_dir() / "registry.json";
+  holder::core::ProjectRegistry registry(path);
+  for (const auto& entry : std::vector<nlohmann::json>{
+           nullptr,
+           {{"project_id", "p"}},
+           {{"project_id", 12}, {"root_path", 12}}
+       }) {
+    std::ofstream(path
+    ) << nlohmann::json{{"version", 1}, {"projects", nlohmann::json::array({entry})}};
+    REQUIRE_THROWS(registry.roots());
+    REQUIRE_THROWS(registry.remember({}));
+  }
+  std::ofstream(path) << R"({"version":1,"projects":[]})";
+  REQUIRE_THROWS_AS(registry.remember({holder::model::Project{}}), std::invalid_argument);
+}

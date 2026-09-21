@@ -4,9 +4,11 @@
 #include <catch2/catch.hpp>
 #endif
 
+#include "http_test_helpers.h"
 #include "resource/AssetEnvelope.h"
 #include "resource/StorageProvider.h"
 #include "storage/S3CompatibleProvider.h"
+#include "storage_http_test_server.h"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core.hpp>
@@ -168,4 +170,138 @@ TEST_CASE("S3-compatible provider round-trips an object", "[s3][integration]") {
   }
   std::error_code ignored;
   std::filesystem::remove_all(root, ignored);
+}
+
+TEST_CASE("S3 provider streams signed operations through a local endpoint", "[s3]") {
+  using Server = holder::test::StorageHttpTestServer;
+  bool tls = false;
+  SECTION("HTTP on explicitly allowed loopback") {}
+  SECTION("TLS with a trusted local certificate") { tls = true; }
+  holder::test::EnvGuard trust("SSL_CERT_FILE", Server::certificate_file());
+  std::string stored;
+  bool present = false;
+  Server server(
+      [&](const Server::Request& request) {
+        if (request.method() == boost::beast::http::verb::put) {
+          stored = request.body();
+          present = true;
+          return Server::response(200);
+        }
+        if (request.method() == boost::beast::http::verb::get) return Server::response(200, stored);
+        if (request.method() == boost::beast::http::verb::delete_) {
+          present = false;
+          return Server::response(204);
+        }
+        return Server::response(present ? 200 : 404);
+      },
+      tls
+  );
+  holder::storage::S3CompatibleProvider provider(
+      {server.endpoint() + "/storage///", "us-east-1", "test bucket", "path", true},
+      {"access", "secret", "session-token"}
+  );
+  const auto root = holder::test::make_temp_dir();
+  const auto source = root / "source.bin";
+  const auto destination = root / "downloads" / "result.bin";
+  const std::string bytes("asset\0bytes", 11);
+  std::ofstream(source, std::ios::binary)
+      .write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  const auto digest = holder::resource::digest_file(source);
+  REQUIRE_FALSE(provider.exists("folder/a +#.bin"));
+  provider.put("folder/a +#.bin", source, digest.byte_size, digest.sha256);
+  provider.get("folder/a +#.bin", destination);
+  CHECK(holder::resource::digest_file(destination).sha256 == digest.sha256);
+  provider.remove("folder/a +#.bin");
+  CHECK_FALSE(provider.exists("folder/a +#.bin"));
+  server.stop();
+  server.rethrow_error();
+  REQUIRE(server.requests().size() == 6);
+  CHECK(stored == bytes);
+  for (const auto& request : server.requests()) {
+    CHECK(request.target() == "/storage/test%20bucket/folder/a%20%2B%23.bin");
+    CHECK(request["x-amz-security-token"] == "session-token");
+    CHECK(std::string(request["Authorization"]).find("Credential=access/") != std::string::npos);
+    CHECK(request["x-amz-date"].size() == 16);
+  }
+  CHECK(server.requests()[1]["x-amz-content-sha256"] == digest.sha256);
+}
+
+TEST_CASE("S3 provider maps failures and bounds retries", "[s3]") {
+  using Server = holder::test::StorageHttpTestServer;
+  using Code = holder::resource::StorageErrorCode;
+  for (const auto& [status, code] : std::vector<std::pair<unsigned int, Code>>{
+           {400, Code::Unavailable},
+           {401, Code::Authentication},
+           {403, Code::Permission},
+           {404, Code::Unavailable},
+           {429, Code::Transient},
+           {503, Code::Transient}
+       }) {
+    CAPTURE(status);
+    Server server([&](const Server::Request&) {
+      return Server::response(status, "rejected");
+    });
+    holder::storage::S3CompatibleProvider provider(
+        {server.endpoint(), "us-east-1", "bucket", "path", true},
+        {"access", "secret", std::nullopt}
+    );
+    const auto destination = holder::test::make_temp_dir() / "download.bin";
+    bool threw = false;
+    try {
+      provider.get("object", destination);
+    } catch (const holder::resource::StorageError& error) {
+      threw = true;
+      CHECK(error.code() == code);
+    }
+    REQUIRE(threw);
+    CHECK_FALSE(std::filesystem::exists(destination));
+    server.stop();
+    server.rethrow_error();
+    CHECK(server.requests().size() == ((status == 429 || status >= 500) ? 3 : 1));
+  }
+}
+
+TEST_CASE("S3 provider retries transient responses and rejects invisible uploads", "[s3]") {
+  using Server = holder::test::StorageHttpTestServer;
+  int attempt = 0;
+  Server server([&](const Server::Request& request) {
+    if (request.method() == boost::beast::http::verb::put) return Server::response(200);
+    return Server::response(++attempt <= 2 ? 503 : 404);
+  });
+  holder::storage::S3CompatibleProvider provider(
+      {server.endpoint(), "us-east-1", "bucket", "path", true},
+      {"access", "secret", std::nullopt}
+  );
+  const auto source = holder::test::make_temp_dir() / "source.bin";
+  std::ofstream(source) << "content";
+  const auto digest = holder::resource::digest_file(source);
+  bool threw = false;
+  try {
+    provider.put("object", source, digest.byte_size, digest.sha256);
+  } catch (const holder::resource::StorageError& error) {
+    threw = true;
+    CHECK(error.code() == holder::resource::StorageErrorCode::Integrity);
+  }
+  REQUIRE(threw);
+  provider.remove("object"); // Already absent is idempotent.
+  server.stop();
+  server.rethrow_error();
+  CHECK(server.requests().size() == 5);
+}
+
+TEST_CASE("S3 provider removes partial downloads after a broken response", "[s3]") {
+  using Server = holder::test::StorageHttpTestServer;
+  Server server([](const Server::Request&) {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\npartial";
+  });
+  holder::storage::S3CompatibleProvider provider(
+      {server.endpoint(), "us-east-1", "bucket", "path", true},
+      {"access", "secret", std::nullopt}
+  );
+  const auto destination = holder::test::make_temp_dir() / "partial.bin";
+  REQUIRE_THROWS_AS(provider.get("object", destination), holder::resource::StorageError);
+  CHECK_FALSE(std::filesystem::exists(destination));
+  server.stop();
+  server.rethrow_error();
+  CHECK(server.requests().size() == 3);
 }

@@ -4171,3 +4171,193 @@ TEST_CASE("holderctl logs follow reports tail failure", "[holderctl]") {
   REQUIRE(run_command(bin + " logs --follow >/dev/null 2>/dev/null") == 11);
 }
 #endif
+
+#include "storage_http_test_server.h"
+
+TEST_CASE("holderctl rejects invalid milestone calendar and storage arguments", "[holderctl]") {
+  using Server = holder::test::StorageHttpTestServer;
+  const auto xdg = prepare_xdg_tree();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (xdg / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (xdg / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (xdg / "cache").string());
+  holder::test::EnvGuard secret("HOLDER_S3_SECRET_ACCESS_KEY", "test-secret");
+  Server server([](const Server::Request& request) {
+    nlohmann::json data;
+    if (request.target() == "/projects")
+      data = nlohmann::json::array({{{"project_id", "project"}, {"name", "Home"}}});
+    else if (request.target() == "/card-references/resolve")
+      data = {{"status", "resolved"}, {"card", {{"card_id", "card-one"}}}};
+    else
+      data = nlohmann::json::array();
+    return Server::response(200, nlohmann::json{{"ok", true}, {"data", data}}.dump());
+  });
+  write_server_info(xdg / "data/holder/server/holder.json", 12345, server.address().port());
+#ifndef _WIN32
+  ::chmod((xdg / "data/holder/server").c_str(), S_IRWXU);
+  ::chmod((xdg / "data/holder/server/holder.json").c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const std::string bin = "\"" HOLDER_CTL_PATH "\"";
+  for (const std::string args :
+       {"milestones",
+        "milestones card extra",
+        "milestones --unknown",
+        "milestone",
+        "milestone edit card id",
+        "milestone remove card id --kind due",
+        "milestone add card 2026-01-01 --timed",
+        "milestone edit card id --all-day --timed",
+        "calendar --from --json",
+        "calendar --unknown",
+        "calendar extra",
+        "history --unknown",
+        "history --limit",
+        "history card card --kind edits",
+        "resource attach card",
+        "resource attach card id extra",
+        "resource detach card id --unknown",
+        "resource import",
+        "resource import card file --location ''",
+        "resource import card file --unknown",
+        "resource import card file",
+        "resource location",
+        "resource location list --unknown",
+        "resource location add-local",
+        "resource location add-s3",
+        "resource location unknown",
+        "resource location test",
+        "resource location prefer",
+        "resource location delete",
+        "resource location add-s3 name https://storage.invalid region bucket access --prefix",
+        "resource location add-s3 name https://storage.invalid region bucket access --unknown",
+        "milestone add card 2026-01-02 --end 2026-01-01",
+        "milestone add card 2026-01-01 --end 2026-01-02T12:00:00Z",
+        "milestone add card 2026-01-01T12:00:00Z --all-day",
+        "milestone add card invalid-date",
+        "milestone edit card id --end 2026-01-02 --timed",
+        "milestone edit card id --start 2026-01-02T12:00:00Z --all-day",
+        "database rebuild extra --dry-run",
+        "database rebuild --unknown"}) {
+    CAPTURE(args);
+    const auto output = xdg / "invalid.out";
+    CHECK(run_command(bin + " " + args + " > \"" + output.string() + "\" 2>&1") != 0);
+    CHECK_FALSE(read_text(output).empty());
+  }
+  for (const std::string command : {"milestones", "milestone", "calendar"}) {
+    const auto output = xdg / "help.out";
+    CHECK(run_command(bin + " " + command + " --help > \"" + output.string() + "\"") == 0);
+    CHECK(read_text(output).find("Usage:") != std::string::npos);
+  }
+  server.stop();
+  server.rethrow_error();
+}
+
+TEST_CASE("holderctl configures S3 locations and manages their lifecycle", "[holderctl]") {
+  using Server = holder::test::StorageHttpTestServer;
+  const auto xdg = prepare_xdg_tree();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (xdg / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (xdg / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (xdg / "cache").string());
+  holder::test::EnvGuard secret("HOLDER_S3_SECRET_ACCESS_KEY", "private-secret");
+  holder::test::EnvGuard token("HOLDER_S3_SESSION_TOKEN", "session-token");
+  Server server([](const Server::Request& request) {
+    nlohmann::json data = nlohmann::json::object();
+    unsigned status = 200;
+    if (request.target() == "/projects")
+      data = nlohmann::json::array({{{"project_id", "project"}, {"name", "Home"}}});
+    else if (request.target() == "/locations") {
+      data["location_id"] = "location-one";
+      status = 201;
+    } else if (request.target().starts_with("/locations?"))
+      data = nlohmann::json::array();
+    return Server::response(status, nlohmann::json{{"ok", true}, {"data", data}}.dump());
+  });
+  write_server_info(xdg / "data/holder/server/holder.json", 12345, server.address().port());
+#ifndef _WIN32
+  ::chmod((xdg / "data/holder/server").c_str(), S_IRWXU);
+  ::chmod((xdg / "data/holder/server/holder.json").c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const std::string bin = "\"" HOLDER_CTL_PATH "\"";
+  for (const std::string args :
+       {"add-s3 Archive https://storage.invalid region bucket access --prefix files --virtual-host --allow-http-localhost",
+        "test location-one",
+        "prefer location-one",
+        "delete location-one",
+        "list"}) {
+    CAPTURE(args);
+    const auto output = xdg / "location.out";
+    REQUIRE(
+        run_command(bin + " resource location " + args + " > \"" + output.string() + "\" 2>&1") == 0
+    );
+    CHECK(read_text(output).find("private-secret") == std::string::npos);
+    CHECK_FALSE(read_text(output).empty());
+  }
+  server.stop();
+  server.rethrow_error();
+  bool saw_configuration = false, saw_binding = false;
+  for (const auto& request : server.requests()) {
+    if (request.target() == "/locations") {
+      saw_configuration = true;
+      const auto body = nlohmann::json::parse(request.body());
+      CHECK(body["configuration"]["prefix"] == "files");
+      CHECK(body["configuration"]["addressing_style"] == "virtual_host");
+      CHECK(body["configuration"]["allow_insecure_localhost"] == "true");
+      CHECK(request.body().find("private-secret") == std::string::npos);
+    } else if (request.target() == "/locations/location-one/binding") {
+      saw_binding = true;
+      const auto body = nlohmann::json::parse(request.body());
+      CHECK(body["values"]["secret_access_key"] == "private-secret");
+      CHECK(body["values"]["session_token"] == "session-token");
+    }
+  }
+  CHECK(saw_configuration);
+  CHECK(saw_binding);
+}
+
+TEST_CASE("holderctl reports daemon errors from each card and history command", "[holderctl]") {
+  using Server = holder::test::StorageHttpTestServer;
+  const auto xdg = prepare_xdg_tree();
+  holder::test::EnvGuard data("XDG_DATA_HOME", (xdg / "data").string());
+  holder::test::EnvGuard config("XDG_CONFIG_HOME", (xdg / "config").string());
+  holder::test::EnvGuard cache("XDG_CACHE_HOME", (xdg / "cache").string());
+  Server server([](const Server::Request& request) {
+    if (request.target() == "/projects")
+      return Server::response(
+          200,
+          R"({"ok":true,"data":[{"project_id":"project","name":"Home"}]})"
+      );
+    if (request.target() == "/card-references/resolve")
+      return Server::response(
+          200,
+          R"({"ok":true,"data":{"status":"resolved","card":{"card_id":"card-one"}}})"
+      );
+    return Server::response(
+        500,
+        R"({"ok":false,"error":{"code":"test_failure","message":"deliberate daemon failure"}})"
+    );
+  });
+  write_server_info(xdg / "data/holder/server/holder.json", 12345, server.address().port());
+#ifndef _WIN32
+  ::chmod((xdg / "data/holder/server").c_str(), S_IRWXU);
+  ::chmod((xdg / "data/holder/server/holder.json").c_str(), S_IRUSR | S_IWUSR);
+#endif
+  const std::string bin = "\"" HOLDER_CTL_PATH "\"";
+  for (const std::string args :
+       {"card card",
+        "append card text",
+        "tags",
+        "tag add card work",
+        "backlinks card",
+        "link card other",
+        "restore card",
+        "history",
+        "milestones card",
+        "milestone add card 2026-01-01",
+        "calendar"}) {
+    CAPTURE(args);
+    const auto output = xdg / "failure.out";
+    CHECK(run_command(bin + " " + args + " > \"" + output.string() + "\" 2>&1") != 0);
+    CHECK(read_text(output).find("deliberate daemon failure") != std::string::npos);
+  }
+  server.stop();
+  server.rethrow_error();
+}

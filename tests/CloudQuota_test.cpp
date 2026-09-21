@@ -202,3 +202,40 @@ TEST_CASE("CloudQuota insert/upsert/clear step failures are surfaced", "[cloud_q
       Catch::Matchers::ContainsSubstring("clear cloud cooldown failed")
   );
 }
+
+#include "http_test_helpers.h"
+
+TEST_CASE("CloudQuota imports existing usage and validates ledger contents", "[cloud_quota]") {
+  const auto root = holder::test::make_temp_dir();
+  const auto ledger = root / "ledger.json";
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  holder::api::support::restore_cloud_usage_ledger(db, ledger);
+  db.exec("INSERT INTO ai_cloud_usage_events VALUES('event','provider','model',2,3,5,10)");
+  holder::api::support::initialize_cloud_usage_ledger(db, ledger);
+  auto fresh = holder::test::open_db_with_schema(root / "fresh.db");
+  holder::api::support::initialize_cloud_usage_ledger(fresh, ledger);
+  CHECK(holder::api::support::load_cloud_window_usage(fresh, "provider", "model", 0).tokens == 5);
+  SECTION("unsupported format") {
+    std::ofstream(ledger) << R"({"version":2,"events":[]})";
+    REQUIRE_THROWS(holder::api::support::restore_cloud_usage_ledger(fresh, ledger));
+  }
+  SECTION("invalid event releases its prepared statement") {
+    std::ofstream(ledger) << R"({"version":1,"events":[{}]})";
+    REQUIRE_THROWS(holder::api::support::restore_cloud_usage_ledger(fresh, ledger));
+    for (auto* statement = sqlite3_next_stmt(fresh.handle(), nullptr); statement;
+         statement = sqlite3_next_stmt(fresh.handle(), statement)) {
+      CHECK(
+          std::string(sqlite3_sql(statement)).find("INSERT OR IGNORE INTO ai_cloud_usage_events") ==
+          std::string::npos
+      );
+    }
+  }
+  SECTION("missing restore schema") {
+    fresh.exec("DROP TABLE ai_cloud_usage_events");
+    REQUIRE_THROWS(holder::api::support::restore_cloud_usage_ledger(fresh, ledger));
+  }
+  SECTION("missing export schema") {
+    fresh.exec("DROP TABLE ai_cloud_usage_events");
+    REQUIRE_THROWS(holder::api::support::initialize_cloud_usage_ledger(fresh, root / "new.json"));
+  }
+}

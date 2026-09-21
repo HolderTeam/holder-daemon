@@ -84,3 +84,103 @@ TEST_CASE("build_authorization_url carries every required parameter", "[oauth]")
       url.find("scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file") != std::string::npos
   );
 }
+
+#include "google_storage_test_helpers.h"
+#include "resource/StorageProvider.h"
+
+TEST_CASE("Google OAuth exchanges and refreshes encoded credentials over verified TLS", "[oauth]") {
+  using Server = holder::test::StorageHttpTestServer;
+  holder::test::GoogleStorageTestServer fixture([](const Server::Request&) {
+    return Server::response(
+        200,
+        R"({"access_token":"access","refresh_token":"refresh","expires_in":3600,"scope":"drive.file","token_type":"Bearer"})"
+    );
+  });
+  const GoogleOAuthClient client{"client +&", "secret=&#"};
+  const auto token = holder::storage::google::exchange_authorization_code(
+      client,
+      "http://localhost/callback",
+      "code+",
+      "verifier~"
+  );
+  CHECK(token.access_token == "access");
+  CHECK(token.refresh_token == "refresh");
+  CHECK(token.expires_in == 3600);
+  CHECK(token.scope == "drive.file");
+  CHECK(token.token_type == "Bearer");
+  CHECK(
+      holder::storage::google::refresh_access_token(client, "refresh+&").access_token == "access"
+  );
+  fixture.finish();
+  REQUIRE(fixture.server.requests().size() == 2);
+  const auto& exchange = fixture.server.requests()[0];
+  CHECK(exchange.target() == "/token");
+  CHECK(exchange["Host"] == "oauth2.googleapis.com");
+  CHECK(exchange["Content-Type"] == "application/x-www-form-urlencoded");
+  CHECK(
+      exchange.body() ==
+      "client_id=client%20%2B%26&client_secret=secret%3D%26%23&code=code%2B&code_verifier=verifier~&grant_type=authorization_code&redirect_uri=http%3A%2F%2Flocalhost%2Fcallback"
+  );
+  CHECK(
+      fixture.server.requests()[1].body() ==
+      "client_id=client%20%2B%26&client_secret=secret%3D%26%23&refresh_token=refresh%2B%26&grant_type=refresh_token"
+  );
+}
+
+TEST_CASE("Google OAuth classifies rejected and malformed token responses", "[oauth]") {
+  using Server = holder::test::StorageHttpTestServer;
+  using Code = holder::resource::StorageErrorCode;
+  struct Reply {
+    unsigned status;
+    std::string body;
+    Code code;
+  };
+  for (const auto& reply : std::vector<Reply>{
+           {400, "invalid_grant", Code::Authentication},
+           {401, "invalid_client", Code::Authentication},
+           {503, "unavailable", Code::Transient},
+           {200, "not-json", Code::Unavailable},
+           {200, "{}", Code::Unavailable},
+           {200, R"({"access_token":""})", Code::Unavailable},
+           {200, R"({"access_token":12})", Code::Unavailable}
+       }) {
+    CAPTURE(reply.status, reply.body);
+    holder::test::GoogleStorageTestServer fixture([&](const Server::Request&) {
+      return Server::response(reply.status, reply.body);
+    });
+    bool threw = false;
+    try {
+      (void)holder::storage::google::refresh_access_token({"id", "secret"}, "refresh");
+    } catch (const holder::resource::StorageError& error) {
+      threw = true;
+      CHECK(error.code() == reply.code);
+    }
+    REQUIRE(threw);
+  }
+}
+
+TEST_CASE("Google OAuth reports interrupted responses as unavailable", "[oauth]") {
+  using Server = holder::test::StorageHttpTestServer;
+  holder::test::GoogleStorageTestServer fixture([](const Server::Request&) {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\npartial";
+  });
+  REQUIRE_THROWS_AS(
+      holder::storage::google::refresh_access_token({"id", "secret"}, "refresh"),
+      holder::resource::StorageError
+  );
+}
+
+TEST_CASE("Google OAuth requires both configured client credentials", "[oauth]") {
+  holder::test::EnvGuard client_id("HOLDER_GOOGLE_OAUTH_CLIENT_ID", "client");
+  holder::test::EnvGuard client_secret("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET", "secret");
+  CHECK(holder::storage::google::google_oauth_client_from_env().client_id == "client");
+  CHECK(holder::storage::google::google_oauth_client_from_env().client_secret == "secret");
+  SECTION("missing id") {
+    holder::test::EnvGuard missing("HOLDER_GOOGLE_OAUTH_CLIENT_ID", std::nullopt);
+    REQUIRE_THROWS(holder::storage::google::google_oauth_client_from_env());
+  }
+  SECTION("missing secret") {
+    holder::test::EnvGuard missing("HOLDER_GOOGLE_OAUTH_CLIENT_SECRET", std::nullopt);
+    REQUIRE_THROWS(holder::storage::google::google_oauth_client_from_env());
+  }
+}

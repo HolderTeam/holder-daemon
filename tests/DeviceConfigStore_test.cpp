@@ -61,3 +61,26 @@ TEST_CASE("DeviceConfigStore persists later route-style mutations", "[database][
   holder::core::restore_device_config(rebuilt, config_path);
   REQUIRE(holder::ai::AiProviderSettingRepo(rebuilt).get("changed")->enabled);
 }
+
+TEST_CASE(
+    "DeviceConfigStore replaces manual settings and rejects unsupported versions",
+    "[database][config]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  const auto path = root / "config.json";
+  holder::model::AiRunner runner;
+  runner.runner_id = "manual";
+  runner.name = "Manual";
+  runner.kind = "ollama";
+  runner.source = "manual";
+  runner.created_at = runner.updated_at = 1;
+  holder::ai::AiRunnerRepo(db).upsert(runner);
+  holder::ai::AiProviderSettingRepo(db).upsert("provider", true, 1);
+  std::ofstream(path) << R"({"version":2})";
+  REQUIRE_THROWS(holder::core::restore_device_config(db, path));
+  std::ofstream(path) << R"({"version":1,"manual_runners":[],"provider_settings":[]})";
+  holder::core::restore_device_config(db, path);
+  CHECK_FALSE(holder::ai::AiRunnerRepo(db).get("manual").has_value());
+  CHECK_FALSE(holder::ai::AiProviderSettingRepo(db).get("provider").has_value());
+}

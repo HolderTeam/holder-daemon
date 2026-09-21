@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -97,6 +98,10 @@ void insert_event(holder::platform::Db& db, const nlohmann::json& event) {
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare cloud usage restore failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   const auto event_id = event.at("event_id").get<std::string>();
   const auto provider = event.at("provider").get<std::string>();
   const auto model_id = event.at("model_id").get<std::string>();
@@ -108,7 +113,6 @@ void insert_event(holder::platform::Db& db, const nlohmann::json& event) {
   sqlite3_bind_int64(stmt, 6, event.at("total_tokens").get<long long>());
   sqlite3_bind_int64(stmt, 7, event.at("created_at").get<long long>());
   const int rc = sqlite3_step(stmt);
-  sqlite3_finalize(stmt);
   if (rc != SQLITE_DONE) throw std::runtime_error("restore cloud usage event failed");
 }
 
@@ -165,6 +169,10 @@ void initialize_cloud_usage_ledger(holder::platform::Db& db, const std::filesyst
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare cloud usage export failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     body["events"].push_back({
         {"event_id", reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0))},
@@ -176,7 +184,6 @@ void initialize_cloud_usage_ledger(holder::platform::Db& db, const std::filesyst
         {"created_at", sqlite3_column_int64(stmt, 6)},
     });
   }
-  sqlite3_finalize(stmt);
   write_ledger(path, body);
 }
 

@@ -32,6 +32,7 @@ add_executable(holder_daemon_tests
   ListenerAcceptError_test.cpp
   HttpAiMessages_test.cpp
   AiDispatch_test.cpp
+  AiDurability_test.cpp
   AiResourceRoutes_test.cpp
   AiMessageRoutes_test.cpp
   AiMessageCrudRoutes_test.cpp
@@ -116,6 +117,7 @@ add_executable(holder_daemon_tests
   S3SigV4_test.cpp
   S3CompatibleProvider_test.cpp
   GoogleOAuth_test.cpp
+  DriveApi_test.cpp
   GoogleDriveProvider_test.cpp
   ../src/platform/LockFile.cpp
   ../src/app/Entrypoint.cpp
@@ -194,6 +196,7 @@ add_executable(holder_daemon_tests
   ../src/storage/S3CompatibleProvider.cpp
   ../src/storage/google/GoogleOAuth.cpp
   ../src/storage/google/DriveApi.cpp
+  ../src/storage/google/GoogleNetwork.cpp
   ../src/storage/google/GoogleDriveProvider.cpp
   ../src/app/Bootstrap.cpp
   ../src/cli/commands/MilestoneDateTime.cpp

@@ -282,7 +282,16 @@ unsigned int S3CompatibleProvider::request(
       parser.body_limit((std::numeric_limits<std::uint64_t>::max)());
       parser.get().body().open(download_path.c_str(), beast::file_mode::write, error);
       if (error) throw std::runtime_error("failed to open S3 download: " + error.message());
-      http::read(stream, buffer, parser);
+      try {
+        http::read(stream, buffer, parser);
+      } catch (...) {
+        // A transport failure can leave bytes on disk before get() receives a
+        // status. Close the file before cleanup, including on Windows.
+        parser.get().body().close();
+        std::error_code ignored;
+        std::filesystem::remove(*download, ignored);
+        throw;
+      }
       return parser.get().result_int();
     }
     return read_status_response(stream, buffer, method == "HEAD");

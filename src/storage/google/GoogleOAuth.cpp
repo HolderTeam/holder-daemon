@@ -1,4 +1,5 @@
 #include "storage/google/GoogleOAuth.h"
+#include "storage/google/GoogleNetwork.h"
 
 #include "resource/StorageProvider.h"
 
@@ -127,7 +128,7 @@ bool https_post_form(
     ctx.set_default_verify_paths();
 
     tcp::resolver resolver(ioc);
-    const auto endpoints = resolver.resolve(host, "443");
+    const auto endpoints = resolve_google_endpoint(resolver, host);
 
     boost::beast::ssl_stream<boost::beast::tcp_stream> stream(ioc, ctx);
     if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str())) {
@@ -171,6 +172,7 @@ GoogleTokenResponse parse_token_response(const std::string& body) {
   const auto json = nlohmann::json::parse(body);
   GoogleTokenResponse out;
   out.access_token = json.value("access_token", std::string());
+  if (out.access_token.empty()) throw std::runtime_error("access token is missing or empty");
   out.refresh_token = json.value("refresh_token", std::string());
   out.expires_in = json.value("expires_in", static_cast<long long>(0));
   out.scope = json.value("scope", std::string());
@@ -199,7 +201,7 @@ GoogleTokenResponse token_request(const std::vector<std::pair<std::string, std::
     // Google returns 400 for both a malformed request and an invalid/expired/revoked
     // grant (e.g. a revoked refresh token) -- either way, re-authorizing is the fix, not
     // a retry, so both map to Authentication rather than a generic failure.
-    throw StorageError(StorageErrorCode::Authentication, "Google token request rejected: " + body);
+    throw StorageError(StorageErrorCode::Authentication, "Google token request rejected");
   }
   if (status != 200) {
     throw StorageError(
@@ -209,11 +211,8 @@ GoogleTokenResponse token_request(const std::vector<std::pair<std::string, std::
   }
   try {
     return parse_token_response(body);
-  } catch (const std::exception& ex) {
-    throw StorageError(
-        StorageErrorCode::Unavailable,
-        std::string("Google token response could not be parsed: ") + ex.what()
-    );
+  } catch (const std::exception&) {
+    throw StorageError(StorageErrorCode::Unavailable, "Google token response is invalid");
   }
 }
 

@@ -1,4 +1,5 @@
 #include "storage/google/DriveApi.h"
+#include "storage/google/GoogleNetwork.h"
 
 #include "resource/StorageProvider.h"
 
@@ -92,7 +93,7 @@ void exchange(Request& req, ResponseParser& parser) {
   ssl::context ctx(ssl::context::tls_client);
   ctx.set_default_verify_paths();
   tcp::resolver resolver(ioc);
-  const auto endpoints = resolver.resolve(kHost, "443");
+  const auto endpoints = resolve_google_endpoint(resolver, kHost);
   beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
   if (!SSL_set_tlsext_host_name(stream.native_handle(), kHost)) {
     throw std::runtime_error("failed to set TLS hostname for Drive request");
@@ -145,9 +146,14 @@ void check_ok(const DriveResponse& response, const std::string& operation) {
   if (response.status >= 200 && response.status < 300) return;
   throw StorageError(
       status_to_error_code(response.status),
-      "Drive " + operation + " failed: HTTP " + std::to_string(response.status) + " " +
-          response.body
+      "Drive " + operation + " failed: HTTP " + std::to_string(response.status)
   );
+}
+
+std::string required_file_id(const nlohmann::json& body) {
+  const auto id = body.at("id").get<std::string>();
+  if (id.empty()) throw std::runtime_error("file id is empty");
+  return id;
 }
 
 std::string read_whole_file(const std::filesystem::path& path) {
@@ -171,18 +177,18 @@ std::optional<std::string> find_file_id_in_scope(
                              "&fields=" + url_encode("files(id)") + "&pageSize=1";
   const auto response = json_request(http::verb::get, target, access_token, std::nullopt);
   check_ok(response, "search");
-  nlohmann::json json;
   try {
-    json = nlohmann::json::parse(response.body);
+    const auto json = nlohmann::json::parse(response.body);
+    const auto& files = json.at("files");
+    if (!files.is_array()) throw std::runtime_error("files must be an array");
+    if (files.empty()) return std::nullopt;
+    return required_file_id(files.at(0));
   } catch (const std::exception& ex) {
     throw StorageError(
         StorageErrorCode::Unavailable,
         std::string("Drive search response could not be parsed: ") + ex.what()
     );
   }
-  const auto& files = json.at("files");
-  if (files.empty()) return std::nullopt;
-  return files.at(0).at("id").get<std::string>();
 }
 
 std::string find_or_create_folder(
@@ -203,7 +209,7 @@ std::string find_or_create_folder(
   const auto response = json_request(http::verb::post, kFilesPath, access_token, metadata);
   check_ok(response, "folder create");
   try {
-    return nlohmann::json::parse(response.body).at("id").get<std::string>();
+    return required_file_id(nlohmann::json::parse(response.body));
   } catch (const std::exception& ex) {
     throw StorageError(
         StorageErrorCode::Unavailable,
@@ -268,7 +274,7 @@ std::string upload_file(
     exchange(req, parser);
     const DriveResponse response{parser.get().result_int(), parser.get().body()};
     check_ok(response, "upload");
-    return nlohmann::json::parse(response.body).at("id").get<std::string>();
+    return required_file_id(nlohmann::json::parse(response.body));
   } catch (const StorageError&) {
     throw;
   } catch (const std::exception& ex) {
