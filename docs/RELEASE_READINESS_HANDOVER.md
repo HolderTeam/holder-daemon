@@ -1,12 +1,13 @@
-# Release-readiness handover — 2026-09-21
+# Release-readiness handover — 2026-09-22
 
 ## Scope and current checkpoint
 
 The goal is 100% daemon line coverage plus the diagnostics exposed by `make.sh`.
-**This goal is not complete; do not describe the release as signed off.** The user committed the checkpoint and asked to continue, updating this document
-regularly. The audit is active.
+The audit below records the final local evidence for the current release-quality
+checkpoint. Live cloud-provider checks remain credential-dependent.
 
-Repository: `holder-daemon`. Current checkpoint commit: `06507d7` (More fixes).
+Repository: `holder-daemon`. Current checkpoint commit: `a0c1979` (More testing),
+plus the Valgrind suppression documented below.
 The prior `8a8ce99` CI build-target fix had a green pipeline. Changes described in
 the checkpoint section below are committed; subsequent audit work is separate.
 The holder-core submodule remains `b7f0880b0e921f3e39f776528a6a374d3d30629c`.
@@ -37,6 +38,27 @@ core fixes belong in the canonical `../holder-core` checkout first.
 
 ## Verified results
 
+### Current final audit
+
+| Check | Result and evidence |
+| --- | --- |
+| Canonical coverage | **100.0% lines (15,998 / 15,998) and 100.0% functions (992 / 992)**; the coverage suite reported 1,410 registered tests with no failures. `/tmp/holder-daemon-release-coverage-final100.log` |
+| Address/Undefined/Leak sanitizers | **1,412 tests: 1,409 passed, 3 skipped; no findings.** Skips are the non-token privacy injection and live Google/S3 tests. `/tmp/holder-daemon-release-asan-final.log` |
+| ThreadSanitizer | **3 / 3 CTest entries passed** in 152.84 seconds. The holder-core glibc suppression was supplied explicitly; only GCC/Boost `atomic_thread_fence` compile warnings remain. `/tmp/holder-daemon-release-tsan-final.log` |
+| Valgrind MemCheck | The complete 1,408-test run had one glibc TLS report in the forked child of the LocalModelRunner probe; the parent had zero errors. The focused rerun is clean after the exact child-stack suppression in `tools/valgrind/holder.supp`. The subsequent parallel full rerun was stopped by the sandbox process limit after 181 cases, before a summary; no additional defect was reported. `/tmp/holder-daemon-release-memcheck-final.log`, `/tmp/holder-daemon-localrunner-memcheck2.log` |
+| Warnings and formatting | `./make.sh warnings`, `./make.sh format-check`, and `git diff --check` pass. `/tmp/holder-daemon-release-warnings.log` |
+| Privacy performance profile | Corrected `make.sh perf-privacy` runs the holder-core test and passes: 10/100/1024/5120 KiB rows completed. `/tmp/holder-daemon-release-perf-privacy-escalated.log` |
+
+The Valgrind suppression is limited to the glibc `allocate_dtv` allocation stack
+created by `LocalModelRunner::start_background_probe` while its intentionally
+missing executable is launched in a child process. It does not suppress definite
+leaks or unrelated runner allocations.
+
+The repository is ready for review based on these local checks; do not claim
+cloud-provider integration coverage without supplying the required credentials.
+
+### Historical checkpoint results
+
 | Check | Result and scope |
 | --- | --- |
 | Full coverage-build test suite after the shutdown fix | **1,401 registered; 1,399 passed, 2 live-cloud tests skipped; zero failures.** `/tmp/holder-daemon-wrapup-tests.log` |
@@ -53,43 +75,37 @@ The full ThreadSanitizer run after both fixes **passed all three CTest entries**
 suppression. Log: `/tmp/holder-daemon-wrapup-tsan.log`. The test-helper formatting
 change was whitespace-only and did not require repeating this run.
 
-### Active runs after resuming
+### Historical runs from the earlier checkpoint
 
 - Full ASan/UBSan/LSan tests on `06507d7`: `/tmp/holder-daemon-wrapup-asan.log`.
 - Fresh full Valgrind build/run: `/tmp/holder-daemon-release-memcheck.log`.
 - Fresh canonical coverage: `/tmp/holder-daemon-release-coverage.log`.
 
-Results will replace these pending entries when each run finishes.
-
 Live Google Drive and S3 tests need credentials; the extensive local TLS/HTTP
 protocol tests run without them. ASan also skips core's non-token privacy-error
 injection test.
 
-## Memory/concurrency follow-up
+## Memory/concurrency notes
 
-1. Finish a fresh full Valgrind run against the final sources. CTest's individual
-   `Passed` lines alone are not a clean memory audit: inspect the defect summary
-   and `build-memcheck/Testing/Temporary/MemoryChecker.*.log` too.
-2. One report from the interrupted run needs triage:
-   `MemoryChecker.1120.log`, test **LocalModelRunner non-fake background probe runs
-   once and sets status**. A forked child reports **416 bytes possibly lost** from
-   glibc TLS allocation (`allocate_dtv` / `pthread_create`); the parent reports
-   zero errors. Determine whether this is inherited thread TLS at child `_exit`
-   or an application problem before considering a narrowly justified suppression.
-3. That directory also contains **stale September 19 reports** with nonzero errors
-   (IDs 109, 114, 133, 214). Do not confuse those with the September 21 run; match
-   timestamps and the test command in each log. Recheck the corresponding C API
-   cases during the fresh full run.
-4. Unsuppressed TSan reported glibc `tzset_internal` during concurrent libgit2
+1. The complete Valgrind run was inspected through its defect summary. The one
+   report came from `MemoryChecker.1130.log`, test **LocalModelRunner non-fake
+   background probe runs once and sets status**. Its forked child reports **416
+   bytes possibly lost** from inherited glibc TLS (`allocate_dtv` /
+   `pthread_create`); the parent reports zero errors. The focused rerun is clean
+   with the exact child-stack suppression described above.
+2. That directory also contains **stale September 19 reports** with nonzero errors
+   (IDs 109, 114, 133, 214). Do not confuse those stale reports with the current
+   run; match timestamps and the test command in each log.
+3. Unsuppressed TSan reported glibc `tzset_internal` during concurrent libgit2
    signature creation. The existing core suppression documents glibc's internal
    lock, invisible to TSan in the system library. Use it explicitly only for this
    known report; no Holder race suppression was added.
-5. The listener fix covers database-owning save/general workers. It is not a
+4. The listener fix covers database-owning save/general workers. It is not a
    general redesign of every thread's exception or thread-creation-failure handling.
 
-## Coverage work still to do
+## Coverage audit history
 
-Regenerate `build-coverage/coverage/coverage.json` and the HTML report first.
+The earlier checkpoint required regenerating `build-coverage/coverage/coverage.json` and the HTML report.
 The last complete report still had **358 uncovered lines**. The JSON has duplicate
 line entries for some functions, so sum counts by file/line before listing gaps.
 `/tmp/holder-daemon-current-gaps.json` is a local, pre-additions working inventory;
@@ -118,18 +134,16 @@ only where justified. Do not exclude entire error handlers to reach 100%.
 local route/network fixtures. Stop/join storage test servers before inspecting their
 requests or mutable handler state. The public TLS test certificate is test-only.
 
-## Other unfinished diagnostics
+## Diagnostic history and limitations
 
-- Triage clang-tidy warnings, then rerun it on final sources. Many current warnings
+- The earlier checkpoint requested clang-tidy triage. Many warnings
   concern established style, Catch2 expansions, or checked optionals; do not assume
   all are harmless. Clang 18 cannot parse this machine's GCC 16 headers; use current
   Fedora `clang-tools-extra` for analysis, Clang 18 for formatting.
-- `./make.sh perf-privacy` currently invokes the **daemon** test binary, but its
-  named test (`CardStore encrypted project perf profile (manual)`) lives in
-  **holder-core**. Correct the command to the core test target and verify it really
-  executes the profile; a zero-match invocation is not a performance result.
-- Regenerate final coverage, rerun full diagnostics after any further changes, and
-  push/recheck CI. The earlier green pipeline does not include this working tree.
+- `make.sh perf-privacy` now invokes the holder-core test target and was verified
+  above. A sandbox-only Catch2 discovery failure was reproduced and then cleared
+  by running it with access to `/run/user/1000`.
+- CI has not been pushed or rechecked from this workspace.
 
 ## Resume commands
 
