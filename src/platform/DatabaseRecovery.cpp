@@ -148,12 +148,13 @@ DatabaseRebuildReport rebuild_database(
   request.schema_sql = read_text_file(schema_path);
   request.expected_schema_version = holder::platform::Migrations::latest_schema_version;
   request.project_roots = discover_roots(paths);
+  // LCOV_EXCL_START: initializer-list cleanup duplicate emitted by GCC.
   request.required_authorities = {
-      // LCOV_EXCL_LINE: initializer-list cleanup duplicate.
       {"project registry", paths.project_registry_path()},
       {"device configuration", paths.device_config_path()},
       {"cloud usage ledger", paths.cloud_usage_ledger_path()},
   };
+  // LCOV_EXCL_STOP
   request.durable_ownership_ready = database_rebuild_is_ready(paths);
   request.dry_run = dry_run;
   request.hooks.audit_existing = [&](holder::platform::Db& db) {

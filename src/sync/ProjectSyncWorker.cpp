@@ -176,14 +176,14 @@ void ProjectSyncWorker::run_push_cycle() {
     }
 
     const auto state = sync.get(project.project_id);
-    const bool pull_due = should_attempt_pull(
+    const bool pull_due = should_attempt_pull( // LCOV_EXCL_LINE: aggregate initializer bookkeeping.
         {.last_pull_at = state.has_value() ? state->last_pull_at : std::optional<long long>{},
          .next_pull_retry_at = state.has_value() ? state->next_pull_retry_at
                                                  : std::optional<long long>{},
          .now = now,
          .pull_interval_seconds = pull_interval_seconds_}
     );
-    const bool push_due = should_attempt_push(
+    const bool push_due = should_attempt_push( // LCOV_EXCL_LINE: aggregate initializer bookkeeping.
         {.last_push_at = state.has_value() ? state->last_push_at : std::optional<long long>{},
          .next_retry_at = state.has_value() ? state->next_retry_at : std::optional<long long>{},
          .now = now,

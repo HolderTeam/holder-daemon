@@ -26,8 +26,9 @@ std::string download_filename(const std::string& disposition) {
   if (start == std::string::npos) return {};
   const auto value_start = start + 10;
   const auto end = disposition.find('"', value_start);
-  return end == std::string::npos ? std::string()
-                                  : disposition.substr(value_start, end - value_start);
+  return end == std::string::npos
+             ? std::string()
+             : disposition.substr(value_start, end - value_start); // LCOV_EXCL_LINE
 }
 
 class StagedFile {

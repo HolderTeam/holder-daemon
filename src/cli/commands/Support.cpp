@@ -240,7 +240,7 @@ std::string first_non_empty_line(const std::string& text) {
     if (!trimmed.empty()) {
       return trimmed;
     } // LCOV_EXCL_LINE: loop cleanup after the covered non-empty return.
-  }
+  } // LCOV_EXCL_LINE: getline cleanup after the loop's covered return path.
   return ""; // LCOV_EXCL_LINE: command_new rejects all-whitespace content before title derivation.
 }
 

@@ -1937,7 +1937,7 @@ TEST_CASE(
 
   db.exec("UPDATE cards SET updated_at=1780398000 WHERE card_id="
           "'aaaaaaaa-1111-4111-8111-111111111111';");
-  db.exec("UPDATE cards SET created_at=1780398000, updated_at=1780398000 WHERE card_id="
+  db.exec("UPDATE cards SET created_at=1780275600, updated_at=1780398001 WHERE card_id="
           "'aaaaaaaa-3333-4333-8333-333333333333';");
   const auto calendar_path = xdg_root / "calendar.json";
   REQUIRE(
@@ -1952,8 +1952,8 @@ TEST_CASE(
   REQUIRE(calendar["data"]["from"] == 1780272000);
   REQUIRE(calendar["data"]["to"] == 1780531199);
   REQUIRE(calendar["data"]["milestones"].size() == 2);
-  REQUIRE(calendar["data"]["created_cards"].size() == 1);
-  REQUIRE(calendar["data"]["updated_cards"].size() == 1);
+  REQUIRE(calendar["data"]["created_cards"].size() == 2);
+  REQUIRE(calendar["data"]["updated_cards"].size() == 2);
   REQUIRE(calendar.dump().find(card_id) != std::string::npos);
   REQUIRE(calendar.dump().find(other_id) == std::string::npos);
 
@@ -4333,15 +4333,20 @@ TEST_CASE("holderctl guards malformed daemon success payloads", "[holderctl][err
       if (body.value("reference", "") == "bad") {
         return Server::response(200, R"({"ok":true,"data":null})");
       }
+      const auto card_id = body.value("reference", "") == "malformed" ? "malformed" : "card";
       return Server::response(
           200,
-          R"({"ok":true,"data":{"status":"resolved","card":{"card_id":"card"}}})"
+          nlohmann::json{
+              {"ok", true},
+              {"data", {{"status", "resolved"}, {"card", {{"card_id", card_id}}}}}
+          }.dump()
       );
     }
     if (target.starts_with("/search")) return Server::response(200, R"({"ok":true})");
     if (target == "/cards/card") {
       return Server::response(200, R"({"ok":true,"data":{"project_id":"other"}})");
     }
+    if (target == "/cards/malformed") return Server::response(200, "not-json");
     if (target == "/imports") {
       return Server::response(202, R"({"ok":true,"data":{"job_id":"job"}})");
     }
@@ -4378,7 +4383,7 @@ TEST_CASE("holderctl guards malformed daemon success payloads", "[holderctl][err
   };
   fails("search words", "Failed to search cards:");
   fails("card card", "Card is not in the current project:");
-  fails("append card text", "Failed to append to card:");
+  fails("append malformed text", "Failed to append to card:");
   fails("link card bad", "Failed to link cards:");
   fails("restore bad", "Failed to restore card:");
   fails("resource import card /tmp/source --location location", "Asset import failed: copy failed");

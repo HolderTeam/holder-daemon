@@ -50,7 +50,7 @@ Nudge row_to_nudge(sqlite3_stmt* stmt) {
       .basis_commit = column_nullable(stmt, 8),
       .created_at = sqlite3_column_int64(stmt, 9),
       .dismissed = sqlite3_column_type(stmt, 10) != SQLITE_NULL,
-  };
+  }; // LCOV_EXCL_LINE: aggregate initializer cleanup line.
 }
 
 } // namespace

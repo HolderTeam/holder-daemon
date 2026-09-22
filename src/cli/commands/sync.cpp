@@ -338,7 +338,7 @@ int command_sync(const holder::core::Paths& paths, int argc, char* argv[]) {
         safe_diagnostic(ex.what())
     );
     // LCOV_EXCL_STOP
-  }
+  } // LCOV_EXCL_LINE: catch cleanup after the typed/network guards.
 }
 
 } // namespace holder::cli

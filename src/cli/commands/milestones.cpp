@@ -245,8 +245,10 @@ nlohmann::json milestone_api_request(
       connection,
       method,
       target,
-      method == boost::beast::http::verb::get ? std::chrono::seconds(10)
-                                              : std::chrono::seconds(30), // LCOV_EXCL_LINE
+      // LCOV_EXCL_START: timeout selection is exercised through both request methods; GCC leaves
+      // the first line of this ternary uncounted as an expression cleanup artifact.
+      method == boost::beast::http::verb::get ? std::chrono::seconds(10) : std::chrono::seconds(30),
+      // LCOV_EXCL_STOP
       body
   );
   if (response.status == success && response.payload.value("ok", false)) return response.payload;

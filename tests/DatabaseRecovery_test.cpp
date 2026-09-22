@@ -372,6 +372,7 @@ TEST_CASE(
     thread.title = "Thread";
     thread.created_at = thread.updated_at = 1;
     holder::ai::AiThreadRepo(db).create(thread);
+    REQUIRE(holder::ai::backfill_ai_thread_manifests(db) == 1);
     db.exec("INSERT INTO ai_thread_compaction_state VALUES('thread','summary','[]',NULL,1)");
     REQUIRE_THROWS_WITH(
         holder::core::audit_durable_database_ownership(db, paths),

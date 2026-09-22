@@ -342,6 +342,24 @@ TEST_CASE(
     );
   } else
     CHECK_FALSE(binding.has_value());
+  if (success) {
+    request.method(http::verb::post);
+    REQUIRE(routes::handle_google_drive_oauth_authorize_route("location", request, response, db));
+    const auto authorization2 =
+        nlohmann::json::parse(response.body())["data"]["authorization_url"].get<std::string>();
+    const auto state2 = extract_query_value(authorization2, "state");
+    request.method(http::verb::get);
+    REQUIRE(routes::handle_google_drive_oauth_callback_route(
+        "/locations/location/oauth/google-drive/callback",
+        "state=" + state2 + "&code=second",
+        request,
+        response,
+        db,
+        secrets.get(),
+        nullptr
+    ));
+    REQUIRE(response.result() == http::status::ok);
+  }
   REQUIRE(routes::handle_google_drive_oauth_callback_route(
       "/locations/location/oauth/google-drive/callback",
       query,

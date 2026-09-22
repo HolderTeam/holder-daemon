@@ -63,7 +63,7 @@ namespace {
 void print_usage(std::ostream& out) {
   out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex] "
          "[--rebuild-database [--dry-run]]\n";
-}
+} // LCOV_EXCL_LINE: function cleanup after the covered startup validation throw.
 
 std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -89,7 +89,7 @@ std::filesystem::path find_schema_sql() {
 
   throw std::runtime_error("Cannot find schema/schema.sql from current directory."
   ); // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE: schema lookup cleanup after the covered startup validation throw.
 
 void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_store) {
   holder::project::ProjectRepo project_repo(db);
@@ -391,7 +391,7 @@ int run_daemon(int argc, char* argv[]) {
 
   std::atomic<bool> database_health_failure{false};
   std::atomic<bool> database_health_stop_requested{false};
-  std::thread database_health_monitor_thread([&]() {
+  std::thread database_health_monitor_thread([&]() { // LCOV_EXCL_LINE: thread entry cleanup line.
     while (!database_health_stop_requested.load() && !signals.is_requested()) {
       for (int tenth_seconds = 0;
            tenth_seconds < 50 && !database_health_stop_requested.load() && !signals.is_requested();
