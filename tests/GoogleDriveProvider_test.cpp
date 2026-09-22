@@ -97,3 +97,66 @@ TEST_CASE("Google Drive provider round-trips an object", "[google_drive][integra
   std::error_code ignored;
   std::filesystem::remove_all(root, ignored);
 }
+
+#include "google_storage_test_helpers.h"
+
+TEST_CASE(
+    "Google Drive provider refreshes credentials and idempotently round trips locally",
+    "[google_drive]"
+) {
+  using Server = holder::test::StorageHttpTestServer;
+  namespace http = boost::beast::http;
+  bool exists = false;
+  unsigned refreshes = 0;
+  holder::test::GoogleStorageTestServer fixture([&](const Server::Request& request) {
+    if (request.target() == "/token") {
+      ++refreshes;
+      return Server::response(200, R"({"access_token":"fresh-token"})");
+    }
+    if (request.target().starts_with("/drive/v3/files?"))
+      return Server::response(
+          200,
+          exists ? R"({"files":[{"id":"stored-id"}]})" : R"({"files":[]})"
+      );
+    if (request.method() == http::verb::post) {
+      exists = true;
+      return Server::response(200, R"({"id":"stored-id"})");
+    }
+    if (request.method() == http::verb::get) return Server::response(200, "stored bytes");
+    if (request.method() == http::verb::delete_) exists = false;
+    return Server::response(204);
+  });
+  const auto root = holder::test::make_temp_dir();
+  const auto source = root / "source";
+  const auto destination = root / "download";
+  std::ofstream(source) << "stored bytes";
+  holder::storage::google::GoogleDriveProvider provider({"folder"}, {"refresh"}, {"id", "secret"});
+  CHECK_FALSE(provider.exists("key"));
+  REQUIRE_THROWS_AS(provider.get("key", destination), holder::resource::StorageError);
+  REQUIRE_NOTHROW(provider.remove("key"));
+  provider.put("key", source, 12, "unused");
+  provider.put("key", source, 12, "unused");
+  CHECK(provider.exists("key"));
+  provider.get("key", destination);
+  CHECK(
+      holder::resource::digest_file(destination).sha256 ==
+      holder::resource::digest_file(source).sha256
+  );
+  provider.remove("key");
+  CHECK_FALSE(provider.exists("key"));
+  fixture.finish();
+  CHECK(refreshes == 9);
+  bool replaced = false;
+  for (const auto& request : fixture.server.requests()) {
+    if (request.target() == "/token") {
+      CHECK(request.body().find("refresh_token=refresh") != std::string::npos);
+    } else {
+      CHECK(request["Authorization"] == "Bearer fresh-token");
+      if (request.method() == http::verb::patch) {
+        replaced = true;
+        CHECK(request.body() == "stored bytes");
+      }
+    }
+  }
+  CHECK(replaced);
+}

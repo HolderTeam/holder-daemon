@@ -153,6 +153,19 @@ TEST_CASE("AiThreadItemRoutes patch/delete branches and errors", "[http]") {
     REQUIRE(res.result() == http::status::bad_request);
   }
 
+  SECTION("delete missing thread is not found") {
+    auto req = make_request(http::verb::delete_, "/ai/threads/missing");
+    http::response<http::string_body> res;
+    REQUIRE(holder::api::routes::ai::threads::handle_ai_thread_item_routes(
+        "/ai/threads/missing",
+        req,
+        res,
+        db
+    ));
+    CHECK(res.result() == http::status::not_found);
+    CHECK(nlohmann::json::parse(res.body())["error"]["message"] == "AI thread not found.");
+  }
+
   SECTION("unsupported item method returns not_found route payload") {
     auto req = make_request(http::verb::post, "/ai/threads/thread-1", R"({"title":"ignored"})");
     http::response<http::string_body> res;

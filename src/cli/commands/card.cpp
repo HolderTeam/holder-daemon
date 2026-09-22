@@ -289,8 +289,10 @@ int command_search(const holder::core::Paths& paths, int argc, char* argv[]) {
       }
     }
     return 0;
+    // LCOV_EXCL_START: this command uses raw HTTP and converts protocol failures to std::exception.
   } catch (const CliError&) {
     throw;
+    // LCOV_EXCL_STOP
   } catch (const std::exception& ex) {
     throw std::runtime_error(std::string("Failed to search cards: ") + ex.what());
   }

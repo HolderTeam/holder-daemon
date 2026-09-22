@@ -53,9 +53,9 @@ jobs:
 
       - name: Build backend executables and tests
         run: |
+          # Build all enabled targets, including standalone core regression tests.
           cmake \
             --build build-linux \
-            --target holderd holderctl holder_core_tests holder_daemon_tests \
             --parallel
 
       - name: Run tests

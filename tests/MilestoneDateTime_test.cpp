@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -67,6 +68,20 @@ TEST_CASE(
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("06/01/2026"), std::invalid_argument);
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-02-29"), std::invalid_argument);
   CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T25:00:00Z"), std::invalid_argument);
+  CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T12:00:00"), std::invalid_argument);
+  CHECK_THROWS_AS(holder::cli::parse_milestone_when("2026-06-01T12:00:00X"), std::invalid_argument);
+  CHECK_THROWS_AS(
+      holder::cli::parse_milestone_when("2026-06-01T12:00:00+24:00"),
+      std::invalid_argument
+  );
+  CHECK_THROWS_AS(
+      holder::cli::parse_milestone_when("2026-06-01T12:00:00Zjunk"),
+      std::invalid_argument
+  );
+  CHECK_THROWS_AS(
+      holder::cli::format_milestone_when(std::numeric_limits<long long>::max(), false),
+      std::invalid_argument
+  );
 }
 
 TEST_CASE(
@@ -122,6 +137,16 @@ TEST_CASE(
 }
 
 #ifndef _WIN32
+TEST_CASE(
+    "milestone dates reject a skipped local calendar day",
+    "[holderctl][milestones][datetime]"
+) {
+  TimeZoneGuard timezone("Pacific/Apia");
+  CHECK_THROWS_AS(holder::cli::parse_milestone_when("2011-12-30"), std::invalid_argument);
+  CHECK_NOTHROW(holder::cli::parse_milestone_when("2011-12-29"));
+  CHECK_NOTHROW(holder::cli::parse_milestone_when("2011-12-31"));
+}
+
 TEST_CASE(
     "calendar date bounds follow daylight-saving day length",
     "[holderctl][milestones][datetime]"

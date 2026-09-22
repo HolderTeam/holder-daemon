@@ -313,6 +313,7 @@ add_executable(holderd
   src/storage/S3CompatibleProvider.cpp
   src/storage/google/GoogleOAuth.cpp
   src/storage/google/DriveApi.cpp
+  src/storage/google/GoogleNetwork.cpp
   src/storage/google/GoogleDriveProvider.cpp
   # add more sources as you create them, e.g.:
   # src/api/router.cpp

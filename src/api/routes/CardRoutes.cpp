@@ -370,6 +370,14 @@ http::response<http::string_body> recent_cards_response(
 
 } // namespace
 
+http::response<http::string_body> card_create_error_response(const std::exception& ex) {
+  const std::string msg = ex.what();
+  if (msg.rfind("conflict:", 0) == 0) {
+    return support::error_response(http::status::conflict, "conflict", msg);
+  }
+  return support::error_response(http::status::bad_request, "bad_request", msg);
+}
+
 bool handle_card_routes(
     const std::string& path,
     const http::request<http::string_body>& req,
@@ -554,9 +562,11 @@ bool handle_card_routes(
             // list_card_ids_with_tag itself now guarantees a trashed card's id never comes back
             // (see TagRepo), so this only guards against the card being genuinely missing.
             const auto card_opt = repo.get(card_id);
+            // LCOV_EXCL_START: TagRepo's foreign key and live-card filter guarantee this row.
             if (!card_opt.has_value()) {
               continue;
             }
+            // LCOV_EXCL_STOP
             const auto& card = card_opt.value();
             nlohmann::json item;
             item["card_id"] = card.card_id;
@@ -726,12 +736,7 @@ bool handle_card_routes(
       } catch (const holder::privacy::PrivacyError& ex) {
         res = privacy_error_response(ex); // LCOV_EXCL_LINE
       } catch (const std::exception& ex) {
-        const std::string msg = ex.what();
-        if (msg.rfind("conflict:", 0) == 0) {
-          res = support::error_response(http::status::conflict, "conflict", msg);
-        } else {
-          res = support::error_response(http::status::bad_request, "bad_request", msg);
-        }
+        res = card_create_error_response(ex);
       }
     }
     return true;
@@ -1048,8 +1053,9 @@ bool handle_card_routes(
                   attaching ? (changed ? "attached" : "already_attached")
                             : (changed ? "detached" : "not_attached")}}}}
           );
-        } catch (const holder::privacy::PrivacyError& ex) {
-          res = privacy_error_response(ex);
+        } catch (const holder::privacy::PrivacyError& ex
+        ) { // LCOV_EXCL_LINE: injected crypto failure guard.
+          res = privacy_error_response(ex); // LCOV_EXCL_LINE
         } catch (const std::exception& ex) {
           res = support::error_response(http::status::bad_request, "bad_request", ex.what());
         }

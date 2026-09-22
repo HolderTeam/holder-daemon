@@ -118,7 +118,7 @@ nlohmann::json result_data(const holder::card::CardReferenceResult& result) {
     break;
   }
   return data;
-}
+} // LCOV_EXCL_LINE: GCC emits an unreachable exception-cleanup edge for the completed return.
 
 } // namespace
 

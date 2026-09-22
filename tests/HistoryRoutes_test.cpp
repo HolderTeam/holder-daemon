@@ -730,6 +730,16 @@ TEST_CASE("HistoryRoutes rejects an oversized history comparison", "[http][histo
   REQUIRE(holder::api::routes::handle_history_routes(base + "/compare", req, res, db, param));
   REQUIRE(res.result() == http::status::payload_too_large);
   CHECK(nlohmann::json::parse(res.body())["error"]["code"] == "history_response_too_large");
+  query.clear();
+  query["oid"] = *head_oid;
+  REQUIRE(holder::api::routes::handle_history_routes(base + "/snapshot", req, res, db, param));
+  CHECK(res.result() == http::status::payload_too_large);
+  history_commit(git, card_id, "Another version\n", oversized);
+  query.clear();
+  for (const std::string path : {base, std::string("/projects/history-project/history")}) {
+    REQUIRE(holder::api::routes::handle_history_routes(path, req, res, db, param));
+    CHECK(res.result() == http::status::payload_too_large);
+  }
 }
 
 TEST_CASE("HistoryRoutes leave SQLite files unchanged", "[http][history]") {
@@ -812,6 +822,21 @@ TEST_CASE("HistoryRoutes reports an unavailable encrypted project key", "[http][
   CHECK(res.result() == http::status::conflict);
   const auto error = nlohmann::json::parse(res.body())["error"];
   CHECK(error["code"] == "history_key_unavailable");
+}
+
+TEST_CASE("HistoryRoutes maps privacy failures by recoverability", "[http][history]") {
+  using Code = holder::privacy::PrivacyErrorCode;
+  const auto missing = holder::api::routes::history_privacy_error_response(
+      holder::privacy::PrivacyError(Code::KeyringUnavailable, "missing keyring")
+  );
+  CHECK(missing.result() == http::status::conflict);
+  CHECK(nlohmann::json::parse(missing.body())["error"]["code"] == "history_key_unavailable");
+
+  const auto invalid = holder::api::routes::history_privacy_error_response(
+      holder::privacy::PrivacyError(Code::EnvelopeInvalid, "bad envelope")
+  );
+  CHECK(invalid.result() == http::status::service_unavailable);
+  CHECK(nlohmann::json::parse(invalid.body())["error"]["code"] == "history_unavailable");
 }
 
 TEST_CASE("HistoryRoutes reports malformed historical card data", "[http][history]") {
@@ -901,4 +926,46 @@ TEST_CASE("HistoryRoutes restores a selected card version", "[http][history]") {
 
   git.open_existing(project_root);
   CHECK(git.head_oid() == data["result_oid"].get<std::string>());
+}
+
+TEST_CASE(
+    "HistoryRoutes rejects restore requests without required services or revisions",
+    "[http][history]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  auto db = holder::test::open_db_with_schema(root / "holder.db");
+  holder::test::create_project(db, "history-project", (root / "project").string());
+  holder::card::CardStore cards(db, nullptr);
+  const auto path = "/projects/history-project/history/cards/card-one/restore";
+  http::request<http::string_body> request{http::verb::get, "/", 11};
+  http::response<http::string_body> response;
+  auto params = [](const std::string&) {
+    return std::string();
+  };
+  CHECK_FALSE(holder::api::routes::handle_history_routes(
+      "/projects/history-project/history/cards/card-one/unknown",
+      request,
+      response,
+      db,
+      params
+  ));
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params));
+  CHECK(response.result() == http::status::method_not_allowed);
+  request.method(http::verb::post);
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params));
+  CHECK(response.result() == http::status::not_implemented);
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, params, &cards));
+  CHECK(response.result() == http::status::bad_request);
+
+  holder::git::GitRepo git;
+  git.open_or_init(root / "project");
+  history_commit(git, "different-card", "body\n", "Add a different card");
+  const auto oid = git.head_oid();
+  REQUIRE(oid.has_value());
+  auto oid_param = [&](const std::string& key) {
+    return key == "oid" ? *oid : std::string();
+  };
+  REQUIRE(holder::api::routes::handle_history_routes(path, request, response, db, oid_param, &cards)
+  );
+  CHECK(response.result() == http::status::not_found);
 }

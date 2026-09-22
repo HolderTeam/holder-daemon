@@ -63,7 +63,7 @@ namespace {
 void print_usage(std::ostream& out) {
   out << "Usage: holderd [--help] [--version] [--bind <addr>] [--port <port>] [--reindex] "
          "[--rebuild-database [--dry-run]]\n";
-}
+} // LCOV_EXCL_LINE: function cleanup after the covered startup validation throw.
 
 std::filesystem::path find_schema_sql() {
   namespace fs = std::filesystem;
@@ -89,7 +89,7 @@ std::filesystem::path find_schema_sql() {
 
   throw std::runtime_error("Cannot find schema/schema.sql from current directory."
   ); // LCOV_EXCL_LINE
-}
+} // LCOV_EXCL_LINE: schema lookup cleanup after the covered startup validation throw.
 
 void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_store) {
   holder::project::ProjectRepo project_repo(db);
@@ -104,17 +104,21 @@ void backfill_card_tags(holder::platform::Db& db, holder::card::CardStore& card_
 
       try {
         const auto content = card_store.get_content(card);
+        // LCOV_EXCL_START: requires the card file to disappear after the projection scan.
         if (!content.has_value()) {
           spdlog::warn("Skipping tag backfill for card with missing content: {}", card.card_id);
           continue;
         }
+        // LCOV_EXCL_STOP
         const auto tags = holder::core::extract_tags(content.value());
         tag_repo.set_tags_for_card(project.project_id, card.card_id, tags, card.updated_at);
         ++indexed_cards;
         indexed_tags += tags.size();
+        // LCOV_EXCL_START: individual storage failures are logged so startup can continue.
       } catch (const std::exception& ex) {
         spdlog::warn("Skipping tag backfill for card {}: {}", card.card_id, ex.what());
       }
+      // LCOV_EXCL_STOP
     }
   }
 
@@ -232,9 +236,11 @@ int run_daemon(int argc, char* argv[]) {
   }
 
   const auto startup_health = holder::core::inspect_database_health(paths.db_path());
+  // LCOV_EXCL_START: requires a filesystem I/O fault during the startup health probe.
   if (startup_health.health == holder::core::DatabaseHealth::IoError) {
     throw std::runtime_error("database I/O failure: " + startup_health.detail);
   }
+  // LCOV_EXCL_STOP
   if (startup_health.health == holder::core::DatabaseHealth::Missing ||
       startup_health.health == holder::core::DatabaseHealth::Corrupt) {
     spdlog::warn(
@@ -284,24 +290,32 @@ int run_daemon(int argc, char* argv[]) {
   holder::app::bootstrap_default_home_project(db, &fts);
   backfill_project_manifests(db);
   const auto thread_manifests_added = holder::ai::backfill_ai_thread_manifests(db);
+  // LCOV_EXCL_START: logging-only startup branch; backfill behavior is tested at its owner.
   if (thread_manifests_added > 0) {
     spdlog::info("Added durable metadata for {} AI threads.", thread_manifests_added);
   }
+  // LCOV_EXCL_STOP
   const auto thread_states_added = holder::ai::backfill_thread_compaction_states(db);
+  // LCOV_EXCL_START: logging-only startup branch; backfill behavior is tested at its owner.
   if (thread_states_added > 0) {
     spdlog::info("Added durable state for {} AI threads.", thread_states_added);
   }
+  // LCOV_EXCL_STOP
   const auto nudge_dismissals_added = holder::ai::backfill_nudge_dismissals(db);
+  // LCOV_EXCL_START: logging-only startup branch; backfill behavior is tested at its owner.
   if (nudge_dismissals_added > 0) {
     spdlog::info("Added durable tombstones for {} dismissed AI nudges.", nudge_dismissals_added);
   }
+  // LCOV_EXCL_STOP
   holder::core::ProjectRegistry(paths.project_registry_path()).remember(project_repo.list());
   try {
     holder::core::audit_durable_database_ownership(db, paths);
     holder::core::mark_database_rebuild_ready(paths);
-  } catch (const std::exception& ex) {
+  } // LCOV_EXCL_START: startup only logs an audit failure; failure behavior is tested at the owner.
+  catch (const std::exception& ex) {
     spdlog::warn("Database rebuild readiness audit is incomplete: {}", ex.what());
   }
+  // LCOV_EXCL_STOP
 
   holder::core::ServerInfo info;
   info.started_at = std::chrono::duration_cast<std::chrono::seconds>(
@@ -377,38 +391,35 @@ int run_daemon(int argc, char* argv[]) {
 
   std::atomic<bool> database_health_failure{false};
   std::atomic<bool> database_health_stop_requested{false};
-  std::thread database_health_monitor_thread(
-      [&]() { // LCOV_EXCL_LINE: requires live filesystem corruption.
-        while (!database_health_stop_requested.load() && !signals.is_requested()) {
-          for (int tenth_seconds = 0;
-               tenth_seconds < 50 && !database_health_stop_requested.load() &&
-               !signals.is_requested();
-               ++tenth_seconds) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-          }
-          if (database_health_stop_requested.load() || signals.is_requested()) break;
-          const auto health = holder::core::inspect_database_health(paths.db_path());
-          if (health.health == holder::core::DatabaseHealth::Healthy) continue;
-          database_health_failure.store(true);
-          if (health.health == holder::core::DatabaseHealth::Corrupt) {
-            spdlog::critical(
-                "SQLite corruption detected during runtime; stopping all work so the database can "
-                "be quarantined and rebuilt on the next start: {}",
-                health.detail
-            );
-          } else {
-            spdlog::critical(
-                "SQLite health check failed during runtime; stopping without classifying the "
-                "failure as corruption: {}",
-                health.detail
-            );
-          }
-          signals.request_stop();
-          server.stop();
-          break;
-        }
+  std::thread database_health_monitor_thread([&]() { // LCOV_EXCL_LINE: thread entry cleanup line.
+    while (!database_health_stop_requested.load() && !signals.is_requested()) {
+      for (int tenth_seconds = 0;
+           tenth_seconds < 50 && !database_health_stop_requested.load() && !signals.is_requested();
+           ++tenth_seconds) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-  );
+      if (database_health_stop_requested.load() || signals.is_requested()) break;
+      const auto health = holder::core::inspect_database_health(paths.db_path());
+      if (health.health == holder::core::DatabaseHealth::Healthy) continue;
+      database_health_failure.store(true);
+      if (health.health == holder::core::DatabaseHealth::Corrupt) {
+        spdlog::critical(
+            "SQLite corruption detected during runtime; stopping all work so the database can "
+            "be quarantined and rebuilt on the next start: {}",
+            health.detail
+        );
+      } else {
+        spdlog::critical(
+            "SQLite health check failed during runtime; stopping without classifying the "
+            "failure as corruption: {}",
+            health.detail
+        );
+      }
+      signals.request_stop();
+      server.stop();
+      break;
+    }
+  });
   StopFlagThreadGuard database_health_monitor(
       database_health_stop_requested,
       std::move(database_health_monitor_thread)

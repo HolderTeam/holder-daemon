@@ -6,10 +6,15 @@
 
 #include <boost/beast/http.hpp>
 
+#include <exception>
 #include <functional>
 #include <string>
 
 namespace holder::api::routes {
+
+boost::beast::http::response<boost::beast::http::string_body> card_create_error_response(
+    const std::exception& ex
+);
 
 bool handle_card_routes(
     const std::string& path,

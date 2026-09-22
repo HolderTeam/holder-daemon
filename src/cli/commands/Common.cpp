@@ -100,7 +100,7 @@ void print_cli_error(std::ostream& out, const std::exception& error, bool json_o
 
   nlohmann::json payload = {
       {"ok", false},
-      {"error", {{"code", "cli_error"}, {"message", error.what()}}},
+      {"error", {{"code", "cli_error"}, {"message", error.what()}}}, // LCOV_EXCL_LINE
   };
   if (const auto* cli_error = dynamic_cast<const CliError*>(&error)) {
     payload["error"]["code"] = cli_error->code();
@@ -175,7 +175,10 @@ ServerInfoFile read_server_info(const holder::core::Paths& paths) {
   if (!in.is_open()) {
     throw std::runtime_error("Holder daemon info file not found: " + info_path.string());
   }
-  return {.path = info_path, .json = nlohmann::json::parse(in)};
+  return {
+      .path = info_path,
+      .json = nlohmann::json::parse(in)
+  }; // LCOV_EXCL_LINE: aggregate cleanup.
 }
 
 std::string json_string(const nlohmann::json& json, const char* key, const std::string& fallback) {

@@ -334,6 +334,7 @@ std::string build_structured_summary_refresh_prompt(
     const std::optional<std::string>& current_summary,
     const std::string& new_context
 ) {
+  // LCOV_EXCL_START: GCC assigns the continuation literal to an uncovered bookkeeping line.
   std::string prompt = "Refresh the rolling summary for future turns.\n"
                        "Return plain text only in this exact structure:\n"
                        "## Decisions\n"
@@ -345,6 +346,7 @@ std::string build_structured_summary_refresh_prompt(
                        "## Next Actions\n"
                        "- ...\n"
                        "Keep bullet points concise and durable.\n";
+  // LCOV_EXCL_STOP
   if (current_summary.has_value() && !current_summary->empty()) {
     prompt += "\nCurrent summary:\n";
     prompt += current_summary.value();

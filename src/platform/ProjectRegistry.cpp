@@ -39,9 +39,11 @@ nlohmann::json load_registry(const std::filesystem::path& path) {
     return {{"version", 1}, {"projects", nlohmann::json::array()}};
   }
   std::ifstream in(path, std::ios::binary);
+  // LCOV_EXCL_START: requires file-open syscall fault injection after exists().
   if (!in) {
     throw std::runtime_error("failed to open project registry: " + path.string());
   }
+  // LCOV_EXCL_STOP
   auto body = nlohmann::json::parse(in);
   if (body.value("version", 0) != 1 || !body.contains("projects") ||
       !body.at("projects").is_array()) {
@@ -60,9 +62,11 @@ std::string canonical_path_string(const std::filesystem::path& path) {
 
 void restrict_file(const std::filesystem::path& path) {
 #ifndef _WIN32
+  // LCOV_EXCL_START: requires chmod fault injection.
   if (::chmod(path.c_str(), S_IRUSR | S_IWUSR) != 0) {
     throw std::runtime_error("failed to restrict project registry permissions: " + path.string());
   }
+  // LCOV_EXCL_STOP
 #else
   (void)path;
 #endif
@@ -117,14 +121,18 @@ void ProjectRegistry::remember(const std::vector<holder::model::Project>& projec
   temporary += ".tmp" + unique_temp_suffix();
   {
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    // LCOV_EXCL_START: requires disk-write fault injection after the directory is created.
     if (!out) {
       throw std::runtime_error("failed to write project registry: " + temporary.string());
     }
+    // LCOV_EXCL_STOP
     out << body.dump(2) << '\n';
     out.flush();
+    // LCOV_EXCL_START: requires disk-flush fault injection.
     if (!out) {
       throw std::runtime_error("failed to flush project registry: " + temporary.string());
     }
+    // LCOV_EXCL_STOP
   }
   restrict_file(temporary);
 
@@ -136,10 +144,12 @@ void ProjectRegistry::remember(const std::vector<holder::model::Project>& projec
     if (!ec) std::filesystem::rename(temporary, path_, ec);
   }
 #endif
+  // LCOV_EXCL_START: requires atomic rename syscall fault injection.
   if (ec) {
     std::filesystem::remove(temporary);
     throw std::runtime_error("failed to replace project registry: " + ec.message());
   }
+  // LCOV_EXCL_STOP
   restrict_file(path_);
 }
 

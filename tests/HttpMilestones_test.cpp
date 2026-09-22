@@ -280,3 +280,108 @@ TEST_CASE("HTTP milestone and calendar routes validate inputs", "[http][mileston
   );
   REQUIRE(missing_card["error"]["code"] == "not_found");
 }
+
+#include "api/routes/MilestoneRoutes.h"
+
+TEST_CASE("Milestone routes validate paths and unavailable card services", "[milestones][routes]") {
+  namespace http = boost::beast::http;
+  const auto root = make_temp_dir();
+  auto db = open_db_with_schema(root / "holder.db");
+  create_project(db, "proj-1", (root / "project").string());
+  holder::card::CardStore cards(db, nullptr);
+  cards.create(card("card-one", "Card", 1, 1), "Card\n");
+  auto call = [&](http::verb method,
+                  const std::string& path,
+                  holder::card::CardStore* store,
+                  const std::string& body,
+                  const std::map<std::string, std::string>& params = {}) {
+    http::request<http::string_body> request{method, path, 11};
+    request.body() = body;
+    http::response<http::string_body> response;
+    const bool handled = holder::api::routes::handle_milestone_routes(
+        path,
+        request,
+        response,
+        db,
+        store,
+        [] {
+          return "milestone";
+        },
+        [&](const std::string& key) {
+          auto it = params.find(key);
+          return it == params.end() ? "" : it->second;
+        }
+    );
+    return std::pair{handled, response.result()};
+  };
+  for (const std::string path :
+       {"/cards",
+        "/cards/id",
+        "/cards/id/other",
+        "/cards/id/milestones-invalid",
+        "/cards/id/milestones/",
+        "/cards/id/milestones/a/b"})
+    CHECK_FALSE(call(http::verb::get, path, &cards, "{}").first);
+  CHECK(
+      call(http::verb::get, "/cards//milestones", &cards, "{}").second == http::status::bad_request
+  );
+  CHECK(call(http::verb::get, "/calendar", &cards, "").second == http::status::bad_request);
+  for (auto method : {http::verb::post, http::verb::patch, http::verb::delete_}) {
+    const auto path = method == http::verb::post ? "/cards/card-one/milestones"
+                                                 : "/cards/card-one/milestones/id";
+    CHECK(call(method, path, nullptr, "{}").second == http::status::not_implemented);
+  }
+  CHECK_FALSE(call(http::verb::put, "/cards/card-one/milestones", &cards, "{}").first);
+  for (const std::string body :
+       {"{}",
+        R"({"start_at":"bad"})",
+        R"({"start_at":1,"end_at":"bad"})",
+        R"({"start_at":1,"all_day":12})"})
+    CHECK(
+        call(http::verb::post, "/cards/card-one/milestones", &cards, body).second ==
+        http::status::bad_request
+    );
+  for (const std::string body :
+       {"not-json",
+        "[]",
+        "{}",
+        R"({"unknown":true})",
+        R"({"start_at":"bad"})",
+        R"({"end_at":"bad"})",
+        R"({"all_day":12})",
+        R"({"kind":12})"})
+    CHECK(
+        call(http::verb::patch, "/cards/card-one/milestones/id", &cards, body).second ==
+        http::status::bad_request
+    );
+  CHECK(
+      call(http::verb::patch, "/cards/card-one/milestones/id", &cards, R"({"kind":"new"})")
+          .second == http::status::not_found
+  );
+  for (const std::map<std::string, std::string> params :
+       {std::map<std::string, std::string>{{"project_id", "proj-1"}, {"from", "10"}},
+        {{"project_id", "proj-1"}, {"from", "10"}, {"to", "bad"}},
+        {{"project_id", "proj-1"}, {"from", "10"}, {"to", "11trailing"}}})
+    CHECK(
+        call(http::verb::get, "/calendar", &cards, "", params).second == http::status::bad_request
+    );
+  CHECK(
+      call(
+          http::verb::get,
+          "/calendar",
+          &cards,
+          "",
+          {{"project_id", "missing"}, {"from", "0"}, {"to", "1"}}
+      ).second == http::status::not_found
+  );
+  db.exec("DROP TABLE milestones");
+  CHECK(
+      call(
+          http::verb::get,
+          "/calendar",
+          &cards,
+          "",
+          {{"project_id", "proj-1"}, {"from", "0"}, {"to", "1"}}
+      ).second == http::status::bad_request
+  );
+}

@@ -299,3 +299,96 @@ TEST_CASE("DatabaseRecovery blocks known SQLite-only durable state", "[database]
       Catch::Matchers::ContainsSubstring("local AI model configuration")
   );
 }
+
+TEST_CASE(
+    "DatabaseRecovery audit requires each external owner and surfaces SQL failures",
+    "[database][recovery]"
+) {
+  const auto root = holder::test::make_temp_dir();
+  holder::core::Paths paths;
+  paths.data_dir = root / "data";
+  paths.config_dir = root / "config";
+  paths.cache_dir = root / "cache";
+  paths.ensure_dirs();
+  auto db = holder::test::open_db_with_schema(paths.db_path());
+  auto prepare_durable_project = [&] {
+    const auto projects_root = root / "projects";
+    holder::model::Project input;
+    input.project_id = "project";
+    input.name = "Project";
+    input.privacy_mode = "plain";
+    input.created_at = input.updated_at = 1;
+    const auto project = holder::project::ProjectStore(db).create(
+        input,
+        [] {
+          return std::string("unused");
+        },
+        projects_root
+    );
+    holder::core::ProjectRegistry(paths.project_registry_path()).remember({project});
+    holder::core::initialize_device_config(db, paths.device_config_path());
+    holder::api::support::initialize_cloud_usage_ledger(db, paths.cloud_usage_ledger_path());
+    return project;
+  };
+  SECTION("external owner files") {
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("project registry has not been externalized")
+    );
+    std::ofstream(paths.project_registry_path()) << "{}";
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("device configuration has not been externalized")
+    );
+    std::ofstream(paths.device_config_path()) << "{}";
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("cloud usage ledger has not been externalized")
+    );
+    std::ofstream(paths.cloud_usage_ledger_path()) << "{}";
+    REQUIRE_NOTHROW(holder::core::audit_durable_database_ownership(db, paths));
+  }
+  SECTION("query preparation failure") {
+    db.exec("DROP TABLE ai_provider_settings");
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("database ownership audit failed")
+    );
+  }
+  SECTION("query execution failure") {
+    db.exec(
+        "DROP TABLE ai_provider_settings; CREATE VIEW ai_provider_settings AS SELECT 1 WHERE abs(-9223372036854775808)"
+    );
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("database ownership audit failed")
+    );
+  }
+  SECTION("AI thread compaction state must have a durable owner") {
+    const auto project = prepare_durable_project();
+    holder::model::AiThread thread;
+    thread.thread_id = "thread";
+    thread.project_id = project.project_id;
+    thread.title = "Thread";
+    thread.created_at = thread.updated_at = 1;
+    holder::ai::AiThreadRepo(db).create(thread);
+    REQUIRE(holder::ai::backfill_ai_thread_manifests(db) == 1);
+    db.exec("INSERT INTO ai_thread_compaction_state VALUES('thread','summary','[]',NULL,1)");
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("AI thread compaction state")
+    );
+  }
+  SECTION("dismissed AI nudges must have a durable owner") {
+    const auto project = prepare_durable_project();
+    db.exec(
+        "INSERT INTO ai_nudges(nudge_id,kind,project_id,title,body,meta_json,created_at,"
+        "dismissed_at) VALUES('nudge','test','" +
+        project.project_id + "','Title','Body','{}',1,2)"
+    );
+    REQUIRE_THROWS_WITH(
+        holder::core::audit_durable_database_ownership(db, paths),
+        Catch::Matchers::ContainsSubstring("dismissed AI nudges")
+    );
+  }
+}

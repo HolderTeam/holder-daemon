@@ -451,7 +451,7 @@ void Session::write_prepared_response(
       status,
       duration_ms
   );
-  spdlog::debug(
+  spdlog::debug( // LCOV_EXCL_LINE: compiled-out debug call retains a GCC line record.
       "HTTP lane={} method={} target={} status={} duration_ms={}",
       lane_name(lane),
       method,

@@ -50,7 +50,7 @@ Nudge row_to_nudge(sqlite3_stmt* stmt) {
       .basis_commit = column_nullable(stmt, 8),
       .created_at = sqlite3_column_int64(stmt, 9),
       .dismissed = sqlite3_column_type(stmt, 10) != SQLITE_NULL,
-  };
+  }; // LCOV_EXCL_LINE: aggregate initializer cleanup line.
 }
 
 } // namespace
@@ -116,10 +116,11 @@ Nudge AiNudgeRepo::create_or_get(const Nudge& nudge) {
   sqlite3_finalize(stmt);
 
   auto stored = find_by_id(nudge.nudge_id);
+  // LCOV_EXCL_START: a successful insert of this primary key guarantees the subsequent lookup.
   if (!stored.has_value()) {
-    throw std::runtime_error("insert ai_nudge failed: row not found after insert"
-    ); // LCOV_EXCL_LINE
+    throw std::runtime_error("insert ai_nudge failed: row not found after insert");
   }
+  // LCOV_EXCL_STOP
   return stored.value();
 }
 

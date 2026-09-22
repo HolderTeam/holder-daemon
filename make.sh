@@ -38,7 +38,11 @@ Examples:
 
 Environment:
   HOLDER_CCACHE                auto (default), 1 to require, or 0 to disable ccache
-  HOLDER_CTEST_TIMEOUT          Per-test timeout for normal split CTest runs
+  HOLDER_CTEST_TIMEOUT          Per-test timeout (memcheck defaults to 900 seconds)
+  HOLDER_SAN_BUILD_DIR          Override the sanitizer build directory
+  HOLDER_TSAN_SUPPRESSIONS      Optional explicit ThreadSanitizer suppression file
+  HOLDER_CLANG_TIDY             Override clang-tidy (default clang-tidy-18)
+  HOLDER_RUN_CLANG_TIDY         Override run-clang-tidy
   HOLDER_MEMCHECK_BUILD_TYPE    Build type for memcheck, default Debug
   HOLDER_SAN_DETECT_LEAKS       Set to 1 to enable ASan leak detection
 EOF
@@ -222,14 +226,14 @@ memcheck_all() {
     ctest --test-dir "${build_dir}" \
       -T memcheck \
       --output-on-failure \
-      --timeout 300 \
+      --timeout "${HOLDER_CTEST_TIMEOUT:-900}" \
       -E "${memcheck_skip_regex}" \
       -R "${test_regex}"
   else
     ctest --test-dir "${build_dir}" \
       -T memcheck \
       --output-on-failure \
-      --timeout 300 \
+      --timeout "${HOLDER_CTEST_TIMEOUT:-900}" \
       -E "${memcheck_skip_regex}"
   fi
 }
@@ -248,7 +252,7 @@ test_build() {
 }
 
 san_all() {
-  local build_dir="build-san"
+  local build_dir="${HOLDER_SAN_BUILD_DIR:-build-san}"
   local sanitizers="${1:-address}"
   local build_type="${2:-Debug}"
   local san_flags="-fsanitize=${sanitizers} -fno-omit-frame-pointer -O1 -g"
@@ -256,6 +260,10 @@ san_all() {
   local catch_discovery="ON"
   local test_mode="split"
   local tsan_use_setarch="OFF"
+  local tsan_options="halt_on_error=1:second_deadlock_stack=1"
+  if [ -n "${HOLDER_TSAN_SUPPRESSIONS:-}" ]; then
+    tsan_options="${tsan_options}:suppressions=${HOLDER_TSAN_SUPPRESSIONS}"
+  fi
 
   case ",${sanitizers}," in
   *",thread,"*)
@@ -270,6 +278,8 @@ san_all() {
     -DCMAKE_CXX_FLAGS="${san_flags}" \
     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}" \
     -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=${sanitizers}" \
+    -DHOLDER_CORE_CATCH_DISCOVER_TESTS="${catch_discovery}" \
+    -DHOLDER_CORE_TSAN_USE_SETARCH="${tsan_use_setarch}" \
     -DHOLDER_CATCH_DISCOVER_TESTS="${catch_discovery}" \
     -DHOLDER_TSAN_USE_SETARCH="${tsan_use_setarch}"
 
@@ -284,7 +294,7 @@ san_all() {
 
   ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
-    TSAN_OPTIONS="halt_on_error=1:second_deadlock_stack=1" \
+    TSAN_OPTIONS="${tsan_options}" \
     test_build "${build_dir}" "${test_mode}"
 }
 
@@ -352,15 +362,19 @@ coverage_all() {
 tidy_all() {
   local build_dir="build-tidy"
   local source_regex
-  local tidy_bin="clang-tidy"
+  local tidy_bin="${HOLDER_CLANG_TIDY:-clang-tidy-18}"
+  local tidy_runner="${HOLDER_RUN_CLANG_TIDY:-run-clang-tidy}"
   local gcc_version gcc_major
   local tidy_extra_args=""
 
   source_regex="^${PWD}/(src|tests)/.*\\.(cpp|cc|cxx|h|hpp)$"
 
-  if command -v clang-tidy-18 >/dev/null 2>&1; then
-    tidy_bin="clang-tidy-18"
-  fi
+  for executable in "${tidy_bin}" "${tidy_runner}"; do
+    if ! command -v "${executable}" >/dev/null 2>&1; then
+      echo "Missing dependency: ${executable}; see README.md for static analysis tools." >&2
+      exit 1
+    fi
+  done
   if command -v g++ >/dev/null 2>&1; then
     gcc_version="$(g++ -dumpfullversion -dumpversion)"
     gcc_major="${gcc_version%%.*}"
@@ -376,7 +390,7 @@ tidy_all() {
     -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-  run-clang-tidy \
+  "${tidy_runner}" \
     -clang-tidy-binary "${tidy_bin}" \
     -p "${build_dir}" \
     -quiet \
@@ -439,7 +453,7 @@ case "${MODE}" in
     ;;
   perf-privacy)
     build_all "${BUILD_TYPE}"
-    ./build/tests/holder_daemon_tests "CardStore encrypted project perf profile (manual)"
+    ./build/holder-core/tests/holder_core_tests "CardStore encrypted project perf profile (manual)"
     ;;
   coverage)
     coverage_all

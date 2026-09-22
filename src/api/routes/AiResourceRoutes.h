@@ -7,10 +7,16 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast/http.hpp>
 
+#include <exception>
 #include <functional>
 #include <string>
 
 namespace holder::api::routes {
+
+// Shared HTTP mapping for resource and storage failures.
+boost::beast::http::response<boost::beast::http::string_body> resource_error_response(
+    const std::exception& error
+);
 
 // Listener shutdown calls this before destroying the serialized Git executor used by imports.
 void wait_for_asset_import_jobs();

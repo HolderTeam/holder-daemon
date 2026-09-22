@@ -410,6 +410,31 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(git.calls == std::vector<std::string>{"remote", "pull"});
   }
 
+  SECTION("forced sync reports push failure") {
+    git.push_result = {
+        .status = holder::git::PushStatus::AuthFailed,
+        .ahead_count = 1,
+        .behind_count = 0,
+        .error_message = "push authentication failed",
+    };
+    auto [status, payload] = call(
+        http::verb::post,
+        "/projects/proj-1/git/sync",
+        {{"branch", "main"}, {"set_upstream", nullptr}}
+    );
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["status"] == "failed");
+    REQUIRE(payload["data"]["error_code"] == "auth_failed");
+    REQUIRE(payload["data"]["error_message"] == "push authentication failed");
+  }
+
+  SECTION("forced sync rejects a missing project") {
+    auto [status, payload] =
+        call(http::verb::post, "/projects/missing/git/sync", nlohmann::json::object());
+    REQUIRE(status == http::status::not_found);
+    REQUIRE(payload["error"]["code"] == "not_found");
+  }
+
   SECTION("forced sync rejects malformed input") {
     auto req = make_request(http::verb::post, "/projects/proj-1/git/sync");
     req.body() = "{";
@@ -503,6 +528,14 @@ TEST_CASE("ProjectRoutes git and project route error/status branches", "[project
     REQUIRE(status == http::status::internal_server_error);
     REQUIRE(payload["error"]["code"] == "error");
   }
+
+  SECTION("project metadata update persists successfully") {
+    auto [status, payload] =
+        call(http::verb::patch, "/projects/proj-1", {{"name", "Renamed"}, {"updated_at", 2}});
+    REQUIRE(status == http::status::ok);
+    REQUIRE(payload["data"]["project_id"] == "proj-1");
+    REQUIRE(holder::project::ProjectRepo(db).get("proj-1")->name == "Renamed");
+  }
 }
 
 TEST_CASE("ProjectRoutes lists project tags with card counts", "[project-routes][tags]") {
@@ -548,6 +581,31 @@ TEST_CASE("ProjectRoutes lists project tags with card counts", "[project-routes]
        })}
   };
   REQUIRE(payload == expected);
+
+  req = make_request(http::verb::get, "/projects/missing/tags");
+  REQUIRE(holder::api::routes::handle_project_routes(
+      "/projects/missing/tags",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  ));
+  REQUIRE(res.result() == http::status::not_found);
+
+  db.close();
+  req = make_request(http::verb::get, "/projects/proj-1/tags");
+  REQUIRE(holder::api::routes::handle_project_routes(
+      "/projects/proj-1/tags",
+      req,
+      res,
+      db,
+      nullptr,
+      uuid_v4,
+      param_get
+  ));
+  REQUIRE(res.result() == http::status::internal_server_error);
 }
 
 TEST_CASE("ProjectRoutes recovery import and encryption-check branches", "[project-routes]") {

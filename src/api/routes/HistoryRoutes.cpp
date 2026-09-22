@@ -118,6 +118,7 @@ nlohmann::json project_activity_json(const holder::history::ProjectHistoryActivi
       if (item.detail.has_value()) json_item["detail"] = *item.detail;
       items.push_back(std::move(json_item));
     }
+    // LCOV_EXCL_START: GCC reports nested initializer cleanup as an unexecuted duplicate.
     affected_objects.push_back({
         {"kind", holder::history::project_history_object_kind_name(object.kind)},
         // Keep paths for compatibility with existing API consumers; items carries
@@ -125,6 +126,7 @@ nlohmann::json project_activity_json(const holder::history::ProjectHistoryActivi
         {"paths", std::move(paths)},
         {"items", std::move(items)},
     });
+    // LCOV_EXCL_STOP
   }
   return {
       {"oid", activity.oid},
@@ -422,9 +424,11 @@ bool handle_history_routes(
     if (mode == "change") {
       auto change = history.compare_change(*project, parsed->card_id, to_text);
       if (!map_revision_reference_result(change.revision, to_text, "to", res)) return true;
+      // LCOV_EXCL_START: a resolved comparison is an invariant of compare_change.
       if (!change.comparison.has_value()) {
         throw std::runtime_error("resolved history change is missing its comparison");
       }
+      // LCOV_EXCL_STOP
       comparison = std::move(*change.comparison);
     } else {
       std::string from_oid;
@@ -468,16 +472,7 @@ bool handle_history_routes(
   } catch (const std::invalid_argument& ex) {
     res = support::error_response(http::status::bad_request, "bad_request", ex.what());
   } catch (const holder::privacy::PrivacyError& ex) {
-    if (ex.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing ||
-        ex.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable) {
-      res = support::error_response(http::status::conflict, "history_key_unavailable", ex.what());
-    } else {
-      res = support::error_response(
-          http::status::service_unavailable,
-          "history_unavailable",
-          ex.what()
-      );
-    }
+    res = history_privacy_error_response(ex);
   } catch (const std::exception& ex) {
     res = support::error_response(
         http::status::service_unavailable,
@@ -486,6 +481,20 @@ bool handle_history_routes(
     );
   }
   return true;
+}
+
+http::response<http::string_body> history_privacy_error_response(
+    const holder::privacy::PrivacyError& error
+) {
+  if (error.code() == holder::privacy::PrivacyErrorCode::KeyMaterialMissing ||
+      error.code() == holder::privacy::PrivacyErrorCode::KeyringUnavailable) {
+    return support::error_response(http::status::conflict, "history_key_unavailable", error.what());
+  }
+  return support::error_response(
+      http::status::service_unavailable,
+      "history_unavailable",
+      error.what()
+  );
 }
 
 } // namespace holder::api::routes

@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -28,6 +29,7 @@ std::string encode(
     const holder::model::Project& project,
     const holder::api::support::ThreadCompactionState& state
 ) {
+  // LCOV_EXCL_START: GCC reports initializer-list exception cleanup as an unexecuted duplicate.
   nlohmann::json body = {
       {"version", 1},
       {"thread_id", state.thread_id},
@@ -43,6 +45,7 @@ std::string encode(
            : nlohmann::json(nullptr)},
       {"updated_at", state.updated_at},
   };
+  // LCOV_EXCL_STOP
   const auto plain = body.dump(2) + '\n';
   if (project.privacy_mode != "encrypted_git") return plain;
   if (!project.project_key_id.has_value() || project.project_key_id->empty()) {
@@ -97,6 +100,10 @@ void upsert_projection(
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare AI thread state restore failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   sqlite3_bind_text(stmt, 1, state.thread_id.c_str(), -1, SQLITE_TRANSIENT);
   if (state.rolling_summary)
     sqlite3_bind_text(stmt, 2, state.rolling_summary->c_str(), -1, SQLITE_TRANSIENT);
@@ -112,7 +119,7 @@ void upsert_projection(
     sqlite3_bind_null(stmt, 4);
   sqlite3_bind_int64(stmt, 5, state.updated_at);
   const int rc = sqlite3_step(stmt);
-  sqlite3_finalize(stmt);
+
   if (rc != SQLITE_DONE) throw std::runtime_error("restore AI thread state failed");
 }
 
@@ -145,6 +152,10 @@ std::size_t backfill_thread_compaction_states(holder::platform::Db& db) {
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare AI thread state backfill failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   std::size_t count = 0;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     holder::api::support::ThreadCompactionState state;
@@ -166,7 +177,7 @@ std::size_t backfill_thread_compaction_states(holder::platform::Db& db) {
       continue;
     if (persist_thread_compaction_state(db, state)) ++count;
   }
-  sqlite3_finalize(stmt);
+
   return count;
 }
 
@@ -205,6 +216,10 @@ bool all_thread_compaction_states_are_durable(holder::platform::Db& db) {
   if (sqlite3_prepare_v2(db.handle(), SQL, -1, &stmt, nullptr) != SQLITE_OK) {
     throw std::runtime_error("prepare AI thread state ownership audit failed");
   }
+  const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(
+      stmt,
+      sqlite3_finalize
+  );
   bool durable = true;
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     const std::string id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
@@ -214,7 +229,7 @@ bool all_thread_compaction_states_are_durable(holder::platform::Db& db) {
       break;
     }
   }
-  sqlite3_finalize(stmt);
+
   return durable;
 }
 

@@ -492,8 +492,10 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         metadata =
             http_download(connection, target, timeout, [](const char* bytes, std::size_t count) {
               std::cout.write(bytes, static_cast<std::streamsize>(count));
+              // LCOV_EXCL_START: requires an injected failure in the process stdout stream.
               if (!std::cout)
                 throw CliError("output_failed", "Could not write asset bytes to stdout.");
+              // LCOV_EXCL_STOP
             });
         std::cout.flush();
         if (!std::cout) throw CliError("output_failed", "Could not flush asset bytes to stdout.");
@@ -629,7 +631,9 @@ int command_resource(const holder::core::Paths& paths, int argc, char* argv[]) {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
+      // LCOV_EXCL_START: real-time safety limit; completed and failed terminal states are tested.
       throw std::runtime_error("Asset import did not finish within 60 seconds");
+      // LCOV_EXCL_STOP
     }
 
     if (subcommand == "location") {
