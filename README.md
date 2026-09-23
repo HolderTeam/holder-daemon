@@ -172,6 +172,14 @@ cmake --build --preset windows-vcpkg-tests-debug
 ctest --preset windows-vcpkg-tests-debug
 ```
 
+From a Windows Bash environment with the MSVC developer environment and
+`VCPKG_ROOT` configured, the portable project commands are also available:
+
+```bash
+./make.sh build
+./make.sh test
+```
+
 Some tests are skipped on Windows because they specifically check POSIX permission bits, symlink
 failure behavior, or Unix-style build-directory discovery.
 
@@ -220,6 +228,8 @@ then click on "windows-vcpkg-tests-debug"
 ```bash
 ./make.sh --help          # list supported build/test commands
 ./make.sh                 # configure + build + tests + run holder
+./make.sh build           # configure + build without launching holderd
+./make.sh test            # configure + build + automated tests
 ./make.sh Debug           # debug build
 ./make.sh perf-privacy    # run encrypted-card perf profile table
 ./make.sh perf-privacy Debug

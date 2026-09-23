@@ -1,5 +1,5 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 MODE="${1:-default}"
 BUILD_TYPE="${2:-RelWithDebInfo}"
@@ -18,6 +18,8 @@ Usage:
 Commands:
   help, -h, --help              Show this help
   default                       Configure, build, run tests, then run holderd
+  build [BuildType]             Configure and build holderd and holderctl
+  test [BuildType]              Configure, build, and run the automated tests
   [BuildType]                   Run the default flow with this CMAKE_BUILD_TYPE
   perf-privacy [BuildType]      Run the encrypted-card perf profile table
   coverage                      Build, run tests, and generate coverage reports
@@ -109,6 +111,23 @@ cmake_build() {
   fi
 }
 
+jobs() {
+  if [ -n "${NUMBER_OF_PROCESSORS:-}" ]; then
+    printf '%s\n' "${NUMBER_OF_PROCESSORS}"
+  elif command -v nproc >/dev/null 2>&1; then
+    nproc
+  else
+    getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1
+  fi
+}
+
+is_windows_shell() {
+  case "${OS:-}:$(uname -s 2>/dev/null || true)" in
+    Windows_NT:*|*:MINGW*|*:MSYS*|*:CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "${MODE}" in
   help|-h|--help)
     print_usage
@@ -173,6 +192,40 @@ build_all() {
     JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
   fi
   cmake_build build -- -j "${JOBS}"
+}
+
+build_standard() {
+  local build_type="${1:-RelWithDebInfo}"
+
+  if is_windows_shell; then
+    if [ -z "${VCPKG_ROOT:-}" ]; then
+      echo "VCPKG_ROOT must name the Windows vcpkg installation before running ./make.sh build." >&2
+      exit 1
+    fi
+    cmake --preset windows-vcpkg-debug
+    cmake --build --preset windows-vcpkg-debug --parallel "$(jobs)"
+    return
+  fi
+
+  build_all "${build_type}"
+}
+
+test_standard() {
+  local build_type="${1:-RelWithDebInfo}"
+
+  if is_windows_shell; then
+    if [ -z "${VCPKG_ROOT:-}" ]; then
+      echo "VCPKG_ROOT must name the Windows vcpkg installation before running ./make.sh test." >&2
+      exit 1
+    fi
+    cmake --preset windows-vcpkg-tests-debug
+    cmake --build --preset windows-vcpkg-tests-debug --parallel "$(jobs)"
+    ctest --preset windows-vcpkg-tests-debug
+    return
+  fi
+
+  build_all "${build_type}"
+  test_build build
 }
 
 warnings_all() {
@@ -450,6 +503,12 @@ case "${MODE}" in
     build_all "RelWithDebInfo"
     test_build build
     ./build/holderd
+    ;;
+  build)
+    build_standard "${2:-RelWithDebInfo}"
+    ;;
+  test)
+    test_standard "${2:-RelWithDebInfo}"
     ;;
   perf-privacy)
     build_all "${BUILD_TYPE}"
