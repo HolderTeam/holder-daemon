@@ -2965,6 +2965,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
       summary: Delete a project
+      description: >-
+        Removes the project from this device's database and records its removal so
+        startup discovery and database reconstruction do not automatically import
+        it again. Project files and encryption keys are retained for explicit recovery.
+        Creating or importing the project explicitly registers it again.
       parameters:
         - in: path
           name: project_id
@@ -2978,6 +2983,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDeleteResponse"
+        "500":
+          description: Could not persist the project removal; the database deletion is rolled back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Unauthorized
           content:

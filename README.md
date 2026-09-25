@@ -265,6 +265,25 @@ ASan, UBSan, and leak detection together, run:
 HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san address,undefined
 ```
 
+## Project removal and upgrades
+
+Removing a project through the API removes it from this device's database and
+records that choice in the local project registry. Startup and database rebuilding
+leave it removed, even when its files remain on disk. Files and encryption keys
+are retained so the project can be explicitly imported again. If no projects
+remain, the next startup creates a new encrypted Home with its own identity and key.
+
+Existing version 1 registries are read automatically. The first project removal
+upgrades the registry to version 2 to preserve removal records. Older daemon
+versions cannot read version 2; downgrading after a removal is unsupported.
+Keep the local registry alongside the device configuration when backing up or
+restoring an installation, since project files alone do not record local removals.
+
+The Home lifecycle tests cover restarts, schema upgrades, database reconstruction,
+missing and leftover keys, removal failures, and explicit recovery. They use an
+isolated test keystore; native Keychain permissions and app signing changes still
+need testing on macOS.
+
 ## Daemons.
 
 In computing, a daemon is a program that runs as a background process,

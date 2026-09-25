@@ -13,9 +13,21 @@ namespace holder::platform {
 class Db;
 } // namespace holder::platform
 
+namespace holder::core {
+struct Paths;
+} // namespace holder::core
+
 namespace holder::app {
 
 std::string generate_uuid_v4();
+
+// Recover an empty projection from roots still registered for automatic discovery.
+void recover_existing_projects(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    const holder::core::Paths& paths,
+    bool require_durable_manifest
+);
 
 // If no project exists yet, creates a default encrypted "Home" project with a
 // welcome card loaded from config/WELCOME.md. Does nothing otherwise.

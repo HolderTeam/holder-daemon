@@ -9,6 +9,7 @@
 #include "index/FtsIndexer.h"
 #include "platform/Paths.h"
 #include "platform/ProjectRegistry.h"
+#include "platform/Tx.h"
 #include "privacy/ProjectPrivacy.h"
 #include "project/ProjectManifest.h"
 #include "project/ProjectPaths.h"
@@ -374,7 +375,7 @@ bool handle_project_routes(
         git.commit("Restore encrypted project metadata");
         holder::core::ProjectRegistry(holder::core::Paths::resolve("holder").project_registry_path()
         )
-            .remember(repo.list());
+            .restore(*refreshed);
       }
 
       nlohmann::json payload;
@@ -640,7 +641,7 @@ bool handle_project_routes(
         project = store.create(std::move(project), uuid_v4, holder::core::default_projects_root());
         holder::core::ProjectRegistry(holder::core::Paths::resolve("holder").project_registry_path()
         )
-            .remember(holder::project::ProjectRepo(db).list());
+            .restore(project);
 
         nlohmann::json data;
         data["project_id"] = project.project_id;
@@ -1237,6 +1238,7 @@ bool handle_project_routes(
       }
     } else if (subpath.empty() && req.method() == http::verb::delete_) {
       try {
+        holder::platform::Tx transaction(db);
         holder::project::ProjectRepo repo(db);
         holder::project::ProjectSyncRepo sync_repo(db);
         const auto project_opt = repo.get(project_id);
@@ -1245,6 +1247,16 @@ bool handle_project_routes(
         } else {
           repo.remove(project_id);
           sync_repo.remove(project_id);
+          holder::core::ProjectRegistry registry(
+              holder::core::Paths::resolve("holder").project_registry_path()
+          );
+          registry.forget(*project_opt);
+          try {
+            transaction.commit();
+          } catch (...) {
+            registry.restore(*project_opt);
+            throw;
+          }
           nlohmann::json payload;
           payload["ok"] = true;
           payload["data"] = {{"project_id", project_id}};
