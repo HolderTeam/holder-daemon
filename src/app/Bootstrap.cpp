@@ -2,7 +2,10 @@
 
 #include "platform/InstalledDataPath.h"
 #include "platform/Paths.h"
+#include "platform/ProjectRegistry.h"
 #include "project/DefaultProject.h"
+#include "project/ProjectRepo.h"
+#include "project/StartupRecovery.h"
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -71,6 +74,24 @@ std::string derive_title_from_markdown_first_line(
 std::string generate_uuid_v4() {
   boost::uuids::random_generator gen;
   return boost::uuids::to_string(gen());
+}
+
+void recover_existing_projects(
+    holder::platform::Db& db,
+    holder::index::FtsIndexer* fts,
+    const holder::core::Paths& paths,
+    bool require_durable_manifest
+) {
+  if (!holder::project::ProjectRepo(db).list().empty()) return;
+  const auto roots = holder::core::ProjectRegistry(paths.project_registry_path())
+                         .discover_roots(holder::core::default_projects_root());
+  holder::project::recover_project_roots(
+      db,
+      fts,
+      roots,
+      generate_uuid_v4,
+      require_durable_manifest
+  );
 }
 
 std::optional<holder::model::Project> bootstrap_default_home_project(

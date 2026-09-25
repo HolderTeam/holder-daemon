@@ -266,26 +266,7 @@ int run_daemon(int argc, char* argv[]) {
   holder::index::FtsIndexer fts(db);
 
   holder::project::ProjectRepo project_repo(db);
-  if (project_repo.list().empty()) {
-    holder::project::recover_projects_from_disk(
-        db,
-        &fts,
-        holder::core::default_projects_root(),
-        generate_uuid_v4,
-        !database_existed
-    );
-    holder::core::ProjectRegistry registry(paths.project_registry_path());
-    const auto registered_roots = registry.roots();
-    if (!registered_roots.empty()) {
-      holder::project::recover_project_roots(
-          db,
-          &fts,
-          registered_roots,
-          generate_uuid_v4,
-          !database_existed
-      );
-    }
-  }
+  holder::app::recover_existing_projects(db, &fts, paths, !database_existed);
   holder::ai::recover_ai_provider_credentials_from_secret_store(db, *secret_store);
   holder::app::bootstrap_default_home_project(db, &fts);
   backfill_project_manifests(db);

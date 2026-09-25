@@ -67,6 +67,7 @@ add_executable(holder_daemon_tests
   ReindexRoutes_test.cpp
   ProjectRoutes_test.cpp
   HttpFirstRun_test.cpp
+  HomeLifecycle_test.cpp
   HttpOpenFlow_test.cpp
   HttpProjects_test.cpp
   HttpProjectRecoveryToken_test.cpp

@@ -21,27 +21,11 @@
 namespace holder::core {
 namespace {
 
-bool looks_like_project(const std::filesystem::path& root) {
-  return std::filesystem::is_directory(root) &&
-         (std::filesystem::exists(root / ".holder" / "project.json") ||
-          std::filesystem::exists(root / "cards") ||
-          std::filesystem::exists(root / "ai_messages") ||
-          std::filesystem::exists(root / "resources"));
-}
-
 std::vector<std::filesystem::path> discover_roots(const Paths& paths) {
-  std::vector<std::filesystem::path> roots;
   const auto managed = std::getenv("HOLDER_PROJECTS_ROOT") != nullptr
                            ? std::filesystem::path(std::getenv("HOLDER_PROJECTS_ROOT"))
                            : paths.data_dir / "projects";
-  if (std::filesystem::is_directory(managed)) {
-    for (const auto& entry : std::filesystem::directory_iterator(managed)) {
-      if (looks_like_project(entry.path())) roots.push_back(entry.path());
-    }
-  }
-  const auto registered = ProjectRegistry(paths.project_registry_path()).roots();
-  roots.insert(roots.end(), registered.begin(), registered.end());
-  return roots;
+  return ProjectRegistry(paths.project_registry_path()).discover_roots(managed);
 }
 
 long long scalar_count(holder::platform::Db& db, const std::string& sql) {
