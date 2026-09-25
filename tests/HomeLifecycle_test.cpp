@@ -15,6 +15,18 @@
 
 namespace {
 
+class CwdGuard {
+ public:
+  explicit CwdGuard(const std::filesystem::path& next)
+      : previous_(std::filesystem::current_path()) {
+    std::filesystem::current_path(next);
+  }
+  ~CwdGuard() { std::filesystem::current_path(previous_); }
+
+ private:
+  std::filesystem::path previous_;
+};
+
 std::string read_lifecycle_file(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   REQUIRE(input.is_open());
@@ -22,6 +34,8 @@ std::string read_lifecycle_file(const std::filesystem::path& path) {
 }
 
 struct HomeLifecycle {
+  // Bootstrap reads config/WELCOME.md; CTest starts in the build's tests directory.
+  CwdGuard cwd{std::filesystem::path(__FILE__).parent_path().parent_path()};
   const std::filesystem::path dir = holder::test::make_temp_dir();
   holder::test::EnvGuard data_env{"XDG_DATA_HOME", (dir / "data").string()};
   holder::test::EnvGuard config_env{"XDG_CONFIG_HOME", (dir / "config").string()};
