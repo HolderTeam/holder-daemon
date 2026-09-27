@@ -26,9 +26,7 @@ TEST_CASE("HTTP project recovery token export/import round-trip", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   const auto created = http_json_request(
@@ -127,8 +125,7 @@ TEST_CASE("HTTP project recovery token export/import round-trip", "[http]") {
   );
   REQUIRE(fetched_after_import["data"]["project_key_id"] == key_id);
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }
 
 TEST_CASE("HTTP recovery token import rejects project mismatch", "[http]") {
@@ -151,9 +148,7 @@ TEST_CASE("HTTP recovery token import rejects project mismatch", "[http]") {
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   http_json_request(
@@ -197,8 +192,7 @@ TEST_CASE("HTTP recovery token import rejects project mismatch", "[http]") {
   );
   REQUIRE(mismatch["ok"] == false);
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }
 
 TEST_CASE("HTTP global recovery token import auto-creates project by token project_id", "[http]") {
@@ -221,9 +215,7 @@ TEST_CASE("HTTP global recovery token import auto-creates project by token proje
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   http_json_request(
@@ -292,8 +284,7 @@ TEST_CASE("HTTP global recovery token import auto-creates project by token proje
   REQUIRE(fetched["data"]["project_key_id"] == key_id);
   REQUIRE(fetched["data"]["git_remote_url"] == "https://example.com/recovered.git");
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }
 
 TEST_CASE("HTTP global recovery token import matches existing project_id", "[http]") {
@@ -316,9 +307,7 @@ TEST_CASE("HTTP global recovery token import matches existing project_id", "[htt
   }
 
   holder::core::SignalHandler signals;
-  std::thread server_thread([&server, &signals]() {
-    server.run(signals);
-  });
+  holder::test::HttpServerThreadGuard server_thread(server, signals);
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   http_json_request(
@@ -360,6 +349,5 @@ TEST_CASE("HTTP global recovery token import matches existing project_id", "[htt
   REQUIRE(imported["data"]["pull_status"] == "not_attempted");
   REQUIRE(imported["data"]["pull_error"].is_null());
 
-  std::raise(SIGTERM);
-  server_thread.join();
+  server_thread.stop();
 }

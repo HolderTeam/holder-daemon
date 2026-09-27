@@ -285,24 +285,13 @@ if(HOLDER_HAVE_WINDOWS_CREDENTIAL_MANAGER)
   target_link_libraries(holder_daemon_tests PRIVATE Advapi32)
 endif()
 
-# HOLDER_TEST_KEYSTORE_DIR isolates the keystore; XDG_DATA_HOME/XDG_CONFIG_HOME/
-# XDG_CACHE_HOME isolation (real ~/.local/share/holder, ~/.config/holder,
-# ~/.cache/holder pollution otherwise) is applied unconditionally in catch_main.cpp
-# instead of here — catch_discover_tests()'s PROPERTIES argument can't carry a
-# multi-entry ENVIRONMENT value (it's forwarded through cmake_parse_arguments into a
-# list, then through a -D command-line arg to a child `cmake -P` script, which
-# re-splits on ';'; a semicolon inside one property's own value is indistinguishable
-# from a list separator by then, escaped or not, so anything past the first
-# ENVIRONMENT entry is silently dropped), and a TEST_INCLUDE_FILES-based fixup after
-# discovery breaks `ctest -R`/`--rerun-failed` (it only sees the filtered test set).
-set(HOLDER_TEST_ENVIRONMENT
-  "HOLDER_TEST_KEYSTORE_DIR=${CMAKE_CURRENT_BINARY_DIR}/test-keystore"
-)
+# catch_main.cpp gives each test process its own keystore and XDG directories.
+# Do not set HOLDER_TEST_KEYSTORE_DIR here: discovered tests run concurrently and
+# deterministic key IDs would make them write to the same key file.
 
 if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
   catch_discover_tests(holder_daemon_tests
     PROPERTIES
-      ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}"
       SKIP_RETURN_CODE 4
   )
 elseif(HOLDER_TSAN_USE_SETARCH)
@@ -313,8 +302,6 @@ elseif(HOLDER_TSAN_USE_SETARCH)
     message(WARNING "setarch not found; TSan test may fail before running tests")
     add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
   endif()
-  set_tests_properties(holder_daemon_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
 else()
   add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
-  set_tests_properties(holder_daemon_tests PROPERTIES ENVIRONMENT "${HOLDER_TEST_ENVIRONMENT}")
 endif()
