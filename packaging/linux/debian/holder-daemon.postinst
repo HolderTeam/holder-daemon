@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+# Debhelper compat 13 enables user units but does not start them. On install
+# or upgrade, start Holder for user managers that are already running.
+# deb-systemd-invoke respects policy-rc.d and a disabled unit; the enabled
+# unit also starts normally for users who log in later.
+if [ "$1" = configure ] && [ -z "${DPKG_ROOT:-}" ]; then
+    deb-systemd-invoke --user start holder-daemon.service || true
+fi

@@ -29,6 +29,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Test package install hook
+        run: python3 -B -m unittest tests/linux_postinst_test.py
+
       - name: Install Debian packaging tools
         run: |
           sudo apt update

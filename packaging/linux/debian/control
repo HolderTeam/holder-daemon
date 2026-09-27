@@ -25,7 +25,7 @@ Rules-Requires-Root: no
 
 Package: holder-daemon
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: init-system-helpers (>= 1.66~), ${shlibs:Depends}, ${misc:Depends}
 Description: Local-first backend daemon for Holder
  Holderd stores card data, projects, search indexes, resources, git sync state,
  and AI workflow state for Holder frontends.
