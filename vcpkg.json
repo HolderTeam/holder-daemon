@@ -10,7 +10,10 @@
     "boost-process",
     "boost-uuid",
     "catch2",
-    "libgit2",
+    {
+      "name": "libgit2",
+      "features": ["ssh"]
+    },
     "libsodium",
     "md4c",
     "nlohmann-json",

@@ -183,6 +183,9 @@ From a Windows Bash environment with the MSVC developer environment and
 Some tests are skipped on Windows because they specifically check POSIX permission bits, symlink
 failure behavior, or Unix-style build-directory discovery.
 
+See [Windows Git over SSH](docs/windows-ssh.md) for authentication setup, verification,
+and the optional local SSH smoke tests.
+
 ### Visual Studio version
 
 Install classic Visual Studio.
