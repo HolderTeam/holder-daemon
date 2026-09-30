@@ -7,6 +7,14 @@
 #include <filesystem>
 #include <stdexcept>
 
+#ifdef _WIN32
+#include <git2.h>
+
+TEST_CASE("Windows daemon libgit2 includes SSH transport", "[git][windows]") {
+  REQUIRE((git_libgit2_features() & GIT_FEATURE_SSH) != 0);
+}
+#endif
+
 namespace {
 
 class ProbeGitOps final : public holder::git::GitOps {
