@@ -32,6 +32,49 @@ Coverage tooling (optional):
 
 - lcov (`lcov`, `genhtml`)
 
+## Core SDK selection
+
+Normal development and GitHub CI use core's published SDK. Core is selected
+once per CI run, defaults to `latest-green`, and is shared by all platform
+jobs. An explicit core version tag or full SHA pins an RC or release. CI does
+not initialise or compile the core submodule and missing SDKs fail clearly.
+
+Clone `holder-core` beside this repository to use its shared selection tool:
+
+```sh
+python3 ../holder-core/scripts/core-sdk.py resolve
+export HOLDER_CORE_SDK="$(python3 ../holder-core/scripts/core-sdk.py fetch)"
+./make.sh test
+```
+
+Use `resolve --core-ref <tag-or-full-SHA>` for a pin. Development SDK builds
+use `RelWithDebInfo`; `fetch --build-type Release` pairs with a Release daemon
+build. The SDK's schema and welcome resource are staged with daemon, and
+`core-build.json` records the exact SDK used. The canonical Linux SDK targets
+Ubuntu 24.04's dependency ABI, including the eventual AppImage backend.
+
+Windows uses the `windows-sdk-tests` preset with `HOLDER_CORE_SDK` and
+`VCPKG_ROOT` set. The SDK supplies core's prebuilt dependencies; the separate
+`packaging/windows/sdk-deps` manifest installs daemon's additional Boost
+dependencies. Runtime DLLs are staged before test discovery and shipped with
+the backend artifact.
+
+Ubuntu source packages use the series-specific `libholder-dev` package and
+link its shared `libholder0` runtime (`HOLDER_USE_SYSTEM_CORE=ON`). They do not
+use the canonical GitHub SDK. Core owns its own test and sanitizer coverage;
+daemon CI owns daemon and integration tests.
+
+For explicit core source development on other platforms or with a Debug
+build, initialise the core submodule and select it deliberately:
+
+```sh
+git submodule update --init --recursive -- submodules/holder-core
+HOLDER_CORE_SOURCE_DIR="$PWD/submodules/holder-core" ./make.sh test Debug
+```
+
+Direct CMake builds accept `-DHOLDER_CORE_SOURCE_DIR=<source-path>` instead.
+The older Windows Debug presets provide this explicit source-development path.
+
 Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
 
 ## Optional Runtime Dependencies
@@ -231,8 +274,6 @@ then click on "windows-vcpkg-tests-debug"
 ./make.sh build           # configure + build without launching holderd
 ./make.sh test            # configure + build + automated tests
 ./make.sh Debug           # debug build
-./make.sh perf-privacy    # run encrypted-card perf profile table
-./make.sh perf-privacy Debug
 ./make.sh coverage        # build + run tests + generate HTML coverage report
 ./make.sh warnings        # build holderd + holderctl with warnings as errors
 ./make.sh memcheck        # Valgrind memcheck; slow, excludes timing-sensitive tests

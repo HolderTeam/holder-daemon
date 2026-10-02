@@ -5,6 +5,7 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 override_dh_auto_configure:
 	dh_auto_configure --buildsystem=cmake+ninja --builddirectory=build -- \
 		-DHOLDER_USE_SYSTEM_CASTE=ON \
+		-DHOLDER_USE_SYSTEM_CORE=ON \
 		-DBUILD_TESTING=OFF \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo
 

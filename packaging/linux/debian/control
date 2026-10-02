@@ -18,7 +18,8 @@ Build-Depends: debhelper-compat (= 13),
  libmd4c-dev,
  libsodium-dev,
  libsecret-1-dev,
- libcaste-dev
+ libcaste-dev,
+ libholder-dev (>= 0.2.0)
 Standards-Version: 4.6.2
 Homepage: https://holder.team/
 Rules-Requires-Root: no

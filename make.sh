@@ -21,7 +21,6 @@ Commands:
   build [BuildType]             Configure and build holderd and holderctl
   test [BuildType]              Configure, build, and run the automated tests
   [BuildType]                   Run the default flow with this CMAKE_BUILD_TYPE
-  perf-privacy [BuildType]      Run the encrypted-card perf profile table
   coverage                      Build, run tests, and generate coverage reports
   warnings [BuildType]          Build holderd and holderctl with warnings as errors
   memcheck [test-regex]         Run Valgrind memcheck tests
@@ -40,6 +39,8 @@ Examples:
 
 Environment:
   HOLDER_CCACHE                auto (default), 1 to require, or 0 to disable ccache
+  HOLDER_CORE_SDK              Verified core SDK path (normal development)
+  HOLDER_CORE_SOURCE_DIR       Explicit source-development override
   HOLDER_CTEST_TIMEOUT          Per-test timeout (memcheck defaults to 900 seconds)
   HOLDER_SAN_BUILD_DIR          Override the sanitizer build directory
   HOLDER_TSAN_SUPPRESSIONS      Optional explicit ThreadSanitizer suppression file
@@ -202,8 +203,10 @@ build_standard() {
       echo "VCPKG_ROOT must name the Windows vcpkg installation before running ./make.sh build." >&2
       exit 1
     fi
-    cmake --preset windows-vcpkg-debug
-    cmake --build --preset windows-vcpkg-debug --parallel "$(jobs)"
+    local preset="windows-sdk-tests"
+    if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then preset="windows-vcpkg-debug"; fi
+    cmake --preset "$preset"
+    cmake --build --preset "$preset" --parallel "$(jobs)"
     return
   fi
 
@@ -218,9 +221,11 @@ test_standard() {
       echo "VCPKG_ROOT must name the Windows vcpkg installation before running ./make.sh test." >&2
       exit 1
     fi
-    cmake --preset windows-vcpkg-tests-debug
-    cmake --build --preset windows-vcpkg-tests-debug --parallel "$(jobs)"
-    ctest --preset windows-vcpkg-tests-debug
+    local preset="windows-sdk-tests"
+    if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then preset="windows-vcpkg-tests-debug"; fi
+    cmake --preset "$preset"
+    cmake --build --preset "$preset" --parallel "$(jobs)"
+    ctest --preset "$preset"
     return
   fi
 
@@ -331,8 +336,6 @@ san_all() {
     -DCMAKE_CXX_FLAGS="${san_flags}" \
     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}" \
     -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=${sanitizers}" \
-    -DHOLDER_CORE_CATCH_DISCOVER_TESTS="${catch_discovery}" \
-    -DHOLDER_CORE_TSAN_USE_SETARCH="${tsan_use_setarch}" \
     -DHOLDER_CATCH_DISCOVER_TESTS="${catch_discovery}" \
     -DHOLDER_TSAN_USE_SETARCH="${tsan_use_setarch}"
 
@@ -511,8 +514,8 @@ case "${MODE}" in
     test_standard "${2:-RelWithDebInfo}"
     ;;
   perf-privacy)
-    build_all "${BUILD_TYPE}"
-    ./build/holder-core/tests/holder_core_tests "CardStore encrypted project perf profile (manual)"
+    echo 'Core performance tests live in holder-core. Run build/tests/holder_core_tests "CardStore encrypted project perf profile (manual)" there.' >&2
+    exit 2
     ;;
   coverage)
     coverage_all
