@@ -297,6 +297,9 @@ configure_file("${HOLDER_CORE_WELCOME}"
 
 # Keep a build-tree schema beside holderd for development runs and staged artifacts.
 # The only tracked schema source remains in holder-core.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/schema")
+configure_file("${HOLDER_CORE_SCHEMA}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/schema/schema.sql" COPYONLY)
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schema")
 configure_file(
   "${HOLDER_CORE_SCHEMA}"

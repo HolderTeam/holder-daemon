@@ -96,6 +96,7 @@ TEST_CASE("CLI --reindex runs with temp XDG dirs", "[cli]") {
   holder::test::EnvGuard keystore_env("HOLDER_TEST_KEYSTORE_DIR", (xdg_root / "keystore").string());
 
   const auto repo_root = std::filesystem::path(__FILE__).parent_path().parent_path();
+  REQUIRE(std::filesystem::exists(repo_root / "schema/schema.sql"));
   CwdGuard cwd(repo_root);
 
   const std::string bin = HOLDER_BIN_PATH;
