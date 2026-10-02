@@ -107,8 +107,10 @@ jobs:
           dpkg -i "$package"
           holderd --version
           holderctl --help
+          mkdir -p out/ubuntu-packages
+          cp "$package" out/ubuntu-packages/
       - uses: actions/upload-artifact@v4
         with:
           name: holder-daemon-${{ matrix.series }}-packages
-          path: ../holder-daemon_*.deb
+          path: out/ubuntu-packages/*.deb
           if-no-files-found: error

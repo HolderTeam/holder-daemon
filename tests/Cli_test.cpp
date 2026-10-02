@@ -320,10 +320,7 @@ TEST_CASE("CLI --bind and valid --port parse paths", "[cli]") {
   REQUIRE(run_command(cmd) == 0);
 }
 
-TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[cli]") {
-#ifdef _WIN32
-  SKIP("Visual Studio out/build layout is not a source-tree child build directory");
-#else
+TEST_CASE("CLI reindex resolves staged core resources from build cwd", "[cli]") {
   const auto dir = holder::test::make_temp_dir();
   const auto xdg_root = dir / "xdg";
   std::filesystem::create_directories(xdg_root);
@@ -336,10 +333,11 @@ TEST_CASE("CLI reindex resolves schema and welcome from parent of build cwd", "[
   const std::string bin = HOLDER_BIN_PATH;
   const auto build_dir = std::filesystem::path(bin).parent_path();
   REQUIRE(std::filesystem::exists(build_dir));
+  REQUIRE(std::filesystem::exists(build_dir / "schema/schema.sql"));
+  REQUIRE(std::filesystem::exists(build_dir / "config/WELCOME.md"));
   CwdGuard cwd(build_dir);
 
   REQUIRE(run_command("\"" + bin + "\" --reindex") == 0);
-#endif
 }
 
 TEST_CASE("CLI reindex fails when schema cannot be found", "[cli]") {

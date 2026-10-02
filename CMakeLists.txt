@@ -37,6 +37,7 @@ set(HOLDER_CORE_SOURCE_DIR "" CACHE PATH "Explicit core source-development overr
 if(NOT "$ENV{HOLDER_CORE_SOURCE_DIR}" STREQUAL "")
   set(HOLDER_CORE_SOURCE_DIR "$ENV{HOLDER_CORE_SOURCE_DIR}")
 endif()
+file(TO_CMAKE_PATH "${HOLDER_CORE_SOURCE_DIR}" HOLDER_CORE_SOURCE_DIR)
 set(HOLDER_CORE_SDK "" CACHE PATH "Verified installed core SDK")
 if(NOT "$ENV{HOLDER_CORE_SDK}" STREQUAL "")
   set(HOLDER_CORE_SDK "$ENV{HOLDER_CORE_SDK}")
@@ -290,6 +291,9 @@ configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
   COPYONLY
 )
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/config")
+configure_file("${HOLDER_CORE_WELCOME}"
+  "${CMAKE_CURRENT_BINARY_DIR}/config/WELCOME.md" COPYONLY)
 
 # Keep a build-tree schema beside holderd for development runs and staged artifacts.
 # The only tracked schema source remains in holder-core.

@@ -514,7 +514,7 @@ case "${MODE}" in
     test_standard "${2:-RelWithDebInfo}"
     ;;
   perf-privacy)
-    echo "Core performance tests live in holder-core. Run its perf-privacy command there." >&2
+    echo 'Core performance tests live in holder-core. Run build/tests/holder_core_tests "CardStore encrypted project perf profile (manual)" there.' >&2
     exit 2
     ;;
   coverage)
