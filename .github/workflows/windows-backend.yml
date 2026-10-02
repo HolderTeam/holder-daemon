@@ -85,6 +85,10 @@ jobs:
           Copy-Item "$buildDir\schema", "$buildDir\config", "$buildDir\assets" -Destination $stageDir -Recurse
           Copy-Item "$buildDir\openapi.yaml", "$buildDir\core-build.json" -Destination $stageDir
           Copy-Item "$env:HOLDER_CORE_SDK/share/vcpkg-licenses" -Destination $stageDir -Recurse
+          $boostLicenses = Get-ChildItem "out/vcpkg-installed/x64-windows/share/boost*/copyright"
+          foreach ($license in $boostLicenses) {
+            Copy-Item $license.FullName -Destination "$stageDir/vcpkg-licenses/$($license.Directory.Name).txt"
+          }
 
           $dllDirs = @(
             $buildDir,

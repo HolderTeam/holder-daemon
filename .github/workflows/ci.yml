@@ -62,6 +62,7 @@ jobs:
       core_commit: ${{ needs.resolve.outputs.core_commit }}
       daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
   ubuntu-packages:
+    if: github.repository == 'HolderTeam/holder-daemon'
     needs: resolve
     strategy:
       fail-fast: false
