@@ -39,7 +39,7 @@ jobs:
         name: Record daemon source revision
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - id: core
-        uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+        uses: HolderTeam/holder-core/.github/actions/core-sdk@main
         with:
           command: resolve
           core-ref: ${{ inputs.core_ref || 'latest-green' }}

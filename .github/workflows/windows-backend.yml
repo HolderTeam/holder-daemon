@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: git submodule update --init --recursive -- submodules/caste
 
-      - uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+      - uses: HolderTeam/holder-core/.github/actions/core-sdk@main
         with:
           commit: ${{ inputs.core_commit }}
 
