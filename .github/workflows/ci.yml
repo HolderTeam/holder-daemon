@@ -1,0 +1,113 @@
+name: Daemon SDK integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: Core version tag or full SHA (empty selects latest-green)
+        type: string
+  workflow_call:
+    inputs:
+      core_ref:
+        description: Exact published core commit
+        required: true
+        type: string
+      daemon_ref:
+        description: Daemon source revision (resolved once)
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      core_commit: ${{ steps.core.outputs.commit }}
+      daemon_commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: HolderTeam/holder-daemon
+          ref: ${{ github.repository == 'HolderTeam/holder-daemon' && github.sha || inputs.daemon_ref || 'main' }}
+          persist-credentials: false
+      - id: source
+        name: Record daemon source revision
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - id: core
+        uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+        with:
+          command: resolve
+          core-ref: ${{ inputs.core_ref || 'latest-green' }}
+  linux:
+    needs: resolve
+    uses: ./.github/workflows/linux-backend.yml
+    with:
+      core_commit: ${{ needs.resolve.outputs.core_commit }}
+      daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+  macos:
+    needs: resolve
+    uses: ./.github/workflows/macos-backend.yml
+    with:
+      core_commit: ${{ needs.resolve.outputs.core_commit }}
+      daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+  windows:
+    needs: resolve
+    uses: ./.github/workflows/windows-backend.yml
+    with:
+      core_commit: ${{ needs.resolve.outputs.core_commit }}
+      daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+  ubuntu-packages:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:24.04
+            series: noble
+          - image: ubuntu:26.04
+            series: resolute
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    timeout-minutes: 45
+    steps:
+      - name: Install packaging tools and configure package source
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates software-properties-common git devscripts equivs debhelper cmake ninja-build
+          add-apt-repository -y ppa:holderteam/holder
+          apt-get update
+      - uses: actions/checkout@v4
+        with:
+          repository: HolderTeam/holder-daemon
+          ref: ${{ needs.resolve.outputs.daemon_commit }}
+          persist-credentials: false
+      - name: Build daemon with distribution core packages
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          cp -a packaging/linux/debian debian
+          mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
+          dpkg-buildpackage -b -us -uc -j2
+      - name: Verify shared core linkage and package dependency
+        shell: bash
+        run: |
+          ldd build/holderd | grep 'libholder.so.0'
+          ldd build/holderctl | grep 'libholder.so.0'
+          package=$(find .. -maxdepth 1 -name 'holder-daemon_*.deb' -print -quit)
+          dpkg-deb -f "$package" Depends | grep 'libholder0'
+          test ! -d build/holder-core
+          dpkg -i "$package"
+          holderd --version
+          holderctl --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: holder-daemon-${{ matrix.series }}-packages
+          path: ../holder-daemon_*.deb
+          if-no-files-found: error

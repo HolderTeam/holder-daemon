@@ -223,7 +223,7 @@ target_compile_definitions(holder_daemon_tests PRIVATE
   CARD_SERVER_API_VERSION="${HOLDER_DAEMON_API_VERSION}"
   CARD_SERVER_VERSION="${HOLDER_DAEMON_VERSION}"
   OPENAPI_YAML_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../openapi.yaml"
-  SCHEMA_SQL_PATH="${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  SCHEMA_SQL_PATH="${HOLDER_CORE_SCHEMA}"
   DAEMON_AI_CATALOG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../config/ai_catalog.yaml"
   HOLDER_BIN_PATH="$<TARGET_FILE:holderd>"
   HOLDER_CTL_PATH="$<TARGET_FILE:holderctl>"
@@ -239,7 +239,7 @@ else()
 endif()
 
 target_link_libraries(holder_daemon_tests PRIVATE
-  Holder::Core
+  ${HOLDER_CORE_TARGET}
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -249,7 +249,7 @@ target_link_libraries(holder_daemon_tests PRIVATE
   nlohmann_json::nlohmann_json
   spdlog::spdlog
   ${HOLDER_YAML_CPP_TARGET}
-  caste
+  ${HOLDER_CASTE_TARGET}
 )
 if(TARGET Boost::system)
   target_link_libraries(holder_daemon_tests PRIVATE Boost::system)
@@ -288,6 +288,8 @@ endif()
 # catch_main.cpp gives each test process its own keystore and XDG directories.
 # Do not set HOLDER_TEST_KEYSTORE_DIR here: discovered tests run concurrently and
 # deterministic key IDs would make them write to the same key file.
+
+holder_stage_windows_runtime(holder_daemon_tests)
 
 if(HOLDER_CATCH_DISCOVER_TESTS AND COMMAND catch_discover_tests)
   catch_discover_tests(holder_daemon_tests

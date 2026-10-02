@@ -29,10 +29,22 @@ option(CARD_SERVER_ENABLE_MD4C "Enable markdown parsing via md4c" ON)
 option(CARD_SERVER_ENABLE_LIBGIT2 "Enable git support via libgit2" ON)
 option(HOLDER_ENABLE_ENCRYPTED_GIT "Enable encrypted_git feature paths" ON)
 option(HOLDER_USE_SYSTEM_CASTE "Use packaged libcaste instead of submodules/caste" OFF)
+option(HOLDER_USE_SYSTEM_CORE "Link packaged shared libholder instead of the canonical SDK" OFF)
 option(HOLDER_CATCH_DISCOVER_TESTS "Discover Catch2 tests as individual CTest tests" ON)
 option(HOLDER_TSAN_USE_SETARCH "Run tests through setarch -R for GCC ThreadSanitizer" OFF)
 option(HOLDER_WARNINGS_AS_ERRORS "Treat Holder target compiler warnings as errors" OFF)
-set(HOLDER_CORE_SOURCE_DIR "" CACHE PATH "Path to holder-core source tree")
+set(HOLDER_CORE_SOURCE_DIR "" CACHE PATH "Explicit core source-development override")
+if(NOT "$ENV{HOLDER_CORE_SOURCE_DIR}" STREQUAL "")
+  set(HOLDER_CORE_SOURCE_DIR "$ENV{HOLDER_CORE_SOURCE_DIR}")
+endif()
+set(HOLDER_CORE_SDK "" CACHE PATH "Verified installed core SDK")
+if(NOT "$ENV{HOLDER_CORE_SDK}" STREQUAL "")
+  set(HOLDER_CORE_SDK "$ENV{HOLDER_CORE_SDK}")
+endif()
+file(TO_CMAKE_PATH "${HOLDER_CORE_SDK}" HOLDER_CORE_SDK)
+if(WIN32 AND HOLDER_CORE_SDK AND NOT HOLDER_USE_SYSTEM_CORE AND NOT HOLDER_CORE_SOURCE_DIR)
+  list(PREPEND CMAKE_PREFIX_PATH "${HOLDER_CORE_SDK}/vcpkg/installed/x64-windows")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -198,24 +210,83 @@ else()
   set(HOLDER_CASTE_TARGET caste)
 endif()
 
-if(NOT HOLDER_CORE_SOURCE_DIR)
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/submodules/holder-core/CMakeLists.txt")
-    set(HOLDER_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/submodules/holder-core")
-  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../holder-core/CMakeLists.txt")
-    get_filename_component(HOLDER_CORE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../holder-core" ABSOLUTE)
-  else()
-    message(FATAL_ERROR
-      "Missing holder-core. Set HOLDER_CORE_SOURCE_DIR or place holder-core next to holder-daemon.")
-  endif()
+if(HOLDER_CORE_SOURCE_DIR AND HOLDER_USE_SYSTEM_CORE)
+  message(FATAL_ERROR "Select one core mode: source override or system package")
 endif()
-add_subdirectory("${HOLDER_CORE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/holder-core")
+if(HOLDER_CORE_SOURCE_DIR)
+  # Core owns its test suite. This explicit development path only builds the
+  # library required by daemon; daemon's tests are enabled independently below.
+  set(_daemon_build_testing "${BUILD_TESTING}")
+  set(_daemon_core_sdk "${HOLDER_CORE_SDK}")
+  set(BUILD_TESTING OFF)
+  set(HOLDER_CORE_SDK OFF)
+  add_subdirectory("${HOLDER_CORE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/holder-core" EXCLUDE_FROM_ALL)
+  set(HOLDER_CORE_SDK "${_daemon_core_sdk}")
+  if(_daemon_build_testing STREQUAL "")
+    unset(BUILD_TESTING)
+  else()
+    set(BUILD_TESTING "${_daemon_build_testing}")
+  endif()
+  set(HOLDER_CORE_TARGET Holder::Core)
+  set(HOLDER_CORE_SCHEMA "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql")
+  set(HOLDER_CORE_WELCOME "${HOLDER_CORE_SOURCE_DIR}/resources/WELCOME.md")
+elseif(HOLDER_USE_SYSTEM_CORE)
+  if(holder_DIR STREQUAL "${HOLDER_CORE_SDK}/lib/cmake/holder")
+    unset(holder_DIR CACHE)
+  endif()
+  find_package(holder CONFIG REQUIRED)
+  if(NOT TARGET Holder::Shared)
+    message(FATAL_ERROR "System core requires libholder-dev with Holder::Shared")
+  endif()
+  set(HOLDER_CORE_TARGET Holder::Shared)
+  if(NOT DEFINED holder_DATA_DIR)
+    # Support the initial 0.2.0 Ubuntu packages as well as newer packages that
+    # expose resource paths directly through their CMake config.
+    find_path(holder_DATA_DIR schema/schema.sql
+      PATHS /usr/share/holder /usr/local/share/holder REQUIRED)
+  endif()
+  set(HOLDER_CORE_SCHEMA "${holder_DATA_DIR}/schema/schema.sql")
+  set(HOLDER_CORE_WELCOME "${holder_DATA_DIR}/resources/WELCOME.md")
+else()
+  if(NOT EXISTS "${HOLDER_CORE_SDK}/libholder-manifest.json")
+    message(FATAL_ERROR "Missing core SDK. Resolve and fetch with holder-core/scripts/core-sdk.py, then set HOLDER_CORE_SDK. Source builds require an explicit HOLDER_CORE_SOURCE_DIR.")
+  endif()
+  file(READ "${HOLDER_CORE_SDK}/libholder-manifest.json" _core_manifest)
+  string(JSON _core_build_type GET "${_core_manifest}" build_type)
+  if(NOT CMAKE_BUILD_TYPE STREQUAL _core_build_type)
+    message(FATAL_ERROR "Core SDK build type ${_core_build_type} does not match daemon ${CMAKE_BUILD_TYPE}")
+  endif()
+  set(holder_DIR "${HOLDER_CORE_SDK}/lib/cmake/holder" CACHE PATH "Selected core CMake package" FORCE)
+  find_package(holder CONFIG REQUIRED PATHS "${holder_DIR}" NO_DEFAULT_PATH)
+  set(HOLDER_CORE_TARGET Holder::Core)
+  set(HOLDER_CORE_SCHEMA "${HOLDER_CORE_SDK}/share/holder/schema/schema.sql")
+  set(HOLDER_CORE_WELCOME "${HOLDER_CORE_SDK}/share/holder/resources/WELCOME.md")
+  configure_file("${HOLDER_CORE_SDK}/libholder-manifest.json"
+    "${CMAKE_CURRENT_BINARY_DIR}/core-build.json" COPYONLY)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/core-build.json"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon)
+endif()
+if(NOT EXISTS "${HOLDER_CORE_SCHEMA}" OR NOT EXISTS "${HOLDER_CORE_WELCOME}")
+  message(FATAL_ERROR "Selected core installation lacks schema or welcome resources")
+endif()
 
-# config/WELCOME.md is authored in holder-core (shared with other libholder
-# consumers); keep this source-tree copy in sync so find_welcome_markdown()'s
-# existing search paths and install rule need no changes. Re-copied whenever
-# CMake reconfigures, which it does automatically if the holder-core copy changes.
+function(holder_stage_windows_runtime target)
+  if(WIN32 AND HOLDER_CORE_SDK AND NOT HOLDER_CORE_SOURCE_DIR AND NOT HOLDER_USE_SYSTEM_CORE)
+    file(GLOB runtime_dlls CONFIGURE_DEPENDS
+      "${HOLDER_CORE_SDK}/bin/*.dll"
+      "${VCPKG_INSTALLED_DIR}/x64-windows/bin/*.dll")
+    if(runtime_dlls)
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${runtime_dlls} "$<TARGET_FILE_DIR:${target}>"
+        COMMAND_EXPAND_LISTS)
+    endif()
+  endif()
+endfunction()
+
+# Stage resources from the same core installation used for linking.
 configure_file(
-  "${HOLDER_CORE_SOURCE_DIR}/resources/WELCOME.md"
+  "${HOLDER_CORE_WELCOME}"
   "${CMAKE_CURRENT_SOURCE_DIR}/config/WELCOME.md"
   COPYONLY
 )
@@ -224,7 +295,7 @@ configure_file(
 # The only tracked schema source remains in holder-core.
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/schema")
 configure_file(
-  "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  "${HOLDER_CORE_SCHEMA}"
   "${CMAKE_CURRENT_BINARY_DIR}/schema/schema.sql"
   COPYONLY
 )
@@ -354,7 +425,7 @@ endif()
 
 # Link libs
 target_link_libraries(holderd PRIVATE
-  Holder::Core
+  ${HOLDER_CORE_TARGET}
   Boost::filesystem
   OpenSSL::SSL
   OpenSSL::Crypto
@@ -469,7 +540,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   endif()
 endif()
 target_link_libraries(holderctl PRIVATE
-  Holder::Core
+  ${HOLDER_CORE_TARGET}
   Boost::filesystem
   Threads::Threads
   nlohmann_json::nlohmann_json
@@ -486,9 +557,11 @@ endif()
 # ----------------------------
 install(TARGETS holderd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(TARGETS holderctl RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+holder_stage_windows_runtime(holderd)
+holder_stage_windows_runtime(holderctl)
 
 install(
-  FILES "${HOLDER_CORE_SOURCE_DIR}/schema/schema.sql"
+  FILES "${HOLDER_CORE_SCHEMA}"
   DESTINATION ${CMAKE_INSTALL_DATADIR}/holder-daemon/schema
 )
 install(FILES

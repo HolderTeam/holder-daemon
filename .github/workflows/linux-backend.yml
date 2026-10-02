@@ -1,11 +1,14 @@
 name: Linux backend artifact
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      core_commit:
+        required: true
+        type: string
+      daemon_commit:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +21,17 @@ jobs:
       - name: Check out holder-daemon
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: HolderTeam/holder-daemon
+          ref: ${{ inputs.daemon_commit }}
+          persist-credentials: false
+
+      - name: Prepare caste source dependency
+        shell: bash
+        run: git submodule update --init --recursive -- submodules/caste
+
+      - uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+        with:
+          commit: ${{ inputs.core_commit }}
 
       - name: Install dependencies
         run: |
@@ -53,7 +66,7 @@ jobs:
 
       - name: Build backend executables and tests
         run: |
-          # Build all enabled targets, including standalone core regression tests.
+          # Core is prebuilt; this builds daemon executables and integration tests.
           cmake \
             --build build-linux \
             --parallel
@@ -89,7 +102,7 @@ jobs:
             > "${stage_dir}/release/holder-daemon-version.txt"
           tr -d '[:space:]' < API_VERSION \
             > "${stage_dir}/release/holder-daemon-api-version.txt"
-          printf '%s\n' "${GITHUB_SHA}" \
+          printf '%s\n' "$(git rev-parse HEAD)" \
             > "${stage_dir}/release/holder-daemon-commit.txt"
 
           (
@@ -121,6 +134,7 @@ jobs:
           test -f "${stage_dir}/usr/share/holder-daemon/config/ai_catalog.yaml"
           test -f "${stage_dir}/usr/share/holder-daemon/config/git_providers.yaml"
           test -f "${stage_dir}/usr/share/holder-daemon/openapi.yaml"
+          test -f "${stage_dir}/usr/share/holder-daemon/core-build.json"
           test -f "${stage_dir}/usr/share/holder-daemon/assets/swagger-ui/index.html"
           test -f "${stage_dir}/release/holder-daemon-api-version.txt"
           test -f "${stage_dir}/release/holder-daemon-manifest.txt"

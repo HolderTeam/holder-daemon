@@ -3,6 +3,8 @@ build-holder-core
 build-resources
 out
 .vcpkg
+.core-sdk
+.vcpkg-binary-cache
 .vscode
 scripts/__pycache__
 build-coverage

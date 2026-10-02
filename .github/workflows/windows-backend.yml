@@ -1,11 +1,14 @@
 name: Windows backend
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      core_commit:
+        required: true
+        type: string
+      daemon_commit:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +21,17 @@ jobs:
       - name: Check out holder-daemon
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: HolderTeam/holder-daemon
+          ref: ${{ inputs.daemon_commit }}
+          persist-credentials: false
+
+      - name: Prepare caste source dependency
+        shell: bash
+        run: git submodule update --init --recursive -- submodules/caste
+
+      - uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+        with:
+          commit: ${{ inputs.core_commit }}
 
       - name: Set up MSVC developer environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -33,9 +46,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('packaging/windows/sdk-deps/vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-
+            vcpkg-${{ runner.os }}-${{ hashFiles('packaging/windows/sdk-deps/vcpkg.json', 'CMakePresets.json') }}-
             vcpkg-${{ runner.os }}-
 
       - name: Bootstrap vcpkg
@@ -46,35 +59,37 @@ jobs:
           New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
 
       - name: Configure CMake
-        run: cmake --preset windows-vcpkg-tests-debug
+        run: cmake --preset windows-sdk-tests
 
       - name: Save vcpkg binary package cache
         if: success() && github.event_name != 'pull_request'
         uses: actions/cache/save@v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('packaging/windows/sdk-deps/vcpkg.json', 'CMakePresets.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Build backend executables and tests
-        run: cmake --build --preset windows-vcpkg-tests-debug --parallel
+        run: cmake --build --preset windows-sdk-tests --parallel
 
       - name: Run tests
-        run: ctest --preset windows-vcpkg-tests-debug
+        run: ctest --preset windows-sdk-tests
 
       - name: Stage backend artifact
         shell: pwsh
         run: |
-          $buildDir = "out\build\windows-vcpkg-tests-debug"
+          $buildDir = "out\build\windows-sdk-tests"
           $stageDir = "out\artifacts\windows-backend"
 
           New-Item -ItemType Directory -Force $stageDir | Out-Null
           Copy-Item "$buildDir\holderd.exe", "$buildDir\holderctl.exe" -Destination $stageDir
           Copy-Item "$buildDir\schema", "$buildDir\config", "$buildDir\assets" -Destination $stageDir -Recurse
-          Copy-Item "$buildDir\openapi.yaml" -Destination $stageDir
+          Copy-Item "$buildDir\openapi.yaml", "$buildDir\core-build.json" -Destination $stageDir
+          Copy-Item "$env:HOLDER_CORE_SDK/share/vcpkg-licenses" -Destination $stageDir -Recurse
 
           $dllDirs = @(
             $buildDir,
-            "..\.vcpkg-holder-daemon\x64-windows\debug\bin"
+            "out\vcpkg-installed\x64-windows\bin",
+            "$env:HOLDER_CORE_SDK/bin"
           )
 
           foreach ($dir in $dllDirs) {

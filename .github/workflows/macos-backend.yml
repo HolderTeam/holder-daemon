@@ -1,11 +1,14 @@
 name: macOS backend
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      core_commit:
+        required: true
+        type: string
+      daemon_commit:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +21,17 @@ jobs:
       - name: Check out holder-daemon
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          repository: HolderTeam/holder-daemon
+          ref: ${{ inputs.daemon_commit }}
+          persist-credentials: false
+
+      - name: Prepare caste source dependency
+        shell: bash
+        run: git submodule update --init --recursive -- submodules/caste
+
+      - uses: HolderTeam/holder-core/.github/actions/core-sdk@shared-sdk-consumers
+        with:
+          commit: ${{ inputs.core_commit }}
 
       - name: Install dependencies
         run: |
@@ -76,6 +89,7 @@ jobs:
           cp -a config "${stage_dir}/"
           cp -a assets "${stage_dir}/"
           cp openapi.yaml "${stage_dir}/"
+          cp "${build_dir}/core-build.json" "${stage_dir}/"
 
           (
             cd "${stage_dir}"

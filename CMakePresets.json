@@ -12,7 +12,8 @@
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/../.vcpkg-holder-daemon",
-        "BUILD_TESTING": "OFF"
+        "BUILD_TESTING": "OFF",
+        "HOLDER_CORE_SOURCE_DIR": "${sourceDir}/submodules/holder-core"
       },
       "condition": {
         "type": "equals",
@@ -27,6 +28,22 @@
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "HOLDER_CATCH_DISCOVER_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-sdk-tests",
+      "displayName": "Windows SDK RelWithDebInfo tests",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "VCPKG_INSTALLED_DIR": "${sourceDir}/out/vcpkg-installed",
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/packaging/windows/sdk-deps",
         "BUILD_TESTING": "ON",
         "HOLDER_CATCH_DISCOVER_TESTS": "ON"
       }
@@ -45,15 +62,27 @@
       "name": "windows-vcpkg-tests-debug",
       "configurePreset": "windows-vcpkg-tests-debug",
       "targets": [
-        "holder_core_tests",
+        "holderd",
+        "holderctl",
         "holder_daemon_tests"
       ]
+    },
+    {
+      "name": "windows-sdk-tests",
+      "configurePreset": "windows-sdk-tests"
     }
   ],
   "testPresets": [
     {
       "name": "windows-vcpkg-tests-debug",
       "configurePreset": "windows-vcpkg-tests-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-sdk-tests",
+      "configurePreset": "windows-sdk-tests",
       "output": {
         "outputOnFailure": true
       }
