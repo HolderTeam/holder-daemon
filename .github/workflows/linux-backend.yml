@@ -6,6 +6,10 @@ on:
       core_commit:
         required: true
         type: string
+      build_type:
+        description: SDK and daemon configuration
+        type: string
+        default: RelWithDebInfo
       daemon_commit:
         required: true
         type: string
@@ -32,6 +36,7 @@ jobs:
       - uses: HolderTeam/holder-core/.github/actions/core-sdk@main
         with:
           commit: ${{ inputs.core_commit }}
+          build-type: ${{ inputs.build_type }}
 
       - name: Install dependencies
         run: |
@@ -60,7 +65,7 @@ jobs:
             -S . \
             -B build-linux \
             -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE="$HOLDER_CORE_BUILD_TYPE" \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DBUILD_TESTING=ON
 
@@ -209,7 +214,7 @@ jobs:
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
-          name: holder-daemon-linux-x86_64
+          name: holder-daemon-linux-x86_64${{ inputs.build_type == 'Release' && '-release' || '' }}
           path: out/artifacts/linux-backend-upload/*
           if-no-files-found: error
           retention-days: 7

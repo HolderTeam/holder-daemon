@@ -53,6 +53,16 @@ build. The SDK's schema and welcome resource are staged with daemon, and
 `core-build.json` records the exact SDK used. The canonical Linux SDK targets
 Ubuntu 24.04's dependency ABI, including the eventual AppImage backend.
 
+To produce shipping backend artifacts, run `ci.yml` manually with an explicit
+`core_ref` and `core_build_type=Release`. All three platforms fetch the matching
+Release SDK, build daemon in Release, and run daemon tests and artifact smoke
+tests. Release artifact names end in `-release`; ordinary development artifacts
+keep their existing names and RelWithDebInfo configuration. Each artifact's
+`release/` directory records daemon's own source commit, version and API version.
+Record that run and those component commits in the framework release manifest.
+Ubuntu distribution package checks run in normal CI independently of this
+GitHub SDK configuration.
+
 Windows uses the `windows-sdk-tests` preset with `HOLDER_CORE_SDK` and
 `VCPKG_ROOT` set. The SDK supplies core's prebuilt dependencies; the separate
 `packaging/windows/sdk-deps` manifest installs daemon's additional Boost
