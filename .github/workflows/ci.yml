@@ -9,12 +9,21 @@ on:
       core_ref:
         description: Core version tag or full SHA (empty selects latest-green)
         type: string
+      core_build_type:
+        description: SDK and daemon configuration
+        type: choice
+        options: [RelWithDebInfo, Release]
+        default: RelWithDebInfo
   workflow_call:
     inputs:
       core_ref:
         description: Exact published core commit
         required: true
         type: string
+      core_build_type:
+        description: SDK and daemon configuration
+        type: string
+        default: RelWithDebInfo
       daemon_ref:
         description: Daemon source revision (resolved once)
         default: main
@@ -35,6 +44,14 @@ jobs:
           repository: HolderTeam/holder-daemon
           ref: ${{ github.repository == 'HolderTeam/holder-daemon' && github.sha || inputs.daemon_ref || 'main' }}
           persist-credentials: false
+      - name: Validate SDK configuration
+        env:
+          BUILD_TYPE: ${{ inputs.core_build_type || 'RelWithDebInfo' }}
+        run: |
+          case "$BUILD_TYPE" in
+            RelWithDebInfo|Release) ;;
+            *) echo "Unsupported SDK configuration: $BUILD_TYPE" >&2; exit 1 ;;
+          esac
       - id: source
         name: Record daemon source revision
         run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -49,20 +66,23 @@ jobs:
     with:
       core_commit: ${{ needs.resolve.outputs.core_commit }}
       daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+      build_type: ${{ inputs.core_build_type || 'RelWithDebInfo' }}
   macos:
     needs: resolve
     uses: ./.github/workflows/macos-backend.yml
     with:
       core_commit: ${{ needs.resolve.outputs.core_commit }}
       daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+      build_type: ${{ inputs.core_build_type || 'RelWithDebInfo' }}
   windows:
     needs: resolve
     uses: ./.github/workflows/windows-backend.yml
     with:
       core_commit: ${{ needs.resolve.outputs.core_commit }}
       daemon_commit: ${{ needs.resolve.outputs.daemon_commit }}
+      build_type: ${{ inputs.core_build_type || 'RelWithDebInfo' }}
   ubuntu-packages:
-    if: github.repository == 'HolderTeam/holder-daemon'
+    if: github.repository == 'HolderTeam/holder-daemon' && inputs.core_build_type != 'Release'
     needs: resolve
     strategy:
       fail-fast: false

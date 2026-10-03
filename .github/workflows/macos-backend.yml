@@ -6,6 +6,10 @@ on:
       core_commit:
         required: true
         type: string
+      build_type:
+        description: SDK and daemon configuration
+        type: string
+        default: RelWithDebInfo
       daemon_commit:
         required: true
         type: string
@@ -32,6 +36,7 @@ jobs:
       - uses: HolderTeam/holder-core/.github/actions/core-sdk@main
         with:
           commit: ${{ inputs.core_commit }}
+          build-type: ${{ inputs.build_type }}
 
       - name: Install dependencies
         run: |
@@ -62,7 +67,7 @@ jobs:
             -S . \
             -B build-macos \
             -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE="$HOLDER_CORE_BUILD_TYPE" \
             -DCMAKE_PREFIX_PATH="${brew_prefix};${openssl_prefix}" \
             -DOPENSSL_ROOT_DIR="${openssl_prefix}" \
             -DBUILD_TESTING=ON
@@ -90,6 +95,10 @@ jobs:
           cp -a assets "${stage_dir}/"
           cp openapi.yaml "${stage_dir}/"
           cp "${build_dir}/core-build.json" "${stage_dir}/"
+          mkdir -p "${stage_dir}/release"
+          git rev-parse HEAD > "${stage_dir}/release/holder-daemon-commit.txt"
+          tr -d '[:space:]' < VERSION > "${stage_dir}/release/holder-daemon-version.txt"
+          tr -d '[:space:]' < API_VERSION > "${stage_dir}/release/holder-daemon-api-version.txt"
 
           (
             cd "${stage_dir}"
@@ -113,7 +122,7 @@ jobs:
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
-          name: holder-daemon-macos-backend
+          name: holder-daemon-macos-backend${{ inputs.build_type == 'Release' && '-release' || '' }}
           path: out/artifacts/macos-backend/**
           if-no-files-found: error
           retention-days: 7

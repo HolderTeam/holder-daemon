@@ -6,6 +6,10 @@ on:
       core_commit:
         required: true
         type: string
+      build_type:
+        description: SDK and daemon configuration
+        type: string
+        default: RelWithDebInfo
       daemon_commit:
         required: true
         type: string
@@ -32,6 +36,7 @@ jobs:
       - uses: HolderTeam/holder-core/.github/actions/core-sdk@main
         with:
           commit: ${{ inputs.core_commit }}
+          build-type: ${{ inputs.build_type }}
 
       - name: Set up MSVC developer environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -59,7 +64,8 @@ jobs:
           New-Item -ItemType Directory -Force "$env:VCPKG_DEFAULT_BINARY_CACHE" | Out-Null
 
       - name: Configure CMake
-        run: cmake --preset windows-sdk-tests
+        shell: pwsh
+        run: cmake --preset windows-sdk-tests "-DCMAKE_BUILD_TYPE=$env:HOLDER_CORE_BUILD_TYPE"
 
       - name: Save vcpkg binary package cache
         if: success() && github.event_name != 'pull_request'
@@ -84,6 +90,10 @@ jobs:
           Copy-Item "$buildDir\holderd.exe", "$buildDir\holderctl.exe" -Destination $stageDir
           Copy-Item "$buildDir\schema", "$buildDir\config", "$buildDir\assets" -Destination $stageDir -Recurse
           Copy-Item "$buildDir\openapi.yaml", "$buildDir\core-build.json" -Destination $stageDir
+          New-Item -ItemType Directory -Force "$stageDir/release" | Out-Null
+          git rev-parse HEAD | Set-Content -Encoding ascii "$stageDir/release/holder-daemon-commit.txt"
+          (Get-Content VERSION -Raw).Trim() | Set-Content -Encoding ascii "$stageDir/release/holder-daemon-version.txt"
+          (Get-Content API_VERSION -Raw).Trim() | Set-Content -Encoding ascii "$stageDir/release/holder-daemon-api-version.txt"
           Copy-Item "$env:HOLDER_CORE_SDK/share/vcpkg-licenses" -Destination $stageDir -Recurse
           $boostLicenses = Get-ChildItem "out/vcpkg-installed/x64-windows/share/boost*/copyright"
           foreach ($license in $boostLicenses) {
@@ -114,7 +124,7 @@ jobs:
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
-          name: holder-daemon-windows-backend
+          name: holder-daemon-windows-backend${{ inputs.build_type == 'Release' && '-release' || '' }}
           path: out/artifacts/windows-backend/*
           if-no-files-found: error
           retention-days: 7
