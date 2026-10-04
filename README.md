@@ -37,7 +37,7 @@ Coverage tooling (optional):
 Normal development and GitHub CI use core's published SDK. Core is selected
 once per CI run, defaults to `latest-green`, and is shared by all platform
 jobs. An explicit core version tag or full SHA pins an RC or release. CI does
-not initialise or compile the core submodule and missing SDKs fail clearly.
+not compile core from source and missing SDKs fail clearly.
 
 Clone `holder-core` beside this repository to use its shared selection tool:
 
@@ -75,15 +75,15 @@ use the canonical GitHub SDK. Core owns its own test and sanitizer coverage;
 daemon CI owns daemon and integration tests.
 
 For explicit core source development on other platforms or with a Debug
-build, initialise the core submodule and select it deliberately:
+build, use a standalone `holder-core` checkout beside this repository and select
+it deliberately:
 
 ```sh
-git submodule update --init --recursive -- submodules/holder-core
-HOLDER_CORE_SOURCE_DIR="$PWD/submodules/holder-core" ./make.sh test Debug
+HOLDER_CORE_SOURCE_DIR="$PWD/../holder-core" ./make.sh test Debug
 ```
 
 Direct CMake builds accept `-DHOLDER_CORE_SOURCE_DIR=<source-path>` instead.
-The older Windows Debug presets provide this explicit source-development path.
+The Windows Debug presets also use the sibling `../holder-core` checkout.
 
 Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
 
@@ -128,7 +128,7 @@ sudo dnf install -y \
   'pkgconfig(libgit2)' md4c-devel catch-devel libsodium-devel libsecret-devel \
   clang18-tools-extra
 
-git submodule update --init --recursive
+git submodule update --init --recursive -- submodules/caste
 ./make.sh
 ```
 
@@ -168,12 +168,12 @@ the documented internal-lock case in holder-core, rerun with its explicit suppre
 
 ```sh
 HOLDER_SAN_BUILD_DIR=build-tsan \
-  HOLDER_TSAN_SUPPRESSIONS="$PWD/submodules/holder-core/tools/tsan/glibc.supp" \
+  HOLDER_TSAN_SUPPRESSIONS="$PWD/../holder-core/tools/tsan/glibc.supp" \
   HOLDER_CTEST_TIMEOUT=900 ./make.sh san thread
 ```
 
 This suppression is opt-in and does not cover Holder code. See the rationale and
-source references in [glibc.supp](submodules/holder-core/tools/tsan/glibc.supp).
+source references in [glibc.supp](../holder-core/tools/tsan/glibc.supp).
 
 ## Quick Start (FreeBSD)
 

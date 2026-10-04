@@ -13,7 +13,7 @@
         "VCPKG_TARGET_TRIPLET": "x64-windows",
         "VCPKG_INSTALLED_DIR": "${sourceDir}/../.vcpkg-holder-daemon",
         "BUILD_TESTING": "OFF",
-        "HOLDER_CORE_SOURCE_DIR": "${sourceDir}/submodules/holder-core"
+        "HOLDER_CORE_SOURCE_DIR": "${sourceDir}/../holder-core"
       },
       "condition": {
         "type": "equals",

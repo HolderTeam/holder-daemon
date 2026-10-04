@@ -2,7 +2,3 @@ tar-ignore = build
 tar-ignore = build-*
 tar-ignore = build-coverage
 tar-ignore = submodules/caste
-tar-ignore = submodules/holder-core/build
-tar-ignore = submodules/holder-core/build-*
-tar-ignore = submodules/holder-core/build-coverage
-tar-ignore = submodules/holder-core/out
