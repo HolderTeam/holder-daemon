@@ -62,8 +62,8 @@ TEST_CASE("OpenAPI contracts card item mutations on the card path", "[openapi][c
     }
   }
   CHECK(
-      card["patch"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
-          .as<std::string>() == "#/components/schemas/CardUpdateRequest"
+      card["patch"]["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>(
+      ) == "#/components/schemas/CardUpdateRequest"
   );
   const auto backlinks = document["paths"]["/ai/messages/{message_id}/backlinks"];
   CHECK_FALSE(backlinks["patch"].IsDefined());
