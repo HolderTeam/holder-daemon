@@ -12,17 +12,23 @@ Preserve request-data lifetimes and worker-owned database access. Treat intermit
 
 When changing an HTTP route, update and test `openapi.yaml` in the same change where applicable.
 
-# Submodules
+# Core dependency selection
 
-Do not modify holder-core through the submodule checkout inside holder-daemon.
-Make holder-core changes only in the canonical workspace repository at ../holder-core,
-commit and test them there, then update the consuming repository’s submodule pointer to that commit.
+Make holder-core changes in the standalone workspace repository at `../holder-core`
+and test them there first. Do not edit embedded dependency copies inside holder-daemon.
 
-If a task requires changes to both holder-core and a consumer:
+Normal development and GitHub CI consume the published core SDK via
+`holder-core/scripts/core-sdk.py` and `HOLDER_CORE_SDK`. Resolve core once, use the
+same exact revision across platform jobs, and match the SDK's build configuration
+to the daemon's. Use an explicit version tag or full SHA when a task requires a
+particular core change, then test daemon against that SDK. Ubuntu source packages
+use the packaged `libholder-dev` and `libholder0` through `HOLDER_USE_SYSTEM_CORE`.
 
-In the standalone holder-core repository, make a new branch off main and change, test, and commit holder-core 
-Return to the consumer repository.
-Advance its holder-core submodule to the committed revision.
-Test the consumer against that revision.
+For explicit local source development, use `HOLDER_CORE_SOURCE_DIR` pointing at
+the standalone `../holder-core` checkout. Source builds are opt-in; do not silently
+fall back to compiling core when an SDK is missing. Core owns its tests and
+sanitizer coverage; daemon owns its HTTP and integration tests.
 
-Never treat a consumer’s submodule checkout as the working copy of holder-core.
+Legacy embedded core checkouts and their Git pointers are not the normal
+dependency-selection mechanism. Do not advance or reset them as a side effect
+of switching branches or updating the SDK.
