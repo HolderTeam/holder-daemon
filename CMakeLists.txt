@@ -221,6 +221,8 @@ if(HOLDER_CORE_SOURCE_DIR)
   set(_daemon_core_sdk "${HOLDER_CORE_SDK}")
   set(BUILD_TESTING OFF)
   set(HOLDER_CORE_SDK OFF)
+  # Old builds may still register tests from the former core submodule.
+  file(REMOVE "${CMAKE_CURRENT_BINARY_DIR}/holder-core/CTestTestfile.cmake")
   add_subdirectory("${HOLDER_CORE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/holder-core" EXCLUDE_FROM_ALL)
   set(HOLDER_CORE_SDK "${_daemon_core_sdk}")
   if(_daemon_build_testing STREQUAL "")

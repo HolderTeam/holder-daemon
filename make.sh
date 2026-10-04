@@ -8,6 +8,8 @@ CASTE_COMMIT="f0728b046df27b9f8ff965a3fd4a5b94bcb65057"
 CASTE_ARCHIVE_URL="https://github.com/zeth/caste/archive/${CASTE_COMMIT}.tar.gz"
 CCACHE_BIN=""
 CCACHE_STATE="unchecked"
+CORE_CMAKE_ARGS=()
+CORE_SDK_TOOLS_REF="249464d96a9c87f05b282e7a539ae524438ce6a5"
 
 print_usage() {
   cat <<'EOF'
@@ -19,6 +21,7 @@ Commands:
   help, -h, --help              Show this help
   default                       Configure, build, run tests, then run holderd
   build [BuildType]             Configure and build holderd and holderctl
+  core-update [ref] [BuildType]  Refresh the cached core selection and fetch its SDK
   test [BuildType]              Configure, build, and run the automated tests
   [BuildType]                   Run the default flow with this CMAKE_BUILD_TYPE
   coverage                      Build, run tests, and generate coverage reports
@@ -39,14 +42,17 @@ Examples:
 
 Environment:
   HOLDER_CCACHE                auto (default), 1 to require, or 0 to disable ccache
-  HOLDER_CORE_SDK              Verified core SDK path (normal development)
-  HOLDER_CORE_SOURCE_DIR       Explicit source-development override
+  HOLDER_CORE_SDK              Explicit SDK path (auto-fetched except on Fedora)
+  HOLDER_CORE_REF              Resolve this tag/SHA instead of reusing the cached selection
+  HOLDER_CORE_SDK_TOOL         Override the shared SDK selection tool
+  HOLDER_USE_SYSTEM_CORE       1/ON to use the installed system core package
+  HOLDER_CORE_SOURCE_DIR       Source override (Fedora defaults to ../holder-core)
   HOLDER_CTEST_TIMEOUT          Per-test timeout (memcheck defaults to 900 seconds)
   HOLDER_SAN_BUILD_DIR          Override the sanitizer build directory
   HOLDER_TSAN_SUPPRESSIONS      Optional explicit ThreadSanitizer suppression file
   HOLDER_CLANG_TIDY             Override clang-tidy (default clang-tidy-18)
   HOLDER_RUN_CLANG_TIDY         Override run-clang-tidy
-  HOLDER_MEMCHECK_BUILD_TYPE    Build type for memcheck, default Debug
+  HOLDER_MEMCHECK_BUILD_TYPE    Override memcheck build type (SDK default RelWithDebInfo)
   HOLDER_SAN_DETECT_LEAKS       Set to 1 to enable ASan leak detection
 EOF
 }
@@ -93,14 +99,137 @@ prepare_ccache() {
   echo "Install ccache with your package manager (see README.md for dependencies)." >&2
 }
 
+download_sdk_tool() {
+  local destination="$1" url="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$url" -o "$destination"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$destination" "$url"
+  else
+    echo "Missing dependency: curl or wget is required to fetch the core SDK tool." >&2
+    return 1
+  fi
+}
+
+core_sdk_tool() {
+  if [ -n "${HOLDER_CORE_SDK_TOOL:-}" ]; then
+    printf '%s\n' "$HOLDER_CORE_SDK_TOOL"
+    return
+  fi
+  if [ -f ../holder-core/scripts/core-sdk.py ]; then
+    printf '%s\n' ../holder-core/scripts/core-sdk.py
+    return
+  fi
+  local tools_dir=".core-sdk/tools/${CORE_SDK_TOOLS_REF}" file
+  mkdir -p "$tools_dir" || return
+  for file in core-sdk.py sdk_dependencies.py; do
+    if [ ! -f "$tools_dir/$file" ]; then
+      echo "Fetching core SDK tool: $file" >&2
+      download_sdk_tool "$tools_dir/$file.tmp" \
+        "https://raw.githubusercontent.com/HolderTeam/holder-core/${CORE_SDK_TOOLS_REF}/scripts/$file" || return
+      mv "$tools_dir/$file.tmp" "$tools_dir/$file" || return
+    fi
+  done
+  printf '%s\n' "$tools_dir/core-sdk.py"
+}
+
+fedora_source_default() {
+  [ -z "${HOLDER_CORE_SOURCE_DIR:-}" ] && [ -z "${HOLDER_CORE_SDK:-}" ] || return 1
+  case "${HOLDER_USE_SYSTEM_CORE:-OFF}" in
+    0|OFF|off|FALSE|false|NO|no|"") ;;
+    *) return 1 ;;
+  esac
+  [ "$(uname -s)" = Linux ] && [ -r /etc/os-release ] || return 1
+  local distro_id
+  distro_id="$(awk -F= '$1 == "ID" {gsub(/"/, "", $2); print $2}' /etc/os-release)"
+  [ "$distro_id" = fedora ]
+}
+
+prepare_core() {
+  local build_type="$1" tool python_bin selection="out/core-selection.json"
+  if fedora_source_default; then
+    if [ ! -f ../holder-core/CMakeLists.txt ]; then
+      echo "Fedora requires a native core build; clone holder-core beside holder-daemon." >&2
+      echo "Alternatively set HOLDER_CORE_SOURCE_DIR or HOLDER_CORE_SDK to a native build." >&2
+      return 1
+    fi
+    HOLDER_CORE_SOURCE_DIR="$(cd ../holder-core && pwd)"
+    export HOLDER_CORE_SOURCE_DIR
+    echo "core: Fedora default uses the sibling checkout (native dependency ABI)"
+  fi
+  CORE_CMAKE_ARGS=("-DHOLDER_CORE_SOURCE_DIR=${HOLDER_CORE_SOURCE_DIR:-}"
+                   "-DHOLDER_CORE_SDK=${HOLDER_CORE_SDK:-}" "-DHOLDER_USE_SYSTEM_CORE=OFF")
+  if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then
+    case "${HOLDER_USE_SYSTEM_CORE:-OFF}" in
+      1|ON|on|TRUE|true|YES|yes)
+        echo "Select one core mode: HOLDER_CORE_SOURCE_DIR or HOLDER_USE_SYSTEM_CORE." >&2
+        return 2 ;;
+    esac
+    echo "core: explicit source override ($HOLDER_CORE_SOURCE_DIR)"
+    return
+  fi
+  case "${HOLDER_USE_SYSTEM_CORE:-OFF}" in
+    1|ON|on|TRUE|true|YES|yes)
+      CORE_CMAKE_ARGS=("-DHOLDER_CORE_SOURCE_DIR=" "-DHOLDER_CORE_SDK=" "-DHOLDER_USE_SYSTEM_CORE=ON")
+      echo "core: installed system package"
+      return
+      ;;
+    0|OFF|off|FALSE|false|NO|no|"") ;;
+    *) echo "Invalid HOLDER_USE_SYSTEM_CORE value: $HOLDER_USE_SYSTEM_CORE" >&2; return 2 ;;
+  esac
+  if [ -n "${HOLDER_CORE_SDK:-}" ]; then
+    echo "core: explicit SDK ($HOLDER_CORE_SDK)"
+    return
+  fi
+  case "$build_type" in
+    Release|RelWithDebInfo) ;;
+    *)
+      echo "Published core SDKs support RelWithDebInfo and Release, not $build_type." >&2
+      echo "For $build_type, set HOLDER_CORE_SOURCE_DIR to an explicit core checkout." >&2
+      return 2
+      ;;
+  esac
+  if command -v python3 >/dev/null 2>&1; then
+    python_bin=python3
+  elif command -v python >/dev/null 2>&1; then
+    python_bin=python
+  else
+    echo "Missing dependency: Python 3 is required to resolve the core SDK." >&2
+    return 1
+  fi
+  tool="$(core_sdk_tool)"
+  if [ ! -f "$selection" ] || [ -n "${HOLDER_CORE_REF:-}" ]; then
+    echo "core: resolving ${HOLDER_CORE_REF:-latest-green}"
+    "$python_bin" "$tool" resolve --core-ref "${HOLDER_CORE_REF:-latest-green}" --output "$selection"
+  else
+    echo "core: reusing $selection (./make.sh core-update refreshes it)"
+  fi
+  echo "core: fetching/verifying $build_type SDK"
+  local sdk_path
+  sdk_path="$("$python_bin" "$tool" fetch --selection "$selection" --cache .core-sdk --build-type "$build_type")"
+  sdk_path="${sdk_path//$'\r'/}"
+  CORE_CMAKE_ARGS=("-DHOLDER_CORE_SOURCE_DIR=" "-DHOLDER_CORE_SDK=$sdk_path" "-DHOLDER_USE_SYSTEM_CORE=OFF")
+}
+
+development_build_type() {
+  if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ] || fedora_source_default; then printf '%s\n' Debug
+  else printf '%s\n' RelWithDebInfo
+  fi
+}
+
 cmake_configure() {
+  local build_type=RelWithDebInfo arg
+  for arg in "$@"; do
+    case "$arg" in -DCMAKE_BUILD_TYPE=*) build_type="${arg#*=}" ;; esac
+  done
+  prepare_core "$build_type"
   prepare_ccache
   if [ "${CCACHE_STATE}" = "enabled" ]; then
-    cmake "$@" -DCMAKE_CXX_COMPILER_LAUNCHER="${CCACHE_BIN}"
+    cmake "$@" "${CORE_CMAKE_ARGS[@]}" -DCMAKE_CXX_COMPILER_LAUNCHER="${CCACHE_BIN}"
   else
     # Clear a launcher cached by an earlier invocation when caching is now
     # explicitly disabled or ccache is no longer installed.
-    cmake "$@" -DCMAKE_CXX_COMPILER_LAUNCHER=
+    cmake "$@" "${CORE_CMAKE_ARGS[@]}" -DCMAKE_CXX_COMPILER_LAUNCHER=
   fi
 }
 
@@ -113,7 +242,9 @@ cmake_build() {
 }
 
 jobs() {
-  if [ -n "${NUMBER_OF_PROCESSORS:-}" ]; then
+  if [ -n "${CMAKE_BUILD_PARALLEL_LEVEL:-}" ]; then
+    printf '%s\n' "${CMAKE_BUILD_PARALLEL_LEVEL}"
+  elif [ -n "${NUMBER_OF_PROCESSORS:-}" ]; then
     printf '%s\n' "${NUMBER_OF_PROCESSORS}"
   elif command -v nproc >/dev/null 2>&1; then
     nproc
@@ -187,11 +318,7 @@ fi
 
 build_all() {
   cmake_configure -S . -B build -G Ninja -DCMAKE_BUILD_TYPE="${1}"
-  if command -v nproc >/dev/null 2>&1; then
-    JOBS="$(nproc)"
-  else
-    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-  fi
+  JOBS="$(jobs)"
   cmake_build build -- -j "${JOBS}"
 }
 
@@ -205,7 +332,7 @@ build_standard() {
     fi
     local preset="windows-sdk-tests"
     if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then preset="windows-vcpkg-debug"; fi
-    cmake --preset "$preset"
+    cmake_configure --preset "$preset" -DCMAKE_BUILD_TYPE="$build_type"
     cmake --build --preset "$preset" --parallel "$(jobs)"
     return
   fi
@@ -223,7 +350,7 @@ test_standard() {
     fi
     local preset="windows-sdk-tests"
     if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then preset="windows-vcpkg-tests-debug"; fi
-    cmake --preset "$preset"
+    cmake_configure --preset "$preset" -DCMAKE_BUILD_TYPE="$build_type"
     cmake --build --preset "$preset" --parallel "$(jobs)"
     ctest --preset "$preset"
     return
@@ -233,25 +360,31 @@ test_standard() {
   test_build build
 }
 
+run_standard() {
+  if is_windows_shell; then
+    local preset=windows-sdk-tests
+    if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ]; then preset=windows-vcpkg-tests-debug; fi
+    "./out/build/$preset/holderd.exe"
+  else
+    ./build/holderd
+  fi
+}
+
 warnings_all() {
   local build_dir="build-warnings"
-  local build_type="${1:-Debug}"
+  local build_type="${1:-$(development_build_type)}"
 
   cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DHOLDER_WARNINGS_AS_ERRORS=ON
 
-  if command -v nproc >/dev/null 2>&1; then
-    JOBS="$(nproc)"
-  else
-    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-  fi
+  JOBS="$(jobs)"
   cmake_build "${build_dir}" --target holderd holderctl -- -j "${JOBS}"
 }
 
 memcheck_all() {
   local build_dir="build-memcheck"
-  local build_type="${HOLDER_MEMCHECK_BUILD_TYPE:-Debug}"
+  local build_type="${HOLDER_MEMCHECK_BUILD_TYPE:-$(development_build_type)}"
   local test_regex="${1:-}"
   local valgrind_bin
   local valgrind_options
@@ -273,11 +406,7 @@ memcheck_all() {
     -DMEMORYCHECK_COMMAND_OPTIONS="${valgrind_options}" \
     -DMEMORYCHECK_SUPPRESSIONS_FILE="${suppression_file}"
 
-  if command -v nproc >/dev/null 2>&1; then
-    JOBS="$(nproc)"
-  else
-    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-  fi
+  JOBS="$(jobs)"
   cmake_build "${build_dir}" -- -j "${JOBS}"
 
   if [ -n "${test_regex}" ]; then
@@ -312,7 +441,7 @@ test_build() {
 san_all() {
   local build_dir="${HOLDER_SAN_BUILD_DIR:-build-san}"
   local sanitizers="${1:-address}"
-  local build_type="${2:-Debug}"
+  local build_type="${2:-$(development_build_type)}"
   local san_flags="-fsanitize=${sanitizers} -fno-omit-frame-pointer -O1 -g"
   local detect_leaks="${HOLDER_SAN_DETECT_LEAKS:-0}"
   local catch_discovery="ON"
@@ -334,16 +463,13 @@ san_all() {
   cmake_configure -S . -B "${build_dir}" -G Ninja \
     -DCMAKE_BUILD_TYPE="${build_type}" \
     -DCMAKE_CXX_FLAGS="${san_flags}" \
+    -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O1 -g" \
     -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=${sanitizers}" \
     -DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=${sanitizers}" \
     -DHOLDER_CATCH_DISCOVER_TESTS="${catch_discovery}" \
     -DHOLDER_TSAN_USE_SETARCH="${tsan_use_setarch}"
 
-  if command -v nproc >/dev/null 2>&1; then
-    JOBS="$(nproc)"
-  else
-    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-  fi
+  JOBS="$(jobs)"
   ASAN_OPTIONS="detect_leaks=${detect_leaks}:halt_on_error=1" \
     UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
     cmake_build "${build_dir}" -- -j "${JOBS}"
@@ -367,14 +493,11 @@ coverage_all() {
   fi
 
   cmake_configure -S . -B "${build_dir}" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS="--coverage -O0 -g"
+    -DCMAKE_BUILD_TYPE="$(development_build_type)" \
+    -DCMAKE_CXX_FLAGS="--coverage -O0 -g" \
+    -DCMAKE_CXX_FLAGS_RELWITHDEBINFO="-O0 -g"
 
-  if command -v nproc >/dev/null 2>&1; then
-    JOBS="$(nproc)"
-  else
-    JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)"
-  fi
+  JOBS="$(jobs)"
   cmake_build "${build_dir}" -- -j "${JOBS}"
 
   lcov --directory "${build_dir}" --zerocounters
@@ -443,7 +566,7 @@ tidy_all() {
   fi
 
   cmake_configure -S . -B "${build_dir}" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_BUILD_TYPE="$(development_build_type)" \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
   "${tidy_runner}" \
@@ -503,9 +626,15 @@ format_files() {
 
 case "${MODE}" in
   default)
-    build_all "RelWithDebInfo"
-    test_build build
-    ./build/holderd
+    test_standard "RelWithDebInfo"
+    run_standard
+    ;;
+  core-update)
+    if [ -n "${HOLDER_CORE_SOURCE_DIR:-}" ] || fedora_source_default; then
+      echo "core-update refreshes SDKs; update a source checkout separately with Git." >&2
+      exit 2
+    fi
+    HOLDER_CORE_REF="${2:-latest-green}" prepare_core "${3:-RelWithDebInfo}"
     ;;
   build)
     build_standard "${2:-RelWithDebInfo}"
@@ -521,13 +650,13 @@ case "${MODE}" in
     coverage_all
     ;;
   warnings)
-    warnings_all "${2:-Debug}"
+    warnings_all "${2:-$(development_build_type)}"
     ;;
   memcheck)
     memcheck_all "${2:-}"
     ;;
   san)
-    san_all "${2:-address}" "${3:-Debug}"
+    san_all "${2:-address}" "${3:-$(development_build_type)}"
     ;;
   tidy)
     tidy_all
@@ -540,8 +669,7 @@ case "${MODE}" in
     ;;
   *)
     # Backward-compatible: treat first arg as build type in default flow.
-    build_all "${MODE}"
-    ctest --test-dir build --output-on-failure
-    ./build/holderd
+    test_standard "${MODE}"
+    run_standard
     ;;
 esac

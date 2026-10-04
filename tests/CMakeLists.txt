@@ -314,3 +314,12 @@ elseif(HOLDER_TSAN_USE_SETARCH)
 else()
   add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
 endif()
+
+# Wrapper tests use temporary repositories and mocked tools; no network or Home.
+if(UNIX)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME make_sh_sdk_selection
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/test_make.py")
+  endif()
+endif()

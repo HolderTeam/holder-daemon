@@ -8,6 +8,7 @@ Holderd is a local-first card server, primarily used as a backend for card appli
 - Ninja
 - C++20 compiler (GCC/Clang/MSVC)
 - Git
+- Python 3 (for automatic core SDK selection)
 
 Runtime/build dependencies used by this repo:
 
@@ -32,58 +33,20 @@ Coverage tooling (optional):
 
 - lcov (`lcov`, `genhtml`)
 
-## Core SDK selection
+## Building
 
-Normal development and GitHub CI use core's published SDK. Core is selected
-once per CI run, defaults to `latest-green`, and is shared by all platform
-jobs. An explicit core version tag or full SHA pins an RC or release. CI does
-not compile core from source and missing SDKs fail clearly.
-
-Clone `holder-core` beside this repository to use its shared selection tool:
+`./make.sh` builds, runs the tests, then starts `holderd`.
+It downloads core on the first build and reuses it afterwards.
+Run `./make.sh core-update` to get a newer version. On Fedora, it builds
+`../holder-core` instead.
 
 ```sh
-python3 ../holder-core/scripts/core-sdk.py resolve
-export HOLDER_CORE_SDK="$(python3 ../holder-core/scripts/core-sdk.py fetch)"
-./make.sh test
+./make.sh build               # Build without starting the daemon
+./make.sh test                # Build and run the tests
 ```
 
-Use `resolve --core-ref <tag-or-full-SHA>` for a pin. Development SDK builds
-use `RelWithDebInfo`; `fetch --build-type Release` pairs with a Release daemon
-build. The SDK's schema and welcome resource are staged with daemon, and
-`core-build.json` records the exact SDK used. The canonical Linux SDK targets
-Ubuntu 24.04's dependency ABI, including the eventual AppImage backend.
-
-To produce shipping backend artifacts, run `ci.yml` manually with an explicit
-`core_ref` and `core_build_type=Release`. All three platforms fetch the matching
-Release SDK, build daemon in Release, and run daemon tests and artifact smoke
-tests. Release artifact names end in `-release`; ordinary development artifacts
-keep their existing names and RelWithDebInfo configuration. Each artifact's
-`release/` directory records daemon's own source commit, version and API version.
-Record that run and those component commits in the framework release manifest.
-Ubuntu distribution package checks run in normal CI independently of this
-GitHub SDK configuration.
-
-Windows uses the `windows-sdk-tests` preset with `HOLDER_CORE_SDK` and
-`VCPKG_ROOT` set. The SDK supplies core's prebuilt dependencies; the separate
-`packaging/windows/sdk-deps` manifest installs daemon's additional Boost
-dependencies. Runtime DLLs are staged before test discovery and shipped with
-the backend artifact.
-
-Ubuntu source packages use the series-specific `libholder-dev` package and
-link its shared `libholder0` runtime (`HOLDER_USE_SYSTEM_CORE=ON`). They do not
-use the canonical GitHub SDK. Core owns its own test and sanitizer coverage;
-daemon CI owns daemon and integration tests.
-
-For explicit core source development on other platforms or with a Debug
-build, use a standalone `holder-core` checkout beside this repository and select
-it deliberately:
-
-```sh
-HOLDER_CORE_SOURCE_DIR="$PWD/../holder-core" ./make.sh test Debug
-```
-
-Direct CMake builds accept `-DHOLDER_CORE_SOURCE_DIR=<source-path>` instead.
-The Windows Debug presets also use the sibling `../holder-core` checkout.
+See [core build options](docs/core-builds.md) for version pins, source builds,
+SDK overrides and release builds.
 
 Model catalog config lives at `config/models.yaml` and is served by the API at `/models.yaml`.
 
@@ -106,7 +69,7 @@ But here are friendly instructions for development on Ubuntu.
 ```bash
 sudo apt update
 sudo apt install -y \
-  build-essential cmake ninja-build pkg-config git curl \
+  build-essential cmake ninja-build pkg-config git curl python3 \
   libboost-system-dev libboost-filesystem-dev \
   libssl-dev \
   libsqlite3-dev nlohmann-json3-dev libspdlog-dev libyaml-cpp-dev \
@@ -123,12 +86,13 @@ Server will start at `127.0.0.1:11499` by default and print docs URL + auth toke
 
 ```sh
 sudo dnf install -y \
-  gcc-c++ cmake ninja-build pkgconf-pkg-config git curl ccache \
+  gcc-c++ cmake ninja-build pkgconf-pkg-config git curl ccache python3 \
   boost-devel openssl-devel sqlite-devel json-devel spdlog-devel yaml-cpp-devel \
   'pkgconfig(libgit2)' md4c-devel catch-devel libsodium-devel libsecret-devel \
   clang18-tools-extra
 
-git submodule update --init --recursive -- submodules/caste
+# If holder-core is not already checked out beside holder-daemon:
+git clone https://github.com/HolderTeam/holder-core.git ../holder-core
 ./make.sh
 ```
 
