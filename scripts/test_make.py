@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -30,9 +31,6 @@ name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == "git":
     sys.exit(1)
-if name == "awk":
-    print("fedora" if os.environ.get("MAKE_TEST_FEDORA") else "ubuntu")
-    sys.exit(0)
 if name == "uname":
     print("MINGW64_NT" if os.environ.get("MAKE_TEST_WINDOWS") else "Linux")
     sys.exit(0)
@@ -61,10 +59,16 @@ class MakeTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="holder make test ")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
         self.repo = self.root / "daemon"
         self.repo.mkdir()
         shutil.copy2(REPOSITORY / "make.sh", self.repo / "make.sh")
+        # macOS has no /etc/os-release. Use a fixture in the copied wrapper
+        # so distro detection tests never depend on the host's distro file.
+        self.os_release = self.root / "os-release"
+        wrapper = self.repo / "make.sh"
+        wrapper.write_text(wrapper.read_text().replace(
+            "/etc/os-release", shlex.quote(str(self.os_release))))
         caste = self.repo / "submodules/caste"
         caste.mkdir(parents=True)
         (caste / "CMakeLists.txt").write_text("# ready")
@@ -79,7 +83,7 @@ class MakeTest(unittest.TestCase):
         command = f"#!{sys.executable}\n" + FAKE_COMMAND
         self.command_file = self.root / "command.py"
         self.command_file.write_text(command)
-        for name in ("git", "uname", "awk", "cmake", "ctest", "curl", "valgrind", "lcov",
+        for name in ("git", "uname", "cmake", "ctest", "curl", "valgrind", "lcov",
                      "genhtml", "gcovr", "clang-tidy-18", "run-clang-tidy"):
             path = commands / name
             path.write_text(command)
@@ -96,6 +100,8 @@ class MakeTest(unittest.TestCase):
         self.env.pop("OS", None)
 
     def run_make(self, *args, **environment):
+        distro = "fedora" if environment.get("MAKE_TEST_FEDORA") else "ubuntu"
+        self.os_release.write_text(f'ID="{distro}"\n')
         return subprocess.run(["bash", "./make.sh", *args], cwd=self.repo,
                               env=self.env | environment, text=True, capture_output=True)
 
