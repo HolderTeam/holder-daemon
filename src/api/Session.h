@@ -2,6 +2,7 @@
 
 #include "ai/NudgeService.h"
 #include "api/Router.h"
+#include "api/support/EventService.h"
 #include "card/CardStore.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
@@ -66,7 +67,8 @@ class Session {
       holder::ai::NudgeService* nudge_service,
       holder::privacy::SecretStore* secret_store = nullptr,
       holder::git::GitOps* git_ops = nullptr,
-      holder::llm::RunnerRegistry* runner_registry = nullptr
+      holder::llm::RunnerRegistry* runner_registry = nullptr,
+      holder::api::support::EventService* events = nullptr
   );
   Session(
       PreparedRequest prepared,
@@ -79,7 +81,8 @@ class Session {
       holder::ai::NudgeService* nudge_service,
       holder::privacy::SecretStore* secret_store = nullptr,
       holder::git::GitOps* git_ops = nullptr,
-      holder::llm::RunnerRegistry* runner_registry = nullptr
+      holder::llm::RunnerRegistry* runner_registry = nullptr,
+      holder::api::support::EventService* events = nullptr
   );
 
   void run();
@@ -112,6 +115,7 @@ class Session {
   holder::privacy::SecretStore* secret_store_ = nullptr;
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
+  holder::api::support::EventService* events_ = nullptr;
   Request req_;
   std::chrono::steady_clock::time_point request_started_;
   std::string path_;

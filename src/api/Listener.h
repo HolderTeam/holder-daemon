@@ -80,6 +80,8 @@ class Listener {
   holder::git::GitOps* git_ops_ = nullptr;
   holder::llm::RunnerRegistry* runner_registry_ = nullptr;
   holder::api::ConcurrencyProfile concurrency_;
+  std::mutex event_service_mutex_;
+  std::shared_ptr<holder::api::support::EventService> events_;
   holder::git::GitOps* request_git_ops_ = nullptr;
   std::unique_ptr<holder::git::RealGitOps> owned_git_ops_;
   std::unique_ptr<holder::core::SerialExecutor> git_executor_;

@@ -413,7 +413,8 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    std::shared_ptr<holder::api::support::SseRegistry> streams
 ) {
   if (handle_ai_runner_crud_routes(path, req, res, db, runner_registry, uuid_v4)) {
     return {.handled = true, .streamed = false};
@@ -424,7 +425,8 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
           res,
           socket,
           runner_registry,
-          param_get
+          param_get,
+          streams
       );
       out.handled) {
     return out;

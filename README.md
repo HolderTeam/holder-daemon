@@ -316,6 +316,13 @@ ASan, UBSan, and leak detection together, run:
 HOLDER_SAN_DETECT_LEAKS=1 ./make.sh san address,undefined
 ```
 
+## Event streams
+
+The authenticated change feed and AI streams support asynchronous subscriptions
+with bounded output and explicit reconnect recovery. See
+[the event-stream contract](docs/event-streams.md) for snapshot synchronization,
+Git revisions, replay limits and client behavior.
+
 ## Project removal and upgrades
 
 Removing a project through the API removes it from this device's database and

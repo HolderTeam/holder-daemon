@@ -21,7 +21,9 @@ RouteDispatchResult handle_ai_runs_events_route(
     const std::string& path,
     boost::asio::ip::tcp::socket& socket,
     boost::beast::http::response<boost::beast::http::string_body>& res,
-    holder::platform::Db& db
+    holder::platform::Db& db,
+    const std::string& last_event_id = "",
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 RouteDispatchResult handle_ai_runs_get_route(

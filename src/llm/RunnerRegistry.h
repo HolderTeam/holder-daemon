@@ -30,6 +30,7 @@ class RunnerRegistry {
   std::vector<holder::model::AiRunner> list_runners() const;
   std::optional<holder::model::AiRunner> get_runner(const std::string& runner_id) const;
   RunnerClient* get_client(const std::string& runner_id) const;
+  std::shared_ptr<RunnerClient> share_client(const std::string& runner_id) const;
 
  private:
   void load_manual_clients();
@@ -37,8 +38,8 @@ class RunnerRegistry {
   holder::platform::Db* db_ = nullptr;
   RunnerClient* auto_local_client_ = nullptr;
   const holder::core::SerialExecutor* executor_ = nullptr;
-  std::unique_ptr<RunnerClient> auto_local_wrapped_client_;
-  std::unordered_map<std::string, std::unique_ptr<RunnerClient>> manual_clients_;
+  std::shared_ptr<RunnerClient> auto_local_wrapped_client_;
+  std::unordered_map<std::string, std::shared_ptr<RunnerClient>> manual_clients_;
 };
 
 } // namespace holder::llm

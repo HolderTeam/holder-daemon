@@ -14,6 +14,91 @@ components:
       scheme: bearer
       bearerFormat: token
   schemas:
+    EventCheckpoint:
+      type: object
+      required: [cursor, git_revisions, history_urls]
+      properties:
+        cursor:
+          type: string
+          description: Opaque process-local SSE cursor. Persist it unchanged for Last-Event-ID.
+        git_revisions:
+          type: object
+          description: Observed project Git HEADs; null for missing or unborn repositories. Not a transaction marker for live database state.
+          additionalProperties:
+            type: string
+            nullable: true
+        history_urls:
+          type: object
+          description: Existing project history endpoints for durable recovery. Refresh live state after inspecting history.
+          additionalProperties:
+            type: string
+    EventCheckpointResponse:
+      type: object
+      required: [ok, data]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        data:
+          $ref: "#/components/schemas/EventCheckpoint"
+    ChangeEventData:
+      type: object
+      required: [entity, entity_id, project_id, deleted, git_revision]
+      properties:
+        entity:
+          type: string
+          enum: [project, card, resource, location, thread, message, run]
+        entity_id:
+          type: string
+        project_id:
+          type: string
+          nullable: true
+        deleted:
+          type: boolean
+          description: Entity disappeared from the observed database snapshot. Soft deletion remains an ordinary invalidation.
+        git_revision:
+          type: string
+          nullable: true
+          description: Observed Git HEAD for this project; live changes may not yet be committed to Git.
+    EventResyncData:
+      allOf:
+        - $ref: "#/components/schemas/EventCheckpoint"
+        - type: object
+          required: [reason, last_revision]
+          properties:
+            reason:
+              type: string
+              enum: [history_unavailable, observer_unavailable]
+            last_revision:
+              type: string
+              nullable: true
+    AiRunEventData:
+      type: object
+      required: [run_id]
+      description: Named run events share run_id. Fields vary by event and provider.
+      additionalProperties: true
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        delta:
+          type: string
+        message:
+          type: string
+        error:
+          type: string
+        runner_id:
+          type: string
+        model_ref:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
     Error:
       type: object
       required: [code, message]
@@ -2629,6 +2714,127 @@ components:
               format: int64
               nullable: true
 paths:
+  /events/cursor:
+    get:
+      operationId: get_event_cursor
+      summary: Get a change-feed checkpoint before fetching a live snapshot
+      description: Fetch this checkpoint, read current entities, then subscribe using its cursor as Last-Event-ID. Replayed invalidations close the race between snapshot reads and subscription.
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current checkpoint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventCheckpointResponse"
+        "400":
+          description: Invalid query or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Observer unavailable or stream limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /events:
+    get:
+      operationId: stream_changes
+      summary: Subscribe to committed daemon state changes (SSE)
+      description: |
+        Sends ready, then project.changed, card.changed, resource.changed,
+        location.changed, thread.changed, message.changed and run.changed invalidations.
+        Intermediate states can coalesce. Each frame has an opaque id and JSON data.
+        Without a cursor starts at the current tail. Last-Event-ID replays bounded
+        in-memory history. Restart, an expired cursor or last_revision without a
+        replayable cursor returns resync_required with current Git revisions and
+        history URLs, then closes. This endpoint does not synthesize events from Git.
+        Refresh current state on resync; Git is the durable project history.
+        Comments provide heartbeats. Disconnecting unsubscribes without cancelling jobs.
+      x-sse-events:
+        ready:
+          $ref: "#/components/schemas/EventCheckpoint"
+        changed:
+          $ref: "#/components/schemas/ChangeEventData"
+        resync_required:
+          $ref: "#/components/schemas/EventResyncData"
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+        - in: query
+          name: last_revision
+          description: Last-known project Git revision for recovery; requires project_id. An unavailable replay explicitly requires refresh, even when HEAD is unchanged.
+          schema:
+            type: string
+            pattern: '^[0-9a-f]{40}$'
+        - in: header
+          name: Last-Event-ID
+          description: Opaque cursor from a previous frame or /events/cursor.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Live SSE stream; ready or resync_required is the first event
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Invalid query or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Observer unavailable or stream limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ping:
     get:
       summary: Liveness check, unauthenticated
@@ -4770,6 +4976,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
   /ai/runs:
     post:
+      description: Creates one run and streams run_started (with run_id), provider-dependent progress/router/fallback/chunk events, then done or failed. Every frame has an opaque replay ID. Reconnect via GET /ai/runs/{run_id}/events rather than repeating this POST. Disconnecting does not cancel execution; terminal events follow persisted status.
+      x-sse-events:
+        run_started:
+          $ref: "#/components/schemas/AiRunEventData"
+        chunk:
+          $ref: "#/components/schemas/AiRunEventData"
+        done:
+          $ref: "#/components/schemas/AiRunEventData"
+        failed:
+          $ref: "#/components/schemas/AiRunEventData"
       summary: Create and execute an AI run with routing and streaming
       requestBody:
         required: true
@@ -4865,7 +5081,22 @@ paths:
   /ai/runs/{run_id}/events:
     get:
       summary: Stream run events (SSE)
+      description: Replays bounded retained run events with absolute event IDs; done or failed closes the stream. Missing in-memory history can recover persisted terminal status. An expired or foreign cursor emits resync_required; fetch the run before reconnecting.
+      x-sse-events:
+        run_started:
+          $ref: "#/components/schemas/AiRunEventData"
+        chunk:
+          $ref: "#/components/schemas/AiRunEventData"
+        done:
+          $ref: "#/components/schemas/AiRunEventData"
+        failed:
+          $ref: "#/components/schemas/AiRunEventData"
       parameters:
+        - in: header
+          name: Last-Event-ID
+          description: Opaque SSE event ID; unavailable history emits resync_required and closes.
+          schema:
+            type: string
         - in: path
           name: run_id
           required: true
@@ -4890,6 +5121,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid query or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Observer unavailable or stream limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ai/runner/pull:
     post:
       summary: Start pulling a local model
@@ -4971,7 +5221,13 @@ paths:
   /ai/runner/pull/{job_id}/events:
     get:
       summary: Stream pull job progress (SSE)
+      description: Streams progress snapshots on status changes; completed or failed closes the stream. Pull event IDs are connection-local; reconnect without Last-Event-ID to fetch current progress after resync_required. Disconnecting does not cancel the pull.
       parameters:
+        - in: header
+          name: Last-Event-ID
+          description: Opaque SSE event ID; unavailable history emits resync_required and closes.
+          schema:
+            type: string
         - in: path
           name: job_id
           required: true
@@ -5002,6 +5258,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid query or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "405":
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Observer unavailable or stream limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ai/messages:
     get:
       summary: List AI messages by thread

@@ -52,11 +52,12 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     http::response<http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    std::shared_ptr<holder::api::support::SseRegistry> streams
 ) {
   RunnerRouteDispatchResult out{};
   const std::string runner_id = requested_runner_id(param_get);
-  auto* runner = runner_registry ? runner_registry->get_client(runner_id) : nullptr;
+  auto runner = runner_registry ? runner_registry->share_client(runner_id) : nullptr;
 
   if (path.rfind("/ai/runner/pull/", 0) != 0 ||
       path.size() <= std::string("/ai/runner/pull/").size() + std::string("/events").size() ||
@@ -86,68 +87,53 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     // LCOV_EXCL_STOP
   }
 
+  const std::string last_event_id(req["Last-Event-ID"]);
+  if (!last_event_id.empty() && !support::EventJournal::valid_cursor(last_event_id)) {
+    res =
+        support::error_response(http::status::bad_request, "bad_request", "Invalid Last-Event-ID.");
+    return out;
+  }
+  // Pull progress is a replaceable status snapshot, not a token/delta history.
+  // Each connection has its own incarnation; reconnect with an old cursor asks
+  // the caller to refresh the authoritative job-status resource.
+  auto journal = std::make_shared<support::EventJournal>();
+  auto source =
+      [runner, runner_id, job_id, journal, cursor = last_event_id, previous = std::string()](
+      ) mutable {
+        const auto job = runner->get_pull(job_id);
+        if (!job) {
+          if (previous.empty()) {
+            journal->append(
+                "failed",
+                {{"runner_id", runner_id}, {"job_id", job_id}, {"error", "Pull job not found."}},
+                true
+            );
+            previous = "missing";
+          }
+        } else {
+          const auto data = pull_job_to_json(*job, runner_id);
+          const auto current = data.dump();
+          if (current != previous) {
+            journal->append("progress", data);
+            if (job->status == "completed" || job->status == "failed")
+              journal->append(job->status == "completed" ? "completed" : "failed", data, true);
+            previous = current;
+          }
+        }
+        auto batch = journal->read(cursor);
+        cursor = batch.cursor;
+        return batch;
+      };
+  auto stream = support::SseStream::start(socket, std::move(streams), std::move(source));
+  if (!stream) {
+    res = support::error_response(
+        http::status::service_unavailable,
+        "server_busy",
+        "Too many event streams."
+    );
+    return out;
+  }
   out.streamed = true;
-  http::response<http::empty_body> sse{http::status::ok, 11};
-  sse.set(http::field::content_type, "text/event-stream");
-  sse.set(http::field::cache_control, "no-cache");
-  sse.set(http::field::connection, "keep-alive");
-  sse.keep_alive(true);
-  http::serializer<false, http::empty_body> sr{sse};
-  boost::system::error_code write_ec;
-  http::write_header(socket, sr, write_ec);
-  if (write_ec) {
-    return out; // LCOV_EXCL_LINE
-  }
-
-  auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
-    std::string payload = "event: " + name + "\n";
-    payload += "data: " + data.dump() + "\n\n";
-    boost::system::error_code send_ec;
-    boost::asio::write(socket, boost::asio::buffer(payload), send_ec);
-    return !send_ec;
-  };
-
-  std::string last_status;
-  long long last_completed = -1;
-  long long last_total = -1;
-  for (;;) {
-    const auto job = runner->get_pull(job_id);
-    if (!job.has_value()) {
-      send_event(
-          "failed",
-          nlohmann::json{{"runner_id", runner_id}, {"error", "Pull job not found."}}
-      );
-      break;
-    }
-
-    // LCOV_EXCL_START
-    const bool changed = job->status != last_status || job->progress.completed != last_completed ||
-                         job->progress.total != last_total;
-    // LCOV_EXCL_STOP
-    if (changed) {
-      const auto data = pull_job_to_json(job.value(), runner_id);
-      if (!send_event("progress", data)) {
-        break; // LCOV_EXCL_LINE
-      }
-
-      last_status = job->status;
-      last_completed = job->progress.completed;
-      last_total = job->progress.total;
-
-      if (job->status == "completed") {
-        send_event("completed", data);
-        break;
-      }
-      // LCOV_EXCL_START
-      if (job->status == "failed") {
-        send_event("failed", data);
-        break;
-      }
-      // LCOV_EXCL_STOP
-    }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // LCOV_EXCL_LINE
-  }
 
   return out;
 }

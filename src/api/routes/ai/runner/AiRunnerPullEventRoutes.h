@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api/support/SseStream.h"
+
 #include "api/routes/ai/AiRunnerRoutes.h"
 #include "llm/RunnerRegistry.h"
 
@@ -17,7 +19,8 @@ RunnerRouteDispatchResult handle_ai_runner_pull_event_routes(
     boost::beast::http::response<boost::beast::http::string_body>& res,
     boost::asio::ip::tcp::socket& socket,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 } // namespace holder::api::routes::ai::runner

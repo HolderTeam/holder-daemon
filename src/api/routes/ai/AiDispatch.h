@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api/support/SseStream.h"
+
 #include "ai/NudgeService.h"
 #include "git/GitOps.h"
 #include "index/FtsIndexer.h"
@@ -31,7 +33,8 @@ DispatchResult dispatch_ai_routes(
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param
+    const std::function<std::string(const std::string&)>& param,
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 } // namespace holder::api::routes::ai

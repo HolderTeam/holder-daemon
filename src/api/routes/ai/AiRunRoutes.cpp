@@ -24,7 +24,8 @@ RouteDispatchResult handle_ai_run_routes(
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    std::shared_ptr<holder::api::support::SseRegistry> streams
 ) {
   RouteDispatchResult out{};
 
@@ -37,7 +38,8 @@ RouteDispatchResult handle_ai_run_routes(
         fts,
         secret_store,
         runner_registry,
-        uuid_v4
+        uuid_v4,
+        streams
     );
   }
 
@@ -53,7 +55,14 @@ RouteDispatchResult handle_ai_run_routes(
           "/events"
       ) == 0 &&
       req.method() == http::verb::get) {
-    return ai::runs::handle_ai_runs_events_route(path, socket, res, db);
+    return ai::runs::handle_ai_runs_events_route(
+        path,
+        socket,
+        res,
+        db,
+        std::string(req["Last-Event-ID"]),
+        streams
+    );
   }
 
   if (path.rfind("/ai/runs/", 0) == 0 && req.method() == http::verb::get) {

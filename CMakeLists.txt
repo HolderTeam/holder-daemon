@@ -383,6 +383,10 @@ add_executable(holderd
   src/api/support/ThreadCompaction.cpp
   src/api/support/LocalModelRouting.cpp
   src/api/support/RunEventStore.cpp
+  src/api/support/EventJournal.cpp
+  src/api/support/SseStream.cpp
+  src/api/support/ChangeFeed.cpp
+  src/api/support/EventService.cpp
   src/api/Session.cpp
   src/api/Router.cpp
   src/git/ExecutorGitOps.cpp
