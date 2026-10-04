@@ -119,6 +119,21 @@ RunnerClient* RunnerRegistry::get_client(const std::string& runner_id) const {
   return it != manual_clients_.end() ? it->second.get() : nullptr;
 }
 
+std::shared_ptr<RunnerClient> RunnerRegistry::share_client(const std::string& runner_id) const {
+  if (runner_id == kAutoLocalRunnerId) {
+    if (auto_local_wrapped_client_) return auto_local_wrapped_client_;
+    // The auto-local client is owned by the daemon and outlives Listener shutdown.
+    return auto_local_client_ ? std::shared_ptr<RunnerClient>(
+                                    auto_local_client_,
+                                    [](auto*) {
+                                    }
+                                )
+                              : std::shared_ptr<RunnerClient>{};
+  }
+  const auto it = manual_clients_.find(runner_id);
+  return it == manual_clients_.end() ? std::shared_ptr<RunnerClient>{} : it->second;
+}
+
 void RunnerRegistry::load_manual_clients() {
   manual_clients_.clear();
   if (db_ == nullptr) {

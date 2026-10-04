@@ -19,6 +19,9 @@ target_link_libraries(lock_helper PRIVATE
 )
 
 add_executable(holder_daemon_tests
+  EventJournal_test.cpp
+  ChangeFeed_test.cpp
+  HttpEvents_test.cpp
   LockFile_test.cpp
   ServerInfo_test.cpp
   Signal_test.cpp
@@ -189,6 +192,10 @@ add_executable(holder_daemon_tests
   ../src/api/support/ThreadCompaction.cpp
   ../src/api/support/LocalModelRouting.cpp
   ../src/api/support/RunEventStore.cpp
+  ../src/api/support/EventJournal.cpp
+  ../src/api/support/SseStream.cpp
+  ../src/api/support/ChangeFeed.cpp
+  ../src/api/support/EventService.cpp
   ../src/api/Session.cpp
   ../src/api/Router.cpp
   ../src/git/ExecutorGitOps.cpp
@@ -306,4 +313,13 @@ elseif(HOLDER_TSAN_USE_SETARCH)
   endif()
 else()
   add_test(NAME holder_daemon_tests COMMAND holder_daemon_tests)
+endif()
+
+# Wrapper tests use temporary repositories and mocked tools; no network or Home.
+if(UNIX)
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME make_sh_sdk_selection
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/test_make.py")
+  endif()
 endif()

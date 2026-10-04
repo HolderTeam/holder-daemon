@@ -120,105 +120,71 @@ RouteDispatchResult handle_ai_runs_events_route(
     const std::string& path,
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
-    holder::platform::Db& db
+    holder::platform::Db& db,
+    const std::string& last_event_id,
+    std::shared_ptr<support::SseRegistry> streams
 ) {
-  RouteDispatchResult out{};
-  out.handled = true;
-  out.streamed = true;
+  RouteDispatchResult out{.handled = true};
   const std::string prefix = "/ai/runs/";
   const std::string suffix = "/events";
-  const std::string run_id =
-      path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
-  if (run_id.empty()) {
-    out.streamed = false;
-    res = support::error_response(http::status::not_found, "not_found", "Run not found.");
+  const auto run_id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+  if (!last_event_id.empty() && !support::EventJournal::valid_cursor(last_event_id)) {
+    res =
+        support::error_response(http::status::bad_request, "bad_request", "Invalid Last-Event-ID.");
     return out;
   }
-
-  std::optional<holder::model::AiRun> run_record;
+  std::optional<holder::model::AiRun> run;
   try {
     holder::ai::AiRunRepo repo(db);
-    run_record = repo.get(run_id);
+    run = repo.get(run_id);
   } catch (const std::exception&) {
-    run_record = std::nullopt;
   }
-  if (!run_record.has_value()) {
-    out.streamed = false;
+  if (!run || run_id.empty()) {
     res = support::error_response(http::status::not_found, "not_found", "Run not found.");
     return out;
   }
-
-  http::response<http::empty_body> sse{http::status::ok, 11};
-  sse.set(http::field::content_type, "text/event-stream");
-  sse.set(http::field::cache_control, "no-cache");
-  sse.set(http::field::connection, "keep-alive");
-  sse.keep_alive(true);
-  http::serializer<false, http::empty_body> sr{sse};
-  boost::system::error_code write_ec;
-  http::write_header(socket, sr, write_ec);
-  if (write_ec) {
-    return out; // LCOV_EXCL_LINE
+  // A completed run survives daemon restart even when its transient chunk history
+  // does not. Return its terminal state on a fresh connection; a stale cursor
+  // explicitly requests a refresh rather than silently replaying a new history.
+  const auto stored = support::read_run_events(run_id, last_event_id);
+  if (!stored && (run->status == "completed" || run->status == "failed")) {
+    nlohmann::json terminal = {{"run_id", run_id}};
+    if (run->chosen_model) {
+      terminal["model_ref"] = *run->chosen_model;
+      const auto parsed = holder::llm::parse_runner_model_ref(*run->chosen_model);
+      terminal["model"] = parsed ? parsed->model_name : *run->chosen_model;
+      if (parsed) terminal["runner_id"] = parsed->runner_id;
+    }
+    if (run->error) terminal["error"] = *run->error;
+    support::append_run_event(
+        run_id,
+        run->status == "completed" ? "done" : "failed",
+        terminal,
+        true
+    );
   }
-
-  auto write_sse = [&](const std::string& name, const nlohmann::json& data) -> bool {
-    std::string payload = "event: " + name + "\n";
-    payload += "data: " + data.dump() + "\n\n";
-    boost::system::error_code send_ec;
-    boost::asio::write(socket, boost::asio::buffer(payload), send_ec);
-    return !send_ec;
+  auto source = [run_id, cursor = last_event_id]() mutable {
+    auto batch = support::read_run_events(run_id, cursor);
+    if (!batch) {
+      support::EventBatch result;
+      result.resync_required = !cursor.empty();
+      return result;
+    }
+    if (cursor.empty() && batch->truncated) batch->resync_required = true;
+    cursor = batch->cursor;
+    return *batch;
   };
-
-  size_t cursor = 0;
-  const long long started = support::now_epoch_seconds();
-  for (;;) {
-    const auto stream = support::get_run_event_stream(run_id);
-    if (stream.has_value()) {
-      while (cursor < stream->events.size()) {
-        if (!write_sse(stream->events[cursor].name, stream->events[cursor].data)) {
-          return out; // LCOV_EXCL_LINE
-        }
-        ++cursor;
-      }
-      if (stream->finished) {
-        return out;
-      }
-    } else if (run_record->status == "completed" || run_record->status == "failed") {
-      nlohmann::json terminal;
-      terminal["run_id"] = run_id;
-      if (const auto chosen_runner_id = holder::llm::runner_id_from_ref(run_record->chosen_model);
-          chosen_runner_id.has_value()) {
-        terminal["runner_id"] = chosen_runner_id.value();
-      }
-      if (run_record->chosen_model.has_value()) {
-        terminal["model_ref"] = run_record->chosen_model.value();
-        const auto parsed = holder::llm::parse_runner_model_ref(run_record->chosen_model.value());
-        terminal["model"] = parsed.has_value() ? nlohmann::json(parsed->model_name)
-                                               : nlohmann::json(run_record->chosen_model.value());
-      }
-      if (run_record->error.has_value()) {
-        terminal["error"] = run_record->error.value();
-      }
-      if (run_record->status == "completed") {
-        write_sse("done", terminal);
-      } else {
-        write_sse("failed", terminal);
-      }
-      return out;
-    }
-
-    // Keepalive timeout path is intentionally excluded in unit tests to avoid long sleeps.
-    // LCOV_EXCL_START
-    if (support::now_epoch_seconds() - started > 60) {
-      nlohmann::json keepalive;
-      keepalive["run_id"] = run_id;
-      keepalive["status"] = "pending";
-      write_sse("pending", keepalive);
-      return out;
-    }
-    // LCOV_EXCL_STOP
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(200)); // LCOV_EXCL_LINE
+  auto stream = support::SseStream::start(socket, std::move(streams), std::move(source));
+  if (!stream) {
+    res = support::error_response(
+        http::status::service_unavailable,
+        "server_busy",
+        "Too many event streams."
+    );
+    return out;
   }
+  out.streamed = true;
+  return out;
 }
 
 RouteDispatchResult handle_ai_runs_get_route(

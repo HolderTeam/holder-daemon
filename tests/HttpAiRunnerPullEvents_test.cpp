@@ -51,6 +51,7 @@ StreamResult invoke_pull_event_route_and_capture(
         runner_registry,
         param_get
     );
+    ioc.run();
     boost::system::error_code ec;
     server.shutdown(tcp::socket::shutdown_both, ec);
     server.close(ec);

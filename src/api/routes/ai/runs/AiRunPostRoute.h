@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api/support/SseStream.h"
+
 #include "api/routes/ai/AiRunRoutes.h"
 #include "index/FtsIndexer.h"
 #include "llm/RunnerRegistry.h"
@@ -22,7 +24,8 @@ RouteDispatchResult handle_ai_runs_post_route(
     holder::index::FtsIndexer* fts,
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4
+    const std::function<std::string()>& uuid_v4,
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 } // namespace holder::api::routes::ai::runs

@@ -268,6 +268,12 @@ void Listener::run(const holder::core::SignalHandler& signals) {
     ai_runtime_executor_ = std::make_unique<holder::core::SerialExecutor>("request-ai-runtime", 16);
   }
 
+  {
+    std::lock_guard lock(event_service_mutex_);
+    events_ = std::make_shared<holder::api::support::EventService>(db_.path());
+    if (stop_requested_.load()) events_->stop();
+  }
+
   ingress_workers_.clear();
   save_workers_.clear();
   general_workers_.clear();
@@ -354,6 +360,7 @@ void Listener::run(const holder::core::SignalHandler& signals) {
   // adapter. Join them before that adapter can be destroyed.
   holder::api::routes::wait_for_asset_import_jobs();
 
+  if (events_) events_->streams()->poll_workers().join();
   ioc_.stop();
   for (auto& worker : io_workers_) {
     if (worker.joinable()) {
@@ -376,6 +383,10 @@ void Listener::stop() {
     return;
   }
 
+  {
+    std::lock_guard lock(event_service_mutex_);
+    if (events_) events_->stop();
+  }
   shutdown_queued_work();
   shutdown_active_sockets();
   ingress_queue_cv_.notify_all();
@@ -589,7 +600,8 @@ void Listener::run_save_worker() {
         context.nudge_service.get(),
         secret_store_,
         request_git_ops_,
-        context.runner_registry.get()
+        context.runner_registry.get(),
+        events_.get()
     );
     auto response = session.execute();
     if (response.has_value()) {
@@ -665,7 +677,8 @@ void Listener::run_general_worker() {
         context.nudge_service.get(),
         secret_store_,
         request_git_ops_,
-        context.runner_registry.get()
+        context.runner_registry.get(),
+        events_.get()
     );
     auto response = session.execute();
     if (response.has_value()) {

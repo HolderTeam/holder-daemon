@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api/support/SseStream.h"
+
 #include "llm/RunnerRegistry.h"
 #include "platform/Db.h"
 
@@ -24,7 +26,8 @@ RunnerRouteDispatchResult handle_ai_runner_routes(
     holder::platform::Db& db,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param_get
+    const std::function<std::string(const std::string&)>& param_get,
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 } // namespace holder::api::routes

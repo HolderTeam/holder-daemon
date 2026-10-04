@@ -1,5 +1,7 @@
 #pragma once
 
+#include "api/support/SseStream.h"
+
 #include "ai/NudgeService.h"
 #include "card/CardStore.h"
 #include "git/GitOps.h"
@@ -33,7 +35,8 @@ AuthenticatedDispatchResult dispatch_authenticated_routes(
     holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4
+    const std::function<std::string()>& uuid_v4,
+    std::shared_ptr<holder::api::support::SseRegistry> streams = {}
 );
 
 } // namespace holder::api::routes

@@ -202,7 +202,10 @@ TEST_CASE(
   client.close(ec);
 }
 
-TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails", "[http]") {
+TEST_CASE(
+    "AiRunPostRoute cloud execution persists failure despite unavailable SSE socket",
+    "[http]"
+) {
   const auto dir = make_temp_dir();
   holder::test::EnvGuard keystore_dir("HOLDER_TEST_KEYSTORE_DIR", (dir / "keystore").string());
   auto secret_store = holder::privacy::make_default_secret_store(dir / "server");
@@ -283,7 +286,7 @@ TEST_CASE("AiRunPostRoute cloud path returns early when SSE header write fails",
   holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_thread("thread-1");
   REQUIRE(runs.size() == 1);
-  REQUIRE(runs[0].status == "started");
+  REQUIRE(runs[0].status == "failed");
   REQUIRE(runs[0].context_json.has_value());
 }
 
@@ -468,7 +471,7 @@ TEST_CASE("AiRunPostRoute cloud path selects provider via ordered fallback", "[h
   holder::ai::AiRunRepo run_repo(db);
   const auto runs = run_repo.list_by_project("proj-1");
   REQUIRE(runs.size() == 1);
-  REQUIRE(runs[0].status == "started");
+  REQUIRE(runs[0].status == "failed");
 }
 
 TEST_CASE(

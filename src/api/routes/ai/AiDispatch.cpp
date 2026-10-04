@@ -48,7 +48,8 @@ DispatchResult dispatch_ai_routes(
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
     const std::function<std::string()>& uuid_v4,
-    const std::function<std::string(const std::string&)>& param
+    const std::function<std::string(const std::string&)>& param,
+    std::shared_ptr<holder::api::support::SseRegistry> streams
 ) {
   const std::string ai_resource = segment_at(path, 2);
 
@@ -81,7 +82,8 @@ DispatchResult dispatch_ai_routes(
             secret_store,
             runner_registry,
             uuid_v4,
-            param
+            param,
+            streams
         );
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
@@ -92,8 +94,17 @@ DispatchResult dispatch_ai_routes(
     if (handle_ai_status_routes(path, req, res, db, runner_registry, param)) {
       return {.handled = true, .streamed = false}; // LCOV_EXCL_LINE
     }
-    if (const auto route_result =
-            handle_ai_runner_routes(path, req, res, socket, db, runner_registry, uuid_v4, param);
+    if (const auto route_result = handle_ai_runner_routes(
+            path,
+            req,
+            res,
+            socket,
+            db,
+            runner_registry,
+            uuid_v4,
+            param,
+            streams
+        );
         route_result.handled) {
       return {.handled = true, .streamed = route_result.streamed};
     }

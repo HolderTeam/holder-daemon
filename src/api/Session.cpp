@@ -248,7 +248,8 @@ Session::Session(
     holder::ai::NudgeService* nudge_service,
     holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
-    holder::llm::RunnerRegistry* runner_registry
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::api::support::EventService* events
 )
     : socket_(std::move(socket)),
       db_(db),
@@ -260,7 +261,8 @@ Session::Session(
       nudge_service_(nudge_service),
       secret_store_(secret_store),
       git_ops_(git_ops),
-      runner_registry_(runner_registry) {}
+      runner_registry_(runner_registry),
+      events_(events) {}
 
 Session::Session(
     PreparedRequest prepared,
@@ -273,7 +275,8 @@ Session::Session(
     holder::ai::NudgeService* nudge_service,
     holder::privacy::SecretStore* secret_store,
     holder::git::GitOps* git_ops,
-    holder::llm::RunnerRegistry* runner_registry
+    holder::llm::RunnerRegistry* runner_registry,
+    holder::api::support::EventService* events
 )
     : socket_(std::move(prepared.socket)),
       db_(db),
@@ -286,6 +289,7 @@ Session::Session(
       secret_store_(secret_store),
       git_ops_(git_ops),
       runner_registry_(runner_registry),
+      events_(events),
       req_(std::move(prepared.req)),
       request_started_(prepared.request_started),
       path_(std::move(prepared.path)),
@@ -366,6 +370,7 @@ bool Session::ensure_request_loaded() {
 
 std::optional<Session::PreparedResponse> Session::process_loaded_request() {
   Response res;
+  bool streamed = false;
   if (path_ == "/ping") {
     res = ping_response(req_);
   } else if (!routes::handle_static_routes(path_, req_, res)) {
@@ -390,6 +395,9 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
             "unauthorized",
             "Missing or invalid token."
         );
+      } else if (events_ &&
+                 events_->dispatch(path_, query_string_, req_, res, socket_, db_, streamed)) {
+        if (streamed) return std::nullopt;
       } else if (!router_.dispatch(req_, res)) {
         const auto route_result = routes::dispatch_authenticated_routes(
             path_,
@@ -406,7 +414,8 @@ std::optional<Session::PreparedResponse> Session::process_loaded_request() {
             runner_registry_,
             [&]() { // LCOV_EXCL_LINE
               return generate_uuid_v4();
-            }
+            },
+            events_ ? events_->streams() : nullptr
         );
         if (route_result.streamed) return std::nullopt;
       }

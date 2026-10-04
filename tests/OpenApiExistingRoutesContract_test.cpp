@@ -582,3 +582,27 @@ TEST_CASE("OpenAPI contracts project Git sync status", "[openapi][holderctl-foun
   );
   CHECK(schemas["ProjectSync"]["properties"]["next_pull_retry_at"]["nullable"].as<bool>());
 }
+
+TEST_CASE("OpenAPI describes change feed recovery and SSE cursors", "[openapi][events]") {
+  const auto document = load_openapi();
+  const auto paths = document["paths"];
+  const auto events = paths["/events"]["get"];
+  CHECK(parameter_named(events, "Last-Event-ID")["in"].as<std::string>() == "header");
+  CHECK(
+      parameter_named(events, "last_revision")["schema"]["pattern"].as<std::string>() ==
+      "^[0-9a-f]{40}$"
+  );
+  CHECK(
+      events["x-sse-events"]["resync_required"]["$ref"].as<std::string>() ==
+      "#/components/schemas/EventResyncData"
+  );
+  require_json_response_ref(paths["/events/cursor"]["get"], "200", "EventCheckpointResponse");
+  for (const auto* status : {"400", "401", "404", "405", "503"})
+    require_json_response_ref(events, status, "ErrorResponse");
+  for (const auto* path : {"/ai/runs/{run_id}/events", "/ai/runner/pull/{job_id}/events"})
+    CHECK(parameter_named(paths[path]["get"], "Last-Event-ID").IsDefined());
+  CHECK(
+      required_properties(document["components"]["schemas"]["ChangeEventData"]) ==
+      std::vector<std::string>{"deleted", "entity", "entity_id", "git_revision", "project_id"}
+  );
+}

@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -35,6 +36,35 @@ namespace holder::api::routes::ai::runs {
 namespace {
 
 namespace http = boost::beast::http;
+
+// Persist failure before closing a stream if execution throws after HTTP headers.
+struct RunStreamCompletion {
+  holder::ai::AiRunRepo& repo;
+  std::string run_id;
+  std::shared_ptr<support::SseStream> channel;
+  int exceptions = std::uncaught_exceptions();
+  ~RunStreamCompletion() {
+    if (std::uncaught_exceptions() > exceptions) {
+      try {
+        const std::string error = "Run execution failed; consult daemon logs.";
+        repo.update_status(
+            run_id,
+            "failed",
+            error,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            std::nullopt,
+            support::now_epoch_seconds()
+        );
+        channel->send(support::append_run_event(run_id, "failed", {{"error", error}}, true));
+      } catch (const std::exception& ex) {
+        spdlog::warn("Cannot persist failed streaming run: {}", ex.what());
+      }
+    }
+    channel->finish();
+  }
+};
 
 std::string truncate_bytes(const std::string& text, size_t max_bytes) {
   if (text.size() <= max_bytes) return text;
@@ -349,7 +379,9 @@ RouteDispatchResult execute_cloud_post_path(
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
     holder::platform::Db& db,
-    holder::index::FtsIndexer* fts
+    holder::index::FtsIndexer* fts,
+    std::shared_ptr<support::SseRegistry> streams,
+    bool& streaming_started
 ) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -473,37 +505,38 @@ RouteDispatchResult execute_cloud_post_path(
       run.status = "started";
       run.created_at = support::now_epoch_seconds();
       run.updated_at = run.created_at;
-      run_repo.create(run);
-      support::append_run_event(
+      auto channel = support::SseStream::reserve(socket, streams);
+      if (!channel) {
+        res = support::error_response(
+            http::status::service_unavailable,
+            "server_busy",
+            "Too many event streams."
+        );
+        return out;
+      }
+      try {
+        run_repo.create(run);
+      } catch (...) {
+        channel->release(socket);
+        throw;
+      }
+      const auto started_event = support::append_run_event(
           run.run_id,
           "run_started",
-          {{"status", "started"}, {"created_at", run.created_at}},
+          {{"run_id", run.run_id}, {"status", "started"}, {"created_at", run.created_at}},
           false
       );
 
+      channel->activate();
+      channel->send(started_event);
       out.streamed = true;
-      http::response<http::empty_body> sse{http::status::ok, 11};
-      sse.set(http::field::content_type, "text/event-stream");
-      sse.set(http::field::cache_control, "no-cache");
-      sse.set(http::field::connection, "keep-alive");
-      sse.keep_alive(true);
-      http::serializer<false, http::empty_body> sr{sse};
-      boost::system::error_code write_ec;
-      http::write_header(socket, sr, write_ec);
-      if (write_ec) {
-        return out;
-      }
-
+      streaming_started = true;
+      const RunStreamCompletion completion{run_repo, run.run_id, channel};
       auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
-        const bool is_terminal = (name == "done" || name == "failed");
-        support::append_run_event(run.run_id, name, data, is_terminal);
-        std::string payload = "event: " + name + "\n";
-        nlohmann::json wire = data;
-        wire["run_id"] = run.run_id;
-        payload += "data: " + wire.dump() + "\n\n";
-        boost::system::error_code send_ec;
-        boost::asio::write(socket, boost::asio::buffer(payload), send_ec);
-        return !send_ec;
+        const bool terminal = name == "done" || name == "failed";
+        const auto event = support::append_run_event(run.run_id, name, data, terminal);
+        const bool sent = channel->send(event);
+        return sent;
       };
 
       nlohmann::json policy_trace;
@@ -917,7 +950,6 @@ RouteDispatchResult execute_cloud_post_path(
             {"status", "failed"},
             {"error", final_error},
         };
-        send_event("failed", {{"error", final_error}, {"provider", selected_provider->id}});
         run_repo.update_status(
             run.run_id,
             "failed",
@@ -928,6 +960,7 @@ RouteDispatchResult execute_cloud_post_path(
             std::optional<std::string>(policy_trace.dump()),
             updated_at
         );
+        send_event("failed", {{"error", final_error}, {"provider", selected_provider->id}});
       } else {
         const long long response_tokens = support::estimate_tokens_from_text(output.value());
         if (thread_id.has_value() && !context_json.empty() && !summary_refreshed) {
@@ -956,10 +989,6 @@ RouteDispatchResult execute_cloud_post_path(
             {{"provider", selected_provider->id},
              {"model", chosen_model_id.value()},
              {"delta", output.value()}}
-        );
-        send_event(
-            "done",
-            {{"provider", selected_provider->id}, {"model", chosen_model_id.value()}}
         );
 
         std::optional<std::string> message_id;
@@ -998,6 +1027,10 @@ RouteDispatchResult execute_cloud_post_path(
             std::nullopt,
             std::optional<std::string>(policy_trace.dump()),
             updated_at
+        );
+        send_event(
+            "done",
+            {{"provider", selected_provider->id}, {"model", chosen_model_id.value()}}
         );
       }
     }
@@ -1059,7 +1092,9 @@ RouteDispatchResult execute_local_post_path(
     boost::asio::ip::tcp::socket& socket,
     http::response<http::string_body>& res,
     holder::platform::Db& db,
-    holder::index::FtsIndexer* fts
+    holder::index::FtsIndexer* fts,
+    std::shared_ptr<support::SseRegistry> streams,
+    bool& streaming_started
 ) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -1199,37 +1234,38 @@ RouteDispatchResult execute_local_post_path(
   run.status = "started";
   run.created_at = support::now_epoch_seconds();
   run.updated_at = run.created_at;
-  run_repo.create(run);
-  support::append_run_event(
+  auto channel = support::SseStream::reserve(socket, streams);
+  if (!channel) {
+    res = support::error_response(
+        http::status::service_unavailable,
+        "server_busy",
+        "Too many event streams."
+    );
+    return out;
+  }
+  try {
+    run_repo.create(run);
+  } catch (...) {
+    channel->release(socket);
+    throw;
+  }
+  const auto started_event = support::append_run_event(
       run.run_id,
       "run_started",
-      {{"status", "started"}, {"created_at", run.created_at}},
+      {{"run_id", run.run_id}, {"status", "started"}, {"created_at", run.created_at}},
       false
   );
 
+  channel->activate();
+  channel->send(started_event);
   out.streamed = true;
-  http::response<http::empty_body> sse{http::status::ok, 11};
-  sse.set(http::field::content_type, "text/event-stream");
-  sse.set(http::field::cache_control, "no-cache");
-  sse.set(http::field::connection, "keep-alive");
-  sse.keep_alive(true);
-  http::serializer<false, http::empty_body> sr{sse};
-  boost::system::error_code write_ec;
-  http::write_header(socket, sr, write_ec);
-  if (write_ec) {
-    return out;
-  }
-
+  streaming_started = true;
+  const RunStreamCompletion completion{run_repo, run.run_id, channel};
   auto send_event = [&](const std::string& name, const nlohmann::json& data) -> bool {
-    const bool is_terminal = (name == "done" || name == "failed");
-    support::append_run_event(run.run_id, name, data, is_terminal);
-    std::string payload = "event: " + name + "\n";
-    nlohmann::json wire = data;
-    wire["run_id"] = run.run_id;
-    payload += "data: " + wire.dump() + "\n\n";
-    boost::system::error_code send_ec;
-    boost::asio::write(socket, boost::asio::buffer(payload), send_ec);
-    return !send_ec;
+    const bool terminal = name == "done" || name == "failed";
+    const auto event = support::append_run_event(run.run_id, name, data, terminal);
+    const bool sent = channel->send(event);
+    return sent;
   };
 
   std::string ranked_json;
@@ -1380,7 +1416,6 @@ RouteDispatchResult execute_local_post_path(
     } else {
       done_event["model"] = chosen_model; // LCOV_EXCL_LINE
     }
-    send_event("done", done_event);
     std::optional<std::string> message_id;
     if (thread_id.has_value()) {
       holder::ai::AiMessageRepo msg_repo(db, fts);
@@ -1416,9 +1451,9 @@ RouteDispatchResult execute_local_post_path(
         std::nullopt,
         updated_at
     );
+    send_event("done", done_event);
   } else {
     spdlog::warn("AI run failed runner_id=" + runner_id + " reason=all_models_failed");
-    send_event("failed", {{"runner_id", runner_id}, {"error", "All models failed."}});
     run_repo.update_status(
         run.run_id,
         "failed",
@@ -1429,6 +1464,7 @@ RouteDispatchResult execute_local_post_path(
         std::nullopt,
         updated_at
     );
+    send_event("failed", {{"runner_id", runner_id}, {"error", "All models failed."}});
   }
 
   return out;
@@ -1444,7 +1480,8 @@ RouteDispatchResult handle_ai_runs_post_route(
     holder::index::FtsIndexer* fts,
     holder::privacy::SecretStore* secret_store,
     holder::llm::RunnerRegistry* runner_registry,
-    const std::function<std::string()>& uuid_v4
+    const std::function<std::string()>& uuid_v4,
+    std::shared_ptr<holder::api::support::SseRegistry> streams
 ) {
   RouteDispatchResult out{};
   out.handled = true;
@@ -1526,7 +1563,9 @@ RouteDispatchResult handle_ai_runs_post_route(
           socket,
           res,
           db,
-          fts
+          fts,
+          streams,
+          out.streamed
       );
     }
     return execute_local_post_path(
@@ -1544,10 +1583,18 @@ RouteDispatchResult handle_ai_runs_post_route(
         socket,
         res,
         db,
-        fts
+        fts,
+        streams,
+        out.streamed
     );
   } catch (const std::exception& ex) {
-    res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+    if (out.streamed) {
+      // Streaming owns the socket and its completion guard has sent failure.
+      out.streamed = true;
+      spdlog::warn("Streaming run failed: {}", ex.what());
+    } else {
+      res = support::error_response(http::status::bad_request, "bad_request", ex.what());
+    }
   }
   return out;
 }
