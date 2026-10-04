@@ -46,6 +46,30 @@ void require_json_response_ref(
 
 } // namespace
 
+TEST_CASE("OpenAPI contracts card item mutations on the card path", "[openapi][cards]") {
+  const auto document = load_openapi();
+  const auto card = document["paths"]["/cards/{card_id}"];
+  for (const auto* method : {"patch", "delete"}) {
+    const auto operation = card[method];
+    REQUIRE(operation.IsDefined());
+    const auto parameter = parameter_named(operation, "card_id");
+    REQUIRE(parameter.IsDefined());
+    CHECK(parameter["in"].as<std::string>() == "path");
+    CHECK(parameter["required"].as<bool>());
+    require_json_response_ref(operation, "200", "CardPatchResponse");
+    for (const auto* status : {"401", "404"}) {
+      require_json_response_ref(operation, status, "ErrorResponse");
+    }
+  }
+  CHECK(
+      card["patch"]["requestBody"]["content"]["application/json"]["schema"]["$ref"].as<std::string>(
+      ) == "#/components/schemas/CardUpdateRequest"
+  );
+  const auto backlinks = document["paths"]["/ai/messages/{message_id}/backlinks"];
+  CHECK_FALSE(backlinks["patch"].IsDefined());
+  CHECK_FALSE(backlinks["delete"].IsDefined());
+}
+
 TEST_CASE("OpenAPI contracts project remote mutation results", "[openapi][sync][remote]") {
   const auto document = load_openapi();
   const auto operation = document["paths"]["/projects/{project_id}"]["patch"];
