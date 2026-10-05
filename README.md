@@ -1,3 +1,5 @@
+> **This repository has moved to [holder-framework](https://github.com/HolderTeam/holder-framework).** The daemon now lives in [`daemon/`](https://github.com/HolderTeam/holder-framework/tree/main/daemon), with its full history. This repository is kept as an archive and is no longer updated.
+
 # Holder Local Daemon
 
 Holderd is a local-first card server, primarily used as a backend for card applications.
